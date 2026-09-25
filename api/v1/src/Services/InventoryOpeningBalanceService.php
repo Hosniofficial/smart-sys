@@ -200,12 +200,12 @@ class InventoryOpeningBalanceService
             INSERT INTO branch_products
                 (tenant_id, product_id, branch_id, quantity, quantity_cost,
                  gl_reconciled, last_gl_posting_date, last_update)
-            VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())
+            VALUES (?, ?, ?, ?, ?, 0, NULL, NOW())
             ON DUPLICATE KEY UPDATE
                 quantity             = VALUES(quantity),
                 quantity_cost        = VALUES(quantity_cost),
-                gl_reconciled        = 1,
-                last_gl_posting_date = NOW(),
+                gl_reconciled        = 0,
+                last_gl_posting_date = NULL,
                 last_update          = NOW()
         ")->execute([$tenantId, $productId, $branchId, $quantity, $totalCost]);
 
@@ -263,6 +263,11 @@ class InventoryOpeningBalanceService
                  layer_date, layer_sequence, unit_cost,
                  quantity_received, quantity_remaining, source_type)
             VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, 'OPENING_BALANCE')
+        $this->db->prepare(
+            'UPDATE branch_products
+             SET gl_reconciled = 1, last_gl_posting_date = NOW()
+             WHERE tenant_id = ? AND product_id = ? AND branch_id = ?'
+        )->execute([$tenantId, $productId, $branchId]);
         ")->execute([
             $tenantId, $productId, $branchId, $mappingId,
             $entryDate, $unitCost, $quantity, $quantity,

@@ -461,11 +461,12 @@ class OpeningBalanceHandler extends BaseHandler
             ");
 
             $upsertWP = $this->db->prepare("
-                INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, last_update, quantity_cost)
-                VALUES (?, ?, ?, ?, NOW(), ?)
+                INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, last_update, quantity_cost, gl_reconciled)
+                VALUES (?, ?, ?, ?, NOW(), ?, 0)
                 ON DUPLICATE KEY UPDATE
                     quantity = quantity + VALUES(quantity),
                     quantity_cost = quantity_cost + VALUES(quantity_cost),
+                    gl_reconciled = 0,
                     last_update = NOW()
             ");
 

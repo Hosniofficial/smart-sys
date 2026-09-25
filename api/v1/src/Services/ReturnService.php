@@ -175,12 +175,18 @@ class ReturnService
 
         // Update branch_products
         $this->db->prepare(
-            "INSERT INTO branch_products (tenant_id, product_id, branch_id, quantity, quantity_cost)
-             VALUES (?, ?, ?, ?, ?)
+            "INSERT INTO branch_products (tenant_id, product_id, branch_id, quantity, quantity_cost, gl_reconciled)
+             VALUES (?, ?, ?, ?, ?, 0)
              ON DUPLICATE KEY UPDATE
                  quantity      = quantity + VALUES(quantity),
                  quantity_cost = quantity_cost + VALUES(quantity_cost)"
         )->execute([$this->tenantId, $productId, $branchId, $change, $costAdjustment]);
+        BranchInventoryReconciliationService::markUnreconciled(
+            $this->db,
+            $this->tenantId,
+            $branchId,
+            $productId
+        );
 
         // Insert inventory transaction
         $this->db->prepare(

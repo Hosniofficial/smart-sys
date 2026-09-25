@@ -159,6 +159,12 @@ class SalesService
                          SET quantity = quantity + ?
                          WHERE product_id = ? AND branch_id = ? AND tenant_id = ?"
                     )->execute([$qty, $item['product_id'], $branchId, $tenantId]);
+                    BranchInventoryReconciliationService::markUnreconciled(
+                        $this->pdo,
+                        $tenantId,
+                        $branchId,
+                        (int) $item['product_id']
+                    );
 
                     $this->pdo->prepare(
                         "INSERT INTO inventory_transactions (

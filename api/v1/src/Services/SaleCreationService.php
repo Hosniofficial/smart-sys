@@ -272,6 +272,12 @@ class SaleCreationService
                         quantity_cost = GREATEST(0, quantity_cost - ?)
                     WHERE product_id = ? AND branch_id = ? AND tenant_id = ?
                 ")->execute([$baseQuantity, $totalCost, $productId, $branchId, $tenantId]);
+                BranchInventoryReconciliationService::markUnreconciled(
+                    $this->pdo,
+                    $tenantId,
+                    $branchId,
+                    $productId
+                );
 
                 $this->pdo->prepare("
                     INSERT INTO inventory_transactions (

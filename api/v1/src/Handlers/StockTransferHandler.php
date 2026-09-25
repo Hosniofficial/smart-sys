@@ -9,6 +9,7 @@ use PDOException;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\CostingService;
+use App\Services\BranchInventoryReconciliationService;
 use App\Services\MonologHandler;
 
 /**
@@ -123,6 +124,12 @@ class StockTransferHandler extends BaseHandler
                      quantity_cost = GREATEST(0, quantity_cost - ?)
                  WHERE branch_id = ? AND product_id = ? AND tenant_id = ?"
             )->execute([$transferQty, $deductedCost, $data['from_branch'], $data['product_id'], $tenantId]);
+            BranchInventoryReconciliationService::markUnreconciled(
+                $this->db,
+                (int) $tenantId,
+                (int) $data['from_branch'],
+                (int) $data['product_id']
+            );
 
             // 3. إضافة الكمية والتكلفة إلى الفرع الوجهة
             // ── AUDIT FIX #10 (HIGH): كانت هذه القيمة مبنية على `unit_cost` من
@@ -134,12 +141,18 @@ class StockTransferHandler extends BaseHandler
             $transferUnitCost  = $unitCostAtSource;
             $transferTotalCost = $deductedCost;
             $this->db->prepare(
-                "INSERT INTO branch_products (branch_id, product_id, quantity, quantity_cost, tenant_id)
-                 VALUES (?, ?, ?, ?, ?)
+                "INSERT INTO branch_products (branch_id, product_id, quantity, quantity_cost, tenant_id, gl_reconciled)
+                 VALUES (?, ?, ?, ?, ?, 0)
                  ON DUPLICATE KEY UPDATE
                      quantity      = quantity + VALUES(quantity),
                      quantity_cost = quantity_cost + VALUES(quantity_cost)"
             )->execute([$data['to_branch'], $data['product_id'], $data['quantity'], $transferTotalCost, $tenantId]);
+            BranchInventoryReconciliationService::markUnreconciled(
+                $this->db,
+                (int) $tenantId,
+                (int) $data['to_branch'],
+                (int) $data['product_id']
+            );
 
             // 4. سجل عملية النقل في stock_transfers (مع batch, expiry, serial - Phase 3)
             $this->db->prepare(

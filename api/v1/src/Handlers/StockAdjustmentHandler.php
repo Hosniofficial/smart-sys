@@ -8,6 +8,7 @@ use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\CostingService;
+use App\Services\BranchInventoryReconciliationService;
 use App\Services\MonologHandler;
 
 /**
@@ -216,10 +217,11 @@ class StockAdjustmentHandler extends BaseHandler
                 }
                 $this->db->beginTransaction();
                 $this->db->prepare(
-                    "INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, last_update)
-                     VALUES (?, ?, ?, ?, NOW())
+                    "INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, last_update, gl_reconciled)
+                     VALUES (?, ?, ?, ?, NOW(), 0)
                      ON DUPLICATE KEY UPDATE quantity = VALUES(quantity), last_update = NOW()"
                 )->execute([$tenantId, $branchId, $productId, $quantity]);
+                BranchInventoryReconciliationService::markUnreconciled($this->db, (int) $tenantId, $branchId, $productId);
                 $this->db->commit();
                 return $this->successResponse($response, ['status' => 'success', 'message' => 'Inventory item added/updated'], 200);
             }
@@ -235,6 +237,7 @@ class StockAdjustmentHandler extends BaseHandler
                     "UPDATE branch_products SET quantity = ?, last_update = NOW()
                      WHERE tenant_id = ? AND branch_id = ? AND product_id = ?"
                 )->execute([$quantity, $tenantId, $branchId, $productId]);
+                BranchInventoryReconciliationService::markUnreconciled($this->db, (int) $tenantId, $branchId, $productId);
             }
             $this->db->commit();
             return $this->successResponse($response, ['status' => 'success', 'message' => 'Inventory item updated'], 200);
@@ -311,13 +314,14 @@ class StockAdjustmentHandler extends BaseHandler
 
             $costAdjustment = $delta * $unitCost;
             $this->db->prepare(
-                "INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, quantity_cost, last_update)
-                 VALUES (?, ?, ?, ?, ?, NOW())
+                "INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, quantity_cost, last_update, gl_reconciled)
+                 VALUES (?, ?, ?, ?, ?, NOW(), 0)
                  ON DUPLICATE KEY UPDATE
                      quantity      = quantity + VALUES(quantity),
                      quantity_cost = GREATEST(0, quantity_cost + VALUES(quantity_cost)),
                      last_update   = NOW()"
             )->execute([$tenantId, $branchId, $productId, $delta, $costAdjustment]);
+            BranchInventoryReconciliationService::markUnreconciled($this->db, (int) $tenantId, $branchId, $productId);
 
             $jeId     = $this->createAdjustmentJournalEntry($tenantId, $branchId, $productId, $delta, $notes, $userId, $movement);
             $warnings = null;
@@ -368,8 +372,8 @@ class StockAdjustmentHandler extends BaseHandler
             // الآن يطبّق نفس الصيغة المُثبَتة صحتها في adjustStockQuantity (دالتين أعلاه في
             // نفس الملف): costAdjustment = delta × unit_cost.
             $upsertWp = $this->db->prepare(
-                "INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, quantity_cost, last_update)
-                 VALUES (?, ?, ?, ?, ?, NOW())
+                "INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, quantity_cost, last_update, gl_reconciled)
+                 VALUES (?, ?, ?, ?, ?, NOW(), 0)
                  ON DUPLICATE KEY UPDATE
                      quantity      = quantity + VALUES(quantity),
                      quantity_cost = GREATEST(0, quantity_cost + VALUES(quantity_cost)),
@@ -425,6 +429,7 @@ class StockAdjustmentHandler extends BaseHandler
                     $userId
                 );
                 $upsertWp->execute([$tenantId, $branchId, $productId, $delta, $delta * $unitCost]);
+                BranchInventoryReconciliationService::markUnreconciled($this->db, (int) $tenantId, $branchId, $productId);
 
                 $jeId = $this->createAdjustmentJournalEntry($tenantId, $branchId, $productId, $delta, $notes, $userId, $movement);
                 if ($jeId) {
@@ -493,8 +498,8 @@ class StockAdjustmentHandler extends BaseHandler
             // $unitCost أدناه) لكنه كان يُهمَل تماماً عند الكتابة على branch_products —
             // فيُحدَّث quantity فقط وينحرف quantity_cost تدريجياً مع كل استيراد.
             $upsertWp         = $this->db->prepare(
-                "INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, quantity_cost, last_update)
-                 VALUES (?, ?, ?, ?, ?, NOW())
+                "INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, quantity_cost, last_update, gl_reconciled)
+                 VALUES (?, ?, ?, ?, ?, NOW(), 0)
                  ON DUPLICATE KEY UPDATE
                      quantity      = quantity + VALUES(quantity),
                      quantity_cost = GREATEST(0, quantity_cost + VALUES(quantity_cost)),
@@ -584,6 +589,7 @@ class StockAdjustmentHandler extends BaseHandler
                     $userId
                 );
                 $upsertWp->execute([$tenantId, $branchId, $pId, $delta, $delta * $unitCost]);
+                BranchInventoryReconciliationService::markUnreconciled($this->db, (int) $tenantId, $branchId, $pId);
 
                 $jeId = $this->createAdjustmentJournalEntry($tenantId, $branchId, $pId, $delta, $notes, $userId, $movement);
                 if ($jeId) {
