@@ -95,39 +95,50 @@ class BranchInventoryReportHandler extends BaseHandler
         $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        // الرصيد الافتتاحي
-        $openingBalance = 0.0;
+        // الرصيد الافتتاحي: صافي حركة كل صنف قبل بداية الفترة.
+        // يُحسب أيضاً عند عرض جميع الأصناف، مع احترام فلتر الفرع.
+        $openingWhere = ['it.tenant_id = ?', 'it.movement_date < ?'];
+        $openingParams = [$tenantId, $start];
         if ($productId) {
-            $obSql    = "SELECT COALESCE(SUM(CASE
-                            WHEN it.movement_type LIKE '%in%'  THEN  it.quantity
-                            WHEN it.movement_type LIKE '%out%' THEN -it.quantity
-                            ELSE 0 END), 0) AS opening_balance
-                         FROM inventory_transactions it
-                         WHERE it.tenant_id = ? AND it.product_id = ? AND it.movement_date < ?";
-            $obParams = [$tenantId, $productId, $start];
-            if ($branchId) {
-                $obSql   .= ' AND (it.branch_from = ? OR it.branch_to = ?)';
-                $obParams[] = $branchId;
-                $obParams[] = $branchId;
-            }
-            $obStmt = $this->db->prepare($obSql);
-            $obStmt->execute($obParams);
-            $openingBalance = (float) $obStmt->fetchColumn();
+            $openingWhere[] = 'it.product_id = ?';
+            $openingParams[] = $productId;
+        }
+        if ($branchId) {
+            $openingWhere[] = '(it.branch_from = ? OR it.branch_to = ?)';
+            $openingParams[] = $branchId;
+            $openingParams[] = $branchId;
         }
 
+        $obSql = "SELECT it.product_id,
+                         COALESCE(SUM(CASE
+                           WHEN it.movement_type LIKE '%in%'  THEN it.quantity
+                           WHEN it.movement_type LIKE '%out%' THEN -it.quantity
+                           ELSE 0 END), 0) AS opening_balance
+                  FROM inventory_transactions it
+                  WHERE " . implode(' AND ', $openingWhere) . "
+                  GROUP BY it.product_id";
+        $obStmt = $this->db->prepare($obSql);
+        $obStmt->execute($openingParams);
+
+        $openingByProduct = [];
+        foreach ($obStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $openingRow) {
+            $openingByProduct[(int) $openingRow['product_id']] = (float) $openingRow['opening_balance'];
+        }
+
+        $openingBalance = array_sum($openingByProduct);
+        $balancesByProduct = $openingByProduct;
         $items        = [];
-        $balance      = $openingBalance;
         $totalIn      = 0.0;
         $totalOut     = 0.0;
-        $finalBalance = $openingBalance;
 
         foreach ($rows as $r) {
             $isIn  = strpos((string) $r['movement_type'], 'in')  !== false;
             $isOut = strpos((string) $r['movement_type'], 'out') !== false;
             $inQty  = $isIn ? (float) $r['quantity'] : 0.0;
             $outQty = $isOut ? (float) $r['quantity'] : 0.0;
-            $balance += $inQty - $outQty;
-            $finalBalance = $balance;
+            $movementProductId = (int) $r['product_id'];
+            $balancesByProduct[$movementProductId] = ($balancesByProduct[$movementProductId] ?? 0.0) + $inQty - $outQty;
+            $productBalance = $balancesByProduct[$movementProductId];
             $totalIn  += $inQty;
             $totalOut += $outQty;
 
@@ -144,20 +155,32 @@ class BranchInventoryReportHandler extends BaseHandler
                 'type'      => $this->normalizeMovementType((string) $r['reference_type'], (string) $r['movement_type']),
                 'in'        => $inQty,
                 'out'       => $outQty,
-                'balance'   => $balance,
+                'balance'   => $productBalance,
                 'notes'     => $r['notes'],
                 'cost'      => (float) $r['cost'],
             ];
         }
 
-        $valuation = 0.0;
-        if ($productId && $finalBalance > 0) {
-            $costStmt = $this->db->prepare(
-                "SELECT COALESCE(purchase_price, 0) FROM products WHERE id = ? AND tenant_id = ?"
-            );
-            $costStmt->execute([$productId, $tenantId]);
-            $valuation = $finalBalance * (float) ($costStmt->fetchColumn() ?: 0);
+        $valuationWhere = ['bp.tenant_id = ?'];
+        $valuationParams = [$tenantId];
+        if ($productId) {
+            $valuationWhere[] = 'bp.product_id = ?';
+            $valuationParams[] = $productId;
         }
+        if ($branchId) {
+            $valuationWhere[] = 'bp.branch_id = ?';
+            $valuationParams[] = $branchId;
+        }
+
+        $valuationStmt = $this->db->prepare(
+            "SELECT COALESCE(SUM(COALESCE(bp.quantity_cost, bp.quantity * COALESCE(p.purchase_price, 0))), 0)
+             FROM branch_products bp
+             JOIN products p ON p.id = bp.product_id AND p.tenant_id = bp.tenant_id
+             WHERE " . implode(' AND ', $valuationWhere)
+        );
+        $valuationStmt->execute($valuationParams);
+        $valuation = (float) ($valuationStmt->fetchColumn() ?: 0);
+        $finalBalance = array_sum($balancesByProduct);
 
         return [
             'items'           => $items,
@@ -427,7 +450,12 @@ class BranchInventoryReportHandler extends BaseHandler
                        SUM(CASE WHEN wp.quantity = 0 THEN 1 ELSE 0 END) AS out_of_stock_count,
                        SUM(CASE WHEN p.min_quantity IS NOT NULL AND wp.quantity > 0 AND wp.quantity <= p.min_quantity THEN 1 ELSE 0 END) AS low_stock_count,
                        COALESCE(SUM(wp.quantity), 0) AS total_qty,
-                       COALESCE(SUM(COALESCE(wp.quantity_cost, wp.quantity * COALESCE(p.purchase_price, 0))), 0) AS total_value
+                       COALESCE(SUM(
+                           CASE
+                               WHEN ? = 'sale' THEN wp.quantity * COALESCE(p.sale_price, 0)
+                               ELSE COALESCE(wp.quantity_cost, wp.quantity * COALESCE(p.purchase_price, 0))
+                           END
+                       ), 0) AS total_value
                 FROM branches b
                 LEFT JOIN branch_products wp ON wp.branch_id  = b.id AND wp.tenant_id = b.tenant_id
                 LEFT JOIN products p          ON p.id         = wp.product_id AND p.tenant_id = b.tenant_id
@@ -435,16 +463,24 @@ class BranchInventoryReportHandler extends BaseHandler
                 GROUP BY b.id, b.name
                 ORDER BY b.name ASC
             ");
-            $stmt->execute([$tenantId]);
+            $stmt->execute([$label === 'sale_price' ? 'sale' : 'cost', $tenantId]);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            $totals = ['total_qty' => 0.0, 'total_value' => 0.0, 'total_products' => 0, 'low_stock_count' => 0, 'out_of_stock_count' => 0, 'valuation_basis' => $label];
+            $uniqueProductsStmt = $this->db->prepare(
+                "SELECT COUNT(DISTINCT wp.product_id)
+                 FROM branch_products wp
+                 JOIN products p ON p.id = wp.product_id AND p.tenant_id = wp.tenant_id
+                 WHERE wp.tenant_id = ?"
+            );
+            $uniqueProductsStmt->execute([$tenantId]);
+            $uniqueProducts = (int) $uniqueProductsStmt->fetchColumn();
+
+            $totals = ['total_qty' => 0.0, 'total_value' => 0.0, 'total_products' => $uniqueProducts, 'low_stock_count' => 0, 'out_of_stock_count' => 0, 'valuation_basis' => $label];
             foreach ($rows as $r) {
                 $totals['total_qty']          += (float) $r['total_qty'];
                 $totals['total_value']        += (float) $r['total_value'];
                 $totals['low_stock_count']    += (int)   $r['low_stock_count'];
                 $totals['out_of_stock_count'] += (int)   $r['out_of_stock_count'];
-                $totals['total_products']     += (int)   $r['items_count'];
             }
 
             return $this->successResponse($response, ['rows' => $rows, 'totals' => $totals], 200);

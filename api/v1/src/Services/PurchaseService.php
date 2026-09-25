@@ -151,23 +151,7 @@ class PurchaseService
 
     public function getInventoryAccountId(?int $branchId = null): int
     {
-        if ($branchId) {
-            $stmt = $this->db->prepare(
-                "SELECT account_id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1"
-            );
-            $stmt->execute([$branchId, $this->tenantId]);
-            $id = (int) $stmt->fetchColumn();
-            if ($id > 0) {
-                return $id;
-            }
-        }
-
-        $id = $this->settingsRepo->getInt($this->tenantId, 'inventory_account_id', 0);
-        if ($id > 0) {
-            return $id;
-        }
-
-        $id = $this->accounting->getAccountByCode($this->tenantId, '1301') ?? 0;
+        $id = $this->accounting->resolveInventoryAccountForBranch($this->tenantId, $branchId) ?? 0;
         if ($id > 0) {
             return $id;
         }

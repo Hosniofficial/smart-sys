@@ -53,46 +53,10 @@ class ReturnService
         return $this->accounting->resolveAccountId($this->tenantId, $settingKeyName, $fallbackCode);
     }
 
-    /**
-     * Resolve the inventory GL account for a specific branch.
-     * Falls back to tenant setting then account code '1301'.
-     */
+    /** Resolve a branch inventory account using the shared accounting priority. */
     public function resolveBranchInventoryAccountId(int $branchId): ?int
     {
-        try {
-            $stmt = $this->db->prepare(
-                "SELECT account_id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1"
-            );
-            $stmt->execute([$branchId, $this->tenantId]);
-            $accountId = $stmt->fetchColumn();
-            if ($accountId) {
-                return (int) $accountId;
-            }
-        } catch (Throwable $e) {
-        }
-
-        try {
-            $val = $this->settingsRepo->getInt(
-                $this->tenantId,
-                "branch.{$branchId}.inventory_account_id",
-                0
-            );
-            if ($val > 0) {
-                return $val;
-            }
-
-            $val = $this->settingsRepo->getInt(
-                $this->tenantId,
-                "inventory.branch.{$branchId}.account_id",
-                0
-            );
-            if ($val > 0) {
-                return $val;
-            }
-        } catch (Throwable $e) {
-        }
-
-        return $this->resolveAccountId('inventory_account_id', '1301');
+        return $this->accounting->resolveInventoryAccountForBranch($this->tenantId, $branchId);
     }
 
     /**
@@ -984,7 +948,7 @@ class ReturnService
                     // لا فرق بين auto و deduct_and_return في المنطق - الفرق فقط في اسم الـ mode
 
                     if ($refundMode === 'auto' || $refundMode === 'deduct_and_return') {
-                        // auto/deduct_and_return: ذكي - خصم من الديون أولاً، ثم رد النقدي من الزيادة
+                        // A cash sale without a customer has no customer debt to offset; refund the excess as cash.
                         $customerTotalOutstanding = !empty($data['party_id'])
                             ? $this->getCustomerTotalOutstanding((int) $data['party_id'], $tenantId)
                             : 0.0;
@@ -995,7 +959,7 @@ class ReturnService
                         $data['paid_amount'] = $grandTotal;
                         $deductFromCustomerBalance = 0;
                     } else {
-                        // credit_note أو أي وضع آخر: خصم من الديون فقط
+                        // Credit-note modes may offset only a real customer's outstanding balance.
                         $customerTotalOutstanding = !empty($data['party_id'])
                             ? $this->getCustomerTotalOutstanding((int) $data['party_id'], $tenantId)
                             : 0.0;
@@ -1150,6 +1114,7 @@ class ReturnService
 
         $costCenterId = $data['cost_center_id'] ?? null;
 
+        // Persist invoice_id as the original document reference; sale_id/purchase_id remain typed relations.
         $sql = "INSERT INTO returns (
                     tenant_id, return_type, customer_id, supplier_id, return_number, return_date,
                     total_amount, tax_amount, discount_amount, paid_amount, notes,
@@ -1180,7 +1145,7 @@ class ReturnService
                     $userId,
                     $costCenterId,
                     $invoiceNumber,
-                    $data['invoice_id'] ? (int) $data['invoice_id'] : null,
+                    !empty($data['invoice_id']) ? (int) $data['invoice_id'] : null,
                     $saleId,
                     $purchaseId,
                     $branchId,

@@ -89,7 +89,13 @@
                 <Teleport to="body">
                   <transition name="dropdown">
                     <div v-if="showSearchDropdown && search.length > 0" ref="searchDropdownRef" class="fixed bg-white border border-slate-200 rounded-lg shadow-2xl overflow-hidden z-[99999]" :style="searchDropdownPosition">
-                      <div v-if="isLoadingSearch" class="p-6 text-center"><BaseSpinner size="20" /></div>
+                      <div v-if="isLoadingSearch" class="p-6 text-center">
+                        <div class="flex items-center justify-center gap-1">
+                          <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></div>
+                          <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.2s"></div>
+                          <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.4s"></div>
+                        </div>
+                      </div>
                       <template v-else>
                         <!-- رأس عداد النتائج -->
                         <div v-if="searchResults.length" class="px-4 py-2 bg-slate-50 border-b border-slate-100">
@@ -324,7 +330,7 @@ import { useCustomerStore } from '@/stores/customer/customerStore';
 import { useSupplierStore } from '@/stores/supplier/supplierStore';
 import { useReturnStore } from '@/stores/return/returnStore';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { printDocument } from '@/utils/PrintService';

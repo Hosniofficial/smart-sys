@@ -368,7 +368,7 @@ import { useDateValidation } from '@/composables/useDateValidation';
 import { useSessionExemption } from '@/composables/useCashierSessionGuard';
 import { useHistoryFilters } from '@/composables/useHistoryFilters';
 import { getLocalDateISO } from '@/utils/date';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';

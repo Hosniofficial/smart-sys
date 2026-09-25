@@ -1,6 +1,12 @@
 <template>
   <form @submit.prevent="handleSubmit" class="space-y-10 text-right" dir="rtl">
       
+      <!-- ⚠️ تنبيه: لا يوجد فرع محدد -->
+      <div v-if="!branchId" class="p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
+        <i class="fas fa-info-circle text-blue-600 mt-0.5 text-sm flex-shrink-0"></i>
+        <p class="text-sm text-blue-700 font-medium">اختر فرعًا أولاً لعرض التصنيفات وإدارتها</p>
+      </div>
+
       <!-- Section 1: Basic Information -->
       <section class="space-y-6">
         <header class="flex items-center gap-3 px-1">
@@ -43,16 +49,22 @@
         <div class="p-6 bg-white border border-slate-200 rounded-xl space-y-4 shadow-sm">
           <label class="metadata-label">تصنيف الصنف</label>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <select v-model="form.category_id" class="form-input-v3 font-bold appearance-none bg-slate-50 border-transparent">
+            <select v-model="form.category_id" class="form-input-v3 font-bold appearance-none bg-slate-50 border-transparent" :disabled="!branchId">
               <option :value="null">بدون تصنيف (عام)</option>
               <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
             </select>
             <div class="flex gap-2">
-              <input type="text" v-model="newCategoryName" placeholder="إضافة تصنيف جديد..." class="form-input-v3 flex-grow text-[11px]" />
-              <button type="button" @click="addNewCategory" :disabled="isAddingCategory" class="h-9 px-4 bg-slate-900 text-white rounded-md text-[10px] font-bold uppercase tracking-wider hover:bg-black transition-all">
-                <BaseSpinner v-if="isAddingCategory" size="12" />
-                <span v-else>إضافة</span>
-              </button>
+              <input type="text" v-model="newCategoryName" placeholder="إضافة تصنيف جديد..." class="form-input-v3 flex-grow text-[11px]" :disabled="!branchId" />
+              <LoadingButton
+                text="إضافة"
+                :isLoading="isAddingCategory"
+                loadingText="إضافة..."
+                :disabled="!branchId"
+                variant="primary"
+                loaderType="dots"
+                @click="addNewCategory"
+                class="h-9 px-4"
+              />
             </div>
           </div>
         </div>
@@ -242,13 +254,11 @@
 </template>
 
 <script setup>
-// [SCRIPT SECTION REMAINS 100% IDENTICAL AS PER THE CRITICAL BUSINESS LOGIC RULE]
-// ALL IMPORTS, PROPS, EMITS, STATE REFS, WATCHERS, AND METHODS PRESERVED EXACTLY AS PROVIDED.
 import { ref, watch, computed, onMounted } from 'vue';
 import apiClient from '../config/axios';
 import { useToast } from '@/composables/useToast';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 const props = defineProps({
   productData: { type: Object, default: null },
@@ -333,14 +343,17 @@ onMounted(() => {
 
 const addNewCategory = async () => {
   if (!newCategoryName.value.trim()) { showToast('يرجى إدخال اسم التصنيف.', 'error'); return; }
+  const targetBranchId = props.branchId ?? props.branches?.[0]?.id ?? null;
+  if (!targetBranchId) { showToast('الرجاء اختيار فرع أولاً قبل إضافة تصنيف.', 'warning'); return; }
   isAddingCategory.value = true;
   try {
-    await apiClient.post('/categories', { name: newCategoryName.value, branch_id: props.branchId });
+    await apiClient.post('/categories', { name: newCategoryName.value, branch_id: targetBranchId });
     showToast(`تم إضافة التصنيف بنجاح!`, 'success');
     newCategoryName.value = '';
     emit('category-added');
   } catch (error) {
-    showToast('فشل في إضافة التصنيف', 'error');
+    const errMsg = error.response?.data?.message || 'فشل في إضافة التصنيف';
+    showToast(errMsg, 'error');
   } finally { isAddingCategory.value = false; }
 };
 
@@ -400,8 +413,14 @@ const handleSubmit = async () => {
     }
     emit('success');
   } catch (error) {
-    if (error.response?.status === 409) { errors.value.product_code = 'كود SKU مكرر.'; showToast('كود مكرر', 'error'); }
-    else showToast('فشل في الحفظ', 'error');
+    console.error('[ProductForm] Error saving product:', error);
+    if (error.response?.status === 409) {
+      errors.value.product_code = 'كود SKU مكرر.';
+      showToast('كود مكرر', 'error');
+    } else {
+      const errorMsg = error.response?.data?.message || 'فشل في الحفظ';
+      showToast(errorMsg, 'error');
+    }
   } finally { isSaving.value = false; }
 };
 

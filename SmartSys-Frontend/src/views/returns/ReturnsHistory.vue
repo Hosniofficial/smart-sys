@@ -233,7 +233,7 @@ import { useSupplierStore } from '@/stores/supplier/supplierStore';
 import { useReturnStore } from '@/stores/return/returnStore';
 import { useBootstrapStore } from '@/stores/bootstrap';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
 

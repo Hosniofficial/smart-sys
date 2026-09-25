@@ -322,6 +322,10 @@ class OpeningBalanceHandler extends BaseHandler
         ], 200);
     }
 
+    /**
+     * Post explicitly submitted opening stock without implicitly activating a branch GL mapping.
+     * Mapping metadata is reused only when a user has configured it beforehand.
+     */
     public function commit(Request $request, Response $response): Response
     {
         $this->validateAuth();
@@ -403,27 +407,6 @@ class OpeningBalanceHandler extends BaseHandler
             ], 400);
         }
 
-        // ─── Guard: منع تكرار الرصيد الافتتاحي لنفس المنتج/الفرع ──────────────
-        $duplicates = [];
-        foreach ($items as $row) {
-            $chkStmt = $this->db->prepare("
-                SELECT id FROM product_branch_gl_mapping
-                WHERE tenant_id = ? AND product_id = ? AND branch_id = ?
-                  AND gl_reconciliation_status = 'RECONCILED'
-                LIMIT 1
-            ");
-            $chkStmt->execute([$tenantId, (int)$row['product_id'], (int)$row['branch_id']]);
-            if ($chkStmt->fetchColumn()) {
-                $duplicates[] = "المنتج #{$row['product_id']} في الفرع #{$row['branch_id']} لديه رصيد افتتاحي مُرحَّل مسبقاً";
-            }
-        }
-        if (!empty($duplicates)) {
-            return $this->jsonResponse($response, [
-                'status' => 'error',
-                'message' => 'بعض المنتجات لديها رصيد افتتاحي مُرحَّل مسبقاً',
-                'errors' => $duplicates
-            ], 409);
-        }
 
         $batchNote = 'Opening balance commit @ ' . date('Y-m-d H:i:s');
 
@@ -452,6 +435,50 @@ class OpeningBalanceHandler extends BaseHandler
 
             $transactionActive = true;
             $this->logger->debug('Transaction started');
+
+            // Lock each product in deterministic order, then check prior openings independently of GL mappings.
+            $productIdsToLock = array_values(array_unique(array_map(
+                static fn (array $row): int => (int) $row['product_id'],
+                $items
+            )));
+            sort($productIdsToLock, SORT_NUMERIC);
+            $productLock = $this->db->prepare(
+                'SELECT id FROM products WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE'
+            );
+            foreach ($productIdsToLock as $productIdToLock) {
+                $productLock->execute([$tenantId, $productIdToLock]);
+                if (!$productLock->fetchColumn()) {
+                    throw new \RuntimeException("المنتج #{$productIdToLock} غير موجود.");
+                }
+            }
+
+            $openingBalanceCheck = $this->db->prepare(
+                'SELECT 1 FROM opening_balances WHERE tenant_id = ? AND product_id = ? AND branch_id = ? LIMIT 1 FOR UPDATE'
+            );
+            $duplicateOpenings = [];
+            $checkedPairs = [];
+            foreach ($items as $row) {
+                $productId = (int) $row['product_id'];
+                $branchId = (int) $row['branch_id'];
+                $pairKey = $productId . ':' . $branchId;
+                if (isset($checkedPairs[$pairKey])) {
+                    continue;
+                }
+                $checkedPairs[$pairKey] = true;
+                $openingBalanceCheck->execute([$tenantId, $productId, $branchId]);
+                if ($openingBalanceCheck->fetchColumn()) {
+                    $duplicateOpenings[] = "المنتج #{$productId} في الفرع #{$branchId} لديه رصيد افتتاحي مسجل مسبقاً";
+                }
+            }
+            if ($duplicateOpenings !== []) {
+                $this->db->rollBack();
+                $transactionActive = false;
+                return $this->jsonResponse($response, [
+                    'status' => 'error',
+                    'message' => 'بعض المنتجات لديها رصيد افتتاحي مسجل مسبقاً',
+                    'errors' => $duplicateOpenings,
+                ], 409);
+            }
 
             $insInv = $this->db->prepare("
                 INSERT INTO inventory_transactions (
@@ -485,22 +512,6 @@ class OpeningBalanceHandler extends BaseHandler
                 VALUES (?, ?, ?, ?, ?, NOW())
             ");
 
-            $upsertGLMapping = $this->db->prepare("
-                INSERT INTO product_branch_gl_mapping
-                (
-                    tenant_id, product_id, branch_id, inventory_gl_account_id, purchase_gl_account_id,
-                    cogs_gl_account_id, activation_status, activation_date, created_by_user_id
-                )
-                VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE_IN_BRANCH', NOW(), ?)
-                ON DUPLICATE KEY UPDATE
-                    activation_status = 'ACTIVE_IN_BRANCH',
-                    activation_date = NOW(),
-                    updated_by_user_id = ?
-            ");
-
-            $inventoryGLId   = $this->getGLAccountByCode($tenantId, '1301');
-            $purchaseGLId   = $this->getGLAccountByCode($tenantId, '5001');
-            $cogsGLId       = $this->getGLAccountByCode($tenantId, '5103');
             $equityAccountId = $this->getGLAccountByCode($tenantId, '2001');
 
             // Pre-fetch per-branch GL accounts and names
@@ -511,10 +522,10 @@ class OpeningBalanceHandler extends BaseHandler
                 $bid = (int) $row['branch_id'];
                 $pid = (int) $row['product_id'];
                 if (!isset($branchGLMap[$bid])) {
-                    $bs = $this->db->prepare('SELECT name, account_id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1');
+                    $bs = $this->db->prepare('SELECT name FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1');
                     $bs->execute([$bid, $tenantId]);
                     $br = $bs->fetch(PDO::FETCH_ASSOC);
-                    $branchGLMap[$bid]   = ($br && !empty($br['account_id'])) ? (int) $br['account_id'] : $inventoryGLId;
+                    $branchGLMap[$bid] = $this->accounting->resolveInventoryAccountForBranch($tenantId, $bid);
                     $branchNameMap[$bid] = $br['name'] ?? "فرع #{$bid}";
                 }
                 if (!isset($productNameMap[$pid])) {
@@ -539,21 +550,14 @@ class OpeningBalanceHandler extends BaseHandler
                 $expiryDate = $row['expiry_date'] ?? null;
                 $serial = $row['serial'] ?? null;
 
-                // ── GL mapping first → get mapping_id for reference_id ──────────
-                $upsertGLMapping->execute([
-                    $tenantId,
-                    $productId,
-                    $branchId,
-                    $branchGLMap[$branchId] ?? $inventoryGLId,
-                    $purchaseGLId,
-                    $cogsGLId,
-                    $userId,
-                    $userId
-                ]);
-
-                $mstmt = $this->db->prepare('SELECT id FROM product_branch_gl_mapping WHERE tenant_id = ? AND product_id = ? AND branch_id = ? LIMIT 1');
+                // Mapping is optional metadata: reuse an explicit mapping, but never create or activate one here.
+                $mstmt = $this->db->prepare(
+                    'SELECT id FROM product_branch_gl_mapping
+                     WHERE tenant_id = ? AND product_id = ? AND branch_id = ? LIMIT 1 FOR UPDATE'
+                );
                 $mstmt->execute([$tenantId, $productId, $branchId]);
-                $mappingId = (int) $mstmt->fetchColumn();
+                $mappingValue = $mstmt->fetchColumn();
+                $mappingId = ($mappingValue === false || $mappingValue === null) ? null : (int) $mappingValue;
 
                 $insInv->execute([
                     $tenantId,
@@ -570,6 +574,7 @@ class OpeningBalanceHandler extends BaseHandler
                     $notes !== '' ? $notes : $batchNote,
                     $userId
                 ]);
+                $inventoryTransactionId = (int) $this->db->lastInsertId();
 
                 $upsertWP->execute([$tenantId, $branchId, $productId, $qty, $lineTotalCost]);
 
@@ -578,8 +583,8 @@ class OpeningBalanceHandler extends BaseHandler
                 }
 
                 // ── Per-branch Journal Entry ──────────────────────────────
-                if ($postAccounting && !empty($equityAccountId)) {
-                    $branchInvGLId = $branchGLMap[$branchId]  ?? $inventoryGLId;
+                $branchInvGLId = $branchGLMap[$branchId] ?? null;
+                if ($postAccounting && !empty($equityAccountId) && !empty($branchInvGLId)) {
                     $productName   = $productNameMap[$productId] ?? "منتج #{$productId}";
                     $branchName    = $branchNameMap[$branchId]   ?? "فرع #{$branchId}";
 
@@ -612,24 +617,21 @@ class OpeningBalanceHandler extends BaseHandler
                         if ($jeIdItem) {
                             $jeId = $jeIdItem;
 
-                            $this->db->prepare("
-                                UPDATE inventory_transactions
-                                SET journal_entry_id = ?
-                                WHERE tenant_id = ? AND reference_id = ?
-                                  AND product_id = ? AND branch_to = ?
-                                  AND journal_entry_id IS NULL
-                                ORDER BY id DESC LIMIT 1
-                            ")->execute([$jeIdItem, $tenantId, $mappingId, $productId, $branchId]);
+                            $this->db->prepare(
+                                'UPDATE inventory_transactions SET journal_entry_id = ? WHERE id = ? AND tenant_id = ?'
+                            )->execute([$jeIdItem, $inventoryTransactionId, $tenantId]);
 
-                            $this->db->prepare("
-                                UPDATE product_branch_gl_mapping
-                                SET gl_reconciliation_status = 'RECONCILED',
-                                    last_gl_posting_date     = NOW(),
-                                    average_cost             = ?,
-                                    gl_balance               = gl_balance + ?,
-                                    updated_at               = NOW()
-                                WHERE tenant_id = ? AND product_id = ? AND branch_id = ?
-                            ")->execute([$cost, $lineTotalCost, $tenantId, $productId, $branchId]);
+                            if ($mappingId !== null) {
+                                $this->db->prepare("
+                                    UPDATE product_branch_gl_mapping
+                                    SET gl_reconciliation_status = 'RECONCILED',
+                                        last_gl_posting_date     = NOW(),
+                                        average_cost             = ?,
+                                        gl_balance               = gl_balance + ?,
+                                        updated_at               = NOW()
+                                    WHERE id = ? AND tenant_id = ? AND product_id = ? AND branch_id = ?
+                                ")->execute([$cost, $lineTotalCost, $mappingId, $tenantId, $productId, $branchId]);
+                            }
 
                             $this->db->prepare("
                                 UPDATE branch_products
@@ -643,14 +645,10 @@ class OpeningBalanceHandler extends BaseHandler
                                     (tenant_id, product_id, branch_id, product_branch_mapping_id,
                                      layer_date, layer_sequence, unit_cost,
                                      quantity_received, quantity_remaining, source_type)
-                                SELECT ?, ?, ?, pbm.id, NOW(), 1, ?, ?, ?, 'OPENING_BALANCE'
-                                FROM product_branch_gl_mapping pbm
-                                WHERE pbm.tenant_id = ? AND pbm.product_id = ? AND pbm.branch_id = ?
-                                LIMIT 1
+                                VALUES (?, ?, ?, ?, NOW(), 1, ?, ?, ?, 'OPENING_BALANCE')
                             ")->execute([
-                                $tenantId, $productId, $branchId,
+                                $tenantId, $productId, $branchId, $mappingId,
                                 $cost, $qty, $qty,
-                                $tenantId, $productId, $branchId,
                             ]);
                         } else {
                             $warnings['journal_entry_skipped'] = true;

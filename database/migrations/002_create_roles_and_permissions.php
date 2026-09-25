@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../MigrationDatabase.php';
+
 /**
  * Migration: 002_create_roles_and_permissions
  * 
@@ -19,17 +21,10 @@ class CreateRolesAndPermissions
 {
     private $pdo;
 
-    public function __construct()
+    /** Reuse the runner's PDO connection; direct construction uses the shared env resolver. */
+    public function __construct(?PDO $pdo = null)
     {
-        $host = $_ENV['DB_HOST'] ?? 'localhost';
-        $db = $_ENV['DB_NAME'] ?? 'smartsys';
-        $user = $_ENV['DB_USER'] ?? 'root';
-        $pass = $_ENV['DB_PASS'] ?? '';
-
-        $this->pdo = new PDO("mysql:host={$host};dbname={$db};charset=utf8mb4", $user, $pass, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        ]);
+        $this->pdo = $pdo ?? MigrationDatabase::connect($_ENV);
     }
 
     public function up()

@@ -20,7 +20,7 @@
           <!-- Valuation Switcher -->
           <div class="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-md border border-slate-200">
             <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">أساس التقييم:</span>
-            <select v-model="valuation" @change="loadData" class="bg-transparent border-none text-[11px] font-bold text-slate-900 focus:ring-0 cursor-pointer outline-none">
+            <select v-model="valuation" class="bg-transparent border-none text-[11px] font-bold text-slate-900 focus:ring-0 cursor-pointer outline-none">
               <option value="sale">سعر البيع</option>
               <option value="cost">سعر التكلفة</option>
             </select>
@@ -63,7 +63,13 @@
           </div>
 
           <div class="flex-grow relative z-10 h-80">
-            <div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-20"><BaseSpinner size="24" /></div>
+            <div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-20">
+              <div class="flex items-center gap-1">
+                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></div>
+                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.2s"></div>
+                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.4s"></div>
+              </div>
+            </div>
             <BarChart v-if="chartData && chartData.labels.length" :data="chartData" :options="chartOptions" />
             <div v-else class="h-full flex flex-col items-center justify-center text-slate-300 gap-3">
                <i class="fas fa-sync-alt fa-spin text-2xl opacity-20"></i>
@@ -80,8 +86,8 @@
             <div class="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-2xl mx-auto shadow-inner">
                <i :class="valuation === 'cost' ? 'fas fa-tag' : 'fas fa-money-bill-trend-up'"></i>
             </div>
-            <h3 class="text-xl font-bold uppercase">{{ totals.valuation_basis === 'purchase_price' ? 'سعر التكلفة' : 'سعر البيع' }}</h3>
-            <p class="text-xs text-slate-400 leading-relaxed italic">يتم حساب القيمة بناءً على الأرصدة الحالية مضروبة في {{ totals.valuation_basis === 'purchase_price' ? 'متوسط سعر الشراء' : 'سعر البيع المحدد' }}.</p>
+            <h3 class="text-xl font-bold uppercase">{{ valuation === 'cost' ? 'سعر التكلفة' : 'سعر البيع' }}</h3>
+            <p class="text-xs text-slate-400 leading-relaxed italic">يتم حساب القيمة بناءً على الأرصدة الحالية مضروبة في {{ valuation === 'cost' ? 'متوسط سعر الشراء' : 'سعر البيع المحدد' }}.</p>
           </div>
         </div>
       </section>
@@ -172,7 +178,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { useReportsStore } from '@/stores/reports'
 import { Bar as BarChart } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from 'chart.js'
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import PageHeader from '@/components/PageHeader.vue';
 
@@ -190,24 +196,36 @@ const formatCurrency = (n) => formatCurrencyLocale(n, 2)
 const loadData = async () => {
   loading.value = true
   try {
-    const result = await reportsStore.fetchInventoryValue({ valuation: valuation.value })
+    const result = await reportsStore.fetchInventoryValueByBranch({ valuation: valuation.value })
     if (result.status === 'success') {
       const apiResponse = result.data || {}
       const payload = apiResponse?.data ?? apiResponse
       const list = Array.isArray(payload)
         ? payload
-        : (Array.isArray(payload?.data)
-            ? payload.data
-            : (Array.isArray(payload?.items)
-                ? payload.items
-                : []))
-      rows.value = list
+        : (Array.isArray(payload?.rows)
+            ? payload.rows
+            : (Array.isArray(payload?.data)
+                ? payload.data
+                : (Array.isArray(payload?.items)
+                    ? payload.items
+                    : [])))
+      rows.value = list.map(row => ({
+        ...row,
+        branch_id: row.branch_id ?? row.branchId,
+        branch_name: row.branch_name ?? row.branchName ?? '—',
+        items_count: Number(row.items_count ?? row.itemsCount ?? 0),
+        low_stock_count: Number(row.low_stock_count ?? row.lowStockCount ?? 0),
+        out_of_stock_count: Number(row.out_of_stock_count ?? row.outOfStockCount ?? 0),
+        total_qty: Number(row.total_qty ?? row.totalQty ?? 0),
+        total_value: Number(row.total_value ?? row.totalValue ?? 0)
+      }))
       totals.value = apiResponse?.totals || payload?.totals || {}
     } else {
       rows.value = []
       totals.value = {}
     }
   } catch (e) {
+    console.error('inventory-value load failed:', e)
     rows.value = []
     totals.value = {}
   } finally {

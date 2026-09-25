@@ -94,11 +94,15 @@
                  <i class="fas fa-chart-bar text-blue-500"></i> كثافة نشاط المستخدمين
                </h3>
                <div class="h-72">
-                 <BarChart v-if="!isLoading && logs.length" :data="chartDataByUser" :options="chartOptions" />
-                 <div v-else class="h-full flex flex-col items-center justify-center opacity-30 italic font-bold gap-3">
-                   <BaseSpinner v-if="isLoading" size="20" />
-                   <span class="text-[10px] uppercase tracking-widest text-slate-400">بانتظار البيانات...</span>
+                 <div v-if="isLoading" class="h-full flex flex-col items-center justify-center opacity-50">
+                   <div class="flex items-center gap-2">
+                     <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></div>
+                     <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.2s"></div>
+                     <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.4s"></div>
+                   </div>
+                   <span class="text-[10px] uppercase tracking-widest text-slate-400 mt-3">جاري تحميل البيانات...</span>
                  </div>
+                 <BarChart v-else-if="!isLoading && logs.length" :data="chartDataByUser" :options="chartOptions" />
                </div>
           </div>
           <div class="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
@@ -154,8 +158,8 @@
                 <td class="px-6 py-4 text-[10px] font-mono font-bold text-slate-400 group-hover:text-slate-900 transition-colors">{{ formatDateTime(log.timestamp) }}</td>
                 <td class="px-4 py-4">
                    <div class="flex items-center gap-3">
-                      <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400 border border-slate-200 transition-colors group-hover:bg-blue-600 group-hover:text-white uppercase">{{ (log.userName || 'U').charAt(0) }}</div>
-                      <span class="text-xs font-bold text-slate-700">{{ log.userName }}</span>
+                      <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400 border border-slate-200 transition-colors group-hover:bg-blue-600 group-hover:text-white uppercase">{{ (log.userName || 'S').charAt(0) }}</div>
+                      <span class="text-xs font-bold text-slate-700">{{ log.userName || 'النظام' }}</span>
                    </div>
                 </td>
                 <td class="px-4 py-4 text-center">
@@ -166,7 +170,7 @@
                 <td class="px-4 py-4">
                    <div class="flex flex-col gap-0.5">
                       <span class="text-xs font-bold text-slate-900 uppercase tracking-tighter">{{ log.module }}</span>
-                      <span class="text-[9px] text-slate-400 font-mono">UID: {{ log.recordId }}</span>
+                      <span class="text-[9px] text-slate-400 font-mono">{{ log.recordId ? 'UID: ' + log.recordId : '' }}</span>
                    </div>
                 </td>
                 <td class="px-8 py-4 text-center">
@@ -221,9 +225,9 @@
         <!-- Identity Summary Grid -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div v-for="info in [
-            { l: 'المستخدم المسئول', v: selectedLog?.userName },
+            { l: 'المستخدم المسئول', v: selectedLog?.userName || 'النظام' },
             { l: 'نوع العملية', v: getActionTypeLabel(selectedLog?.action), b: getActionTypeClass(selectedLog?.action) },
-            { l: 'عنوان الـ IP', v: selectedLog?.ipAddress, m: true },
+            { l: 'عنوان الـ IP', v: selectedLog?.ipAddress || '-', m: true },
             { l: 'الوحدة المستهدفة', v: selectedLog?.module, u: true }
           ]" :key="info.l" class="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-center space-y-1 shadow-inner">
             <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{{ info.l }}</p>
@@ -262,9 +266,39 @@
           <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1 flex items-center gap-2">
             <i class="fas fa-database text-indigo-500"></i> بيانات السجل الخام (Raw JSON)
           </h4>
-          <div class="bg-slate-900 rounded-xl p-6 shadow-xl border border-white/5 relative overflow-hidden">
+          <div class="bg-slate-900 rounded-xl p-6 shadow-xl border border-white/5 relative overflow-hidden space-y-4">
             <div class="absolute top-0 left-0 w-32 h-32 bg-white/5 rounded-full -translate-x-12 -translate-y-12"></div>
-            <pre class="text-[11px] font-bold text-blue-100 font-mono whitespace-pre-wrap leading-relaxed relative z-10">{{ formatDetails(selectedLog?.details) }}</pre>
+            <div class="relative z-10">
+              <template v-for="(value, key) in formatDetails(selectedLog?.details)" :key="key">
+                <!-- Simple key-value pairs -->
+                <div v-if="typeof value !== 'object'" class="flex items-baseline gap-3 pb-3 border-b border-slate-700/50 last:border-0">
+                  <span class="text-pink-300 font-bold min-w-fit text-[11px]">{{ key }}:</span>
+                  <span class="text-blue-200 text-[11px] font-mono flex-1 break-words">{{ value }}</span>
+                </div>
+
+                <!-- Nested objects (changes, settings, etc.) -->
+                <div v-else class="pb-4 border-b border-slate-700/50 last:border-0">
+                  <p class="text-pink-300 font-bold text-[11px] mb-2">{{ key }}:</p>
+                  <div class="ml-4 space-y-2">
+                    <div v-for="(subValue, subKey) in value" :key="subKey" class="text-[10px]">
+                      <div v-if="typeof subValue === 'object'" class="flex gap-3">
+                        <span class="text-cyan-300 min-w-fit font-mono">{{ subKey }}:</span>
+                        <div class="flex-1 space-y-1">
+                          <div v-for="(v, k) in subValue" :key="k" class="text-slate-300">
+                            <span class="text-amber-300">{{ k }}:</span>
+                            <span class="ml-2 text-slate-400">{{ v }}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div v-else class="text-slate-300">
+                        <span class="text-cyan-300">{{ subKey }}:</span>
+                        <span class="ml-2 font-mono text-blue-200">{{ subValue }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
           </div>
         </div>
       </div>
@@ -296,7 +330,6 @@ import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import { useTableFilters } from '@/composables/useTableFilters';
 import PageHeader from '@/components/PageHeader.vue';
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement } from 'chart.js';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';;
 import { getLocalDateISO } from '@/utils/date';
 
@@ -311,7 +344,7 @@ const supplierStore = useSupplierStore();
 const isLoading = ref(true);
 const error = ref(null);
 
-const startDate = ref(getLocalDateISO(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
+const startDate = ref(getLocalDateISO(new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)));
 const endDate = ref(getLocalDateISO());
 const startDateRef = ref(null);
 const endDateRef = ref(null);
@@ -455,31 +488,87 @@ const fetchLogs = async () => {
     isLoading.value = true; error.value = null;
     try {
         const payload = await reportsStore.fetchAuditLogs({ startDate: startDate.value, endDate: endDate.value, actionType: actionType.value, userId: userId.value, page: filters.page.value });
-        const items = Array.isArray(payload?.data) ? payload.data : (payload?.items || []);
-        logs.value = items.map(it => ({ id: it.id, timestamp: it.timestamp || it.created_at, userName: it.userName || it.user_name || 'غير معروف', action: it.action, module: it.module, recordId: it.recordId || '-', ipAddress: it.ipAddress || '-', details: it.details || {} }));
-        users.value = (payload?.users || []).map(u => ({ id: u.id, name: u.name }));
-    } catch { error.value = 'فشل في تحميل السجلات.'; } finally { isLoading.value = false; }
+
+        // Response structure: payload.data = { data: [...], pagination: {...}, meta: {...} }
+        const responseData = payload?.data?.data;
+        const items = Array.isArray(responseData?.data) ? responseData.data : [];
+
+        logs.value = items.map(it => ({
+            id: it.id,
+            timestamp: it.timestamp || it.created_at,
+            userName: it.user_name || it.userName || null,
+            action: it.action,
+            module: it.module || it.entity,
+            recordId: it.record_id || it.recordId || it.entity_id || null,
+            ipAddress: it.ip_address || it.ipAddress || null,
+            details: it.details || {}
+        }));
+
+        // Pagination
+        const pagination = responseData?.pagination || {};
+        filters.totalCount.value = pagination.total || logs.value.length;
+
+        // Users filter from meta
+        users.value = responseData?.meta?.filters?.users || [];
+    } catch (err) {
+        console.error('Error fetching audit logs:', err);
+        error.value = 'فشل في تحميل السجلات.';
+    } finally { isLoading.value = false; }
 };
 
 const handleSort = (k) => { if (sortKey.value === k) sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'; else { sortKey.value = k; sortOrder.value = 'asc'; } };
 const setDateRange = (r) => { const end = new Date(); let start = new Date(); if (r === 'today') start.setHours(0,0,0,0); else start.setDate(end.getDate() - 7); endDate.value = getLocalDateISO(end); startDate.value = getLocalDateISO(start); };
 const showDetailsModal = (log) => { selectedLog.value = log; showModal.value = true; };
 
-const formatFieldValue = (k, v) => { if (v == null) return 'غير محدد'; if (k.includes('_date') || k.includes('_at')) return new Date(v).toLocaleString('en-US'); if (typeof v === 'number' && (k.includes('amount') || k.includes('price'))) return v.toLocaleString('en-US', { style: 'currency', currency: 'EGP' }); return v; };
+const formatFieldValue = (k, v) => {
+  if (v == null) return 'غير محدد';
+  if (k.includes('_date') || k.includes('_at')) return new Date(v).toLocaleString('en-US');
+  if (typeof v === 'number' && (k.includes('amount') || k.includes('price'))) return v.toLocaleString('en-US', { style: 'currency', currency: 'EGP' });
+
+  // Handle account IDs
+  if (typeof v === 'number' && (k.includes('account') || k.includes('_account_id'))) {
+    // Try to resolve account name from cache or return ID
+    return `حساب #${v}`;
+  }
+
+  return String(v);
+};
 
 const formatDetails = (details) => {
   try {
     let parsed = typeof details === 'string' ? JSON.parse(details) : details;
+    if (!parsed || Object.keys(parsed).length === 0) {
+      return 'بدون معلومات إضافية';
+    }
+
     const formatted = {};
     for (const [k, v] of Object.entries(parsed)) {
       const label = fieldLabels[k] || k;
-      if (k === 'changes') {
-          formatted[label] = {};
-          for (const [f, c] of Object.entries(v)) { formatted[label][fieldLabels[f] || f] = { old: formatFieldValue(f, c.old), new: formatFieldValue(f, c.new) }; }
-      } else { formatted[label] = formatFieldValue(k, v); }
+      if (k === 'changes' && typeof v === 'object' && v !== null) {
+        formatted[label] = {};
+        for (const [f, c] of Object.entries(v)) {
+          if (typeof c === 'object' && c !== null && 'old' in c && 'new' in c) {
+            formatted[label][fieldLabels[f] || f] = {
+              القيمة_السابقة: formatFieldValue(f, c.old),
+              القيمة_الجديدة: formatFieldValue(f, c.new)
+            };
+          }
+        }
+      } else if (typeof v === 'object' && v !== null) {
+        // Handle nested objects (like account settings)
+        formatted[label] = {};
+        for (const [subK, subV] of Object.entries(v)) {
+          formatted[label][fieldLabels[subK] || subK] = formatFieldValue(subK, subV);
+        }
+      } else {
+        formatted[label] = formatFieldValue(k, v);
+      }
     }
-    return JSON.stringify(formatted, null, 2).replace(/[{}"]/g, '');
-  } catch { return JSON.stringify(details); }
+    return formatted;
+  } catch (err) {
+    console.warn('Failed to parse details:', err);
+    return details;
+  }
 };
 
 const fetchAndCacheData = async () => {

@@ -273,7 +273,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
 import { useRoute } from 'vue-router';
-import BaseSpinner from '../../components/ui/BaseSpinner.vue';
+
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useHistoryFilters } from '@/composables/useHistoryFilters';
 import { useLoader } from '@/composables/useLoader';

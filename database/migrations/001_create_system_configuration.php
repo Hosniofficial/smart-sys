@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../MigrationDatabase.php';
+
 /**
  * Migration: 001_create_system_configuration
  * 
@@ -11,17 +13,10 @@ class CreateSystemConfiguration
 {
     private $pdo;
 
-    public function __construct()
+    /** Reuse the runner's PDO connection; direct construction uses the shared env resolver. */
+    public function __construct(?PDO $pdo = null)
     {
-        $host = $_ENV['DB_HOST'] ?? 'localhost';
-        $db = $_ENV['DB_NAME'] ?? 'smartsys';
-        $user = $_ENV['DB_USER'] ?? 'root';
-        $pass = $_ENV['DB_PASS'] ?? '';
-
-        $this->pdo = new PDO("mysql:host={$host};dbname={$db};charset=utf8mb4", $user, $pass, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        ]);
+        $this->pdo = $pdo ?? MigrationDatabase::connect($_ENV);
     }
 
     public function up()
@@ -35,11 +30,12 @@ class CreateSystemConfiguration
             
             echo "   • التحقق من جدول permissions...\n";
             
-            $tableExists = $this->pdo->query(
-                "SELECT 1 FROM information_schema.TABLES 
-                WHERE TABLE_SCHEMA='" . ($_ENV['DB_NAME'] ?? 'smartsys') . "' 
-                AND TABLE_NAME='permissions'"
-            )->fetch();
+            $tableExistsStmt = $this->pdo->prepare(
+                "SELECT 1 FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?"
+            );
+            $tableExistsStmt->execute(['permissions']);
+            $tableExists = $tableExistsStmt->fetch();
             
             if (!$tableExists) {
                 echo "   • إنشاء جدول permissions...\n";

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { reportsService } from '../services/reports'
 import { localDateRangeToUTC } from '@/utils/date'
+import { reportsService } from '../services/reports'
 
 export const useReportsStore = defineStore('reports', () => {
   // State
@@ -45,13 +45,14 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const { startDate, endDate, actionType, userId, page = 1 } = filters
-      const { startUtcIso: auditStart, endUtcIso: auditEnd } = localDateRangeToUTC(startDate, endDate)
+      // Send local dates directly without UTC conversion (database stores local times)
       const response = await reportsService.getAuditLogs({
-        start_date: auditStart || startDate,
-        end_date: auditEnd || endDate,
+        start_date: startDate,
+        end_date: endDate,
         action_type: actionType !== 'all' ? actionType : undefined,
         user_id: userId !== 'all' ? userId : undefined,
-        page
+        page,
+        per_page: 50  // Add per_page
       })
       
       // Return the full response including pagination data
@@ -102,9 +103,8 @@ export const useReportsStore = defineStore('reports', () => {
     loading.value = true
     error.value = null
     try {
-  const { startUtcIso: imStart, endUtcIso: imEnd } = localDateRangeToUTC(startDate, endDate)
-  // Fix parameter order: service expects (startDate, endDate, productId, branchId, type)
-  const response = await reportsService.getInventoryMovements(imStart || startDate, imEnd || endDate, productId, branchId, type)
+      // The inventory movements endpoint compares against local database dates.
+      const response = await reportsService.getInventoryMovements(startDate, endDate, productId, branchId, type)
       inventoryMovements.value = response.data
       return {
         status: 'success',
@@ -127,19 +127,46 @@ export const useReportsStore = defineStore('reports', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await reportsService.getInventoryValue(params)
-      inventoryValue.value = response.data
+      const response = await reportsService.getInventoryValue(null, params)
+      const data = response?.data?.data ?? response?.data ?? response
+      inventoryValue.value = data
       return {
         status: 'success',
-        data: response.data,
+        data,
         message: ''
       }
     } catch (err) {
       error.value = 'حدث خطأ في تحميل قيمة المخزون'
+      console.error('Error fetching inventory value:', err)
       return {
         status: 'error',
         data: null,
         message: err?.message || 'فشل تحميل قيمة المخزون'
+      }
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchInventoryValueByBranch(params = {}) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await reportsService.getInventoryValueByBranch(params)
+      const data = response?.data?.data ?? response?.data ?? response
+      inventoryValue.value = data
+      return {
+        status: 'success',
+        data,
+        message: ''
+      }
+    } catch (err) {
+      error.value = 'حدث خطأ في تحميل قيمة المخزون حسب الفرع'
+      console.error('Error fetching inventory value by branch:', err)
+      return {
+        status: 'error',
+        data: null,
+        message: err?.message || 'فشل تحميل قيمة المخزون حسب الفرع'
       }
     } finally {
       loading.value = false
@@ -224,9 +251,9 @@ export const useReportsStore = defineStore('reports', () => {
     } catch (err) {
       error.value = 'حدث خطأ في تحميل أداء نقاط البيع'
       return {
-        status: 'success',
-        data: response.data,
-        message: ''
+        status: 'error',
+        data: null,
+        message: err?.message || 'فشل تحميل أداء نقاط البيع'
       }
     } finally {
       loading.value = false
@@ -429,6 +456,7 @@ export const useReportsStore = defineStore('reports', () => {
     fetchProfitLossReport,
     fetchInventoryMovements,
     fetchInventoryValue,
+    fetchInventoryValueByBranch,
     fetchPosPerformance,
     fetchSalesSummary,
     fetchPosAnalytics,

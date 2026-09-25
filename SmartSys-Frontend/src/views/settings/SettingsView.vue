@@ -5,7 +5,11 @@
     <Transition name="fade">
       <div v-if="isLoading" class="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-[110]">
         <div class="bg-white p-8 rounded-xl shadow-2xl flex flex-col items-center border border-slate-200">
-          <BaseSpinner :size="40" color="#2563eb" />
+          <div class="flex items-center gap-1">
+            <div class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div>
+            <div class="w-3 h-3 rounded-full bg-blue-500 animate-pulse" style="animation-delay: 0.2s"></div>
+            <div class="w-3 h-3 rounded-full bg-blue-500 animate-pulse" style="animation-delay: 0.4s"></div>
+          </div>
           <p class="text-slate-500 mt-4 font-bold uppercase tracking-widest text-[10px] animate-pulse">مزامنة إعدادات النظام...</p>
         </div>
       </div>
@@ -21,11 +25,16 @@
           </div>
           <div class="flex gap-3 mr-auto">
             <button @click="discardActiveTab" class="px-4 py-1.5 rounded-md text-[10px] font-bold text-slate-400 hover:text-white transition-colors">تجاهل</button>
-            <button @click="saveActiveTab" :disabled="isSaving" class="px-6 py-1.5 bg-blue-600 text-white rounded-md text-[10px] font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-500 transition-all active:scale-95 flex items-center gap-2">
-              <BaseSpinner v-if="isSaving" :size="12" color="#fff" />
-              <i v-else class="fas fa-save text-[9px]"></i>
-              حفظ الإعدادات
-            </button>
+            <LoadingButton
+              text="حفظ الإعدادات"
+              :isLoading="isSaving"
+              loadingText="جاري الحفظ..."
+              icon="fas fa-save"
+              variant="primary"
+              loaderType="dots"
+              @click="saveActiveTab"
+              class="px-6 py-1.5 bg-blue-600 text-white rounded-md text-[10px] font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-500"
+            />
           </div>
         </div>
       </div>
@@ -586,7 +595,7 @@ import { useCompanyCurrency } from '@/composables/useCompanyCurrency'
 import { useToast } from '@/composables/useToast'
 import { useDirtyTracking } from '@/composables/useSettings'
 import { getAvailableCurrencies, getCurrencySymbol, SUPPORTED_CURRENCIES } from '@/config/currencies'
-import BaseSpinner from '../../components/ui/BaseSpinner.vue'
+import LoadingButton from '@/components/ui/LoadingButton.vue'
 import AlertService from '@/services/AlertService'
 import { storeToRefs } from 'pinia'
 import { useBreadcrumb } from '@/composables/useBreadcrumb';

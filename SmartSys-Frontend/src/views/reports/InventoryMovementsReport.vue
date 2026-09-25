@@ -8,8 +8,10 @@
         :breadcrumb="{ parent: { label: 'التقارير', path: '/reports' }, current: { label: 'تقرير حركة المخزون', path: '/reports/inventory-movements' } }"
         title="تقرير حركة المخزون"
         description="تتبع الوارد والمنصرف واللوجستيات"
-        :branches="[]"
-        :selectedBranch="null"
+        :branches="branches"
+        :selectedBranch="selectedBranch === 'all' ? null : selectedBranch"
+        :hasExplicitSelection="true"
+        @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
           <button @click="exportCsv" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-emerald-600 text-xs font-bold hover:bg-emerald-50 transition-all flex items-center gap-2">
@@ -23,7 +25,7 @@
       <!-- Analytical Filters Panel: Professional Utility Bar -->
       <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
         <div class="p-6 space-y-6">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
             <div class="space-y-1.5 group">
               <label class="metadata-label">من تاريخ</label>
               <div class="relative">
@@ -48,14 +50,6 @@
                 <option value="sale">مبيعات (صادر)</option>
                 <option value="return">مرتجعات</option>
                 <option value="adjustment">تسويات</option>
-              </select>
-            </div>
-
-            <div class="space-y-1.5">
-              <label class="metadata-label">الفرع / المستودع</label>
-              <select v-model="selectedBranch" class="filter-input-v2 appearance-none font-bold">
-                <option value="all">كافة الفروع</option>
-                <option v-for="w in branches" :key="w.id" :value="w.id">{{ w.name }}</option>
               </select>
             </div>
 
@@ -134,7 +128,13 @@
           </div>
 
           <div class="flex-grow relative z-10 h-64">
-            <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-20"><BaseSpinner size="24" /></div>
+            <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-20">
+              <div class="flex items-center gap-1">
+                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></div>
+                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.2s"></div>
+                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.4s"></div>
+              </div>
+            </div>
             <LineChart v-if="movements.length" :data="chartData" :options="chartOptions" />
             <div v-else class="h-full flex flex-col items-center justify-center text-slate-300 gap-3">
                <i class="fas fa-bezier-curve text-2xl opacity-20"></i>
@@ -171,7 +171,7 @@
                 <th class="px-4 py-4 text-center">النوع</th>
                 <th class="px-4 py-4 text-center">وارد (+)</th>
                 <th class="px-4 py-4 text-center">منصرف (-)</th>
-                <th class="px-4 py-4 text-center">الرصيد</th>
+                <th class="px-4 py-4 text-center">الرصيد التراكمي للصنف</th>
                 <th class="px-4 py-4 text-left">القيمة</th>
                 <th class="px-6 py-4">البيان</th>
               </tr>
@@ -245,7 +245,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { Line as LineChart } from 'vue-chartjs';
 import { Chart as ChartJS, Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement, Filler } from 'chart.js';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { getLocalDateISO, getLocalTimestamp } from '@/utils/date';
 import { useTableFilters } from '@/composables/useTableFilters';
@@ -279,6 +279,8 @@ const movements = ref([]);
 const filters = useTableFilters('inventory_movements_filters');
 
 const openingBalance = ref(0);
+const finalBalance = ref(0);
+const currentValuation = ref(0);
 const branches = computed(() => branchStore.branches);
 const selectedBranch = computed({
   get: () => branchStore.selectedBranchId || 'all',
@@ -291,19 +293,16 @@ const showProductDropdown = ref(false);
 
 const sortKey = ref('date');
 const sortOrder = ref('desc');
+const isReportInitialized = ref(false);
 
 const summaryData = computed(() => {
   const totalIn = movements.value.reduce((sum, item) => sum + (item.in || 0), 0);
   const totalOut = movements.value.reduce((sum, item) => sum + (item.out || 0), 0);
-  let finalBalance = movements.value.length > 0 ? movements.value[0].balance : openingBalance.value;
-  let totalCost = 0; let costCount = 0;
-  movements.value.forEach(item => { if (item.cost && item.cost > 0) { totalCost += item.cost; costCount++; } });
-  const avgCost = costCount > 0 ? totalCost / costCount : 0;
   return [
-    { title: 'الرصيد الافتتاحي', value: openingBalance.value, icon: 'fas fa-box-open', iconClass: 'bg-indigo-50 text-indigo-600', valueClass: 'text-indigo-600', format: 'number' },
+    { title: selectedProduct.value ? 'الرصيد الافتتاحي' : 'الرصيد الافتتاحي الإجمالي', value: openingBalance.value, icon: 'fas fa-box-open', iconClass: 'bg-indigo-50 text-indigo-600', valueClass: 'text-indigo-600', format: 'number' },
     { title: 'إجمالي الوارد (+)', value: totalIn, icon: 'fas fa-arrow-down', iconClass: 'bg-emerald-50 text-emerald-600', valueClass: 'text-emerald-600', format: 'number' },
     { title: 'إجمالي المنصرف (-)', value: totalOut, icon: 'fas fa-arrow-up', iconClass: 'bg-rose-50 text-rose-600', valueClass: 'text-rose-600', format: 'number' },
-    { title: 'القيمة التقديرية الحالية', value: Math.max(0, finalBalance * avgCost), icon: 'fas fa-coins', iconClass: 'bg-blue-50 text-blue-600', valueClass: 'text-blue-600', format: 'currency' }
+    { title: 'القيمة التقديرية الحالية', value: currentValuation.value, icon: 'fas fa-coins', iconClass: 'bg-blue-50 text-blue-600', valueClass: 'text-blue-600', format: 'currency' }
   ];
 });
 
@@ -342,9 +341,27 @@ const fetchReport = async () => {
     let apiData = await reportsStore.fetchInventoryMovements(startDate.value, endDate.value, pId, movementType.value, bId);
     if (apiData?.data) apiData = apiData.data;
     if (apiData?.data) apiData = apiData.data;
-    if (Array.isArray(apiData)) { movements.value = apiData; openingBalance.value = 0; }
-    else { movements.value = apiData?.items || apiData?.movements || []; openingBalance.value = apiData?.opening_balance || 0; }
-  } catch (err) { movements.value = []; } finally { isLoading.value = false; }
+    if (Array.isArray(apiData)) { movements.value = apiData; openingBalance.value = 0; finalBalance.value = movements.value.at(-1)?.balance || 0; currentValuation.value = 0; }
+    else {
+      movements.value = (apiData?.items || apiData?.movements || []).map(item => ({
+        ...item,
+        quantity: Number(item.quantity) || 0,
+        in: Number(item.in) || 0,
+        out: Number(item.out) || 0,
+        balance: Number(item.balance) || 0,
+        cost: Number(item.cost) || 0
+      }));
+      openingBalance.value = Number(apiData?.opening_balance) || 0;
+      finalBalance.value = Number(apiData?.final_balance) || movements.value.at(-1)?.balance || openingBalance.value;
+      currentValuation.value = Number(apiData?.valuation) || 0;
+    }
+  } catch (err) {
+    console.error('[InventoryMovementsReport] load failed:', err);
+    movements.value = [];
+    openingBalance.value = 0;
+    finalBalance.value = 0;
+    currentValuation.value = 0;
+  } finally { isLoading.value = false; }
 };
 
 const exportCsv = async () => {
@@ -361,7 +378,16 @@ const formatNumber = (v) => (Number(v) || 0).toLocaleString('en-US');
 const formatDate = (v, o = {}) => v ? new Date(v).toLocaleDateString('en-US', o) : '';
 const movementValue = (mv) => (Number(mv.in || 0) - Number(mv.out || 0)) * Number(mv.cost || 0);
 const getMovementTypeClass = (t) => ({ purchase: 'text-emerald-600 border-emerald-100 bg-emerald-50', sale: 'text-blue-600 border-blue-100 bg-blue-50', return: 'text-amber-600 border-amber-100 bg-amber-50', adjustment: 'text-purple-600 border-purple-100 bg-purple-50' }[t] || 'text-slate-400 bg-slate-50 border-slate-100');
-const getMovementTypeLabel = (t) => ({ purchase: 'مشتريات', sale: 'مبيعات', return: 'مرتجع', adjustment: 'تسوية', opening_balance: 'رصيد أول' }[t] || t);
+const getMovementTypeLabel = (t) => ({
+  purchase: 'مشتريات',
+  sale: 'مبيعات',
+  return: 'مرتجع',
+  adjustment: 'تسوية',
+  initial_stock: 'إدخال مخزون أولي',
+  opening_balance: 'رصيد افتتاحي',
+  opening_balance_manual: 'رصيد افتتاحي يدوي',
+  opening_balance_bulk: 'رصيد افتتاحي دفعي'
+}[t] || t);
 const handleSort = (key) => { if (sortKey.value === key) sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'; else { sortKey.value = key; sortOrder.value = 'asc'; } };
 const setDateRange = (r) => { const end = new Date(); let start = new Date(); if (r === 'week') start.setDate(end.getDate() - 7); else start.setMonth(end.getMonth() - 1); endDate.value = getLocalDateISO(end); startDate.value = getLocalDateISO(start); };
 
@@ -389,10 +415,15 @@ const getReferenceRoute = (m) => {
 
 onMounted(async () => {
   await Promise.all([fetchSettings(), branchStore.fetchBranches().catch(() => {})]);
+  isReportInitialized.value = true;
   fetchReport();
 });
 
-watch([startDate, endDate, movementType, selectedBranch], () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(fetchReport, 700); });
+watch([startDate, endDate, movementType, selectedBranch], () => {
+  if (!isReportInitialized.value) return;
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(fetchReport, 700);
+});
 </script>
 
 <style scoped>

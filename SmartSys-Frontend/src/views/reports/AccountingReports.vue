@@ -150,7 +150,7 @@
               <div class="grid grid-cols-2 gap-4">
                  <div class="p-4 bg-slate-50 border border-slate-100 rounded-lg text-center">
                     <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">المواقع</p>
-                    <p class="text-xl font-bold text-slate-900">{{ coverage.total_branchs }}</p>
+                    <p class="text-xl font-bold text-slate-900">{{ coverage.total_branches }}</p>
                  </div>
                  <div :class="[coverage.missing_count > 0 ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-emerald-50 border-emerald-100 text-emerald-600']" class="p-4 border rounded-lg text-center">
                     <p class="text-[9px] font-bold uppercase tracking-widest mb-1">غير مرتبطة</p>
@@ -158,10 +158,10 @@
                  </div>
               </div>
 
-              <div v-if="(coverage.missing_branchs || []).length" class="border border-slate-100 rounded-lg overflow-hidden">
+              <div v-if="(coverage.missing_branches || []).length" class="border border-slate-100 rounded-lg overflow-hidden">
                 <table class="w-full text-right text-[10px]">
                    <tbody class="divide-y divide-slate-50">
-                     <tr v-for="w in coverage.missing_branchs" :key="w.id" class="hover:bg-rose-50 transition-colors">
+                     <tr v-for="w in coverage.missing_branches" :key="w.id" class="hover:bg-rose-50 transition-colors">
                        <td class="px-4 py-2.5 font-bold text-slate-700">{{ w.name }}</td>
                        <td class="px-4 py-2.5 text-left"><span class="text-rose-500 font-bold uppercase tracking-tighter">Unlinked</span></td>
                      </tr>
@@ -237,13 +237,13 @@
                   <table class="w-full text-right text-[10px] font-medium border-collapse">
                     <thead class="bg-slate-50 sticky top-0"><tr class="text-slate-400 font-bold uppercase border-b border-slate-100"><th class="py-2 px-3">المنتج</th><th class="py-2 px-3">الفرع</th><th class="py-2 px-3 text-center">الكمية</th><th class="py-2 px-3 text-center">متوسط التكلفة</th><th class="py-2 px-3 text-center">سعر البيع</th><th class="py-2 px-3 text-center">فرق الوحدة</th><th class="py-2 px-3 text-left">إجمالي الفرق</th></tr></thead>
                     <tbody class="divide-y divide-slate-50">
-                      <tr v-for="item in nrvData.items" :key="item.product_id" class="hover:bg-slate-50">
+                      <tr v-for="item in nrvData.items" :key="`${item.product_id}-${item.branch_id}`" class="hover:bg-slate-50">
                         <td class="py-2 px-3 font-bold text-slate-700">{{ item.product_name }}</td>
                         <td class="py-2 px-3 text-slate-500">{{ item.branch_name || '—' }}</td>
                         <td class="py-2 px-3 text-center font-mono">{{ item.qty_on_hand }}</td>
-                        <td class="py-2 px-3 text-center font-mono text-slate-600">{{ fmt(item.avg_cost) }}</td>
-                        <td class="py-2 px-3 text-center font-mono text-slate-600">{{ fmt(item.nrv) }}</td>
-                        <td class="py-2 px-3 text-center font-mono" :class="(item.unit_diff ?? (item.nrv - item.avg_cost)) < 0 ? 'text-rose-600' : 'text-emerald-600'">{{ fmt(item.unit_diff ?? (item.nrv - item.avg_cost)) }}</td>
+                        <td class="py-2 px-3 text-center font-mono text-slate-600">{{ fmt(item.avg_cost ?? item.unit_cost) }}</td>
+                        <td class="py-2 px-3 text-center font-mono text-slate-600">{{ fmt(item.nrv ?? item.sale_price) }}</td>
+                        <td class="py-2 px-3 text-center font-mono" :class="(item.unit_diff ?? item.margin_per_unit ?? ((item.nrv ?? item.sale_price) - (item.avg_cost ?? item.unit_cost))) < 0 ? 'text-rose-600' : 'text-emerald-600'">{{ fmt(item.unit_diff ?? item.margin_per_unit ?? ((item.nrv ?? item.sale_price) - (item.avg_cost ?? item.unit_cost))) }}</td>
                         <td class="py-2 px-3 text-left font-bold font-mono text-rose-600">{{ fmt(item.impairment_amount) }}</td>
                       </tr>
                     </tbody>
@@ -297,15 +297,15 @@
                      <table class="w-full text-right text-[9px] font-medium border-collapse">
                        <thead><tr class="text-slate-400 font-bold uppercase border-b border-slate-100 bg-slate-50"><th class="px-3 py-1.5">رقم الفاتورة</th><th class="px-3 py-1.5">العميل</th><th class="px-3 py-1.5">التاريخ</th><th class="px-3 py-1.5 text-center">أيام التقادم</th><th class="px-3 py-1.5 text-center">الإجمالي</th><th class="px-3 py-1.5 text-center">المدفوع</th><th class="px-3 py-1.5 text-center">المتبقي</th><th class="px-3 py-1.5 text-center">المخصص</th></tr></thead>
                        <tbody class="divide-y divide-slate-50">
-                         <tr v-for="inv in bucket.invoices" :key="inv.id" class="hover:bg-rose-50/30">
-                           <td class="px-3 py-1.5 font-mono font-bold text-blue-600">#{{ inv.id }}</td>
+                         <tr v-for="inv in bucket.invoices" :key="inv.id ?? inv.sale_id" class="hover:bg-rose-50/30">
+                           <td class="px-3 py-1.5 font-mono font-bold text-blue-600">#{{ inv.id ?? inv.sale_id }}</td>
                            <td class="px-3 py-1.5 text-slate-700">{{ inv.customer_name }}</td>
-                           <td class="px-3 py-1.5 font-mono text-slate-400">{{ inv.invoice_date }}</td>
-                           <td class="px-3 py-1.5 text-center font-mono font-bold text-rose-600">{{ inv.days_overdue }}</td>
-                           <td class="px-3 py-1.5 text-center font-mono">{{ fmt(inv.total) }}</td>
+                           <td class="px-3 py-1.5 font-mono text-slate-400">{{ inv.invoice_date ?? inv.sale_date }}</td>
+                           <td class="px-3 py-1.5 text-center font-mono font-bold text-rose-600">{{ inv.days_overdue ?? inv.days_outstanding }}</td>
+                           <td class="px-3 py-1.5 text-center font-mono">{{ fmt(inv.total ?? inv.net_total) }}</td>
                            <td class="px-3 py-1.5 text-center font-mono text-emerald-600">{{ fmt(inv.paid) }}</td>
                            <td class="px-3 py-1.5 text-center font-mono font-bold">{{ fmt(inv.outstanding) }}</td>
-                           <td class="px-3 py-1.5 text-center font-mono text-rose-600">{{ fmt(inv.provision) }}</td>
+                           <td class="px-3 py-1.5 text-center font-mono text-rose-600">{{ fmt(inv.provision ?? inv.ecl_provision) }}</td>
                          </tr>
                        </tbody>
                      </table>
@@ -342,19 +342,25 @@
           </div>
         </div>
         <div class="p-6">
-          <div v-if="loadingCashFlow" class="py-12 text-center"><BaseSpinner :size="24" /></div>
+          <div v-if="loadingCashFlow" class="py-12 text-center">
+            <div class="flex items-center justify-center gap-1">
+              <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></div>
+              <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.2s"></div>
+              <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.4s"></div>
+            </div>
+          </div>
           <div v-else-if="!cashFlowData" class="py-12 text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest">بانتظار تحديث التقرير</div>
           <div v-else class="space-y-8">
-            <div v-for="section in cashFlowData.sections" :key="section.type" class="space-y-3">
+            <div v-for="(section, type) in cashFlowData.sections" :key="type" class="space-y-3">
               <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                 <h3 class="text-[10px] font-bold text-slate-700 uppercase tracking-widest">{{ section.label }}</h3>
                 <span class="text-sm font-bold font-mono" :class="section.total >= 0 ? 'text-emerald-600' : 'text-rose-600'">{{ fmt(section.total) }}</span>
               </div>
               <table class="w-full text-right text-[10px] font-medium border-collapse">
                 <tbody class="divide-y divide-slate-50">
-                  <tr v-for="line in section.lines" :key="line.label" class="hover:bg-slate-50">
+                  <tr v-for="line in (section.items || section.lines || [])" :key="`${line.reference_type}-${line.account_code}-${line.label}`" class="hover:bg-slate-50">
                     <td class="py-1.5 px-3 text-slate-600">{{ line.label }}</td>
-                    <td class="py-1.5 px-3 text-left font-mono font-bold" :class="line.amount >= 0 ? 'text-emerald-600' : 'text-rose-600'">{{ fmt(line.amount) }}</td>
+                    <td class="py-1.5 px-3 text-left font-mono font-bold" :class="(line.net ?? line.amount) >= 0 ? 'text-emerald-600' : 'text-rose-600'">{{ fmt(line.net ?? line.amount) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -411,7 +417,7 @@
 import { ref, onMounted } from 'vue'
 import { useReportsStore } from '@/stores/reports'
 import { useAccountStore } from '@/stores/account/accountStore'
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
 
@@ -543,7 +549,14 @@ async function postWriteDown() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadAccounts(), loadAll(), loadCoverage(), loadCashFlow()])
+  await Promise.all([
+    loadAccounts(),
+    loadAll(),
+    loadCoverage(),
+    loadCashFlow(),
+    loadNrv(),
+    loadArAging()
+  ])
 })
 </script>
 

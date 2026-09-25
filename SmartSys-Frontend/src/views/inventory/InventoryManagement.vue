@@ -181,8 +181,10 @@
 
                   <td class="px-6 py-4 text-center">
                     <div class="flex items-center justify-center gap-1.5">
-                      <button @click="adjustStock(item)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-amber-600 hover:border-amber-200 transition-all flex items-center justify-center shadow-sm"><i class="fas fa-sliders text-[10px]"></i></button>
-                      <button @click="openTransferModal(item)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all flex items-center justify-center shadow-sm"><i class="fas fa-exchange-alt text-[10px]"></i></button>
+                      <template v-if="selectedBranch">
+                        <button @click="adjustStock(item)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-amber-600 hover:border-amber-200 transition-all flex items-center justify-center shadow-sm"><i class="fas fa-sliders text-[10px]"></i></button>
+                        <button @click="openTransferModal(item)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all flex items-center justify-center shadow-sm"><i class="fas fa-exchange-alt text-[10px]"></i></button>
+                      </template>
                       <button @click="viewDetails(item)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center shadow-sm"><i class="fas fa-eye text-[10px]"></i></button>
                     </div>
                   </td>
@@ -240,10 +242,15 @@
 
         <div class="flex gap-3 pt-2">
           <button type="button" @click="showTransferModal = false" class="flex-1 h-10 text-xs font-bold text-slate-500">إلغاء</button>
-          <button type="submit" :disabled="isTransferring" class="flex-2 h-10 bg-emerald-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-emerald-900/20 active:scale-95 flex items-center justify-center gap-2 px-8">
-            <BaseSpinner v-if="isTransferring" size="16" color="#fff" />
-            <span v-else>تأكيد النقل</span>
-          </button>
+          <LoadingButton
+            text="تأكيد النقل"
+            :isLoading="isTransferring"
+            loadingText="جاري..."
+            variant="primary"
+            loaderType="dots"
+            type="submit"
+            class="flex-2 h-10 px-8"
+          />
         </div>
       </form>
     </BaseModal>
@@ -295,7 +302,7 @@
                 <td class="px-4 py-3 text-slate-400 font-mono">{{ formatDate(h.movement_date || h.created_at) }}</td>
                 <td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-[10px] font-bold text-slate-600">{{ getMovementTypeText(h.movement_type || h.type) }}</span></td>
                 <td class="px-4 py-3 text-center font-bold text-slate-900">{{ h.quantity }}</td>
-                <td class="px-4 py-3 text-slate-400 italic">{{ translateMovementNote(h.notes) }}</td>
+                <td class="px-4 py-3 text-slate-400 italic">{{ translateMovementNote(h.notes, h.movement_type || h.type) }}</td>
               </tr>
               <tr v-if="!productDetails?.recentHistory?.length"><td colspan="4" class="py-12 text-center text-slate-300 uppercase font-bold text-[10px]">لا توجد حركات مسجلة</td></tr>
             </tbody>
@@ -401,8 +408,10 @@ import { useCompanyCurrency } from '../../composables/useCompanyCurrency';
 import { useToast } from '@/composables/useToast';
 import { useTableFilters } from '@/composables/useTableFilters';
 import getLocalDateISO from '@/utils/date';
-import BaseSpinner from '../../components/ui/BaseSpinner.vue';
+
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
+import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import AlertService from '@/services/AlertService';
 import { useSessionExemption } from '@/composables/useCashierSessionGuard';
 import { useBranchIsolation } from '@/composables/useBranchIsolation';
@@ -648,6 +657,10 @@ const getPrice = item => {
 
 // ─── Stock Adjustment Handlers ──────────────────────────────────────────────────────────────────
 const adjustStock = item => {
+  if (!selectedBranch.value) {
+    showToast('يرجى اختيار فرع قبل تسوية المخزون', 'warning');
+    return;
+  }
   selectedItem.value = item;
   showStockModal.value = true;
 };
@@ -666,6 +679,10 @@ const handleStockAdjusted = async () => {
 
 // ─── Transfer Handlers (moved from BranchInventory) ──────────────────────────
 const openTransferModal = (item) => {
+  if (!selectedBranch.value) {
+    showToast('يرجى اختيار فرع مصدر قبل نقل المخزون', 'warning');
+    return;
+  }
   transferItem.value = item;
   transferData.value = { toBranchId: '', quantity: 0, notes: '' };
   showTransferModal.value = true;
@@ -822,7 +839,8 @@ const viewDetails = async item => {
     isLoadingDetails.value = true;
     showDetailsModal.value = true;
     productDetails.value = { ...item };
-    const data = await productStore.getProductById(item.id);
+    const detailResponse = await productStore.getProductDetail(item.id, selectedBranch.value || null);
+    const data = detailResponse?.status === 'success' ? detailResponse.data : null;
     if (data) {
       // Map nested response structure to flat template properties
       productDetails.value = {
@@ -842,7 +860,10 @@ const viewDetails = async item => {
         category_id: data.category?.id ?? data.category_id,
       };
     }
-    const historyRes = await inventoryStore.getProductHistory(item.id, 5);
+    const historyRes = await inventoryStore.getProductHistory(item.id, 5, {
+      branchId: selectedBranch.value || null,
+      force: true
+    });
     productDetails.value.recentHistory = historyRes.data || [];
   } catch (error) {
     console.error('Error loading product details:', error);
@@ -933,13 +954,26 @@ const NOTES_AR = {
 };
 const NOTES_PREFIX_AR = [
   { prefix: 'Opening balance commit @', ar: 'رصيد افتتاحي' },
-  { prefix: 'Opening balance',          ar: 'رصيد افتتاحي' },
-  { prefix: 'Initial stock',            ar: 'رصيد افتتاحي عند إنشاء المنتج' },
+  { prefix: 'Opening balance bulk',    ar: 'رصيد افتتاحي دفعي' },
+  { prefix: 'Opening balance manual',  ar: 'رصيد افتتاحي يدوي' },
+  { prefix: 'Opening balance',         ar: 'رصيد افتتاحي' },
+  { prefix: 'Initial stock',           ar: 'رصيد افتتاحي عند إنشاء المنتج' },
   { prefix: 'Stock adjustment',         ar: 'تسوية مخزون' },
   { prefix: 'Transfer in',              ar: 'تحويل وارد' },
   { prefix: 'Transfer out',             ar: 'تحويل صادر' },
 ];
-const translateMovementNote = (note) => {
+const translateMovementNote = (note, movementType = '') => {
+  const typeTranslation = {
+    initial_stock: 'رصيد افتتاحي عند إنشاء المنتج',
+    opening_balance_manual: 'رصيد افتتاحي يدوي',
+    opening_balance_bulk: 'رصيد افتتاحي دفعي',
+  }[movementType];
+
+  if (typeTranslation && (!note || note.startsWith('رصيد افتتاحي:'))) {
+    const productName = note?.split(':').slice(1).join(':').trim();
+    return productName ? `${typeTranslation}: ${productName}` : typeTranslation;
+  }
+
   if (!note) return '—';
   const t = note.trim();
   if (NOTES_AR[t]) return NOTES_AR[t];

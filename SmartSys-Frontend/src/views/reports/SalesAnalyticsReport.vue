@@ -89,7 +89,13 @@
         </div>
 
         <div class="flex-grow relative z-10 h-96">
-          <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-20"><BaseSpinner size="32" /></div>
+          <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-20">
+            <div class="flex items-center gap-1">
+              <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></div>
+              <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.2s"></div>
+              <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.4s"></div>
+            </div>
+          </div>
           <LineChart v-if="analyticsData.salesOverTime.length" :data="salesOverTimeChart" :options="chartOptions" />
           <div v-else class="h-full flex flex-col items-center justify-center text-slate-300 gap-3 opacity-30 italic font-bold">بانتظار مزامنة البيانات...</div>
         </div>
@@ -161,7 +167,7 @@ import { Line as LineChart, Bar as BarChart, Doughnut as DoughnutChart } from 'v
 import { Chart as ChartJS, Title, Tooltip, Legend, LineElement, BarElement, CategoryScale, LinearScale, PointElement, ArcElement, Filler } from 'chart.js';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { getLocalDateISO } from '@/utils/date';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
 
@@ -265,29 +271,36 @@ const formatCurrency = (v) => formatCurrencyLocale(v, 2);
 const formatNumber = (v) => (Number(v) || 0).toLocaleString('en-US');
 const formatDate = (v, o = {}) => v ? new Date(v).toLocaleDateString('en-US', o) : '';
 
+const toNumber = (value) => Number(value) || 0;
+
 const fetchAnalytics = async () => {
     isLoading.value = true; error.value = null;
     try {
-        let apiData = await analyticsStore.fetchSalesAnalytics({ startDate: startDate.value, endDate: endDate.value });
-        if (apiData && apiData.data) apiData = apiData.data;
+        const result = await analyticsStore.fetchSalesAnalytics({ startDate: startDate.value, endDate: endDate.value });
+        if (result?.status === 'error') throw new Error(result.message || 'فشل تحميل تحليلات المبيعات');
+
+        // The store normally returns { status, data }, while a direct Axios
+        // response is shaped as { data: { status, data } }. Support both so
+        // the view always reads the actual analytics payload.
+        const apiData = result?.data?.data ?? result?.data ?? result ?? {};
         const summary = apiData.summary || {};
         const revenue = apiData.revenue || {};
-        const totalSales = apiData.total_sales_amount ?? 0;
-        const totalReturns = apiData.total_returns_amount ?? 0;
-        const totalRevenue = apiData.net_sales ?? (totalSales - totalReturns) ?? 0;
-        const totalTax = apiData.total_tax_amount ?? 0;
-        const netTax = totalTax - (apiData.total_returns_tax ?? 0);
-        const grandTotal = apiData.net_grand_total ?? (totalRevenue + netTax) ?? 0;
-        const grossProfit = summary.gross_profit ?? revenue.gross_profit ?? apiData.gross_profit ?? 0;
-        const netProfit = summary.net_profit ?? apiData.net_profit ?? grossProfit;
+        const totalSales = toNumber(apiData.total_sales_amount ?? summary.total_sales_amount);
+        const totalReturns = toNumber(apiData.total_returns_amount ?? summary.total_returns_amount);
+        const totalRevenue = toNumber(apiData.net_sales ?? (totalSales - totalReturns));
+        const totalTax = toNumber(apiData.total_tax_amount ?? summary.total_tax_amount);
+        const netTax = totalTax - toNumber(apiData.total_returns_tax);
+        const grandTotal = toNumber(apiData.net_grand_total ?? (totalRevenue + netTax));
+        const grossProfit = toNumber(summary.gross_profit ?? revenue.gross_profit ?? apiData.gross_profit);
+        const netProfit = toNumber(summary.net_profit ?? apiData.net_profit ?? grossProfit);
 
         analyticsData.value = {
             summary: { totalSales, totalReturns, totalRevenue, totalTax: netTax, grandTotal, netProfit, grossProfit },
-            salesOverTime: (apiData.daily_sales || apiData.salesOverTime || []).map(day => ({ date: day.date, total: day.total_revenue ?? day.total ?? 0 })),
-            topProducts: (apiData.top_products || apiData.topProducts || []).map(p => ({ id: p.id, name: p.name, totalSales: p.total_revenue ?? p.totalSales ?? 0, quantity: p.total_quantity ?? p.quantity ?? 0 })),
-            salesByCategory: (apiData.top_categories || apiData.salesByCategory || []).map(c => ({ id: c.id, name: c.name, totalSales: c.total_revenue ?? c.totalSales ?? 0 }))
+            salesOverTime: (apiData.daily_sales || apiData.salesOverTime || []).map(day => ({ date: day.date, total: toNumber(day.total_revenue ?? day.total) })),
+            topProducts: (apiData.top_products || apiData.topProducts || []).map(p => ({ id: p.id, name: p.name, totalSales: toNumber(p.total_revenue ?? p.totalSales), quantity: toNumber(p.total_quantity ?? p.quantity) })),
+            salesByCategory: (apiData.top_categories || apiData.salesByCategory || []).map(c => ({ id: c.id, name: c.name, totalSales: toNumber(c.total_revenue ?? c.totalSales) }))
         };
-    } catch { error.value = "خطأ في التحميل"; } finally { isLoading.value = false; }
+    } catch (e) { error.value = e.message || "خطأ في التحميل"; } finally { isLoading.value = false; }
 };
 
 const setDateRange = (range) => {

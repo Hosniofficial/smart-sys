@@ -3,9 +3,15 @@
 declare(strict_types=1);
 
 
+/** Builds the application's PDO connection using canonical DB_* names with legacy aliases. */
 final class MigrationDatabase
 {
-    /** @return array{host:string,port:string,database:string,username:string,password:string} */
+    /**
+     * Resolve configuration without connecting; canonical application names win over legacy aliases.
+     *
+     * @return array{host:string,port:string,database:string,username:string,password:string}
+     * @throws RuntimeException when no database name is explicitly configured.
+     */
     public static function resolveConfig(array $environment): array
     {
         $database = self::firstConfigured($environment, 'DB_DATABASE', 'DB_NAME');
@@ -22,6 +28,7 @@ final class MigrationDatabase
         ];
     }
 
+    /** Create an exception-throwing PDO connection for migration and schema tooling. */
     public static function connect(array $environment): PDO
     {
         $config = self::resolveConfig($environment);
@@ -39,6 +46,7 @@ final class MigrationDatabase
         ]);
     }
 
+    /** Return the first non-empty configured value, preferring the canonical key. */
     private static function firstConfigured(array $environment, string $key, ?string $legacyKey = null): ?string
     {
         foreach (array_filter([$key, $legacyKey]) as $candidate) {

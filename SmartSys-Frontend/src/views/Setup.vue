@@ -47,7 +47,11 @@
         <!-- Loading Overlay -->
         <Transition name="fade">
           <div v-if="loading" class="absolute inset-0 bg-white/80 backdrop-blur-md z-50 flex flex-col items-center justify-center p-12">
-            <BaseSpinner :size="40" color="#2563eb" />
+            <div class="flex items-center gap-1">
+              <div class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+              <div class="w-2 h-2 rounded-full bg-blue-500 animate-pulse" style="animation-delay: 0.2s"></div>
+              <div class="w-2 h-2 rounded-full bg-blue-500 animate-pulse" style="animation-delay: 0.4s"></div>
+            </div>
             <p class="mt-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest animate-pulse">مزامنة بيانات التهيئة...</p>
           </div>
         </Transition>
@@ -233,15 +237,27 @@
               السابق
             </button>
 
-            <button v-if="currentStep < steps.length - 1" @click="nextStep" :disabled="saving" class="flex-1 md:flex-none px-10 h-10 bg-blue-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest shadow-lg shadow-blue-900/20 hover:bg-blue-500 active:scale-95 transition-all flex items-center justify-center gap-3">
-              <BaseSpinner v-if="saving" :size="14" color="#fff" />
-              <template v-else>الاستمرار <i class="fas fa-chevron-left text-[8px]"></i></template>
-            </button>
+            <LoadingButton
+              text="الاستمرار"
+              :isLoading="saving"
+              loadingText="جاري..."
+              icon="fas fa-chevron-left"
+              variant="primary"
+              loaderType="dots"
+              @click="nextStep"
+              class="flex-1 md:flex-none px-10 h-10"
+            />
 
-            <button v-if="currentStep === steps.length - 1" @click="saveSetup" :disabled="saving" class="flex-1 md:flex-none px-12 h-10 bg-emerald-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest shadow-lg shadow-emerald-900/20 hover:bg-emerald-500 active:scale-95 transition-all flex items-center justify-center gap-3">
-              <BaseSpinner v-if="saving" :size="16" color="#fff" />
-              <template v-else><i class="fas fa-check-circle"></i> إنهاء التهيئة</template>
-            </button>
+            <LoadingButton
+              text="إنهاء التهيئة"
+              :isLoading="saving"
+              loadingText="جاري..."
+              icon="fas fa-check-circle"
+              variant="primary"
+              loaderType="dots"
+              @click="saveSetup"
+              class="flex-1 md:flex-none px-12 h-10"
+            />
           </div>
         </footer>
       </div>
@@ -260,11 +276,11 @@ import { useSettingsStore } from '@/stores/settings/settingsStore';
 import { useSetupStore } from '@/stores/setup/setupStore';
 import AlertService from '@/services/AlertService';
 import { getAvailableCurrencies, getCurrencySymbol } from '@/config/currencies';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 export default {
   name: 'Setup',
-  components: { BaseSpinner },
+  components: { LoadingButton },
   setup() {
     const authStore = useAuthStore();
     const branchStore = useBranchStore();

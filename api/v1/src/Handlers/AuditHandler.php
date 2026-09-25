@@ -12,6 +12,8 @@ use App\Services\MonologHandler;
 
 class AuditHandler extends BaseHandler
 {
+    public ?array $currentUser = null;  // Public so BaseHandler.getAudit() can sync the user context
+
     public function __construct(PDO $db)
     {
         parent::__construct($db);
@@ -33,6 +35,12 @@ class AuditHandler extends BaseHandler
         $tenantId = $tenantId ?? $this->tenantId;
         if (!$tenantId) {
             throw new Exception('مطلوب معرف المستأجر (Tenant ID).');
+        }
+
+        // If userId is not provided, try to get it from the current user context
+        // This ensures user_id is captured even if not explicitly passed
+        if ($userId === null && isset($this->currentUser) && is_array($this->currentUser)) {
+            $userId = $this->currentUser['id'] ?? null;
         }
 
         $details = $data !== null

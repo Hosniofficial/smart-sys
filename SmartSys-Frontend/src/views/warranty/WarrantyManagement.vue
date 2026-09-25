@@ -258,10 +258,16 @@
       <template #footer>
         <div class="flex justify-end gap-3">
           <button @click="showCreate = false; resetForm()" class="px-6 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">إلغاء</button>
-          <button @click="createWarranty" :disabled="creating || !isFormValid" class="px-10 h-10 bg-blue-600 text-white rounded-md text-xs font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2">
-            <BaseSpinner v-if="creating" size="16" color="#fff" />
-            <span>تسجيل طلب الضمان</span>
-          </button>
+          <LoadingButton
+            text="تسجيل طلب الضمان"
+            :isLoading="creating"
+            loadingText="جاري التسجيل..."
+            variant="primary"
+            loaderType="dots"
+            @click="createWarranty"
+            :disabled="!isFormValid"
+            class="px-10 h-10"
+          />
         </div>
       </template>
     </BaseModal>
@@ -413,7 +419,7 @@ import { useProductStore } from '@/stores/product/productStore';
 import { useToast } from '@/composables/useToast';
 import { useTableFilters } from '@/composables/useTableFilters';
 import AlertService from '@/services/AlertService';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseModal from '@/components/BaseModal.vue';
 // BUG 2 FIX: removed duplicate semicolon
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';

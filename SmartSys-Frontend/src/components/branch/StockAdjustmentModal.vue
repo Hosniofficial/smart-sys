@@ -1,136 +1,173 @@
 <template>
-  <div v-if="modelValue" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" @click.self="closeModal">
-    <div class="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden animate-modalIn border border-white flex flex-col text-right" dir="rtl" @click.stop>
+  <div
+    v-if="modelValue"
+    class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm font-sans antialiased text-slate-900"
+    @click.self="closeModal"
+  >
+    <div
+      class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200 animate-modalIn flex flex-col text-right"
+      dir="rtl"
+      @click.stop
+    >
       
       <!-- Modal Header -->
-      <div class="px-8 py-6 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between shrink-0">
-        <div class="flex items-center gap-4">
-          <div class="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-200 text-white">
-            <i class="fas fa-sliders text-xl"></i>
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center text-white text-xs shadow-sm">
+            <i class="fas fa-sliders"></i>
           </div>
           <div>
-            <h3 class="text-xl font-black text-slate-800 leading-none">تسوية رصيد المخزون</h3>
-            <p class="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-widest">تعديل يدوي للكميات المتوفرة حالياً</p>
+            <h3 class="text-sm font-bold text-slate-900 uppercase">تسوية رصيد المخزون</h3>
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">تعديل يدوي للكميات المتوفرة حالياً</p>
           </div>
         </div>
-        <button @click="closeModal" class="w-10 h-10 rounded-xl flex items-center justify-center text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all">
-          <i class="fas fa-times text-xl"></i>
+        <button
+          @click="closeModal"
+          class="w-7 h-7 rounded-md border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center"
+          title="إغلاق"
+        >
+          <i class="fas fa-times text-xs"></i>
         </button>
       </div>
 
       <!-- Modal Body -->
-      <form @submit.prevent="handleSubmit" class="p-8 space-y-6 overflow-y-auto custom-scroll max-h-[75vh]">
+      <form @submit.prevent="handleSubmit" class="p-6 space-y-5 overflow-y-auto custom-scroll max-h-[75vh]">
         
         <!-- Product Summary Profile -->
-        <div v-if="product" class="bg-slate-900 p-6 rounded-[2rem] text-white shadow-xl relative overflow-hidden group">
-          <div class="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full translate-x-8 -translate-y-8 group-hover:scale-110 transition-transform"></div>
-          <div class="relative z-10 flex items-center gap-4">
-            <div class="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center text-blue-400 shadow-inner"><i class="fas fa-box"></i></div>
-            <div>
-              <p class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">المنتج المستهدف</p>
-              <h4 class="text-base font-black leading-tight">{{ product.name || product.product_name }}</h4>
-              <div class="flex gap-3 mt-2 text-[10px] font-bold text-white/40 font-mono uppercase tracking-tighter">
+        <div v-if="product" class="bg-slate-900 text-white p-4 rounded-xl shadow-sm space-y-3 relative overflow-hidden">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center text-blue-400 text-xs shrink-0">
+              <i class="fas fa-box"></i>
+            </div>
+            <div class="space-y-0.5 overflow-hidden">
+              <p class="text-[9px] font-bold text-blue-400 uppercase tracking-widest">المنتج المستهدف</p>
+              <h4 class="text-xs font-bold truncate">{{ product.name || product.product_name }}</h4>
+              <div class="flex items-center gap-2 text-[10px] font-mono text-slate-400">
                 <span v-if="product.barcode">BAR: {{ product.barcode }}</span>
+                <span v-if="product.barcode" class="text-slate-700">|</span>
                 <span>CODE: {{ product.product_code || product.code }}</span>
               </div>
             </div>
           </div>
-          <div class="mt-6 pt-4 border-t border-white/5 flex justify-between items-center">
-             <span class="text-[10px] font-black text-white/30 uppercase tracking-widest">المخزون الحالي بالمستودع</span>
-             <span class="px-3 py-1 bg-white/10 rounded-lg text-xs font-black text-blue-400 font-mono">{{ product.quantity || 0 }} {{ product.unit || 'قطعة' }}</span>
+
+          <div class="pt-2.5 border-t border-slate-800 flex justify-between items-center text-xs">
+            <span class="text-slate-400 text-[11px] font-medium">الرصيد الحالي بالمستودع:</span>
+            <span class="px-2 py-0.5 bg-white/10 rounded font-mono font-bold text-blue-400 text-xs">
+              {{ product.quantity || 0 }} {{ product.unit || 'قطعة' }}
+            </span>
           </div>
         </div>
 
-        <div v-else class="p-5 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-xs font-bold flex items-center gap-3">
-          <i class="fas fa-exclamation-triangle"></i>
-          عذراً، تعذر تحميل بيانات المنتج المطلوبة.
+        <div v-else class="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs font-bold flex items-center gap-2">
+          <i class="fas fa-triangle-exclamation text-rose-500 shrink-0"></i>
+          <span>تعذر تحميل بيانات المنتج المطلوبة.</span>
         </div>
 
-        <!-- Adjustment Type Selector -->
-        <div class="space-y-3">
-          <label class="modal-label">نوع التسوية (الإجراء)</label>
-          <div class="grid grid-cols-2 gap-3">
-            <label class="type-selector-btn" :class="{'type-add-active': adjustmentType === 'add'}">
+        <!-- Adjustment Type Selector (Pills) -->
+        <div class="space-y-1.5">
+          <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">نوع التسوية (الإجراء)</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label
+              class="flex items-center justify-center gap-2 h-9 rounded-md border text-xs font-bold transition-all cursor-pointer select-none"
+              :class="adjustmentType === 'add' ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'"
+            >
               <input type="radio" v-model="adjustmentType" value="add" class="sr-only">
-              <i class="fas fa-plus-circle"></i>
-              <span>إضافة وارد</span>
+              <i class="fas fa-plus text-[10px]"></i>
+              <span>إضافة وارد (+ رصيد)</span>
             </label>
-            <label class="type-selector-btn" :class="{'type-remove-active': adjustmentType === 'remove'}">
+
+            <label
+              class="flex items-center justify-center gap-2 h-9 rounded-md border text-xs font-bold transition-all cursor-pointer select-none"
+              :class="adjustmentType === 'remove' ? 'bg-rose-50 border-rose-300 text-rose-700 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'"
+            >
               <input type="radio" v-model="adjustmentType" value="remove" class="sr-only">
-              <i class="fas fa-minus-circle"></i>
-              <span>خصم / سحب</span>
+              <i class="fas fa-minus text-[10px]"></i>
+              <span>خصم / عجز (- سحب)</span>
             </label>
           </div>
         </div>
 
         <!-- Quantity Field -->
-        <div class="space-y-2">
-          <label for="quantity" class="modal-label">الكمية المراد تعديلها</label>
-          <div class="relative group">
+        <div class="space-y-1.5">
+          <label for="quantity" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">الكمية المراد تعديلها</label>
+          <div class="relative">
             <input 
               type="number" 
               id="quantity" 
               v-model.number="form.quantity" 
-              class="w-full h-14 rounded-2xl border-slate-100 bg-slate-50 text-3xl font-black text-center text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all outline-none" 
+              class="filter-input font-mono text-center text-sm font-bold pl-14"
               min="0"
               step="0.01"
               required
               @input="calculateNewQuantity"
             >
-            <span class="absolute left-5 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-300 uppercase tracking-widest">{{ (product?.unit) || 'قطعة' }}</span>
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono text-slate-400 uppercase">
+              {{ (product?.unit) || 'قطعة' }}
+            </span>
           </div>
-          <p v-if="errors.quantity" class="text-[10px] text-rose-500 font-bold px-1 animate-fadeIn">{{ errors.quantity }}</p>
+          <p v-if="errors.quantity" class="text-[10px] text-rose-600 font-bold px-1">{{ errors.quantity }}</p>
         </div>
 
-        <!-- New Quantity Preview (Result) -->
-        <div class="p-5 rounded-2xl border-2 border-dashed border-slate-100 bg-slate-50/50 flex items-center justify-between transition-all">
+        <!-- New Quantity Preview (Result Card) -->
+        <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex items-center justify-between">
           <div>
-            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">الرصيد النهائي المتوقع</p>
-            <p class="text-sm font-bold text-slate-500 mt-1 italic">بعد تنفيذ العملية</p>
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">الرصيد النهائي المتوقع</p>
+            <p class="text-xs text-slate-500 font-medium mt-0.5">بعد تنفيذ حركة التسوية</p>
           </div>
-          <div class="text-left">
-            <span :class="[adjustmentType === 'add' ? 'text-emerald-600' : 'text-rose-600']" class="text-3xl font-black font-mono tracking-tighter">
-              {{ newQuantity }}
-            </span>
+          <div class="text-left font-mono font-bold text-2xl tracking-tight" :class="adjustmentType === 'add' ? 'text-emerald-600' : 'text-rose-600'">
+            {{ newQuantity }}
           </div>
         </div>
 
         <!-- Reason Selection -->
-        <div class="space-y-2">
-          <label for="reason" class="modal-label">سبب التسوية <span class="text-rose-500">*</span></label>
-          <select id="reason" v-model="form.reason" class="form-select-modern font-black text-sm cursor-pointer" required>
+        <div class="space-y-1.5">
+          <label for="reason" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
+            سبب التسوية <span class="text-rose-500">*</span>
+          </label>
+          <select id="reason" v-model="form.reason" class="filter-input appearance-none cursor-pointer" required>
             <option value="">-- اختر السبب --</option>
-            <option value="stock_take">جرد مخزون (مطابقة)</option>
+            <option value="stock_take">جرد مخزون (مطابقة دورية)</option>
             <option value="damaged">صنف تالف / غير صالح</option>
             <option value="expired">منتهي الصلاحية</option>
-            <option value="theft">عجز / فقدان</option>
+            <option value="theft">عجز / فقدان غير مبرر</option>
             <option value="other">أخرى (مذكور بالملاحظات)</option>
           </select>
         </div>
 
         <!-- Notes Field -->
-        <div class="space-y-2 pt-2">
-          <label for="notes" class="modal-label">ملاحظات توضيحية إضافية</label>
+        <div class="space-y-1.5">
+          <label for="notes" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">ملاحظات إضافية</label>
           <textarea 
             id="notes" 
             v-model="form.notes" 
             rows="2" 
-            class="w-full rounded-2xl border border-slate-200 p-4 text-xs font-bold bg-slate-50 focus:bg-white transition-all outline-none"
-            placeholder="اكتب تفاصيل إضافية للمرجعية الإدارية..."
+            class="w-full rounded-md border border-slate-200 p-2.5 text-xs font-medium text-slate-700 placeholder:text-slate-300 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all custom-scroll"
+            placeholder="اكتب تفاصيل إضافية للمرجعية الإدارية والمحاسبية..."
           ></textarea>
         </div>
       </form>
 
       <!-- Modal Footer -->
-      <div class="px-8 py-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 shrink-0">
-        <button type="button" @click="$emit('close')" class="px-6 py-3 rounded-xl border-2 border-slate-100 font-black text-slate-400 hover:bg-white transition-all text-xs uppercase tracking-widest">
+      <div class="px-6 py-3.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0">
+        <button
+          type="button"
+          @click="$emit('close')"
+          class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 active:scale-95 transition-all shadow-sm"
+        >
           إلغاء
         </button>
-        <button @click="handleSubmit" class="px-10 py-3 bg-blue-600 text-white rounded-xl font-black text-xs shadow-xl shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-3" :disabled="isSubmitting">
-          <BaseSpinner v-if="isSubmitting" :size="16" color="#ffffff" />
+        <button
+          type="button"
+          @click="handleSubmit"
+          class="h-9 px-5 bg-slate-900 text-white rounded-md text-xs font-bold shadow-sm hover:bg-black active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+          :disabled="isSubmitting"
+        >
+          <BaseSpinner v-if="isSubmitting" :size="14" color="#ffffff" />
+          <i v-else class="fas fa-check text-[10px]"></i>
           <span>تأكيد وتسوية المخزون</span>
         </button>
       </div>
+
     </div>
   </div>
 </template>
@@ -231,22 +268,25 @@ watch(() => props.product, (p) => { if (p) form.value.product_id = p.product_id 
 </script>
 
 <style scoped>
+.filter-input {
+  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
+}
 
-/* Modern UI Components */
-.modal-label { @apply block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1; }
-.form-select-modern { @apply w-full h-11 bg-white border border-slate-200 rounded-2xl px-4 outline-none transition-all duration-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-50 shadow-sm appearance-none; }
-
-/* Custom Segmented Buttons */
-.type-selector-btn { @apply flex items-center justify-center gap-2 p-4 rounded-2xl bg-slate-50 border-2 border-transparent text-xs font-black text-slate-400 cursor-pointer transition-all; }
-.type-add-active { @apply bg-emerald-50 border-emerald-500 text-emerald-600 shadow-lg shadow-emerald-50; }
-.type-remove-active { @apply bg-rose-50 border-rose-500 text-rose-600 shadow-lg shadow-rose-50; }
-
-/* Modal removed - z-index now inline */
-
-/* Scrollbar */
-.custom-scroll::-webkit-scrollbar { width: 5px; }
+.custom-scroll::-webkit-scrollbar { width: 4px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
 
-.animate-fadeIn { animation: fadeIn 0.4s ease-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-modalIn {
+  animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
 </style>

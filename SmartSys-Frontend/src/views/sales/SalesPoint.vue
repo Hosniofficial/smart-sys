@@ -184,7 +184,11 @@
                         class="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition-all flex items-center justify-center active:scale-90 mx-auto disabled:opacity-50"
                         title="إضافة للسلة"
                       >
-                        <BaseSpinner v-if="loadingProductId === product.id" size="12" inline />
+                        <div v-if="loadingProductId === product.id" class="flex items-center gap-1">
+                          <div class="w-1 h-1 rounded-full bg-white animate-pulse"></div>
+                          <div class="w-1 h-1 rounded-full bg-white animate-pulse" style="animation-delay: 0.2s"></div>
+                          <div class="w-1 h-1 rounded-full bg-white animate-pulse" style="animation-delay: 0.4s"></div>
+                        </div>
                         <i v-else class="fas fa-plus text-[10px]"></i>
                       </button>
                     </td>
@@ -600,31 +604,29 @@
 
                 <!-- Action Execute Buttons -->
                 <div class="space-y-2 pt-1">
-                  <button 
-                    @click="saveAndPrint" 
-                    :disabled="isSaving || isPrinting" 
-                    class="h-10 w-full bg-blue-600 text-white rounded-md text-xs font-bold shadow-sm hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    <BaseSpinner v-if="isPrinting" size="14" color="#fff" />
-                    <template v-else>
-                      <i class="fas fa-print text-[11px]"></i>
-                      <span>حفظ وطباعة الفاتورة</span>
-                      <span class="text-[10px] opacity-70 font-mono">(F2)</span>
-                    </template>
-                  </button>
+                  <LoadingButton
+                    text="حفظ وطباعة الفاتورة"
+                    :isLoading="isPrinting"
+                    loadingText="جاري الطباعة..."
+                    icon="fas fa-print"
+                    variant="primary"
+                    loaderType="dots"
+                    @click="saveAndPrint"
+                    class="h-10 w-full rounded-md text-xs font-bold shadow-sm hover:bg-blue-700"
+                  />
 
                   <button 
-                    @click="saveSale()" 
-                    :disabled="isSaving || isPrinting" 
-                    class="h-9 w-full bg-slate-900 text-white rounded-md text-xs font-bold shadow-sm hover:bg-black active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    <BaseSpinner v-if="isSaving" size="14" color="#fff" />
-                    <template v-else>
-                      <i class="fas fa-save text-[11px]"></i>
-                      <span>{{ requireApproval ? 'حفظ (طلب موافقة)' : 'حفظ الفاتورة فقط' }}</span>
-                      <span class="text-[10px] opacity-70 font-mono">(F3)</span>
-                    </template>
-                  </button>
+                    <LoadingButton
+                      text="حفظ الفاتورة"
+                      :isLoading="isSaving"
+                      loadingText="جاري الحفظ..."
+                      icon="fas fa-save"
+                      variant="primary"
+                      loaderType="dots"
+                      @click="saveSale()"
+                      :disabled="isPrinting"
+                      class="h-9 w-full rounded-md text-xs font-bold shadow-sm"
+                    />
                 </div>
               </div>
             </div>
@@ -692,14 +694,15 @@
         <button @click="showOpenDialog = false" class="px-6 h-9 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">
           إلغاء
         </button>
-        <button 
-          @click="confirmOpenSession" 
-          :disabled="openSubmitting" 
-          class="px-6 h-9 rounded-md bg-blue-600 text-white text-xs font-bold shadow-sm hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          <BaseSpinner v-if="openSubmitting" size="14" color="#fff" />
-          <span>تأكيد فتح الوردية</span>
-        </button>
+        <LoadingButton
+          text="تأكيد فتح الوردية"
+          :isLoading="openSubmitting"
+          loadingText="جاري التأكيد..."
+          variant="primary"
+          loaderType="dots"
+          @click="confirmOpenSession"
+          class="px-6 h-9"
+        />
       </template>
     </BaseModal>
 
@@ -758,14 +761,15 @@
         <button @click="showCloseDialog = false" class="px-6 h-9 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">
           إلغاء
         </button>
-        <button 
-          @click="confirmCloseSession" 
-          :disabled="closeSubmitting" 
-          class="px-6 h-9 rounded-md bg-rose-600 text-white text-xs font-bold shadow-sm hover:bg-rose-700 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          <BaseSpinner v-if="closeSubmitting" size="14" color="#fff" />
-          <span>تأكيد إنهاء الوردية</span>
-        </button>
+        <LoadingButton
+          text="تأكيد إنهاء الوردية"
+          :isLoading="closeSubmitting"
+          loadingText="جاري الإنهاء..."
+          variant="danger"
+          loaderType="dots"
+          @click="confirmCloseSession"
+          class="px-6 h-9"
+        />
       </template>
     </BaseModal>
 
@@ -898,7 +902,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import BusyIndicator from '@/components/ui/BusyIndicator.vue';
 import getLocalDateISO from '@/utils/date';
@@ -1537,7 +1541,7 @@ const saveSale = async (options = {}) => {
       try {
         const pm = Number(selectedPaymentMethod.value);
         const method = (paymentMethods.value || []).find(m => Number(m.id) === pm);
-        if (method?.kind === 'cash' && (parseFloat(actualPaidAmount.value) || 0) > 0) {
+        if (sessionsEnabled.value && method?.kind === 'cash' && (parseFloat(actualPaidAmount.value) || 0) > 0) {
           const ok = await ensureOpenSession(wid, { autoOpen: false, opening_cash_amount: 0, prompt: false, session_type: 'manual' });
           if (!ok) { openingAmount.value = ''; showOpenDialog.value = true; showToast('لا توجد جلسة كاشير مفتوحة. يرجى فتح جلسة أولاً.', 'warning'); return null; }
         }

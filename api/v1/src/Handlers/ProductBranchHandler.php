@@ -113,8 +113,9 @@ class ProductBranchHandler extends BaseHandler
     }
 
     /**
-     * Activate a product in a specific branch
-     * Moves from: DRAFT → ACTIVE_IN_BRANCH
+     * Explicitly activate a product in a branch and create/update its GL mapping.
+     * Routine stock operations and opening-balance posting must never call this implicitly.
+     * Moves from: DRAFT → ACTIVE_IN_BRANCH.
      */
     public function activateProductInBranch(Request $request, Response $response): Response
     {
@@ -158,7 +159,7 @@ class ProductBranchHandler extends BaseHandler
                 return $this->errorResponse($response, 'الفرع غير موجود.', 404);
             }
 
-            $inventoryGLId = !empty($branch['account_id']) ? (int) $branch['account_id'] : $this->getGLAccountByCode((int) $tenantId, '1301');
+            $inventoryGLId = $this->accounting->resolveInventoryAccountForBranch((int) $tenantId, $branchId);
             $purchaseGLId = $this->getGLAccountByCode((int) $tenantId, '5001');
             $cogsGLId = $this->getGLAccountByCode((int) $tenantId, '5103');
 

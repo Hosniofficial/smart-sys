@@ -166,6 +166,48 @@ class AccountingService
         }
     }
 
+    /**
+     * Resolve the inventory GL account using the approved priority:
+     * branch.account_id, branch-specific tenant setting, tenant inventory setting, then account 1301.
+     */
+    public function resolveInventoryAccountForBranch(int $tenantId, ?int $branchId): ?int
+    {
+        if ($branchId !== null && $branchId > 0) {
+            try {
+                $stmt = $this->db->prepare(
+                    'SELECT account_id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1'
+                );
+                $stmt->execute([$branchId, $tenantId]);
+                $branchAccountId = (int) $stmt->fetchColumn();
+                if ($branchAccountId > 0) {
+                    return $branchAccountId;
+                }
+            } catch (\Throwable $e) {
+                $this->logger->warning('Branch inventory account lookup failed; using configured fallbacks.', [
+                    'tenant_id' => $tenantId,
+                    'branch_id' => $branchId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            foreach (["branch.{$branchId}.inventory_account_id", "inventory.branch.{$branchId}.account_id"] as $key) {
+                $configuredId = $this->settingsRepo->getInt($tenantId, $key, 0);
+                if ($configuredId > 0) {
+                    return $configuredId;
+                }
+            }
+        }
+
+        foreach (['inventory_account_id', 'accounting.inventory_account_id'] as $key) {
+            $configuredId = $this->settingsRepo->getInt($tenantId, $key, 0);
+            if ($configuredId > 0) {
+                return $configuredId;
+            }
+        }
+
+        return $this->getAccountByCode($tenantId, '1301');
+    }
+
     // ─── getAccountIdByCode ───────────────────────────────────────────────────
     private function getAccountIdByCode(int $tenantId, string $code): ?int
     {
@@ -233,7 +275,10 @@ class AccountingService
         }
 
         $cogsAccountId      = $this->getAccountIdFallback($tenantId, ['5103']);
-        $inventoryAccountId = $this->getAccountIdFallback($tenantId, ['1301']);
+        $inventoryAccountId = $this->resolveInventoryAccountForBranch(
+            $tenantId,
+            (int) ($sale['branch_id'] ?? 0) ?: null
+        );
         if (!$cogsAccountId || !$inventoryAccountId) {
             return null;
         }
@@ -284,8 +329,7 @@ class AccountingService
             return null;
         };
 
-        $inventoryLookup = $getSettingWithKey($tenantId, ['inventory_account_id', 'accounting.inventory_account_id']);
-        $inventoryAccountId = $inventoryLookup ? (int) $inventoryLookup['id'] : $this->getAccountIdFallback($tenantId, ['1301']);
+        $inventoryAccountId = $this->resolveInventoryAccountForBranch($tenantId, null);
 
         $equityLookup = $getSettingWithKey($tenantId, ['opening_balance_equity_account_id', 'accounting.opening_balance_equity_account_id', 'capital_account_id']);
         $equityAccountId = $equityLookup ? (int) $equityLookup['id'] : $this->getAccountIdFallback($tenantId, ['3001']);
@@ -301,27 +345,12 @@ class AccountingService
         $purchaseCostCenterId = $purchaseData['cost_center_id'] ?? null;
         $costCenterId         = $this->resolveCostCenterForService($tenantId, $userId, $purchaseCostCenterId);
 
-        $resolveInventoryAccountId = function (int $tenantId, ?int $branchId) use ($getSettingWithKey, $inventoryAccountId, $purchaseId): int {
-            if ($branchId) {
-                try {
-                    $st = $this->db->prepare("SELECT account_id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1");
-                    $st->execute([$branchId, $tenantId]);
-                    $aid = $st->fetchColumn();
-                    if ($aid) {
-                        return (int) $aid;
-                    }
-                } catch (\Throwable $e) {
-                }
-
-                $lk = $getSettingWithKey($tenantId, [
-                    "branch.$branchId.inventory_account_id",
-                    "inventory.branch.$branchId.account_id",
-                ]);
-                if ($lk && !empty($lk['id'])) {
-                    return (int) $lk['id'];
-                }
+        $resolveInventoryAccountId = function (int $tenantId, ?int $branchId): int {
+            $accountId = $this->resolveInventoryAccountForBranch($tenantId, $branchId);
+            if (!$accountId) {
+                throw new \RuntimeException('لم يتم تحديد حساب المخزون المناسب للفرع.');
             }
-            return (int) $inventoryAccountId;
+            return $accountId;
         };
 
         $lines = [];
@@ -1061,17 +1090,7 @@ class AccountingService
                 continue;
             }
 
-            // حساب المخزون الخاص بالفرع أو الافتراضي
-            $invAccountId = null;
-            try {
-                $st = $this->db->prepare("SELECT account_id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1");
-                $st->execute([$bid, $tenantId]);
-                $invAccountId = $st->fetchColumn() ?: null;
-            } catch (\Throwable $e) {
-            }
-            if (!$invAccountId) {
-                $invAccountId = $this->getAccountIdFallback($tenantId, ['1301']);
-            }
+            $invAccountId = $this->resolveInventoryAccountForBranch($tenantId, (int) $bid);
             if (!$invAccountId) {
                 $skipped[] = $bid;
                 continue;
@@ -1181,30 +1200,18 @@ class AccountingService
         $vatInputAccountId        = $accounts['2201'] ?? null;
         $vatOutputAccountId       = $accounts['2202'] ?? null;
 
-        $cogsAccountId      = $this->resolveAccountId($tenantId, 'cogs_account_id', '5103');
-        $inventoryAccountId = $this->resolveAccountId($tenantId, 'inventory_account_id', '1301');
+        $cogsAccountId = $this->resolveAccountId($tenantId, 'cogs_account_id', '5103');
 
-        // حساب مخزون الفرع
         $stmtBranch = $this->db->prepare(
             "SELECT branch_id FROM returns WHERE id = ? AND tenant_id = ?"
         );
         $stmtBranch->execute([$returnId, $tenantId]);
-        $returnBranchId = $stmtBranch->fetchColumn();
+        $returnBranchId = (int) ($stmtBranch->fetchColumn() ?: 0) ?: null;
 
-        $branchInventoryAccountId = null;
-        if ($returnBranchId) {
-            // branch.account_id أولاً
-            $stmtBrAcc = $this->db->prepare(
-                "SELECT account_id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1"
-            );
-            $stmtBrAcc->execute([(int) $returnBranchId, $tenantId]);
-            $brAcc = $stmtBrAcc->fetchColumn();
-            if ($brAcc) {
-                $branchInventoryAccountId = (int) $brAcc;
-            } else {
-                $branchInventoryAccountId = $this->resolveAccountId($tenantId, 'inventory_account_id', '1301');
-            }
-        }
+        $inventoryAccountId = $this->resolveInventoryAccountForBranch($tenantId, null);
+        $branchInventoryAccountId = $returnBranchId
+            ? $this->resolveInventoryAccountForBranch($tenantId, $returnBranchId)
+            : $inventoryAccountId;
 
         // حساب الطرف (عميل / مورد)
         $customerAccountIdToUse = $genericCustomerAccountId;
@@ -1227,11 +1234,19 @@ class AccountingService
         }
 
         // ── validation ────────────────────────────────────────────────────────
+        // المرتجع النقدي الكامل بدون عميل لا يمثل ذمة مدينة؛ لذلك لا يحتاج
+        // حساب العملاء، بينما المرتجع الآجل/الجزئي يحتاجه لتسجيل الرصيد الفعلي.
+        $grandTotalAmount = round($totalAmount + $taxAmount, 2);
+        $isFullyRefunded  = $paidAmount >= ($grandTotalAmount - 0.01);
+
         if ($returnType === 'sale') {
             if (!$salesReturnAccountId) {
                 throw new \Exception('حساب مرتجع المبيعات (4002) غير معرف.');
             }
-            if (!$customerAccountIdToUse) {
+            if (!$partyId && !$isFullyRefunded) {
+                throw new \Exception('يجب تحديد عميل للمرتجع الآجل أو غير المسدد بالكامل.');
+            }
+            if ($partyId && !$customerAccountIdToUse) {
                 throw new \Exception('حساب العملاء (1101) غير معرف ولا يوجد حساب محدد للعميل.');
             }
         } else {
@@ -1243,9 +1258,8 @@ class AccountingService
             }
         }
 
-        $description      = 'قيد مرتجع ' . ($returnType === 'sale' ? 'مبيعات' : 'مشتريات') . ' رقم ' . $returnNumber;
-        $lines            = [];
-        $grandTotalAmount = round($totalAmount + $taxAmount, 2);
+        $description = 'قيد مرتجع ' . ($returnType === 'sale' ? 'مبيعات' : 'مشتريات') . ' رقم ' . $returnNumber;
+        $lines       = [];
 
         // ── حساب المبلغ المتبقي (AR/AP) ───────────────────────────────────────
         if ($originalInvoiceOutstanding !== null) {
@@ -1311,20 +1325,23 @@ class AccountingService
                 ];
             }
 
-            // Cr. ذمم العميل (إشعار دائن)
-            $lines[] = [
-                'account_id'  => $customerAccountIdToUse,
-                'debit'       => 0,
-                'credit'      => $grandTotalAmount,
-                'description' => 'إشعار دائن مرتجع',
-            ];
-            if ($paidAmount > 0) {
+            // تُستخدم ذمم العميل فقط عند وجود عميل أو وجود مبلغ متبقٍ فعلي.
+            // في المرتجع النقدي الكامل بدون عميل يكون المقابل هو السيولة مباشرة.
+            if ($customerAccountIdToUse && ($partyId || !$isFullyRefunded)) {
                 $lines[] = [
                     'account_id'  => $customerAccountIdToUse,
-                    'debit'       => $paidAmount,
-                    'credit'      => 0,
-                    'description' => 'صرف نقدي للعميل',
+                    'debit'       => 0,
+                    'credit'      => $grandTotalAmount,
+                    'description' => 'إشعار دائن مرتجع',
                 ];
+                if ($paidAmount > 0) {
+                    $lines[] = [
+                        'account_id'  => $customerAccountIdToUse,
+                        'debit'       => $paidAmount,
+                        'credit'      => 0,
+                        'description' => 'صرف نقدي للعميل',
+                    ];
+                }
             }
 
             // Dr. مخزون / Cr. تكلفة البضاعة المباعة (WAC reversal)
@@ -1417,7 +1434,7 @@ class AccountingService
             // ── مرتجع مشتريات ─────────────────────────────────────────────────
             $finalInventoryAccountId = $branchInventoryAccountId ?? $inventoryAccountId;
             if (!$finalInventoryAccountId) {
-                throw new \Exception('حساب المخزون (1301) غير معرف.');
+                throw new \Exception('لم يتم تحديد حساب المخزون المناسب للفرع أو المستأجر.');
             }
 
             // Dr. ذمم المورد (تخفيض)
@@ -1479,20 +1496,33 @@ class AccountingService
             throw new \Exception('فشل في إنشاء قيد المرتجع في السجل المحاسبي.');
         }
 
-        // ربط inventory_transactions بالقيد
-        try {
-            $this->db->prepare(
+        // ربط inventory_transactions بالقيد. أي فشل أو عدم تطابق يوقف المعاملة
+        // الخارجية حتى لا يبقى المرتجع والقيد في حالة نصف مكتملة.
+        $movementCountStmt = $this->db->prepare(
+            "SELECT COUNT(*) AS total_count,
+                    SUM(CASE WHEN journal_entry_id IS NULL OR journal_entry_id = 0 THEN 1 ELSE 0 END) AS pending_count
+             FROM inventory_transactions
+             WHERE tenant_id = ? AND reference_type = 'return' AND reference_id = ?"
+        );
+        $movementCountStmt->execute([$tenantId, $returnId]);
+        $movementCounts = $movementCountStmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $movementCount  = (int) ($movementCounts['total_count'] ?? 0);
+        $pendingCount   = (int) ($movementCounts['pending_count'] ?? 0);
+
+        if ($movementCount <= 0) {
+            throw new \Exception('لا توجد حركة مخزون مرتبطة بالمرتجع لربطها بالقيد.');
+        }
+
+        if ($pendingCount > 0) {
+            $linkStmt = $this->db->prepare(
                 "UPDATE inventory_transactions SET journal_entry_id = ?
                  WHERE tenant_id = ? AND reference_type = 'return' AND reference_id = ?
                    AND (journal_entry_id IS NULL OR journal_entry_id = 0)"
-            )->execute([$journalEntryId, $tenantId, $returnId]);
-        } catch (\Throwable $e) {
-            $this->logger->warning('postReturnJournalEntry: failed to link inventory_transactions', [
-                'tenant_id'        => $tenantId,
-                'return_id'        => $returnId,
-                'journal_entry_id' => $journalEntryId,
-                'error'            => $e->getMessage(),
-            ]);
+            );
+            $linkStmt->execute([$journalEntryId, $tenantId, $returnId]);
+            if ($linkStmt->rowCount() !== $pendingCount) {
+                throw new \Exception('فشل ربط جميع حركات مخزون المرتجع بالقيد المحاسبي.');
+            }
         }
 
         return $journalEntryId;
@@ -2039,18 +2069,10 @@ class AccountingService
         }
         if ($cogsAmount > 0.0) {
             $cogsAccountId      = $this->resolveAccountId($tenantId, 'cogs_account_id', '5103');
-            $inventoryAccountId = null;
-            if ($branchId > 0) {
-                $stmtBranch = $this->db->prepare("SELECT account_id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1");
-                $stmtBranch->execute([$branchId, $tenantId]);
-                $branchAccId = $stmtBranch->fetchColumn();
-                if ($branchAccId) {
-                    $inventoryAccountId = (int) $branchAccId;
-                }
-            }
-            if (!$inventoryAccountId) {
-                $inventoryAccountId = $this->resolveAccountId($tenantId, 'inventory_account_id', '1301');
-            }
+            $inventoryAccountId = $this->resolveInventoryAccountForBranch(
+                $tenantId,
+                $branchId > 0 ? $branchId : null
+            );
             if ($cogsAccountId && $inventoryAccountId) {
                 $lines[] = ['account_id' => $cogsAccountId,      'debit' => $cogsAmount, 'credit' => 0,           'description' => "تكلفة البضاعة المباعة لفاتورة #{$saleId}"];
                 $lines[] = ['account_id' => $inventoryAccountId, 'debit' => 0,           'credit' => $cogsAmount, 'description' => "خفض المخزون لفاتورة #{$saleId}"];
@@ -2074,23 +2096,29 @@ class AccountingService
             }
         }
 
-        // سطر 5+6: ذمم العملاء
-        if ($grossAmount > 0) {
+        // ذمم العملاء: لا تُنشأ في البيع النقدي الكامل بدون عميل.
+        // البيع الجزئي/الآجل يتطلب عميلاً فعلياً حتى لا نسجل ذمة مجهولة.
+        $isFullyPaid = $paidAmount >= $grossAmount - 0.01;
+        if (!$customerId && !$isFullyPaid) {
+            throw new \Exception('يجب تحديد عميل للبيع الآجل أو البيع غير المسدد بالكامل.');
+        }
+
+        if ($customerId && $grossAmount > 0) {
             $arAccountId = $this->resolveAccountId($tenantId, 'ar_account', '1101');
             if (!$arAccountId) {
                 throw new \Exception('حساب ذمم العملاء غير معرّف. يرجى التحقق من إعدادات الحسابات (ar_account).');
             }
-            if ($customerId && !$customerAccountId) {
+            if (!$customerAccountId) {
                 $custStmt = $this->db->prepare("SELECT account_id FROM customers WHERE id = ? AND tenant_id = ?");
                 $custStmt->execute([$customerId, $tenantId]);
                 $fetched = $custStmt->fetchColumn();
                 if ($fetched) {
                     $arAccountId = (int) $fetched;
                 }
-            } elseif ($customerAccountId) {
+            } else {
                 $arAccountId = (int) $customerAccountId;
             }
-            $lines[] = ['account_id' => $arAccountId, 'debit' => $grossAmount, 'credit' => 0,           'description' => "دين على العميل لفاتورة رقم #{$saleId}"];
+            $lines[] = ['account_id' => $arAccountId, 'debit' => $grossAmount, 'credit' => 0, 'description' => "دين على العميل لفاتورة رقم #{$saleId}"];
             if ($paidAmount > 0) {
                 $lines[] = ['account_id' => $arAccountId, 'debit' => 0, 'credit' => $paidAmount, 'description' => "تسوية دفعة أولى من العميل لفاتورة رقم #{$saleId}"];
             }
@@ -2111,6 +2139,31 @@ class AccountingService
 
         if (!$journalEntryId) {
             throw new \Exception('فشل إنشاء القيد المحاسبي عبر الخدمة المركزية.');
+        }
+
+        // Link all stock movements for this sale to the posted journal entry.
+        // Any database failure propagates to SaleCreationService's transaction,
+        // so the sale cannot commit in a partially linked state.
+        $pendingMovementStmt = $this->db->prepare(
+            "SELECT COUNT(*)
+             FROM inventory_transactions
+             WHERE tenant_id = ? AND reference_type = 'sale' AND reference_id = ?
+               AND (journal_entry_id IS NULL OR journal_entry_id = 0)"
+        );
+        $pendingMovementStmt->execute([$tenantId, $saleId]);
+        $pendingMovements = (int) $pendingMovementStmt->fetchColumn();
+
+        if ($pendingMovements > 0) {
+            $linkStmt = $this->db->prepare(
+                "UPDATE inventory_transactions
+                 SET journal_entry_id = ?
+                 WHERE tenant_id = ? AND reference_type = 'sale' AND reference_id = ?
+                   AND (journal_entry_id IS NULL OR journal_entry_id = 0)"
+            );
+            $linkStmt->execute([$journalEntryId, $tenantId, $saleId]);
+            if ($linkStmt->rowCount() !== $pendingMovements) {
+                throw new \RuntimeException('تعذر ربط حركات المخزون بالقيد المحاسبي للبيع.');
+            }
         }
 
         return $journalEntryId;

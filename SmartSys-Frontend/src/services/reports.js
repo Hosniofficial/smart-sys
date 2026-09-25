@@ -1,5 +1,7 @@
 import apiClient from '../config/axios'
 
+const REPORT_TIMEOUT = 30000
+
 export const reportsService = {
   // تحليلات المبيعات (مع branch_id إجباري)
   async getSalesAnalytics(startDate, endDate, branchId, sessionId = null) {
@@ -38,12 +40,7 @@ export const reportsService = {
     return await apiClient.get('/audit/logs', { params: cleanParams })
   },
 
-  // تقرير تغطية الحسابات بالفروع
-  async getbranchsAccountCoverage() {
-    return await apiClient.get('/branches/reports/account-coverage')
-  },
-
-  // تقرير الأرباح والخسائر (مع branch_id إجباري)
+  // تقرير الأرباح والخسائر (مع branch_id اختياري)
   async getProfitLossReport(startDate, endDate, branchId, mode = 'cogs', expenseSource = 'vouchers') {
     const params = {
       start_date: startDate,
@@ -54,23 +51,23 @@ export const reportsService = {
     if (branchId !== undefined && branchId !== null && branchId !== '') {
       params.branch_id = branchId
     }
-    return await apiClient.get('/reports/profit-loss', { params })
+    return await apiClient.get('/reports/profit-loss', { params, timeout: REPORT_TIMEOUT })
   },
 
-  // حركات المخزون (مع branch_id إجباري)
+  // حركات المخزون (مع branch_id اختياري)
   async getInventoryMovements(startDate, endDate, productId, branchId, type) {
     const params = {
       start_date: startDate,
       end_date: endDate,
       product_id: productId
     }
-    if (branchId !== undefined && branchId !== null && branchId !== '') {
+    if (branchId !== undefined && branchId !== null && branchId !== '' && branchId !== 'all') {
       params.branch_id = branchId
     }
     if (type && type !== 'all') {
       params.type = type
     }
-    return await apiClient.get('/branches/reports/inventory/movements', { params })
+    return await apiClient.get('/branches/reports/inventory/movements', { params, timeout: REPORT_TIMEOUT })
   },
 
   async exportInventoryMovements(startDate, endDate, productId, branchId, type) {
@@ -79,7 +76,7 @@ export const reportsService = {
       end_date: endDate,
       product_id: productId
     }
-    if (branchId !== undefined && branchId !== null && branchId !== '') {
+    if (branchId !== undefined && branchId !== null && branchId !== '' && branchId !== 'all') {
       params.branch_id = branchId
     }
     if (type && type !== 'all') {
@@ -87,26 +84,23 @@ export const reportsService = {
     }
     return await apiClient.get('/branches/reports/inventory/movements/export', {
       params,
-      responseType: 'blob'
+      responseType: 'blob',
+      timeout: REPORT_TIMEOUT
     })
   },
 
-  // قيمة المخزون (مع branch_id إجباري)
+  // قيمة المخزون (مع branch_id اختياري)
   async getInventoryValue(branchId, params = {}) {
     const queryParams = { ...params }
     if (branchId !== undefined && branchId !== null && branchId !== '') {
       queryParams.branch_id = branchId
     }
-    return await apiClient.get('/branches/reports/inventory-value', { params: queryParams })
+    return await apiClient.get('/branches/reports/inventory-value', { params: queryParams, timeout: REPORT_TIMEOUT })
   },
 
-  // قيمة المخزون حسب الفرع (اختياري إذا كان الفرع معروف)
-  async getInventoryValueByBranch(branchId, params = {}) {
-    const queryParams = { ...params }
-    if (branchId !== undefined && branchId !== null && branchId !== '') {
-      queryParams.branch_id = branchId
-    }
-    return await apiClient.get('/branches/reports/inventory-value/by-branch', { params: queryParams })
+  // قيمة المخزون حسب الفرع
+  async getInventoryValueByBranch(params = {}) {
+    return await apiClient.get('/branches/reports/inventory-value/by-branch', { params, timeout: REPORT_TIMEOUT })
   },
 
   // ملخص المبيعات اليومي (مع branch_id إجباري)
@@ -144,7 +138,7 @@ export const reportsService = {
     if (branchId !== undefined && branchId !== null && branchId !== '') {
       params.branch_id = branchId
     }
-    return await apiClient.get('/reports/accounting/trial-balance', { params })
+    return await apiClient.get('/reports/accounting/trial-balance', { params, timeout: REPORT_TIMEOUT })
   },
 
   async getLedger(accountId, startDate, endDate, branchId) {
@@ -154,7 +148,7 @@ export const reportsService = {
     if (branchId !== undefined && branchId !== null && branchId !== '') {
       params.branch_id = branchId
     }
-    return await apiClient.get(`/reports/accounting/ledger/${accountId}`, { params })
+    return await apiClient.get(`/reports/accounting/ledger/${accountId}`, { params, timeout: REPORT_TIMEOUT })
   },
 
   async getIncomeStatement(startDate, endDate, branchId) {
@@ -164,7 +158,7 @@ export const reportsService = {
     if (branchId !== undefined && branchId !== null && branchId !== '') {
       params.branch_id = branchId
     }
-    return await apiClient.get('/reports/accounting/income-statement', { params })
+    return await apiClient.get('/reports/accounting/income-statement', { params, timeout: REPORT_TIMEOUT })
   },
 
   async getBalanceSheet(asOfDate, branchId) {
@@ -173,7 +167,7 @@ export const reportsService = {
     if (branchId !== undefined && branchId !== null && branchId !== '') {
       params.branch_id = branchId
     }
-    return await apiClient.get('/reports/accounting/balance-sheet', { params })
+    return await apiClient.get('/reports/accounting/balance-sheet', { params, timeout: REPORT_TIMEOUT })
   },
 
   async getBranchAccountCoverage(branchId) {
@@ -181,7 +175,7 @@ export const reportsService = {
     if (branchId !== undefined && branchId !== null && branchId !== '') {
       params.branch_id = branchId
     }
-    return await apiClient.get('/branches/reports/account-coverage', { params })
+    return await apiClient.get('/branches/reports/account-coverage', { params, timeout: REPORT_TIMEOUT })
   },
 
   // أداء نقاط البيع (POS Performance)

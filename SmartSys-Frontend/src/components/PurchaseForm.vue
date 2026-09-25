@@ -264,10 +264,15 @@
       <button @click="$emit('close')" class="px-6 h-10 text-xs font-bold text-slate-500 hover:text-slate-700 transition-colors">
         إلغاء
       </button>
-      <button @click="handleSave" :disabled="isSaving" class="px-10 h-10 bg-indigo-600 text-white rounded-md text-xs font-bold shadow-lg shadow-indigo-900/20 hover:bg-indigo-700 transition-all flex items-center gap-2 disabled:opacity-50">
-        <BaseSpinner v-if="isSaving" size="16" color="#fff" />
-        {{ isSaving ? 'جاري الحفظ...' : (editMode ? 'تحديث الفاتورة' : 'تأكيد وحفظ الفاتورة') }}
-      </button>
+      <LoadingButton
+        :text="editMode ? 'تحديث الفاتورة' : 'تأكيد وحفظ الفاتورة'"
+        :isLoading="isSaving"
+        :loadingText="editMode ? 'جاري التحديث...' : 'جاري الحفظ...'"
+        variant="primary"
+        loaderType="dots"
+        @click="handleSave"
+        class="px-10 h-10"
+      />
     </template>
   </BaseModal>
 
@@ -283,7 +288,7 @@ import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 
 import BaseModal from '@/components/BaseModal.vue';
 
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 const props = defineProps({
 

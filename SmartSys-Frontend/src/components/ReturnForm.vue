@@ -176,11 +176,17 @@
              <div class="space-y-1.5"><label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">المبلغ المدفوع</label><input type="number" v-model.number="paidAmount" :disabled="hasOutstanding" :max="totalReturnAmount" min="0" class="filter-input-v2 h-10 font-mono text-emerald-600 font-black" /></div>
              <div class="space-y-1.5"><label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">طريقة الدفع</label><select v-model="paymentMethodId" :disabled="hasOutstanding" class="filter-input-v2 h-10 font-bold"><option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option></select></div>
            </div>
-           <button @click="submitReturn" :disabled="isSubmittingReturn || !returnItems.length" class="w-full h-12 bg-rose-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-rose-900/20 hover:bg-rose-700 transition-all flex items-center justify-center gap-3">
-             <BaseSpinner v-if="isSubmittingReturn" size="18" color="#fff" />
-             <i v-else class="fas fa-check-circle"></i>
-             تأكيد وتسجيل المرتجع
-           </button>
+           <LoadingButton
+             text="تأكيد وتسجيل المرتجع"
+             :isLoading="isSubmittingReturn"
+             loadingText="جاري التسجيل..."
+             icon="fas fa-check-circle"
+             variant="primary"
+             loaderType="dots"
+             @click="submitReturn"
+             :disabled="!returnItems.length"
+             class="w-full h-12"
+           />
         </div>
       </div>
     </div>
@@ -192,7 +198,7 @@ import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue';
 import apiClient from '@/config/axios';
 import paymentService from '@/services/payment';
 import { useToast } from '@/composables/useToast';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import LoadingButton from '@/components/ui/LoadingButton.vue'
 import { getLocalDateISO } from '@/utils/date';
 import { useReturnStore } from '@/stores/return/returnStore';
 

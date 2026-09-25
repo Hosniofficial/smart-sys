@@ -170,7 +170,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useReportsStore } from '../../stores/reports';
 import { Chart as ChartJS, Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement } from 'chart.js';
 import { Line as LineChart } from 'vue-chartjs';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { getLocalDateISO } from '@/utils/date';

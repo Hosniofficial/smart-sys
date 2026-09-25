@@ -269,13 +269,16 @@
 
           <button type="button" @click="$emit('close')" class="px-6 h-10 text-xs font-bold text-slate-500">إلغاء</button>
 
-          <button type="submit" :disabled="isSaving" class="px-10 h-10 bg-blue-600 text-white rounded-md text-xs font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-700 transition-all flex items-center gap-2">
-
-            <BaseSpinner v-if="isSaving" size="16" color="#fff" />
-
-            {{ isSaving ? 'جاري الحفظ...' : (editMode ? 'تحديث السند' : 'إصدار السند الآن') }}
-
-          </button>
+          <LoadingButton
+            :text="editMode ? 'تحديث السند' : 'إصدار السند الآن'"
+            :isLoading="isSaving"
+            :loadingText="editMode ? 'جاري التحديث...' : 'جاري الإصدار...'"
+            variant="primary"
+            loaderType="dots"
+            type="submit"
+            @click="handleSubmit"
+            class="px-10 h-10"
+          />
 
         </div>
 
@@ -290,7 +293,7 @@
 import { ref, computed, watch } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
 
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 import { useToast } from '@/composables/useToast';
 

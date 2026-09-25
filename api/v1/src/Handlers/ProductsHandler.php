@@ -342,7 +342,13 @@ class ProductsHandler extends BaseHandler
                 return $this->errorResponse($response, 'Product not found', 404);
             }
 
-            // Get branch inventory data (total across all branches)
+            // Scope inventory details to the selected branch when provided.
+            $queryParams = $request->getQueryParams();
+            $branchId = isset($queryParams['branch_id']) && $queryParams['branch_id'] !== ''
+                ? (int) $queryParams['branch_id']
+                : null;
+            $branchFilter = $branchId ? ' AND branch_id = ?' : '';
+
             $stmt = $this->db->prepare("
                 SELECT
                     product_id,
@@ -350,10 +356,14 @@ class ProductsHandler extends BaseHandler
                     MIN(minimum_quantity) as minimum_quantity,
                     SUM(quantity_cost) as quantity_cost
                 FROM branch_products
-                WHERE product_id = ? AND tenant_id = ?
+                WHERE product_id = ? AND tenant_id = ?{$branchFilter}
                 GROUP BY product_id
             ");
-            $stmt->execute([$productId, (int) $tenantId]);
+            $params = [$productId, (int) $tenantId];
+            if ($branchId) {
+                $params[] = $branchId;
+            }
+            $stmt->execute($params);
             $branchProduct = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
             // Get all units for the product
@@ -374,10 +384,6 @@ class ProductsHandler extends BaseHandler
 
             // Get GL mapping status if branchId is provided
             $glActivationStatus = null;
-            $queryParams = $request->getQueryParams();
-            $branchId = isset($queryParams['branch_id']) && $queryParams['branch_id'] !== ''
-                ? (int) $queryParams['branch_id']
-                : null;
 
             if ($branchId) {
                 $glStmt = $this->db->prepare("
@@ -526,13 +532,9 @@ class ProductsHandler extends BaseHandler
                             continue;
                         }
 
-                        $inventoryGLId = !empty($branch['account_id'])
-                            ? (int) $branch['account_id']
-                            : $this->getGLAccountByCode((int) $tenantId, '1301');
-                        $purchaseGLId  = $this->getGLAccountByCode((int) $tenantId, '5001');
-                        $cogsGLId      = $this->getGLAccountByCode((int) $tenantId, '5103');
+                        $inventoryGLId = $this->accounting->resolveInventoryAccountForBranch((int) $tenantId, $branchId);
 
-                        if (!$inventoryGLId || !$purchaseGLId || !$cogsGLId) {
+                        if (!$inventoryGLId) {
                             $this->logger->warning('Opening balance skipped — missing GL accounts for branch', [
                                 'product_id' => $productId,
                                 'branch_id'  => $branchId,

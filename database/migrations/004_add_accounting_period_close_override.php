@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../MigrationDatabase.php';
 
-
+/** Adds the narrowly scoped permission used to override accounting-period close blockers. */
 class AddAccountingPeriodCloseOverride
 {
     private PDO $pdo;
@@ -14,6 +14,7 @@ class AddAccountingPeriodCloseOverride
         $this->pdo = $pdo ?? MigrationDatabase::connect($_ENV);
     }
 
+    /** Add or refresh the permission definition; deliberately does not assign it to any role. */
     public function up(): void
     {
         $stmt = $this->pdo->prepare(
@@ -28,8 +29,14 @@ class AddAccountingPeriodCloseOverride
         ]);
     }
 
+    /**
+     * This permission is intentionally retained to preserve role links and audit semantics.
+     * Refuse to mark the migration rolled back while its schema data remains installed.
+     */
     public function down(): void
     {
-        // Keep the permission row so existing role assignments are not orphaned.
+        throw new RuntimeException(
+            'Migration 004 is intentionally irreversible; retain its ledger entry and permission row.'
+        );
     }
 }

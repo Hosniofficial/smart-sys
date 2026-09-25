@@ -62,7 +62,13 @@
           </div>
 
           <div class="flex-grow relative z-10 h-80">
-            <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-20"><BaseSpinner size="24" /></div>
+            <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-20">
+              <div class="flex items-center gap-1">
+                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></div>
+                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.2s"></div>
+                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.4s"></div>
+              </div>
+            </div>
             <BarChart v-if="inventoryItems.length" :data="valueByCategoryChart" :options="chartOptions" />
             <div v-else class="h-full flex flex-col items-center justify-center text-slate-300 gap-3">
                <i class="fas fa-chart-bar text-2xl opacity-20"></i>
@@ -192,7 +198,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useReportsStore } from '../../stores/reports';
 import { Bar as BarChart } from 'vue-chartjs';
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from 'chart.js';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import PageHeader from '@/components/PageHeader.vue';
@@ -299,7 +305,8 @@ const fetchInventoryValue = async () => {
     isLoading.value = true; error.value = null;
     try {
         const resp = await reportsStore.fetchInventoryValue({ search: searchQuery.value || undefined, category_id: selectedCategory.value !== 'all' ? selectedCategory.value : undefined, valuation: valuation.value });
-        let apiData = resp?.data ?? resp; totals.value = resp?.totals || totals.value;
+        const apiData = resp?.data?.data ?? resp?.data ?? resp;
+        totals.value = apiData?.totals || totals.value;
         if (Array.isArray(apiData)) inventoryItems.value = apiData;
         else { inventoryItems.value = apiData.items || apiData.inventory || []; categories.value = apiData.categories || categories.value || []; }
     } catch { error.value = "فشل التحميل"; } finally { isLoading.value = false; }

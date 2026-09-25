@@ -91,13 +91,15 @@
           إلغاء
         </button>
         <button 
-          @click="handleSubmit" 
-          class="px-10 py-3 bg-blue-600 text-white rounded-xl font-black text-xs shadow-xl shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-3" 
-          :disabled="isLoading"
-        >
-          <BaseSpinner v-if="isLoading" :size="16" color="#ffffff" />
-          <span>تأكيد عملية النقل</span>
-        </button>
+        <LoadingButton
+          text="تأكيد عملية النقل"
+          :isLoading="isLoading"
+          loadingText="جاري التأكيد..."
+          variant="primary"
+          loaderType="dots"
+          @click="handleSubmit"
+          class="px-10 py-3"
+        />
       </div>
     </div>
   </div>
@@ -107,7 +109,7 @@
 import { ref, onMounted, computed } from 'vue';
 import apiClient from '../config/axios';
 import { useToast } from '@/composables/useToast';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import LoadingButton from '@/components/ui/LoadingButton.vue'
 import { useBranchStore } from '@/stores/branch';
 
 // --- Props & Emits (STRICTLY PRESERVED) ---

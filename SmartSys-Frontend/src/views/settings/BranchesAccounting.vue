@@ -109,11 +109,15 @@
                   </div>
                 </td>
                 <td class="px-8 py-4 text-center">
-                  <button @click="saveOne(w)" :disabled="w._saving" class="h-8 px-5 rounded-md bg-slate-900 text-white text-[10px] font-bold uppercase shadow-sm hover:bg-black active:scale-95 transition-all flex items-center justify-center gap-2 mx-auto disabled:opacity-40">
-                    <BaseSpinner v-if="w._saving" size="12" color="#fff" />
-                    <i v-else class="fas fa-save text-[9px]"></i>
-                    تحديث
-                  </button>
+                  <LoadingButton
+                    text="تحديث"
+                    :isLoading="w._saving"
+                    loadingText="حفظ..."
+                    variant="primary"
+                    loaderType="dots"
+                    @click="saveOne(w)"
+                    class="h-8 px-5 text-[10px]"
+                  />
                 </td>
               </tr>
             </tbody>
@@ -132,11 +136,16 @@
              </div>
           </div>
           
-          <button @click="saveAll" :disabled="bulkSaving" class="relative z-10 h-12 px-10 bg-blue-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest shadow-xl shadow-blue-900/40 hover:bg-blue-500 active:scale-95 transition-all flex items-center gap-3 disabled:opacity-50">
-            <BaseSpinner v-if="bulkSaving" :size="16" color="#fff" />
-            <i v-else class="fas fa-check-double text-[10px]"></i>
-            حفظ كافة التغييرات
-          </button>
+          <LoadingButton
+            text="حفظ كافة التغييرات"
+            :isLoading="bulkSaving"
+            loadingText="جاري الحفظ..."
+            icon="fas fa-check-double"
+            variant="primary"
+            loaderType="dots"
+            @click="saveAll"
+            class="relative z-10 h-12 px-10"
+          />
         </footer>
       </div>
     </div>
@@ -149,7 +158,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth';
 import { useBranchStore } from '@/stores/branch';
 import { useAccountStore } from '@/stores/account/accountStore';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import LoadingButton from '@/components/ui/LoadingButton.vue'
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
 

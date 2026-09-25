@@ -137,12 +137,7 @@ class StockAdjustmentHandler extends BaseHandler
         // request — the adjustment either gets a full accounting trail or it
         // doesn't happen at all.
 
-        $branchStmt = $this->db->prepare(
-            "SELECT account_id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1"
-        );
-        $branchStmt->execute([$branchId, $tenantId]);
-        $inventoryAccountId  = (int) ($branchStmt->fetchColumn() ?: 0)
-            ?: $this->resolveAccountId($tenantId, 'inventory_account_id', '1301');
+        $inventoryAccountId = $this->accounting->resolveInventoryAccountForBranch($tenantId, $branchId);
         $adjustmentAccountId = $this->resolveAccountId($tenantId, 'inventory_adjustment_account_id', '5104');
 
         if (!$inventoryAccountId || !$adjustmentAccountId) {

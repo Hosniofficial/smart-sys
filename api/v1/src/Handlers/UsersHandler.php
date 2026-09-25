@@ -40,8 +40,8 @@ class UsersHandler extends BaseHandler
         }
 
         $q = $request->getQueryParams();
-        $page = $q['page'] ?? 1;
-        $limit = $q['limit'] ?? 10;
+        $page = max(1, (int) ($q['page'] ?? 1));
+        $limit = min(1000, max(1, (int) ($q['limit'] ?? 10)));
         $search = $q['search'] ?? '';
         $roleId = $q['role_id'] ?? null;
         $offset = ($page - 1) * $limit;
@@ -54,7 +54,23 @@ class UsersHandler extends BaseHandler
             'role_id' => $roleId
         ]);
 
-        $query = "SELECT u.*, GROUP_CONCAT(r.name) as roles
+        // Explicit safe fields only — never SELECT * on users table
+        $query = "SELECT
+                    u.id,
+                    u.username,
+                    u.name,
+                    u.email,
+                    u.phone,
+                    u.role_id,
+                    u.status,
+                    u.branch_id,
+                    u.is_owner,
+                    u.two_fa_enabled,
+                    u.last_login,
+                    u.email_verified_at,
+                    u.created_at,
+                    u.updated_at,
+                    GROUP_CONCAT(r.name) as roles
                   FROM users u
                   LEFT JOIN users_role ur ON u.id = ur.user_id
                   LEFT JOIN roles r ON ur.role_id = r.id
@@ -170,7 +186,22 @@ class UsersHandler extends BaseHandler
         }
 
         $stmt = $this->db->prepare("
-            SELECT u.*, GROUP_CONCAT(r.name) as roles
+            SELECT
+                u.id,
+                u.username,
+                u.name,
+                u.email,
+                u.phone,
+                u.role_id,
+                u.status,
+                u.branch_id,
+                u.is_owner,
+                u.two_fa_enabled,
+                u.last_login,
+                u.email_verified_at,
+                u.created_at,
+                u.updated_at,
+                GROUP_CONCAT(r.name) as roles
             FROM users u
             LEFT JOIN users_role ur ON u.id = ur.user_id
             LEFT JOIN roles r ON ur.role_id = r.id
@@ -185,7 +216,7 @@ class UsersHandler extends BaseHandler
         }
 
         $stmt = $this->db->prepare("
-            SELECT DISTINCT p.*
+            SELECT DISTINCT p.id, p.name, p.description, p.category
             FROM permissions p
             JOIN role_permissions rp ON p.id = rp.permission_id
             JOIN users_role ur ON rp.role_id = ur.role_id
@@ -623,7 +654,7 @@ class UsersHandler extends BaseHandler
         return $this->errorResponse($response, 'This endpoint is deprecated. Use POST /auth/login instead.', 403);
     }
 
-    public function changePassword($request, $response)
+    public function changePassword($request, $response, $args = [])
     {
         try {
             $tenantId = $this->extractTenantId($request);
@@ -631,51 +662,82 @@ class UsersHandler extends BaseHandler
                 return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
             }
 
-            $data = $this->extractAndValidateRequestData($request, [
-                'current_password',
-                'new_password'
-            ]);
+            $currentUserId = $this->extractUserId($request);
+            if (!$currentUserId) {
+                return $this->errorResponse($response, 'مطلوب معرف المستخدم.', 403);
+            }
+
+            // Admin reset: POST /users/{id}/change-password — targets a specific user
+            // Self-service: POST /users/change-password — targets the authenticated user
+            $targetId = isset($args['id']) ? (int) $args['id'] : $currentUserId;
+
+            // Fetch only the fields needed for verification — never return this to the client
+            $stmt = $this->db->prepare("SELECT id, username, password, tenant_id FROM users WHERE id = ? AND tenant_id = ? LIMIT 1");
+            $stmt->execute([$targetId, $tenantId]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$user) {
+                return $this->errorResponse($response, 'المستخدم غير موجود', 404);
+            }
+
+            $data = $this->extractAndValidateRequestData($request, ['new_password']);
 
             if (!is_array($data)) {
                 return $this->errorResponse($response, 'Invalid request data', 400);
             }
 
-            $stmt = $this->db->prepare("SELECT * FROM users WHERE id = ?");
-            $stmt->execute([$this->extractUserId($request)]);
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!password_verify($data['current_password'], $user['password'])) {
-                return $this->errorResponse($response, 'كلمة المرور الحالية غير صحيحة', 400);
+            // Self-service: require current_password verification
+            // Admin reset (different target user): skip current_password check
+            $isSelfService = ($targetId === $currentUserId);
+            if ($isSelfService) {
+                if (empty($data['current_password'])) {
+                    return $this->errorResponse($response, 'كلمة المرور الحالية مطلوبة', 400);
+                }
+                if (!password_verify($data['current_password'], $user['password'])) {
+                    return $this->errorResponse($response, 'كلمة المرور الحالية غير صحيحة', 400);
+                }
             }
 
+            $newPassword = trim($data['new_password'] ?? '');
+            if (strlen($newPassword) < 8) {
+                return $this->errorResponse($response, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل', 400);
+            }
+
+            // Tenant isolation enforced in WHERE clause
             $stmt = $this->db->prepare("
                 UPDATE users
                 SET password = ?,
                     updated_at = NOW()
-                WHERE id = ?
+                WHERE id = ? AND tenant_id = ?
             ");
-
             $stmt->execute([
-                password_hash($data['new_password'], PASSWORD_DEFAULT),
-                $this->extractUserId($request)
+                password_hash($newPassword, PASSWORD_DEFAULT),
+                $targetId,
+                $tenantId
             ]);
+
+            if ($stmt->rowCount() === 0) {
+                return $this->errorResponse($response, 'فشل تحديث كلمة المرور', 400);
+            }
 
             $this->securityLogger?->logSecurityEvent(
                 'user.password_change',
                 'info',
                 'Password changed',
                 [
-                    'changed_by_self' => true,
-                    'username' => $user['username']
+                    'target_user_id'   => $targetId,
+                    'changed_by'       => $currentUserId,
+                    'changed_by_self'  => $isSelfService,
+                    'username'         => $user['username'],
                 ],
-                $this->extractUserId($request),
-                $user['tenant_id']
+                $currentUserId,
+                $tenantId
             );
 
             return $this->successResponse($response, [
-                'status' => 'success',
+                'status'  => 'success',
                 'message' => 'تم تغيير كلمة المرور بنجاح',
-                'data' => null
+                'data'    => null
             ], 200);
         } catch (\Throwable $e) {
             $this->logger->error('فشل في تغيير كلمة المرور', ['error' => $e->getMessage()]);

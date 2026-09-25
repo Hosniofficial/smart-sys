@@ -39,7 +39,7 @@ export const useCatalogStore = defineStore('catalog', () => {
 
   // Categories (branch-specific)
   const fetchCategories = async (branchId, { force = false } = {}) => {
-    const bid = branchId == null ? '' : String(branchId);
+    const bid = branchId == null || branchId === '' ? null : String(branchId);
     if (!bid) return [];
 
     const fetchedAt = categoriesFetchedAtByBranch.value[bid] || 0;
@@ -57,6 +57,8 @@ export const useCatalogStore = defineStore('catalog', () => {
         categoriesByBranch.value = { ...categoriesByBranch.value, [bid]: list };
         categoriesFetchedAtByBranch.value = { ...categoriesFetchedAtByBranch.value, [bid]: nowMs() };
         return list;
+      } catch (error) {
+        throw error;
       } finally {
         const next = { ...categoriesInFlightByBranch.value };
         delete next[bid];
@@ -129,8 +131,10 @@ export const useCatalogStore = defineStore('catalog', () => {
 
   // Computed helpers
   const getCategoriesForBranch = (branchId) => {
-    const bid = branchId == null ? '' : String(branchId);
-    return categoriesByBranch.value[bid] || [];
+    const bid = branchId == null || branchId === '' ? null : String(branchId);
+    if (!bid) return [];
+    const categories = categoriesByBranch.value[bid];
+    return Array.isArray(categories) ? categories : [];
   };
 
   // Clear cache

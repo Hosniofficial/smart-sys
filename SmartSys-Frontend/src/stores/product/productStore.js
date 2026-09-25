@@ -370,11 +370,13 @@ export const useProductStore = defineStore('product', () => {
    * الـ API ترجع ProductDetailResource بنية متداخلة
    * نرجعها كما هي للـ component الذي سيقوم بتسطيحها
    */
-  const getProductDetail = async (productId) => {
+  const getProductDetail = async (productId, branchId = null) => {
     try {
       if (!productId) throw new Error('Product ID is required');
 
-      const response = await apiClient.get(`/products/${productId}`);
+      const response = await apiClient.get(`/products/${productId}`, {
+        params: branchId ? { branch_id: String(branchId) } : undefined
+      });
       const data = response?.data?.data || response?.data;
 
       return {
@@ -517,6 +519,7 @@ export const useProductStore = defineStore('product', () => {
     clearSearchCache,
     clearInventoryCache,
     clearBatchesCache,
-    invalidateCacheForBranch,  // ← جديد: مسح cache لفرع عند تغيير الكميات
+    invalidateCacheForBranch,  // ← مسح cache لفرع عند تغيير الكميات
+    invalidateCache: clear,    // ← alias لـ clear للتوافق مع الاستخدامات الموجودة في الكود
   };
 });

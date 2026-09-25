@@ -99,7 +99,13 @@
 
                     <div v-if="showSearchDropdown && search.length > 0" ref="searchDropdownRef" class="fixed bg-white border border-slate-200 rounded-lg shadow-2xl overflow-hidden z-[99999]" :style="searchDropdownPosition">
 
-                      <div v-if="isLoadingSearch" class="p-6 text-center"><BaseSpinner size="20" /></div>
+                      <div v-if="isLoadingSearch" class="p-6 text-center">
+                        <div class="flex items-center justify-center gap-1">
+                          <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></div>
+                          <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.2s"></div>
+                          <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.4s"></div>
+                        </div>
+                      </div>
 
                       <template v-else>
 
@@ -421,7 +427,7 @@ import { useCostCenterStore } from '@/stores/costCenter';
 
 import VoucherFormModal from '@/components/VoucherForm.vue';
 
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 

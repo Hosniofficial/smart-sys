@@ -21,6 +21,7 @@ class BaseHandler
     use AuthorizesRequests;
     protected ?PDO $db;
     protected ?int $tenantId = null;
+    protected ?array $currentUser = null;  // ← Store current user context for audit logging
     private ?TransactionManager $txManager = null;
     protected $logger;
     private ?AccountingService $accounting = null;
@@ -52,7 +53,14 @@ class BaseHandler
 
     protected function getAudit(): AuditHandler
     {
-        return $this->audit ??= new AuditHandler($this->db);
+        if ($this->audit === null) {
+            $this->audit = new AuditHandler($this->db);
+        }
+        // Always sync currentUser so logAction() can access it even if set after first getAudit() call
+        if ($this->currentUser !== null) {
+            $this->audit->currentUser = $this->currentUser;
+        }
+        return $this->audit;
     }
 
     protected function getServices(): ServiceFactory
@@ -212,11 +220,11 @@ class BaseHandler
 
     /**
      * هل نظام جلسات الكاشير مفعّل؟
-     * المفتاح: pos.sessions.enabled (افتراضي: true)
+    * المفتاح: pos.sessions.enabled (افتراضي: false — الجلسات اختيارية وتُفعّل صراحةً)
      */
     protected function isSessionsEnabled(int $tenantId): bool
     {
-        return $this->getBoolSetting($tenantId, 'pos.sessions.enabled', true);
+        return $this->getBoolSetting($tenantId, 'pos.sessions.enabled', false);
     }
 
     /**
@@ -359,13 +367,33 @@ class BaseHandler
     }
 
     /**
+     * Extract and set current user context from request
+     * This is used by audit logging to capture the user_id
+     */
+    protected function setUserContext(Request $request): void
+    {
+        $user = $request->getAttribute('user');
+        if (is_array($user) && isset($user['id'])) {
+            // Store user context for audit logging
+            if (!isset($this->currentUser)) {
+                $this->currentUser = $user;
+            }
+        }
+    }
+
+    /**
      * استخراج معرف المستخدم (الكاشير) من الـ JWT المرفق في الطلب
+     * وتخزين سياق المستخدم لـ audit logging
      */
     protected function extractUserId(Request $request): ?int
     {
         $user = $request->getAttribute('user');
 
         if (is_array($user)) {
+            // Store user context for audit logging (if not already set)
+            if (!isset($this->currentUser)) {
+                $this->currentUser = $user;
+            }
             return isset($user['id']) ? (int) $user['id'] : null;
         }
 

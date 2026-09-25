@@ -209,11 +209,16 @@
       />
       <template #footer>
         <button @click="showFormModal = false" class="px-6 h-10 text-[11px] font-bold text-slate-500 hover:text-slate-900 transition-colors">إلغاء</button>
-        <button @click="productFormRef?.handleSubmit()" :disabled="productFormRef?.isSaving" class="px-10 h-10 bg-slate-900 text-white rounded-lg text-[11px] font-bold uppercase tracking-widest shadow-xl shadow-slate-200 hover:bg-black active:scale-95 transition-all flex items-center gap-3 disabled:opacity-50">
-          <BaseSpinner v-if="productFormRef?.isSaving" size="14" color="#fff" />
-          <i v-else class="fas fa-save text-[10px]"></i>
-          <span>{{ selectedProduct ? 'تحديث البيانات' : 'حفظ المنتج للمخزن' }}</span>
-        </button>
+        <LoadingButton
+          :text="selectedProduct ? 'تحديث البيانات' : 'حفظ المنتج للمخزن'"
+          :isLoading="productFormRef?.isSaving"
+          loadingText="جاري الحفظ..."
+          icon="fas fa-save"
+          variant="primary"
+          loaderType="dots"
+          @click="productFormRef?.handleSubmit()"
+          class="h-10 px-10 flex items-center justify-center"
+        />
       </template>
     </BaseModal>
 
@@ -223,15 +228,13 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import { useToast } from '@/composables/useToast';
 import { useTableFilters } from '@/composables/useTableFilters';
 import getLocalDateISO from '@/utils/date';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import ProductForm from '../../components/ProductForm.vue';
-import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import AlertService from '@/services/AlertService';
-import { useAuthStore } from '@/stores/auth';
 import { useBranchStore } from '@/stores/branch';
 import { useCatalogStore } from '@/stores/catalog/catalogStore';
 import { useProductStore } from '@/stores/product/productStore';
@@ -246,7 +249,12 @@ const catalogStore = useCatalogStore();
 const productStore = useProductStore();
 
 const products = ref([]);
-const categories = computed(() => catalogStore.getCategoriesForBranch(branchStore.selectedBranchId));
+// Guard: إذا كان branchId null (initial render قبل initialize)، أرجع array فارغ
+const categories = computed(() => {
+  const branchId = branchStore.selectedBranchId;
+  if (!branchId) return [];
+  return catalogStore.getCategoriesForBranch(branchId);
+});
 const branches = computed(() => branchStore.branches);
 const showFormModal = ref(false);
 const selectedProduct = ref(null);
@@ -360,9 +368,26 @@ const openEditModal = async (p) => {
     } else { showToast('فشل في جلب بيانات المنتج', 'error'); }
   } catch (error) { showToast(error.message || 'فشل في جلب بيانات المنتج', 'error'); }
 };
-const handleFormSuccess = () => { showFormModal.value = false; fetchAllData(true); productStore.invalidateCache(); };
-const handleCategoryAdded = async () => { await catalogStore.fetchCategories(selectedBranch.value, { force: true }); };
-const goToPage = (p) => { if (p >= 1 && p <= filters.totalPages.value) filters.page.value = p; };
+const handleFormSuccess = async () => {
+  try {
+    showFormModal.value = false;
+    await fetchAllData(true);
+    // ✅ invalidateCache هو alias لـ clear - يمسح كل cache المنتجات
+    productStore.invalidateCacheForBranch(selectedBranch.value);
+    // ✅ لا toast هنا — ProductForm يعرض toast بالفعل قبل emit('success')
+  } catch (error) {
+    console.error('[ProductManagement] Error in handleFormSuccess:', error);
+  }
+};
+const handleCategoryAdded = async () => {
+  const branchId = selectedBranch.value;
+  if (!branchId) return;
+  try {
+    await catalogStore.fetchCategories(branchId, { force: true });
+  } catch (error) {
+    console.error('[ProductManagement] Error refreshing categories:', error);
+  }
+};
 const handleDelete = async (id) => {
   if (await AlertService.confirm('هل أنت متأكد من حذف هذا المنتج؟ سيتم إخفاؤه من نقاط البيع.', 'حذف المنتج')) {
     try {
@@ -370,7 +395,7 @@ const handleDelete = async (id) => {
       if (response.status === 'success') { 
         showToast('تم حذف المنتج بنجاح', 'success'); 
         await fetchAllData(true); 
-        productStore.invalidateCache(); 
+        productStore.invalidateCache();
       }
     } catch (e) { showToast(e.response?.data?.message || 'فشل الحذف', 'error'); }
   }

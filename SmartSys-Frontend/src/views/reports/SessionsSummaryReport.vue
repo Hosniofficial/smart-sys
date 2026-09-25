@@ -316,7 +316,7 @@ import { ref, computed, onMounted } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
 import { formatCurrency as utilFormatCurrency } from '@/utils/formatters';
 import { getLocalDateISO, formatDateTime as utilFormatDateTime } from '@/utils/date';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useSessionStore } from '@/stores/session/sessionStore';
 import { downloadCSV } from '@/utils/export';

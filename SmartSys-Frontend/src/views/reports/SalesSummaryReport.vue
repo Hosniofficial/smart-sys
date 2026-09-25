@@ -104,10 +104,16 @@
             </div>
 
             <div class="lg:col-span-1">
-              <button @click="fetchSalesSummary" :disabled="isLoading" class="h-9 w-full bg-slate-900 text-white rounded-md text-[11px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-sm disabled:opacity-40">
-                <i v-if="!isLoading" class="fas fa-search"></i>
-                <BaseSpinner v-else size="14" color="#fff" />
-              </button>
+              <LoadingButton
+                text="بحث"
+                :isLoading="isLoading"
+                loadingText="جاري..."
+                icon="fas fa-search"
+                variant="primary"
+                loaderType="dots"
+                @click="fetchSalesSummary"
+                class="h-9 w-full"
+              />
             </div>
           </div>
         </div>
@@ -221,7 +227,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { Bar as BarChart, Doughnut as DoughnutChart } from 'vue-chartjs';
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement } from 'chart.js';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import { useReportsStore } from '@/stores/reports';
 import { getLocalDateISO } from '@/utils/date';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';

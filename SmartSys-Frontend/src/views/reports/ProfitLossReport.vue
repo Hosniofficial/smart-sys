@@ -117,7 +117,13 @@
           </div>
 
           <div class="flex-grow relative z-10 h-80">
-            <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-20"><BaseSpinner size="24" /></div>
+            <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-20">
+              <div class="flex items-center gap-1">
+                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></div>
+                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.2s"></div>
+                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.4s"></div>
+              </div>
+            </div>
             <LineChart v-if="!isLoading" :data="lineChartData" :options="lineChartOptions" />
           </div>
         </div>
@@ -282,7 +288,6 @@ import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { getLocalDateISO } from '@/utils/date';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
 
 ChartJS.register(Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement, ArcElement);
 

@@ -9,8 +9,20 @@ use PDO;
 use RuntimeException;
 use Throwable;
 
+/**
+ * Applies period-close blockers and writes any authorized override audit atomically.
+ * The audit event is created only when blockers exist and the caller overrides them.
+ */
 final class AccountingPeriodCloseService
 {
+    /**
+     * Close one open tenant period after checking inventory reconciliation and draft journals.
+     *
+     * The period status change and override audit row share this PDO transaction; if either write
+     * fails, both are rolled back. Authorization is supplied by the HTTP handler and revalidated here.
+     *
+     * @return array{http_status:int,message:string,overridden?:bool,blockers?:array|null}
+     */
     public function close(
         PDO $db,
         int $tenantId,
@@ -104,7 +116,12 @@ final class AccountingPeriodCloseService
         }
     }
 
-    /** @return array{unreconciled_inventory_count:int,unreconciled_inventory:array,pending_journal_count:int,pending_journals:array} */
+    /**
+     * Find blockers scoped to this tenant and the period's inclusive calendar dates.
+     * Inventory is included only when a branch-product has a movement within the date range.
+     *
+     * @return array{unreconciled_inventory_count:int,unreconciled_inventory:array,pending_journal_count:int,pending_journals:array}
+     */
     public function findBlockers(PDO $db, int $tenantId, string $startDate, string $endDate): array
     {
         $start = (new DateTimeImmutable($startDate))->setTime(0, 0, 0)->format('Y-m-d H:i:s');

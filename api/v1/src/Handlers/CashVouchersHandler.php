@@ -280,7 +280,7 @@ class CashVouchersHandler extends BaseHandler
             $voucherType     = $data['type'];
             $sessionId       = null;
 
-            $sessionsEnabled = $this->getBoolSetting((int) $tenantId, 'pos.sessions.enabled', true);
+            $sessionsEnabled = $this->getBoolSetting((int) $tenantId, 'pos.sessions.enabled', false);
             $isCash          = $paymentMethodId !== null && $this->isCashMethod((int) $paymentMethodId, (int) $tenantId);
             $isExempt        = $this->isCashierSessionExempt($request);
 

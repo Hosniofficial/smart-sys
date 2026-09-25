@@ -7,8 +7,17 @@ namespace App\Services;
 use LogicException;
 use PDO;
 
+/**
+ * Invalidates a branch-product's GL reconciliation after stock changes.
+ * Callers must include this update in the same transaction as the inventory mutation.
+ */
 final class BranchInventoryReconciliationService
 {
+    /**
+     * Change only reconciled rows; rows already at zero remain untouched.
+     *
+     * @throws LogicException when called outside the stock operation transaction.
+     */
     public static function markUnreconciled(PDO $db, int $tenantId, int $branchId, int $productId): void
     {
         if (!$db->inTransaction()) {

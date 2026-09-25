@@ -90,7 +90,11 @@ class AccountingPeriodsHandler extends BaseHandler
         }
     }
 
-    // PUT /accounting-periods/{id}/close
+    /**
+     * PUT /accounting-periods/{id}/close.
+     * An override requires the dedicated permission and a non-empty reason; ordinary close requests
+     * are blocked by the service when unresolved inventory or draft journal entries exist.
+     */
     public function close(Request $request, Response $response, array $args): Response
     {
         try {

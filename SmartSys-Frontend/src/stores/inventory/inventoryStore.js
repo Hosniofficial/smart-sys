@@ -267,11 +267,11 @@ export const useInventoryStore = defineStore('inventory', () => {
    * gets inventory movement history for a product
    * returns standardized response like settingsStore
    */
-  const getProductHistory = async (productId, limit = 10, { force = false } = {}) => {
+  const getProductHistory = async (productId, limit = 10, { branchId = null, force = false } = {}) => {
     try {
       if (!productId) throw new Error('Product ID is required');
 
-      const cacheKey = `${productId}_${limit}`;
+      const cacheKey = `${productId}_${branchId || 'all'}_${limit}`;
       const cached   = historyCache.value[cacheKey];
       const cachedAt = historyCacheFetchedAt.value[cacheKey];
 
@@ -285,7 +285,11 @@ export const useInventoryStore = defineStore('inventory', () => {
 
       const response = await apiClient.get(
         `/inventory/movements`,
-        { params: { product_id: String(productId), limit: String(limit) } }
+        { params: {
+          product_id: String(productId),
+          limit: String(limit),
+          ...(branchId ? { branch_id: String(branchId) } : {})
+        } }
       );
       const list = response?.data?.data || response?.data || [];
 

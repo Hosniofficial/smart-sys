@@ -143,11 +143,11 @@ class CategoriesHandler extends BaseHandler
             $data = is_array($data) ? $data : [];
 
             if (!isset($data['name']) || trim((string)$data['name']) === '') {
-                return $this->errorResponse($response, 'غير موجود', 404);
+                return $this->errorResponse($response, 'اسم التصنيف مطلوب', 422);
             }
 
             if (!isset($data['branch_id']) || (int)$data['branch_id'] <= 0) {
-                return $this->errorResponse($response, 'غير موجود', 404);
+                return $this->errorResponse($response, 'معرف الفرع مطلوب', 422);
             }
 
             $tenantId = $this->extractTenantId($request);
@@ -173,7 +173,7 @@ class CategoriesHandler extends BaseHandler
             ');
             $stmt->execute([$name, $branchId, $tenantId]);
             if ($stmt->fetch()) {
-                return $this->errorResponse($response, 'غير موجود', 404);
+                return $this->errorResponse($response, 'اسم التصنيف مستخدم مسبقاً في هذا الفرع', 409);
             }
 
             $stmt = $this->db->prepare('
@@ -183,11 +183,12 @@ class CategoriesHandler extends BaseHandler
             $stmt->execute([$name, $parentId, $branchId, $tenantId]);
             $categoryId = (int)$this->db->lastInsertId();
 
-            $this->logger->info('Category created', [
+            $this->logger->info('Category created successfully', [
                 'tenant_id'     => $tenantId,
                 'branch_id'     => $branchId,
                 'category_id'   => $categoryId,
                 'category_name' => $name,
+                'parent_id'     => $parentId,
             ]);
 
             return $this->successResponse($response, [

@@ -8,7 +8,10 @@
  * الاستخدام:
  * php database/migrate.php up      - تشغيل جميع الـ migrations
  * php database/migrate.php down    - التراجع عن آخر migration
- * php database/migrate.php status  - عرض حالة الـ migrations
+ * php database/migrate.php status  - عرض حالة الـ migrations (قراءة فقط)
+ *
+ * Safety: `up` refuses to bootstrap an absent/empty ledger beside existing tables.
+ * Reconcile an existing installation's migration history explicitly before running it.
  */
 
 // تحميل متغيرات البيئة بصيغة dotenv المستخدمة في التطبيق
@@ -23,6 +26,7 @@ if (file_exists(__DIR__ . '/../.env')) {
 // ──────────────────────────────────────────────────────────
 
 require_once __DIR__ . '/MigrationDatabase.php';
+require_once __DIR__ . '/MigrationHistoryGuard.php';
 
 try {
     $pdo = MigrationDatabase::connect($_ENV);
@@ -30,18 +34,8 @@ try {
     die("❌ فشل الاتصال بقاعدة البيانات: " . $e->getMessage() . "\n");
 }
 
-// ──────────────────────────────────────────────────────────
-// إنشاء جدول migrations إذا لم يكن موجود
-// ──────────────────────────────────────────────────────────
-
-$pdo->exec("
-    CREATE TABLE IF NOT EXISTS migrations (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        migration VARCHAR(255) NOT NULL UNIQUE,
-        batch INT NOT NULL,
-        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-");
+// Migration history is initialized only by `up` after the fresh-database guard passes.
+// `status` remains read-only; an existing schema without a ledger requires reviewed reconciliation.
 
 // ──────────────────────────────────────────────────────────
 // قائمة الـ migrations بالترتيب
@@ -50,8 +44,9 @@ $pdo->exec("
 $migrations = [
     '001_create_system_configuration',
     '002_create_roles_and_permissions',
+    '003_insert_core_data',
     '004_add_accounting_period_close_override',
-    // يمكن إضافة migrations أخرى هنا
+    '005_allow_optional_opening_snapshot_mapping',
 ];
 
 // ──────────────────────────────────────────────────────────
@@ -66,7 +61,7 @@ switch ($command) {
         break;
         
     case 'down':
-        rollbackLastMigration($pdo);
+        rollbackLastMigration($pdo, $migrations);
         break;
         
     case 'status':
@@ -81,8 +76,10 @@ switch ($command) {
 // الدوال
 // ──────────────────────────────────────────────────────────
 
-function runMigrationsUp($pdo, $migrations)
+function runMigrationsUp(PDO $pdo, array $migrations): void
 {
+    prepareMigrationLedger($pdo, $migrations);
+
     echo "\n" . str_repeat("=", 60) . "\n";
     echo "🚀 تشغيل Migrations\n";
     echo str_repeat("=", 60) . "\n\n";
@@ -91,7 +88,9 @@ function runMigrationsUp($pdo, $migrations)
     
     foreach ($migrations as $migration) {
         // التحقق من أن الـ migration لم تكن مشغلة من قبل
-        $exists = $pdo->query("SELECT id FROM migrations WHERE migration = '{$migration}'")->fetch();
+        $existsStmt = $pdo->prepare('SELECT id FROM migrations WHERE migration = ?');
+        $existsStmt->execute([$migration]);
+        $exists = $existsStmt->fetch();
         
         if ($exists) {
             echo "⏭️  تخطي: {$migration} (مشغل بالفعل)\n";
@@ -105,8 +104,7 @@ function runMigrationsUp($pdo, $migrations)
             $filePath = __DIR__ . "/migrations/{$migration}.php";
             
             if (!file_exists($filePath)) {
-                echo "⚠️  تحذير: الملف غير موجود: {$filePath}\n";
-                continue;
+                throw new RuntimeException("Migration file is missing: {$filePath}");
             }
             
             require $filePath;
@@ -115,23 +113,24 @@ function runMigrationsUp($pdo, $migrations)
             $className = implode('', array_map('ucfirst', explode('_', preg_replace('/^\d+_/', '', $migration))));
             
             if (!class_exists($className)) {
-                echo "❌ خطأ: الكلاس {$className} غير موجود في {$filePath}\n";
-                continue;
+                throw new RuntimeException("Migration class {$className} is missing from {$filePath}.");
             }
             
             $migrator = new $className($pdo);
             
-            if (method_exists($migrator, 'up')) {
-                $migrator->up();
-                
-                // تسجيل الـ migration
-                $stmt = $pdo->prepare("INSERT INTO migrations (migration, batch) VALUES (?, ?)");
-                $stmt->execute([$migration, $batch]);
-                
-                echo "\n✅ تم: {$migration}\n";
+            if (!method_exists($migrator, 'up')) {
+                throw new RuntimeException("Migration {$migration} does not implement up().");
             }
+
+            $migrator->up();
+
+            // Record only after the migration's up() completes successfully.
+            $stmt = $pdo->prepare('INSERT INTO migrations (migration, batch) VALUES (?, ?)');
+            $stmt->execute([$migration, $batch]);
+
+            echo "\n✅ تم: {$migration}\n";
             
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             echo "\n❌ خطأ: " . $e->getMessage() . "\n";
             echo "🔄 إيقاف التشغيل\n";
             exit(1);
@@ -143,8 +142,15 @@ function runMigrationsUp($pdo, $migrations)
     echo str_repeat("=", 60) . "\n\n";
 }
 
-function rollbackLastMigration($pdo)
+function rollbackLastMigration(PDO $pdo, array $migrations): void
 {
+    if (!migrationLedgerExists($pdo)) {
+        echo "لا يوجد سجل migrations؛ لم يتم تنفيذ أي rollback.\n";
+        return;
+    }
+
+    MigrationHistoryGuard::assertContiguousHistory($migrations, executedMigrations($pdo));
+
     echo "\n" . str_repeat("=", 60) . "\n";
     echo "🔄 التراجع عن آخر migration\n";
     echo str_repeat("=", 60) . "\n\n";
@@ -177,34 +183,126 @@ function rollbackLastMigration($pdo)
                 $migrator->down();
                 
                 // حذف تسجيل الـ migration
-                $pdo->query("DELETE FROM migrations WHERE migration = '{$migration}'");
+                $delete = $pdo->prepare('DELETE FROM migrations WHERE migration = ?');
+                $delete->execute([$migration]);
                 
                 echo "\n✅ تم: {$migration}\n";
             }
         }
         
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         echo "\n❌ خطأ: " . $e->getMessage() . "\n";
+        exit(1);
     }
 }
 
-function showMigrationsStatus($pdo, $migrations)
+function showMigrationsStatus(PDO $pdo, array $migrations): void
 {
+    $ledgerExists = migrationLedgerExists($pdo);
+    $existingTables = databaseTableNames($pdo);
+
     echo "\n" . str_repeat("=", 60) . "\n";
     echo "📊 حالة الـ Migrations\n";
     echo str_repeat("=", 60) . "\n\n";
     
-    $executed = $pdo->query("SELECT migration FROM migrations")->fetchAll(PDO::FETCH_COLUMN);
-    
+    if (!$ledgerExists) {
+        echo "⚠️  سجل migrations غير موجود؛ الحالة غير معروفة ولا يجوز تشغيل up على قاعدة قائمة قبل تسوية السجل.\n";
+        if ($existingTables !== []) {
+            echo 'الجداول الموجودة: ' . implode(', ', $existingTables) . "\n";
+        }
+        $executed = [];
+        $statusLabel = '❔ غير معروف (لا يوجد سجل)';
+    } else {
+        $executed = executedMigrations($pdo);
+        try {
+            MigrationHistoryGuard::assertContiguousHistory($migrations, $executed);
+            if ($executed === []) {
+                $applicationTables = array_values(array_filter(
+                    $existingTables,
+                    static fn (string $table): bool => strtolower($table) !== 'migrations'
+                ));
+                MigrationHistoryGuard::assertFreshDatabase($applicationTables);
+            }
+        } catch (RuntimeException $e) {
+            echo '⚠️  تحذير سجل migrations: ' . $e->getMessage() . "\n";
+        }
+        $statusLabel = null;
+    }
+
     echo "Migration Name                        | Status\n";
     echo str_repeat("-", 60) . "\n";
     
     foreach ($migrations as $migration) {
-        $status = in_array($migration, $executed) ? "✅ مشغل" : "⏭️  لم يشغل";
+        $status = $statusLabel ?? (in_array($migration, $executed, true) ? '✅ مشغل' : '⏭️  لم يشغل');
         printf("%-35s | %s\n", $migration, $status);
     }
     
     echo "\n" . str_repeat("=", 60) . "\n";
+}
+
+function migrationLedgerExists(PDO $pdo): bool
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?'
+    );
+    $stmt->execute(['migrations']);
+    return (int) $stmt->fetchColumn() === 1;
+}
+
+/** @return list<string> */
+function databaseTableNames(PDO $pdo): array
+{
+    return $pdo->query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME'
+    )->fetchAll(PDO::FETCH_COLUMN);
+}
+
+/** @return list<string> */
+function executedMigrations(PDO $pdo): array
+{
+    return $pdo->query('SELECT migration FROM migrations ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
+}
+
+/**
+ * Create the ledger only for a truly empty schema; never infer or fabricate a baseline.
+ * Existing installations with absent/empty history must be reconciled by an operator.
+ *
+ * @param list<string> $migrations
+ */
+function prepareMigrationLedger(PDO $pdo, array $migrations): void
+{
+    $ledgerExists = migrationLedgerExists($pdo);
+    $tables = databaseTableNames($pdo);
+    $applicationTables = array_values(array_filter(
+        $tables,
+        static fn (string $table): bool => strtolower($table) !== 'migrations'
+    ));
+
+    if (!$ledgerExists) {
+        MigrationHistoryGuard::assertFreshDatabase($applicationTables);
+        createMigrationLedger($pdo);
+        return;
+    }
+
+    $executed = executedMigrations($pdo);
+    if ($executed === []) {
+        MigrationHistoryGuard::assertFreshDatabase($applicationTables);
+        return;
+    }
+
+    MigrationHistoryGuard::assertContiguousHistory($migrations, $executed);
+}
+
+function createMigrationLedger(PDO $pdo): void
+{
+    $pdo->exec("
+        CREATE TABLE migrations (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            migration VARCHAR(255) NOT NULL UNIQUE,
+            batch INT NOT NULL,
+            executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
 }
 
 function showHelp()

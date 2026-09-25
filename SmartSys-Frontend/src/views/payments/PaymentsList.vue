@@ -257,7 +257,7 @@ import { useSupplierStore } from '@/stores/supplier/supplierStore';
 import { useUserStore } from '@/stores/user/userStore';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useBootstrapStore } from '@/stores/bootstrap';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';

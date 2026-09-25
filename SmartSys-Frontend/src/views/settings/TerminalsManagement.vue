@@ -79,15 +79,16 @@
         </div>
 
         <div class="px-8 py-4 bg-slate-50/50 border-t border-slate-100 flex justify-end relative z-10">
-          <button 
-            @click="saveTerminal" 
-            :disabled="isSaving" 
-            class="h-9 px-8 bg-slate-900 text-white rounded-md text-[11px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200 hover:bg-black active:scale-95 transition-all flex items-center gap-3 disabled:opacity-50"
-          >
-            <BaseSpinner v-if="isSaving" size="14" color="#fff" />
-            <i v-else class="fas fa-save text-[9px]"></i>
-            تسجيل الجهاز الآن
-          </button>
+          <LoadingButton
+            text="تسجيل الجهاز الآن"
+            :isLoading="isSaving"
+            loadingText="جاري التسجيل..."
+            icon="fas fa-save"
+            variant="primary"
+            loaderType="dots"
+            @click="saveTerminal"
+            class="h-9 px-8 rounded-md text-[11px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200"
+          />
         </div>
       </section>
 
@@ -191,10 +192,16 @@
 
               <div class="px-8 py-4 bg-slate-50 border-t border-slate-100 flex gap-3">
                 <button @click="editModal.open = false" class="flex-1 h-9 text-xs font-bold text-slate-500">إلغاء</button>
-                <button @click="saveEdit" :disabled="isSaving" class="flex-2 h-9 bg-blue-600 text-white rounded-md text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all">
-                  <BaseSpinner v-if="isSaving" size="14" color="#fff" />
-                  <span v-else>حفظ التعديلات</span>
-                </button>
+                <LoadingButton
+                  text="حفظ التعديلات"
+                  :isLoading="isSaving"
+                  loadingText="جاري الحفظ..."
+                  icon="fas fa-save"
+                  variant="primary"
+                  loaderType="dots"
+                  @click="saveEdit"
+                  class="flex-2 h-9 px-4 rounded-md text-xs font-bold shadow-lg shadow-blue-900/20"
+                />
               </div>
             </div>
           </div>
@@ -211,7 +218,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useToast } from '@/composables/useToast'
 import { useBranchStore } from '@/stores/branch'
 import { useTerminalStore } from '@/stores/terminal/terminalStore'
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';

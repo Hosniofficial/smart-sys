@@ -1,4 +1,4 @@
-// src/config/apiClient.js
+// src/config/axios.js
 import axios from 'axios';
 import { useAuthStore, getRouter } from '@/stores/auth';
 import { useUiStore } from '@/stores/ui';
@@ -126,12 +126,18 @@ apiClient.interceptors.request.use(
   },
   (error) => {
     logger.error('[API] Request Error:', error);
+    try {
+      const ui = useUiStore();
+      if (!error.config?.meta?.skipLoader) ui.hideLoader();
+    } catch (_) { /* store not ready */ }
     return Promise.reject(error);
   }
 );
 
 // Helper function to extract JSON from response safely.
-// Finds the first valid JSON object or array and returns it
+// The API should return one JSON value. If a PHP warning or a nested
+// response causes multiple JSON values to be concatenated, keep the last
+// complete value because it is the endpoint's final response.
 function extractFirstValidJson(response) {
   if (typeof response !== 'string') {
     return response;
@@ -154,6 +160,8 @@ function extractFirstValidJson(response) {
     let escapeNext = false;
     let bracketChar = trimmed[0]; // '{' or '['
     let closeBracket = bracketChar === '{' ? '}' : ']';
+    let valueStart = -1;
+    let lastValidJson = null;
     
     for (let i = 0; i < trimmed.length; i++) {
       const char = trimmed[i];
@@ -174,23 +182,27 @@ function extractFirstValidJson(response) {
       }
       
       if (inString) continue;
-      
-      if (char === bracketChar) depth++;
-      else if (char === closeBracket) {
+
+      if (char === bracketChar) {
+        if (depth === 0) valueStart = i;
+        depth++;
+      } else if (char === closeBracket) {
         depth--;
-        if (depth === 0) {
-          const jsonStr = trimmed.substring(0, i + 1);
+        if (depth === 0 && valueStart >= 0) {
+          const jsonStr = trimmed.substring(valueStart, i + 1);
           try {
-            return JSON.parse(jsonStr);
+            lastValidJson = JSON.parse(jsonStr);
           } catch {
-            // Continue searching
+            // Continue searching for the next complete JSON value.
           }
         }
       }
     }
     
-    // If still no valid JSON found, return raw string
-    logger.warn('Response is not clean JSON; returning raw string to caller.', e?.message || e);
+    // If multiple JSON values were concatenated, the last one is the actual
+    // endpoint response. Otherwise leave the original value for the caller.
+    if (lastValidJson !== null) return lastValidJson;
+    logger.warn('Response is not clean JSON; returning raw string to caller.');
     return response;
   }
 }
@@ -284,6 +296,7 @@ apiClient.interceptors.response.use(
           authStore.clearAuthData();
         } catch (_) { /* ignore */ }
         window.location.replace('/');
+        return Promise.reject(error);
       }
 
       // 402 Subscription Required -> Set flag, let router guard handle redirect
@@ -349,7 +362,11 @@ if (!errorMessage) {
       error.message = errorMessage;
     } else if (error.request) {
       logger.error('[API] No response from server:', error.request);
-      error.message = 'لا يوجد استجابة من الخادم';
+      const isTimeout = error.code === 'ECONNABORTED';
+      error.message = isTimeout ? 'انتهت مهلة الطلب، حاول مرة أخرى' : 'لا توجد استجابة من الخادم';
+      if (typeof window.showToast === 'function') {
+        window.showToast(error.message, 'error');
+      }
     } else {
       error.message = 'خطأ في إعداد الطلب';
     }

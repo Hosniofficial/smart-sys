@@ -95,14 +95,15 @@
         <button type="button" @click="closeModal" class="px-5 h-10 text-[11px] font-bold text-slate-500 hover:text-slate-900 transition-colors">
           إلغاء
         </button>
-        <button 
-          type="submit" 
-          class="px-8 h-10 bg-slate-900 text-white rounded-lg text-[11px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200 hover:bg-black active:scale-95 transition-all flex items-center gap-3" 
-          :disabled="isLoading"
-        >
-          <BaseSpinner v-if="isLoading" :size="14" color="#ffffff" />
-          <span>{{ isEditing ? 'تحديث البيانات' : 'اعتماد الفرع' }}</span>
-        </button>
+        <LoadingButton
+          :text="isEditing ? 'تحديث البيانات' : 'اعتماد الفرع'"
+          :isLoading="isLoading"
+          :loadingText="isEditing ? 'جاري التحديث...' : 'جاري الاعتماد...'"
+          type="submit"
+          variant="primary"
+          loaderType="dots"
+          class="px-8 h-10"
+        />
       </div>
     </form>
 </template>
@@ -112,7 +113,7 @@
 import { ref, watch, computed } from 'vue';
 import { useToast } from '@/composables/useToast';
 import { useBranchStore } from '@/stores/branch';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import LoadingButton from '@/components/ui/LoadingButton.vue'
 
 const props = defineProps({
   branch: { type: Object, default: null }

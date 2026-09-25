@@ -376,6 +376,51 @@ class AccountingReportsHandler extends BaseHandler
                 $totals[$type] += $balance;
             }
 
+            // The balance sheet must include the current-period result in equity
+            // until the period is closed and the result is transferred to a
+            // retained-earnings account.
+            $stmtResult = $this->db->prepare("
+                SELECT
+                    a.type,
+                    COALESCE(SUM(jel.debit_amount), 0) AS total_debit,
+                    COALESCE(SUM(jel.credit_amount), 0) AS total_credit
+                FROM accounts a
+                JOIN journal_entry_lines jel
+                    ON jel.account_id = a.id AND jel.tenant_id = a.tenant_id
+                JOIN journal_entries je
+                    ON je.id = jel.journal_entry_id AND je.tenant_id = a.tenant_id
+                WHERE a.tenant_id = ?
+                  AND a.type IN ('revenue', 'expense')
+                  AND je.entry_date < ?
+                  AND je.status = 'posted'
+                GROUP BY a.type
+            ");
+            $stmtResult->execute([$tenantId, $nextDay]);
+
+            $periodRevenue = 0.0;
+            $periodExpenses = 0.0;
+            foreach ($stmtResult->fetchAll(PDO::FETCH_ASSOC) ?: [] as $resultRow) {
+                $debit = (float) ($resultRow['total_debit'] ?? 0);
+                $credit = (float) ($resultRow['total_credit'] ?? 0);
+                if ($resultRow['type'] === 'revenue') {
+                    $periodRevenue += $credit - $debit;
+                } else {
+                    $periodExpenses += $debit - $credit;
+                }
+            }
+
+            $currentPeriodResult = round($periodRevenue - $periodExpenses, 2);
+            if (abs($currentPeriodResult) > 0.00001) {
+                $result['equity'][] = [
+                    'id' => 0,
+                    'code' => 'CURRENT-PERIOD',
+                    'name' => 'صافي ربح الفترة',
+                    'type' => 'equity',
+                    'balance' => $currentPeriodResult,
+                ];
+                $totals['equity'] += $currentPeriodResult;
+            }
+
             return $this->successResponse($response, [
                 'as_of_date' => $asOfDate,
                 'asset' => $result['asset'],
@@ -473,9 +518,12 @@ class AccountingReportsHandler extends BaseHandler
                 LEFT JOIN return_credit_allocations rca ON rca.sale_id = s.id AND rca.tenant_id = s.tenant_id
                 WHERE s.tenant_id = ?
                   AND s.status NOT IN ('cancelled','draft')
-                  AND (s.net_total_amount > COALESCE(s.paid_amount, 0) OR COALESCE(SUM(rca.allocated_amount), 0) > 0)
                   AND s.sale_date <= ?
                 GROUP BY s.id
+                HAVING (
+                    MAX(s.net_total_amount) > COALESCE(MAX(s.paid_amount), 0)
+                    OR COALESCE(SUM(rca.allocated_amount), 0) > 0
+                )
                 ORDER BY days_outstanding DESC
             ";
 
@@ -612,7 +660,8 @@ class AccountingReportsHandler extends BaseHandler
     // ─── Cash Flow Statement (IAS 7) ─────────────────────────────────────────
     /**
      * قائمة التدفقات النقدية وفق IAS 7 — الطريقة المباشرة.
-     * يُتتبع كل حركة في الحسابات النقدية (code LIKE '11%') ويُصنَّف حسب:
+     * يُتتبع كل حركة في حسابات السيولة (1001/1002/1003 أو type=cash)
+     * ويُصنَّف حسب:
      *   operating  — عمليات التشغيل (مبيعات، مشتريات، مصروفات)
      *   investing  — الاستثمار (أصول)
      *   financing  — التمويل (رأس المال، قروض)
@@ -654,7 +703,7 @@ class AccountingReportsHandler extends BaseHandler
                     ON a.id = jel.account_id AND a.tenant_id = je.tenant_id
                 WHERE je.tenant_id = ?
                   AND je.status   = 'posted'
-                  AND (a.code LIKE '11%' OR a.type = 'cash')
+                  AND (a.code LIKE '1001%' OR a.code LIKE '1002%' OR a.code LIKE '1003%' OR a.type = 'cash')
                   AND (? IS NULL OR je.entry_date >= ?)
                   AND (? IS NULL OR je.entry_date <  ?)
                 GROUP BY a.id, a.code, a.name, je.reference_type, category
@@ -776,7 +825,7 @@ class AccountingReportsHandler extends BaseHandler
                     p.sale_price - pbm.average_cost AS margin_per_unit,
                     bp.quantity * pbm.average_cost  AS total_cost_value,
                     bp.quantity * p.sale_price      AS total_nrv,
-                    bp.quantity * (p.sale_price - pbm.average_cost) AS impairment_amount
+                    bp.quantity * (pbm.average_cost - p.sale_price) AS impairment_amount
                 FROM products p
                 JOIN branch_products bp
                     ON bp.product_id = p.id AND bp.tenant_id = p.tenant_id

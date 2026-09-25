@@ -215,10 +215,16 @@
 
           <div class="px-8 py-5 bg-slate-50 border-t border-slate-200 flex justify-end gap-3 shrink-0">
              <button @click="closeAction" class="px-6 h-10 text-xs font-bold text-slate-500">إلغاء</button>
-             <button @click="submitAction" :disabled="isSubmitting || (actionModal.mode === 'approve' && actionModal.paidAmount > 0 && !actionModal.paymentMethodId)" :class="[actionModal.mode === 'approve' ? 'bg-emerald-600 shadow-emerald-900/20' : 'bg-rose-600 shadow-rose-900/20']" class="px-10 h-10 text-white rounded-md text-xs font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                <BaseSpinner v-if="isSubmitting" size="16" color="#fff" />
-                <span v-else>{{ actionModal.mode === 'approve' ? 'تأكيد الاعتماد' : 'تأكيد الرفض' }}</span>
-             </button>
+             <LoadingButton
+               :text="actionModal.mode === 'approve' ? 'تأكيد الاعتماد' : 'تأكيد الرفض'"
+               :isLoading="isSubmitting"
+               loadingText="جاري..."
+               :disabled="actionModal.mode === 'approve' && actionModal.paidAmount > 0 && !actionModal.paymentMethodId"
+               variant="primary"
+               loaderType="dots"
+               @click="submitAction"
+               class="px-10 h-10"
+             />
           </div>
         </div>
       </div>
@@ -311,7 +317,7 @@ import { useBranchStore } from '@/stores/branch'
 import { useSalesStore } from '@/stores/sales/salesStore'
 import { usePaymentStore } from '@/stores/payment/paymentStore'
 import { useProductStore } from '@/stores/product/productStore'
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
 
