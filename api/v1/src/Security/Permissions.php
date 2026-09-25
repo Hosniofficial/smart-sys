@@ -169,6 +169,7 @@ final class Permissions
     // ──────────────────────────────────────────────────────────────────
     public const ACCOUNTING_VIEW          = 'accounting.view';
     public const ACCOUNTING_PERIOD_MANAGE = 'accounting.period.manage';
+    public const ACCOUNTING_PERIOD_CLOSE_OVERRIDE = 'accounting.period.close.override';
     public const ACCOUNTING_JE_CREATE     = 'accounting.je.create';
     public const ACCOUNTING_JE_DELETE     = 'accounting.je.delete';
     public const ACCOUNTING_JE_REVERSE    = 'accounting.je.reverse';

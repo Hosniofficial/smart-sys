@@ -8,6 +8,8 @@ use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
+use App\Services\AccountingPeriodCloseService;
+use App\Security\Permissions;
 
 class AccountingPeriodsHandler extends BaseHandler
 {
@@ -97,22 +99,50 @@ class AccountingPeriodsHandler extends BaseHandler
                 return $this->errorResponse($response, 'Tenant ID مطلوب', 403);
             }
 
-            $periodId = (int) ($args['id'] ?? 0);
-            $userId   = $this->extractUserId($request);
+            $data = $request->getParsedBody() ?? [];
+            $overrideRequested = filter_var($data['override'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $overrideReason = trim((string) ($data['override_reason'] ?? ''));
+            $canOverride = false;
 
-            $stmt = $this->db->prepare("
-                UPDATE accounting_periods
-                SET status = 'closed', closed_by = ?, closed_at = NOW(), updated_at = NOW()
-                WHERE id = ? AND tenant_id = ? AND status = 'open'
-            ");
-            $stmt->execute([$userId, $periodId, (int) $tenantId]);
-
-            if ($stmt->rowCount() === 0) {
-                return $this->errorResponse($response, 'الدورة غير موجودة أو مغلقة مسبقاً', 404);
+            if ($overrideRequested) {
+                if ($overrideReason === '') {
+                    return $this->errorResponse($response, 'سبب التجاوز مطلوب.', 400);
+                }
+                $canOverride = $this->can($request, Permissions::ACCOUNTING_PERIOD_CLOSE_OVERRIDE);
+                if (!$canOverride) {
+                    return $this->errorResponse($response, 'لا تملك صلاحية تجاوز فحوصات إقفال الفترة.', 403);
+                }
             }
 
-            $this->logger->info('Accounting period closed', ['period_id' => $periodId, 'tenant_id' => $tenantId]);
-            return $this->successResponse($response, ['message' => 'تم إغلاق الدورة المحاسبية']);
+            $periodId = (int) ($args['id'] ?? 0);
+            $userId   = $this->extractUserId($request);
+            $serverParams = $request->getServerParams();
+            $result = (new AccountingPeriodCloseService())->close(
+                $this->db,
+                (int) $tenantId,
+                $periodId,
+                $userId,
+                $overrideRequested,
+                $canOverride,
+                $overrideReason,
+                isset($serverParams['REMOTE_ADDR']) ? (string) $serverParams['REMOTE_ADDR'] : null
+            );
+
+            if ($result['http_status'] !== 200) {
+                $extra = isset($result['blockers']) ? ['blockers' => $result['blockers']] : [];
+                return $this->errorResponse($response, $result['message'], $result['http_status'], $extra);
+            }
+
+            $this->logger->info('Accounting period closed', [
+                'period_id' => $periodId,
+                'tenant_id' => $tenantId,
+                'overridden' => $result['overridden'],
+            ]);
+            return $this->successResponse($response, [
+                'message' => $result['message'],
+                'overridden' => $result['overridden'],
+                'blockers' => $result['blockers'],
+            ]);
         } catch (\Throwable $e) {
             return $this->errorResponse($response, $e->getMessage(), 500);
         }

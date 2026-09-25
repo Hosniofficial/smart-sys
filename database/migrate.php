@@ -11,29 +11,22 @@
  * php database/migrate.php status  - عرض حالة الـ migrations
  */
 
-// تحميل متغيرات البيئة
+// تحميل متغيرات البيئة بصيغة dotenv المستخدمة في التطبيق
+require_once __DIR__ . '/../vendor/autoload.php';
+
 if (file_exists(__DIR__ . '/../.env')) {
-    $env = parse_ini_file(__DIR__ . '/../.env');
-    foreach ($env as $key => $value) {
-        $_ENV[$key] = $value;
-    }
+    Dotenv\Dotenv::createImmutable(dirname(__DIR__))->load();
 }
 
 // ──────────────────────────────────────────────────────────
-// إعداد الاتصال بقاعدة البيانات
+// إعداد الاتصال بقاعدة البيانات باستخدام أسماء إعدادات التطبيق القياسية
 // ──────────────────────────────────────────────────────────
 
-$host = $_ENV['DB_HOST'] ?? 'localhost';
-$db = $_ENV['DB_NAME'] ?? 'smartsys';
-$user = $_ENV['DB_USER'] ?? 'root';
-$pass = $_ENV['DB_PASS'] ?? '';
+require_once __DIR__ . '/MigrationDatabase.php';
 
 try {
-    $pdo = new PDO("mysql:host={$host};dbname={$db};charset=utf8mb4", $user, $pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
-} catch (PDOException $e) {
+    $pdo = MigrationDatabase::connect($_ENV);
+} catch (PDOException | RuntimeException $e) {
     die("❌ فشل الاتصال بقاعدة البيانات: " . $e->getMessage() . "\n");
 }
 
@@ -57,6 +50,7 @@ $pdo->exec("
 $migrations = [
     '001_create_system_configuration',
     '002_create_roles_and_permissions',
+    '004_add_accounting_period_close_override',
     // يمكن إضافة migrations أخرى هنا
 ];
 
@@ -125,7 +119,7 @@ function runMigrationsUp($pdo, $migrations)
                 continue;
             }
             
-            $migrator = new $className();
+            $migrator = new $className($pdo);
             
             if (method_exists($migrator, 'up')) {
                 $migrator->up();
@@ -177,7 +171,7 @@ function rollbackLastMigration($pdo)
         $className = implode('', array_map('ucfirst', explode('_', preg_replace('/^\d+_/', '', $migration))));
         
         if (class_exists($className)) {
-            $migrator = new $className();
+            $migrator = new $className($pdo);
             
             if (method_exists($migrator, 'down')) {
                 $migrator->down();
