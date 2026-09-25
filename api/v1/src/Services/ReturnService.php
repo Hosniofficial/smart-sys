@@ -985,7 +985,9 @@ class ReturnService
 
                     if ($refundMode === 'auto' || $refundMode === 'deduct_and_return') {
                         // auto/deduct_and_return: ذكي - خصم من الديون أولاً، ثم رد النقدي من الزيادة
-                        $customerTotalOutstanding = $this->getCustomerTotalOutstanding((int) $data['party_id'], $tenantId);
+                        $customerTotalOutstanding = !empty($data['party_id'])
+                            ? $this->getCustomerTotalOutstanding((int) $data['party_id'], $tenantId)
+                            : 0.0;
                         $deductFromCustomerBalance = min($customerTotalOutstanding, $grandTotal);
                         $data['paid_amount'] = round(max(0, $grandTotal - $deductFromCustomerBalance), 2);
                     } elseif ($refundMode === 'cash') {
@@ -994,7 +996,9 @@ class ReturnService
                         $deductFromCustomerBalance = 0;
                     } else {
                         // credit_note أو أي وضع آخر: خصم من الديون فقط
-                        $customerTotalOutstanding = $this->getCustomerTotalOutstanding((int) $data['party_id'], $tenantId);
+                        $customerTotalOutstanding = !empty($data['party_id'])
+                            ? $this->getCustomerTotalOutstanding((int) $data['party_id'], $tenantId)
+                            : 0.0;
                         $data['paid_amount'] = 0;
                         $deductFromCustomerBalance = min($customerTotalOutstanding, $grandTotal);
                     }
@@ -1150,8 +1154,8 @@ class ReturnService
                     tenant_id, return_type, customer_id, supplier_id, return_number, return_date,
                     total_amount, tax_amount, discount_amount, paid_amount, notes,
                     status, payment_method_id, created_by, cost_center_id, created_at,
-                    invoice_number, sale_id, purchase_id, branch_id, is_cash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, NOW(), ?, ?, ?, ?, ?)";
+                    invoice_number, invoice_id, sale_id, purchase_id, branch_id, is_cash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?)";
 
         $stmt = $this->db->prepare($sql);
         $maxAttempts = 5;
@@ -1176,6 +1180,7 @@ class ReturnService
                     $userId,
                     $costCenterId,
                     $invoiceNumber,
+                    $data['invoice_id'] ? (int) $data['invoice_id'] : null,
                     $saleId,
                     $purchaseId,
                     $branchId,
