@@ -67,6 +67,15 @@ switch ($command) {
     case 'status':
         showMigrationsStatus($pdo, $migrations);
         break;
+
+    case 'baseline':
+        adoptLegacyBaseline(
+            $pdo,
+            $migrations,
+            $argv[2] ?? '',
+            $argv[3] ?? ''
+        );
+        break;
         
     default:
         showHelp();
@@ -156,7 +165,7 @@ function rollbackLastMigration(PDO $pdo, array $migrations): void
     echo str_repeat("=", 60) . "\n\n";
     
     $lastMigration = $pdo->query("
-        SELECT migration FROM migrations 
+        SELECT migration, batch FROM migrations
         ORDER BY id DESC LIMIT 1
     ")->fetch();
     
@@ -166,6 +175,10 @@ function rollbackLastMigration(PDO $pdo, array $migrations): void
     }
     
     $migration = $lastMigration['migration'];
+    if ((int) $lastMigration['batch'] === 0) {
+        echo "رفض التراجع: {$migration} جزء من baseline قديم معتمد، وليس تشغيلًا نفذته أداة migrations.\n";
+        return;
+    }
     
     echo "▶️  التراجع: {$migration}\n";
     echo str_repeat("-", 60) . "\n";
@@ -214,6 +227,7 @@ function showMigrationsStatus(PDO $pdo, array $migrations): void
         $statusLabel = '❔ غير معروف (لا يوجد سجل)';
     } else {
         $executed = executedMigrations($pdo);
+        $baseline = baselineMigrations($pdo);
         try {
             MigrationHistoryGuard::assertContiguousHistory($migrations, $executed);
             if ($executed === []) {
@@ -233,7 +247,11 @@ function showMigrationsStatus(PDO $pdo, array $migrations): void
     echo str_repeat("-", 60) . "\n";
     
     foreach ($migrations as $migration) {
-        $status = $statusLabel ?? (in_array($migration, $executed, true) ? '✅ مشغل' : '⏭️  لم يشغل');
+        $status = $statusLabel ?? (
+            in_array($migration, $baseline, true)
+                ? '✅ baseline معتمد (batch 0)'
+                : (in_array($migration, $executed, true) ? '✅ مشغل' : '⏭️  لم يشغل')
+        );
         printf("%-35s | %s\n", $migration, $status);
     }
     
@@ -261,6 +279,46 @@ function databaseTableNames(PDO $pdo): array
 function executedMigrations(PDO $pdo): array
 {
     return $pdo->query('SELECT migration FROM migrations ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
+}
+
+/** @return list<string> */
+function baselineMigrations(PDO $pdo): array
+{
+    return $pdo->query('SELECT migration FROM migrations WHERE batch = 0 ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
+}
+
+/**
+ * Record the operator-confirmed legacy prefix without replaying its migrations.
+ * Batch zero is reserved for these adopted entries; runner-executed batches start at one.
+ */
+function adoptLegacyBaseline(PDO $pdo, array $migrations, string $throughMigration, string $confirmation): void
+{
+    $prefix = MigrationHistoryGuard::assertLegacyBaselineAdoption(
+        $migrations,
+        $throughMigration,
+        $confirmation,
+        migrationLedgerExists($pdo),
+        databaseTableNames($pdo)
+    );
+
+    createMigrationLedger($pdo);
+    try {
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare('INSERT INTO migrations (migration, batch) VALUES (?, 0)');
+        foreach ($prefix as $migration) {
+            $stmt->execute([$migration]);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        $pdo->exec('DROP TABLE IF EXISTS migrations');
+        throw $e;
+    }
+
+    echo "تم تسجيل baseline 001-003 بناءً على التأكيد الصريح؛ لم تتم إعادة تشغيلها.\n";
+    echo "راجع status ثم شغّل up لتطبيق migrations اللاحقة عبر runner.\n";
 }
 
 /**
@@ -299,7 +357,7 @@ function createMigrationLedger(PDO $pdo): void
         CREATE TABLE migrations (
             id INT AUTO_INCREMENT PRIMARY KEY,
             migration VARCHAR(255) NOT NULL UNIQUE,
-            batch INT NOT NULL,
+            batch INT NOT NULL COMMENT '0 = operator-adopted legacy baseline; runner batches start at 1',
             executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
@@ -313,5 +371,7 @@ function showHelp()
     echo "الاستخدام:\n";
     echo "  php database/migrate.php up      - تشغيل جميع الـ migrations\n";
     echo "  php database/migrate.php down    - التراجع عن آخر migration\n";
-    echo "  php database/migrate.php status  - عرض حالة الـ migrations\n\n";
+    echo "  php database/migrate.php status  - عرض حالة الـ migrations\n";
+    echo "  php database/migrate.php baseline 003_insert_core_data --confirm-applied-001-003\n";
+    echo "      تسجيل baseline قديم مؤكد صراحةً؛ لا يعيد تشغيل migrations 001-003\n\n";
 }

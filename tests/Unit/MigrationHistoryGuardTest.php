@@ -30,6 +30,43 @@ final class MigrationHistoryGuardTest extends TestCase
         MigrationHistoryGuard::assertFreshDatabase(['permissions', 'roles', 'accounting_periods']);
     }
 
+    public function testAcceptsOnlyTheExplicitlyConfirmedLegacyPrefix(): void
+    {
+        self::assertSame(
+            array_slice(self::MIGRATIONS, 0, 3),
+            MigrationHistoryGuard::assertLegacyBaselineAdoption(
+                self::MIGRATIONS,
+                '003_insert_core_data',
+                '--confirm-applied-001-003',
+                false,
+                ['permissions', 'roles', 'role_permissions', 'sales']
+            )
+        );
+    }
+
+    public function testRejectsLegacyBaselineWithoutExactConfirmationOrCoreTables(): void
+    {
+        foreach ([
+            ['003_insert_core_data', '', false, ['permissions', 'roles', 'role_permissions']],
+            ['002_create_roles_and_permissions', '--confirm-applied-001-003', false, ['permissions', 'roles', 'role_permissions']],
+            ['003_insert_core_data', '--confirm-applied-001-003', false, ['permissions', 'roles']],
+            ['003_insert_core_data', '--confirm-applied-001-003', true, ['permissions', 'roles', 'role_permissions']],
+        ] as [$through, $confirmation, $ledgerExists, $tables]) {
+            try {
+                MigrationHistoryGuard::assertLegacyBaselineAdoption(
+                    self::MIGRATIONS,
+                    $through,
+                    $confirmation,
+                    $ledgerExists,
+                    $tables
+                );
+                self::fail('Invalid legacy baseline adoption was accepted.');
+            } catch (RuntimeException $e) {
+                self::assertStringContainsString('Legacy baseline adoption refused', $e->getMessage());
+            }
+        }
+    }
+
     public function testAllowsAContiguousAppliedPrefix(): void
     {
         $this->expectNotToPerformAssertions();

@@ -32,6 +32,38 @@ final class MigrationHistoryGuard
     }
 
     /**
+     * Validate an explicitly operator-confirmed legacy baseline adoption.
+     * This only supports the confirmed historical prefix 001-003; it never infers history.
+     *
+     * @param list<string> $availableMigrations
+     * @param list<string> $existingTables
+     * @return list<string> The prefix to record as adopted with batch=0.
+     */
+    public static function assertLegacyBaselineAdoption(
+        array $availableMigrations,
+        string $throughMigration,
+        string $confirmation,
+        bool $ledgerExists,
+        array $existingTables
+    ): array {
+        $confirmedPrefix = array_slice($availableMigrations, 0, 3);
+        $requiredTables = ['permissions', 'roles', 'role_permissions'];
+        $normalizedTables = array_map('strtolower', $existingTables);
+        $missingTables = array_diff($requiredTables, $normalizedTables);
+
+        if ($throughMigration !== ($confirmedPrefix[2] ?? null)
+            || $confirmation !== '--confirm-applied-001-003'
+            || $ledgerExists
+            || $missingTables !== []) {
+            throw new RuntimeException(
+                'Legacy baseline adoption refused: require an absent ledger, core RBAC tables, and explicit confirmation that 001-003 were applied.'
+            );
+        }
+
+        return $confirmedPrefix;
+    }
+
+    /**
      * Require applied migrations to be an ordered prefix of the configured list.
      *
      * @param list<string> $availableMigrations Ordered migration filenames without extension.

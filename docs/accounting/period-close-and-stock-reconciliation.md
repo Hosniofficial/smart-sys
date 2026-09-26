@@ -44,7 +44,7 @@ The runner is fail-closed:
 - Migration `004` is intentionally irreversible because the permission row must remain available to existing role links; `down` refuses to remove its ledger entry while retaining the permission.
 - Migration `005` can be reversed only if no snapshot row has a NULL mapping reference; otherwise `down` refuses to invent a mapping id.
 
-**Development database note (2026-09-25):** database `smartsys` on `DESKTOP-CQLDNVF` has its application schema and permission `accounting.period.close.override`, but no `migrations` ledger table. This is a known mismatch, not evidence that migrations `001`–`005` were all applied; migration `005` has not been run there. Do not run `migrate.php up` against this database until its migration baseline is reconciled. The same rule applies more strongly to production: take a verified backup, reconcile the existing baseline, review `status`, then apply only the approved migration plan.
+**Development database note:** The initial state recorded below is a historical pre-migration audit. The subsequent operator-approved baseline adoption and application of migrations `004` and `005` are documented in the final run record at the end of this file. Production still requires its own verified backup/restore, a production-matched staging or isolated clone test, and an approved rollback plan.
 
 ## Returns and original-document references
 
@@ -54,9 +54,9 @@ For return persistence, `invoice_id` records the source invoice/document id; `sa
 
 On the development MariaDB 10.4.32 instance, deleting a `journal_entries` parent cascades its `journal_entry_lines` rows but does **not** execute the child table's DELETE trigger. This was observed during the QA cleanup; the test-only account balance was restored from its exact pre-test snapshot in the same cleanup transaction. Do not rely on a cascade to reverse trigger-maintained account balances. Any future journal deletion workflow must either explicitly reverse accounting balances through a supported service or avoid deleting posted journal history.
 
-## Development migration-baseline audit (2026-09-25)
+## Development migration-baseline audit (2026-09-25, pre-application)
 
-Target verified read-only: database `smartsys` on `DESKTOP-CQLDNVF`, MariaDB `10.4.32`. The `migrations` table is absent while application tables exist, so the runner reports every migration `001`–`005` as **unknown**. Current objects are evidence of current state only; they do not establish execution history.
+Target verified read-only: database `smartsys` on `DESKTOP-CQLDNVF`, MariaDB `10.4.32`. At the time of this audit the `migrations` table was absent while application tables existed, so the runner reported every migration `001`–`005` as **unknown**. This records the original state; it is superseded by the operator-confirmed baseline and execution record below.
 
 | Migration | Observed state | Baseline conclusion |
 | --- | --- | --- |
@@ -70,4 +70,20 @@ A full logical backup was written outside the repository to `C:\xampp\backups\sm
 
 Migration `005` was tested on a fresh restore of that isolated clone only. A validation harness invoked the migration class's `up()` twice because the official runner correctly refuses a database with an absent ledger; this was not an application to the development database and is not a substitute for the approved runner path. On the clone, the column became nullable, the FK definition remained unchanged, all 71 table data hashes remained unchanged, `NULL` was accepted in a rolled-back test update, and an invalid FK value was rejected. The clone was dropped after verification; the backup and manifest remain.
 
-**No migration was applied to the real development database.** The blocker is not migration `005` itself; it is that the existing schema differs from the checked-in `001`–`004` definitions and their execution order cannot be truthfully reconstructed from the current objects. Before using `migrate.php up`, approve and document a legacy-baseline reconciliation procedure that records what is known without asserting unverified history. Then re-run status, take and restore-verify a fresh backup, and apply `005` through the official runner. Production remains blocked on the same baseline issue plus a production-matched staging/clone test and rollback plan.
+## Approved baseline adoption and development application (2026-09-25)
+
+The operator explicitly confirmed that migrations `001`–`003` had already been applied historically. Because the existing schema did not prove that history and the ledger was absent, the migration runner's explicit `baseline 003_insert_core_data --confirm-applied-001-003` command recorded that confirmed prefix as batch `0`; it did **not** rerun those migrations. `migrate.php up` then applied `004_add_accounting_period_close_override` and `005_allow_optional_opening_snapshot_mapping` as batch `1`. A second `up` was idempotent and skipped both. The `status` command now reports `001`–`003` as adopted baseline and `004`–`005` as executed.
+
+Immediately before application, a full logical backup was created and restore-verified:
+
+- Backup: `C:\xampp\backups\smartsys_pre_004_005_baseline_final_20260925.sql`
+- SHA-256: `fc342731a000556a819007559a2963253b5a3e4f5649aeaf5ed5a27549bd28b7`
+- Restore manifest: `C:\xampp\backups\smartsys_pre_004_005_baseline_final_20260925.sql.manifest.json`
+
+The backup restore was validated on an isolated clone: 71 tables, 4 views, 165 foreign keys, 3 triggers, 1 routine, and 0 events were compared; row hashes, schema/index metadata, view outputs, and object definitions matched the source snapshot. No application data was altered by the restore test.
+
+The official runner path was then tested against a separate clone restored from that backup: explicit baseline adoption, `up`, and a repeated `up`. It confirmed the 004 permission definition, and that migration 005 makes `inventory_cost_snapshot.product_branch_mapping_id` nullable while preserving its FK to `product_branch_gl_mapping.id`. All five existing snapshots retained their non-NULL mappings; a temporary NULL update succeeded, an invalid FK was rejected, and the test transaction was rolled back. Non-permission business table hashes and other permission rows matched the source. The clone was dropped after verification, and its absence was confirmed.
+
+Read-only post-application checks on development confirmed the ledger entries: `001`–`003` have `batch=0`; `004`–`005` have `batch=1`; migration 005's column is nullable and retains one FK; all five snapshot references remain populated; and exactly one `accounting.period.close.override` permission exists. `migrate.php status` reports the same state. Unit tests passed: 32 tests and 93 assertions. PHPUnit still emits the existing `phpunit.xml` configuration warning for unsupported detail attributes; this did not fail the tests.
+
+**Production remains blocked** pending an environment matching production for migration testing, a fresh production backup with an actual restore verification, and an approved rollback/recovery plan. Migration 004 has no down migration by design. Migration 005 cannot be reversed once any snapshot row has a NULL mapping reference.
