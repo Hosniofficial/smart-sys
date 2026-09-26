@@ -13,6 +13,8 @@ use App\Services\AccountingService;
 use App\Services\CostingService;
 use App\Services\MonologHandler;
 use App\Repositories\SettingsRepository;
+use App\Security\Permissions;
+use App\Security\SaleDiscountPolicy;
 
 /**
  * SaleCreationService
@@ -143,6 +145,51 @@ class SaleCreationService
     private function resolveAccountId(int $tenantId, string $settingKeyName, string $fallbackCode): ?int
     {
         return $this->accounting->resolveAccountId($tenantId, $settingKeyName, $fallbackCode);
+    }
+
+    private function userCanDiscount(int $tenantId): bool
+    {
+        if (!$this->userId) {
+            return false;
+        }
+
+        $userStmt = $this->pdo->prepare(
+            'SELECT role_id FROM users WHERE id = ? AND (tenant_id = ? OR role_id = 1) LIMIT 1'
+        );
+        $userStmt->execute([$this->userId, $tenantId]);
+        $roleId = $userStmt->fetchColumn();
+        if ($roleId === false) {
+            return false;
+        }
+        if ((int) $roleId === 1) {
+            return true;
+        }
+
+        $permissionStmt = $this->pdo->prepare(
+            "SELECT 1
+             FROM role_permissions rp
+             JOIN permissions p ON p.id = rp.permission_id
+             JOIN roles r ON r.id = rp.role_id
+             WHERE p.name = ?
+               AND (r.tenant_id = ? OR (r.tenant_id IS NULL AND r.is_system_role = 1))
+               AND (
+                   r.id = (SELECT u.role_id FROM users u WHERE u.id = ? AND u.tenant_id = ?)
+                   OR r.id IN (
+                       SELECT ur.role_id FROM users_role ur
+                       WHERE ur.user_id = ? AND (ur.tenant_id = ? OR ur.tenant_id IS NULL)
+                   )
+               )
+             LIMIT 1"
+        );
+        $permissionStmt->execute([
+            Permissions::SALE_DISCOUNT,
+            $tenantId,
+            $this->userId,
+            $tenantId,
+            $this->userId,
+            $tenantId,
+        ]);
+        return (bool) $permissionStmt->fetchColumn();
     }
 
     private function generateInvoiceNumber(int $tenantId): string
@@ -382,13 +429,19 @@ class SaleCreationService
                 if (!isset($item['unit_id']) || is_null($item['unit_id'])) {
                     throw new Exception("وحدة القياس (unit_id) مفقودة للمنتج برقم {$item['product_id']}");
                 }
-                $stmt = $this->pdo->prepare("SELECT purchase_price FROM products WHERE id = ? AND tenant_id = ?");
+                $stmt = $this->pdo->prepare(
+                    "SELECT sale_price, purchase_price, min_sale_price, fixed_discount_percentage
+                     FROM products WHERE id = ? AND tenant_id = ?"
+                );
                 $stmt->execute([$item['product_id'], $tenantId]);
                 $product = $stmt->fetch(PDO::FETCH_ASSOC);
                 if (!$product) {
                     throw new Exception("المنتج برقم {$item['product_id']} غير موجود.");
                 }
-                $item['purchase_price'] = (float)$product['purchase_price'];
+                $item['purchase_price'] = (float) $product['purchase_price'];
+                $item['catalog_sale_price'] = (float) $product['sale_price'];
+                $item['min_sale_price'] = (float) ($product['min_sale_price'] ?? 0);
+                $item['fixed_discount_percentage'] = (float) ($product['fixed_discount_percentage'] ?? 0);
                 $totalAmount += (float)$item['quantity'] * (float)$item['sale_price'];
             }
             unset($item);
@@ -401,6 +454,12 @@ class SaleCreationService
                 $totalAmount,
                 (float) $discountValue,
                 (string) $discountType
+            );
+            SaleDiscountPolicy::assertAllowed(
+                $data['items'],
+                $totalDiscountAmount,
+                $totalAmount,
+                $this->userCanDiscount($tenantId)
             );
 
             foreach ($data['items'] as $item) {

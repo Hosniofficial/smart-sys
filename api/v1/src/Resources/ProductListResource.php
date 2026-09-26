@@ -23,7 +23,8 @@ class ProductListResource
         array $product,
         array $branchProduct,
         array $units = [],
-        ?string $glActivationStatus = null
+        ?string $glActivationStatus = null,
+        bool $includeCostData = false
     ): array {
         $mainUnit = self::getMainUnit($units);
         $currentQty = (int) ($branchProduct['quantity'] ?? 0);
@@ -66,20 +67,23 @@ class ProductListResource
             'unit_id'               => $mainUnit['id'] ?? null,
             'min_quantity'          => $minQty,
 
-            'purchase_price'        => (float) $product['purchase_price'],
+            'purchase_price'        => $includeCostData ? (float) $product['purchase_price'] : null,
             'sale_price'            => (float) $product['sale_price'],
             'min_sale_price'        => (float) ($product['min_sale_price'] ?? 0),
+            'fixed_discount_percentage' => (float) ($product['fixed_discount_percentage'] ?? 0),
 
-            'profit_margin_percent' => self::calculateMargin(
+            'profit_margin_percent' => $includeCostData ? self::calculateMargin(
                 (float) $product['sale_price'],
                 (float) $product['purchase_price']
-            ),
-            'profit_markup_percent' => self::calculateMarkup(
+            ) : null,
+            'profit_markup_percent' => $includeCostData ? self::calculateMarkup(
                 (float) $product['sale_price'],
                 (float) $product['purchase_price']
-            ),
+            ) : null,
 
-            'total_inventory_value' => $currentQty * (float) $product['purchase_price'],
+            'total_inventory_value' => $includeCostData
+                ? $currentQty * (float) $product['purchase_price']
+                : null,
 
             'product_type'          => $product['product_type'] ?? 'stock',
             'active'                => (int) ($product['active'] ?? 0),
@@ -94,14 +98,21 @@ class ProductListResource
     /**
      * Transform multiple products at once
      */
-    public static function transformMany(array $products, array $branchProducts = [], array $allUnits = [], array $glMappings = []): array
+    public static function transformMany(
+        array $products,
+        array $branchProducts = [],
+        array $allUnits = [],
+        array $glMappings = [],
+        bool $includeCostData = false
+    ): array
     {
         return array_map(
             fn ($product) => self::transform(
                 $product,
                 $branchProducts[$product['id']] ?? [],
                 $allUnits[$product['id']] ?? [],
-                $glMappings[$product['id']] ?? null
+                $glMappings[$product['id']] ?? null,
+                $includeCostData
             ),
             $products
         );

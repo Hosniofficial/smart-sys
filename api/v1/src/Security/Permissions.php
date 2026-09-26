@@ -65,6 +65,7 @@ final class Permissions
     public const SALE_EDIT     = 'sale.edit';
     public const SALE_VOID     = 'sale.void';
     public const SALE_DISCOUNT = 'sale.discount';
+    public const PRODUCT_PURCHASE_PRICE_VIEW = 'product.purchase_price.view';
 
     // Sales Approval Workflow
     public const SALE_APPROVAL_VIEW    = 'sales.approval.view';

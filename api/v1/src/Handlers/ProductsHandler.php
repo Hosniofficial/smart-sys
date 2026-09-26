@@ -12,6 +12,7 @@ use App\Services\AccountingService;
 use App\Services\InventoryOpeningBalanceService;
 use App\Resources\ProductListResource;
 use App\Resources\ProductDetailResource;
+use App\Security\Permissions;
 
 class ProductsHandler extends BaseHandler
 {
@@ -137,13 +138,16 @@ class ProductsHandler extends BaseHandler
             }
 
             // Transform products using ProductListResource
+            $includeCostData = $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW);
             $transformedProducts = [];
             foreach ($products as $product) {
                 $pid = (int) $product['id'];
                 $transformedProducts[] = ProductListResource::transform(
                     $product,
                     $branchProducts[$pid] ?? [],
-                    $allUnits[$pid] ?? []
+                    $allUnits[$pid] ?? [],
+                    null,
+                    $includeCostData
                 );
             }
 
@@ -294,6 +298,7 @@ class ProductsHandler extends BaseHandler
             }
 
             // Transform products using ProductListResource
+            $includeCostData = $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW);
             $transformedProducts = [];
             foreach ($products as $product) {
                 $pid = (int) $product['id'];
@@ -301,7 +306,8 @@ class ProductsHandler extends BaseHandler
                     $product,
                     $branchProducts[$pid] ?? [],
                     $allUnits[$pid] ?? [],
-                    $glMappings[$pid] ?? null
+                    $glMappings[$pid] ?? null,
+                    $includeCostData
                 );
             }
 
@@ -404,7 +410,8 @@ class ProductsHandler extends BaseHandler
                 $product,
                 $branchProduct,
                 $units,
-                $glActivationStatus
+                $glActivationStatus,
+                $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW)
             );
 
             return $this->successResponse($response, $transformedProduct, 200);
@@ -426,6 +433,13 @@ class ProductsHandler extends BaseHandler
         if (!$tenantId) {
             return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
         }
+        if (isset($data['fixed_discount_percentage']) && (
+            !is_numeric($data['fixed_discount_percentage'])
+            || (float) $data['fixed_discount_percentage'] < 0
+            || (float) $data['fixed_discount_percentage'] > 100
+        )) {
+            return $this->errorResponse($response, 'يجب أن تكون نسبة الخصم بين 0 و100.', 400);
+        }
 
         $startedTransaction = false;
 
@@ -438,17 +452,18 @@ class ProductsHandler extends BaseHandler
             // ── Insert product ────────────────────────────────────────────
             $stmt = $this->db->prepare("
                 INSERT INTO products (
-                    name, sale_price, purchase_price, min_sale_price, min_quantity,
+                    name, sale_price, purchase_price, min_sale_price, fixed_discount_percentage, min_quantity,
                     description, active, category_id, barcode, unit_id,
                     has_expiry_date, has_serial_number, has_batch_number, tenant_id,
                     product_type, default_expiry_date, default_batch_number, default_serial_number
-                ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $data['name'],
                 $data['sale_price'],
                 $data['purchase_price']  ?? null,
                 $data['min_sale_price']  ?? null,
+                $data['fixed_discount_percentage'] ?? 0,
                 $data['min_quantity']    ?? null,
                 $data['description']     ?? null,
                 $data['category_id']     ?? null,
@@ -651,6 +666,13 @@ class ProductsHandler extends BaseHandler
         if (!$tenantId) {
             return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
         }
+        if (isset($data['fixed_discount_percentage']) && (
+            !is_numeric($data['fixed_discount_percentage'])
+            || (float) $data['fixed_discount_percentage'] < 0
+            || (float) $data['fixed_discount_percentage'] > 100
+        )) {
+            return $this->errorResponse($response, 'يجب أن تكون نسبة الخصم بين 0 و100.', 400);
+        }
 
         $startedTransaction = false;
 
@@ -685,7 +707,7 @@ class ProductsHandler extends BaseHandler
 
             $fields = [
                 'name', 'sale_price', 'purchase_price', 'min_sale_price',
-                'min_quantity', 'description', 'category_id', 'barcode', 'unit_id',
+                'fixed_discount_percentage', 'min_quantity', 'description', 'category_id', 'barcode', 'unit_id',
                 'product_code',  // ← Allow SKU update
                 'default_expiry_date', 'default_batch_number', 'default_serial_number',  // ← Default values
             ];

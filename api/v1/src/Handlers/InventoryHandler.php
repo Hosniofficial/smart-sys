@@ -10,6 +10,7 @@ use App\Handlers\AuditHandler;
 use App\Utils\PaginationHelper;
 use App\Resources\ProductListResource;
 use App\Resources\ProductDetailResource;
+use App\Security\Permissions;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -141,13 +142,16 @@ class InventoryHandler extends BaseHandler
             }
 
             // Transform products using ProductListResource
+            $includeCostData = $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW);
             $transformedProducts = [];
             foreach ($products as $product) {
                 $pid = (int) $product['id'];
                 $transformedProducts[] = ProductListResource::transform(
                     $product,
                     $branchProducts[$pid] ?? [],
-                    $allUnits[$pid] ?? []
+                    $allUnits[$pid] ?? [],
+                    null,
+                    $includeCostData
                 );
             }
 
@@ -255,7 +259,9 @@ class InventoryHandler extends BaseHandler
             $transformedProduct = ProductDetailResource::transform(
                 $product,
                 $branchProduct,
-                $units
+                $units,
+                null,
+                $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW)
             );
 
             return $this->successResponse($response, $transformedProduct, 200);
@@ -279,7 +285,9 @@ class InventoryHandler extends BaseHandler
             }
 
             $data = $request->getParsedBody();
-
+            if (!is_array($data)) {
+                $data = [];
+            }
             $requiredFields = [
                 'name',
                 'category_id'
@@ -507,12 +515,17 @@ class InventoryHandler extends BaseHandler
             $this->db->beginTransaction();
 
             $stmt = $this->db->prepare("
-                SELECT unit_id
+                SELECT unit_id, purchase_price
                 FROM products
                 WHERE id = ? AND tenant_id = ?
             ");
             $stmt->execute([$id, (int) $tenantId]);
-            $oldUnitId = $stmt->fetchColumn();
+            $existingProduct = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            $oldUnitId = $existingProduct['unit_id'] ?? null;
+            $data['purchase_price'] = $data['purchase_price']
+                ?? $data['price']
+                ?? $existingProduct['purchase_price']
+                ?? 0;
 
             $stmt = $this->db->prepare("
                 UPDATE products SET
@@ -849,13 +862,16 @@ class InventoryHandler extends BaseHandler
             }
 
             // Transform using ProductListResource
+            $includeCostData = $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW);
             $transformedProducts = [];
             foreach ($products as $product) {
                 $pid = (int) $product['id'];
                 $transformedProducts[] = ProductListResource::transform(
                     $product,
                     $branchProducts[$pid] ?? [],
-                    $allUnits[$pid] ?? []
+                    $allUnits[$pid] ?? [],
+                    null,
+                    $includeCostData
                 );
             }
 

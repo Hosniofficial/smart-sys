@@ -67,7 +67,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => {
     const role   = user.value?.role;
     const roleId = user.value?.role_id;
-    return role === 'super_admin' || role === 'admin' || role === 'manager' || roleId === 1;
+    return role === 'super_admin' || role === 'admin' || roleId === 1 || roleId === 2;
   });
 
   const isOwner = computed(() => {

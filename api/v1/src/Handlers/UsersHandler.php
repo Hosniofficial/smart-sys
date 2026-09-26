@@ -11,6 +11,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use PDO;
 use App\Services\MonologHandler;
 use App\Utils\SuperAdminHelper;
+use App\Security\TenantRoleAssignmentPolicy;
 
 class UsersHandler extends BaseHandler
 {
@@ -22,6 +23,7 @@ class UsersHandler extends BaseHandler
         parent::__construct($db);
         $this->logger = MonologHandler::getInstance('users');
     }
+
 
     public function setSecurityServices(
         ?SecurityLogger $securityLogger = null,
@@ -271,34 +273,34 @@ class UsersHandler extends BaseHandler
                     $data['roles'] = [$data['roles']];
                 }
 
-                $data['roles'] = array_values(array_filter(array_map(function ($r) {
-                    if (is_array($r) && isset($r['id'])) {
-                        return (int) $r['id'];
+                $data['roles'] = array_values(array_map(function ($role) {
+                    if (is_array($role) && array_key_exists('id', $role)) {
+                        return $role['id'];
                     }
-                    if (is_object($r) && isset($r->id)) {
-                        return (int) $r->id;
+                    if (is_object($role) && isset($role->id)) {
+                        return $role->id;
                     }
-                    return is_numeric($r) ? (int) $r : null;
-                }, $data['roles']), function ($v) {
-                    return $v !== null;
-                }));
+                    return $role;
+                }, $data['roles']));
+            } else {
+                $data['roles'] = [];
             }
 
             $currentUser = $request->getAttribute('user');
-            $currentUserRoleId = is_array($currentUser) ? ($currentUser['role_id'] ?? null) : null;
-
-            if (isset($data['roles']) && !empty($data['roles']) && $currentUserRoleId !== null) {
-                $minAssignedRoleId = min($data['roles']);
-                if ($minAssignedRoleId < $currentUserRoleId) {
-                    return $this->errorResponse($response, 'غير مسموح: لا يمكنك تعيين صلاحيات أعلى من صلاحيتك الخاصة', 403);
-                }
+            $allowSuperAdmin = SuperAdminHelper::is(is_array($currentUser) ? $currentUser : null);
+            $validatedRoles = TenantRoleAssignmentPolicy::validate(
+                $this->db,
+                $data['roles'],
+                (int) $tenantId,
+                $allowSuperAdmin
+            );
+            if ($validatedRoles === null) {
+                return $this->errorResponse($response, 'دور واحد أو أكثر غير متاح لهذا المستأجر.', 403);
             }
-
-            if (isset($data['roles']) && in_array(1, $data['roles'])) {
-                if (!SuperAdminHelper::is(is_array($currentUser) ? $currentUser : null)) {
-                    return $this->errorResponse($response, 'غير مسموح: فقط مدير النظام الرئيسي يمكنه تعيين صلاحية super_admin', 403);
-                }
+            if ($validatedRoles === []) {
+                return $this->errorResponse($response, 'يجب إسناد دور واحد على الأقل للمستخدم.', 400);
             }
+            $data['roles'] = $validatedRoles;
 
             $branchId = null;
             if (isset($data['branch_id'])) {
@@ -440,34 +442,34 @@ class UsersHandler extends BaseHandler
                 if (!is_array($data['roles'])) {
                     $data['roles'] = [$data['roles']];
                 }
-                $data['roles'] = array_values(array_filter(array_map(function ($r) {
-                    if (is_array($r) && isset($r['id'])) {
-                        return (int) $r['id'];
+                $data['roles'] = array_values(array_map(function ($role) {
+                    if (is_array($role) && array_key_exists('id', $role)) {
+                        return $role['id'];
                     }
-                    if (is_object($r) && isset($r->id)) {
-                        return (int) $r->id;
+                    if (is_object($role) && isset($role->id)) {
+                        return $role->id;
                     }
-                    return is_numeric($r) ? (int) $r : null;
-                }, $data['roles']), function ($v) {
-                    return $v !== null;
-                }));
+                    return $role;
+                }, $data['roles']));
+            } else {
+                $data['roles'] = [];
             }
 
             $currentUser = $request->getAttribute('user');
-            $currentUserRoleId = is_array($currentUser) ? ($currentUser['role_id'] ?? null) : null;
-
-            if (isset($data['roles']) && !empty($data['roles']) && $currentUserRoleId !== null) {
-                $minAssignedRoleId = min($data['roles']);
-                if ($minAssignedRoleId < $currentUserRoleId) {
-                    return $this->errorResponse($response, 'غير مسموح: لا يمكنك تعيين صلاحيات أعلى من صلاحيتك الخاصة', 400);
-                }
+            $allowSuperAdmin = SuperAdminHelper::is(is_array($currentUser) ? $currentUser : null);
+            $validatedRoles = TenantRoleAssignmentPolicy::validate(
+                $this->db,
+                $data['roles'],
+                (int) $tenantId,
+                $allowSuperAdmin
+            );
+            if ($validatedRoles === null) {
+                return $this->errorResponse($response, 'دور واحد أو أكثر غير متاح لهذا المستأجر.', 403);
             }
-
-            if (isset($data['roles']) && in_array(1, $data['roles'])) {
-                if (!SuperAdminHelper::is(is_array($currentUser) ? $currentUser : null)) {
-                    return $this->errorResponse($response, 'غير مسموح: فقط مدير النظام الرئيسي يمكنه تعيين صلاحية super_admin', 400);
-                }
+            if ($validatedRoles === []) {
+                return $this->errorResponse($response, 'يجب إسناد دور واحد على الأقل للمستخدم.', 400);
             }
+            $data['roles'] = $validatedRoles;
 
             $branchId = null;
             if (isset($data['branch_id'])) {
@@ -545,15 +547,23 @@ class UsersHandler extends BaseHandler
             $stmt = $this->db->prepare($query);
             $stmt->execute($params);
 
-            $stmt = $this->db->prepare("DELETE FROM users_role WHERE user_id = ?");
-            $stmt->execute([is_numeric($idParam) ? (int) $idParam : (string) $idParam]);
+            $stmt = $this->db->prepare("DELETE FROM users_role WHERE user_id = ? AND (tenant_id = ? OR tenant_id IS NULL)");
+            $stmt->execute([
+                is_numeric($idParam) ? (int) $idParam : (string) $idParam,
+                $tenantId,
+            ]);
 
             $stmt = $this->db->prepare("
-                INSERT INTO users_role (user_id, role_id)
-                VALUES (?, ?)
+                INSERT INTO users_role (user_id, role_id, created_by, tenant_id)
+                VALUES (?, ?, ?, ?)
             ");
             foreach ($data['roles'] as $roleId) {
-                $stmt->execute([is_numeric($idParam) ? (int) $idParam : (string) $idParam, $roleId]);
+                $stmt->execute([
+                    is_numeric($idParam) ? (int) $idParam : (string) $idParam,
+                    $roleId,
+                    $this->extractUserId($request),
+                    $tenantId,
+                ]);
             }
 
             $this->db->commit();

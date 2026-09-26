@@ -77,16 +77,12 @@
           <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">2. سياسة التسعير والضرائب ({{ currencySymbol }})</h4>
         </header>
         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div v-for="field in [
-            { id: 'purchase_price', label: 'سعر الشراء', model: 'purchase_price', color: 'text-slate-700', err: 'purchase_price' },
-            { id: 'sale_price', label: 'سعر البيع الافتراضي', model: 'sale_price', color: 'text-blue-600', err: 'sale_price' },
-            { id: 'min_sale_price', label: 'أقل سعر مسموح', model: 'min_sale_price', color: 'text-amber-600', err: 'min_sale_price' }
-          ]" :key="field.id" class="space-y-1.5">
-            <label class="metadata-label">{{ field.label }} <span v-if="field.id !== 'min_sale_price'" class="text-rose-500">*</span></label>
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div v-for="field in pricingFields" :key="field.id" class="space-y-1.5">
+            <label class="metadata-label">{{ field.label }} <span v-if="['purchase_price', 'sale_price'].includes(field.id)" class="text-rose-500">*</span></label>
             <div class="relative">
-              <input type="number" step="0.01" v-model="form[field.model]" class="h-10 w-full bg-white border border-slate-200 rounded-md px-3 font-mono font-bold text-sm focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" :class="field.color" />
-              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-300 uppercase">{{ currencySymbol }}</span>
+              <input type="number" :min="0" :max="field.id === 'fixed_discount_percentage' ? 100 : undefined" :step="field.step" v-model.number="form[field.model]" class="h-10 w-full bg-white border border-slate-200 rounded-md px-3 font-mono font-bold text-sm focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" :class="field.color" />
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-300 uppercase">{{ field.suffix }}</span>
             </div>
             <p v-if="errors[field.err]" class="text-[9px] text-rose-500 font-bold px-1">{{ errors[field.err] }}</p>
           </div>
@@ -255,6 +251,7 @@
 
 <script setup>
 import { ref, watch, computed, onMounted } from 'vue';
+import { useAuthStore } from '@/stores/auth';
 import apiClient from '../config/axios';
 import { useToast } from '@/composables/useToast';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
@@ -270,6 +267,16 @@ const props = defineProps({
 const emit = defineEmits(['close', 'success', 'category-added']);
 const { showToast } = useToast();
 const { currencySymbol, fetchSettings } = useCompanyCurrency();
+const authStore = useAuthStore();
+const canViewPurchasePrice = computed(() =>
+  authStore.isSuperAdmin || authStore.user?.permissions?.includes('product.purchase_price.view') === true
+);
+const pricingFields = computed(() => [
+  { id: 'purchase_price', label: 'سعر الشراء', model: 'purchase_price', color: 'text-slate-700', err: 'purchase_price', step: '0.01', suffix: currencySymbol.value },
+  { id: 'sale_price', label: 'سعر البيع الافتراضي', model: 'sale_price', color: 'text-blue-600', err: 'sale_price', step: '0.01', suffix: currencySymbol.value },
+  { id: 'min_sale_price', label: 'أقل سعر مسموح', model: 'min_sale_price', color: 'text-amber-600', err: 'min_sale_price', step: '0.01', suffix: currencySymbol.value },
+  { id: 'fixed_discount_percentage', label: 'أقصى خصم مسموح (%)', model: 'fixed_discount_percentage', color: 'text-rose-600', err: 'fixed_discount_percentage', step: '0.01', suffix: '%' },
+].filter((field) => field.id !== 'purchase_price' || canViewPurchasePrice.value));
 
 const form = ref({});
 const isSaving = ref(false);
@@ -361,7 +368,7 @@ const validateForm = () => {
   errors.value = {};
   if (!form.value.name) errors.value.name = 'اسم المنتج مطلوب.';
   if (!form.value.sale_price || isNaN(form.value.sale_price)) errors.value.sale_price = 'سعر البيع مطلوب.';
-  if (!form.value.purchase_price || isNaN(form.value.purchase_price)) errors.value.purchase_price = 'سعر الشراء مطلوب.';
+  if (canViewPurchasePrice.value && (!form.value.purchase_price || isNaN(form.value.purchase_price))) errors.value.purchase_price = 'سعر الشراء مطلوب.';
   if (!form.value.unit_id) errors.value.unit_id = 'الوحدة مطلوبة.';
   return Object.keys(errors.value).length === 0;
 };
@@ -379,6 +386,7 @@ const handleSubmit = async () => {
   isSaving.value = true;
   try {
     const payload = { ...form.value };
+    if (!canViewPurchasePrice.value) delete payload.purchase_price;
     if (payload.expiry_date) { payload.default_expiry_date = payload.expiry_date; delete payload.expiry_date; }
     if (payload.batch_number) { payload.default_batch_number = payload.batch_number; delete payload.batch_number; }
     if (payload.serial_number) { payload.default_serial_number = payload.serial_number; delete payload.serial_number; }

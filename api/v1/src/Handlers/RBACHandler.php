@@ -9,6 +9,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
 use App\Utils\SuperAdminHelper;
+use App\Security\TenantRoleAssignmentPolicy;
 
 class RBACHandler extends BaseHandler
 {
@@ -151,7 +152,7 @@ class RBACHandler extends BaseHandler
             return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
         }
 
-        [$callerId, $callerRoleId, $err] = $this->requireAdminAccess($request, $response);
+        [, , $err] = $this->requireAdminAccess($request, $response);
         if ($err) {
             return $err;
         }
@@ -193,16 +194,29 @@ class RBACHandler extends BaseHandler
                 return $this->errorResponse($response, 'اسم المستخدم أو البريد الإلكتروني موجود بالفعل', 400);
             }
 
-            $this->db->beginTransaction();
-
-            // Resolve roles list: accepts 'roles' array OR single 'role_id'
-            $rolesList = [];
+            // Resolve and authorize every requested role before creating the account.
+            $requestedRoles = [];
             if (isset($data['roles']) && is_array($data['roles']) && !empty($data['roles'])) {
-                $rolesList = array_values(array_filter(array_map('intval', $data['roles'])));
-            } elseif (!empty($data['role_id'])) {
-                $rolesList = [(int) $data['role_id']];
+                $requestedRoles = array_values($data['roles']);
+            } elseif (isset($data['role_id']) && $data['role_id'] !== '') {
+                $requestedRoles = [$data['role_id']];
             }
-            $primaryRoleId = !empty($rolesList) ? $rolesList[0] : null;
+            $currentUser = $request->getAttribute('user');
+            if (is_object($currentUser)) {
+                $currentUser = (array) $currentUser;
+            }
+            $rolesList = TenantRoleAssignmentPolicy::validate(
+                $this->db,
+                $requestedRoles,
+                (int) $tenantId,
+                SuperAdminHelper::is(is_array($currentUser) ? $currentUser : null)
+            );
+            if ($rolesList === null) {
+                return $this->errorResponse($response, 'دور واحد أو أكثر غير متاح لهذا المستأجر.', 403);
+            }
+            $primaryRoleId = $rolesList[0] ?? null;
+
+            $this->db->beginTransaction();
 
             $stmt = $this->db->prepare("
                 INSERT INTO users (
@@ -264,7 +278,7 @@ class RBACHandler extends BaseHandler
             return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
         }
 
-        [$callerId, $callerRoleId, $err] = $this->requireAdminAccess($request, $response);
+        [, , $err] = $this->requireAdminAccess($request, $response);
         if ($err) {
             return $err;
         }
@@ -273,11 +287,23 @@ class RBACHandler extends BaseHandler
             $userId = (int) ($args['id'] ?? 0);
             $data = $request->getParsedBody() ?? [];
 
-            // Prevent privilege escalation: cannot assign a role higher than caller's own
-            if (isset($data['roles']) && is_array($data['roles']) && $callerRoleId !== 1) {
-                $minAssigned = min(array_map('intval', $data['roles']));
-                if ($minAssigned < $callerRoleId) {
-                    return $this->errorResponse($response, 'لا يمكنك تعيين دور أعلى من صلاحيتك الحالية', 403);
+            $rolesList = null;
+            if (isset($data['roles']) && is_array($data['roles'])) {
+                $currentUser = $request->getAttribute('user');
+                if (is_object($currentUser)) {
+                    $currentUser = (array) $currentUser;
+                }
+                $rolesList = TenantRoleAssignmentPolicy::validate(
+                    $this->db,
+                    array_values($data['roles']),
+                    (int) $tenantId,
+                    SuperAdminHelper::is(is_array($currentUser) ? $currentUser : null)
+                );
+                if ($rolesList === null) {
+                    return $this->errorResponse($response, 'دور واحد أو أكثر غير متاح لهذا المستأجر.', 403);
+                }
+                if ($rolesList === []) {
+                    return $this->errorResponse($response, 'يجب إسناد دور واحد على الأقل للمستخدم.', 400);
                 }
             }
 
@@ -330,9 +356,8 @@ class RBACHandler extends BaseHandler
                 $stmt->execute($params);
             }
 
-            if (isset($data['roles']) && is_array($data['roles'])) {
-                $rolesList   = array_values(array_filter(array_map('intval', $data['roles'])));
-                $primaryRole = !empty($rolesList) ? $rolesList[0] : null;
+            if ($rolesList !== null) {
+                $primaryRole = $rolesList[0] ?? null;
                 $createdBy   = $this->extractUserId($request);
 
                 $stmt = $this->db->prepare("
@@ -349,7 +374,7 @@ class RBACHandler extends BaseHandler
                     $insertRoleStmt->execute([$userId, $rId, $createdBy, $tenantId]);
                 }
 
-                if ($primaryRole) {
+                if ($primaryRole !== null) {
                     $stmt = $this->db->prepare("UPDATE users SET role_id = ? WHERE id = ? AND tenant_id = ? AND is_owner = 0");
                     $stmt->execute([$primaryRole, $userId, $tenantId]);
                 }
@@ -456,12 +481,21 @@ class RBACHandler extends BaseHandler
                 FROM roles r
                 LEFT JOIN role_permissions rp ON r.id = rp.role_id
                 LEFT JOIN permissions p ON rp.permission_id = p.id
-                WHERE (r.tenant_id = ? OR r.tenant_id IS NULL)
+                WHERE r.tenant_id = ?
+                   OR (
+                       r.tenant_id IS NULL
+                       AND r.is_system_role = 1
+                       AND LOWER(r.name) NOT IN ('super_admin', 'admin', 'manager', 'branch_manager', 'finance_officer')
+                   )
                 GROUP BY r.id
                 ORDER BY COALESCE(r.tenant_id, 0) DESC, r.name
             ");
             $stmt->execute([$tenantId]);
             $roles = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            foreach ($roles as &$role) {
+                unset($role['tenant_scope_id']);
+            }
+            unset($role);
 
             return $this->successResponse($response, $roles, 200);
         } catch (\Throwable $e) {
@@ -491,6 +525,9 @@ class RBACHandler extends BaseHandler
 
             if (!isset($data['name']) || trim((string) $data['name']) === '') {
                 return $this->errorResponse($response, 'اسم الدور مطلوب', 400);
+            }
+            if (TenantRoleAssignmentPolicy::isReservedRoleName((string) $data['name'])) {
+                return $this->errorResponse($response, 'اسم الدور محجوز لدور النظام.', 403);
             }
 
             $stmt = $this->db->prepare("
@@ -589,6 +626,9 @@ class RBACHandler extends BaseHandler
 
             if (!empty($role['is_system_role'])) {
                 return $this->errorResponse($response, 'لا يمكن تعديل الأدوار النظامية', 400);
+            }
+            if (isset($data['name']) && TenantRoleAssignmentPolicy::isReservedRoleName((string) $data['name'])) {
+                return $this->errorResponse($response, 'اسم الدور محجوز لدور النظام.', 403);
             }
 
             $this->db->beginTransaction();
@@ -770,7 +810,8 @@ class RBACHandler extends BaseHandler
             // Verify role belongs to tenant
             $stmt = $this->db->prepare("
                 SELECT id FROM roles
-                WHERE id = ? AND tenant_id = ?
+                WHERE id = ?
+                  AND (tenant_id = ? OR (tenant_id IS NULL AND is_system_role = 1))
             ");
             $stmt->execute([$roleId, $tenantId]);
             if (!$stmt->fetch()) {
@@ -919,10 +960,12 @@ class RBACHandler extends BaseHandler
                 JOIN role_permissions rp ON p.id = rp.permission_id
                 JOIN roles r ON rp.role_id = r.id
                 JOIN users_role ur ON r.id = ur.role_id
-                WHERE ur.user_id = ? AND r.tenant_id = ?
+                WHERE ur.user_id = ?
+                  AND (ur.tenant_id = ? OR ur.tenant_id IS NULL)
+                  AND (r.tenant_id = ? OR (r.tenant_id IS NULL AND r.is_system_role = 1))
                 ORDER BY p.category, p.name
             ");
-            $stmt->execute([$userId, $tenantId]);
+            $stmt->execute([$userId, $tenantId, $tenantId]);
             $permissions = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             return $this->successResponse($response, $permissions, 200);

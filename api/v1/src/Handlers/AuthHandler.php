@@ -214,8 +214,8 @@ class AuthHandler extends BaseHandler
                 'role' => $this->mapRoleName((int) $user['role_id'])
             ]);
 
-            // Get user permissions
-            $permissions = $this->getPermissionsForRole((int) $user['role_id']);
+            // Include permissions from every role assigned to the user.
+            $permissions = $this->getPermissionsForUser((int) $user['id']);
 
             return $this->setRefreshTokenCookie(
                 $this->successResponse($response, [
@@ -326,8 +326,8 @@ class AuthHandler extends BaseHandler
                 'tenant_id' => $user['tenant_id'],
             ]);
 
-            // Get user permissions
-            $permissions = $this->getPermissionsForRole((int) $user['role_id']);
+            // Include permissions from every role assigned to the user.
+            $permissions = $this->getPermissionsForUser((int) $user['id']);
 
             // New refresh token goes into HttpOnly cookie; access token in body
             return $this->setRefreshTokenCookie(
@@ -545,7 +545,7 @@ class AuthHandler extends BaseHandler
 
     private function generateAccessToken(array $user): string
     {
-        $permissions = $this->getPermissionsForRole((int) $user['role_id']);
+        $permissions = $this->getPermissionsForUser((int) $user['id']);
         $jti = bin2hex(random_bytes(16));
 
         $payload = [
@@ -653,22 +653,34 @@ class AuthHandler extends BaseHandler
         return in_array($roleId, [1, 2], true);
     }
 
-    private function getPermissionsForRole(int $roleId): array
+    private function getPermissionsForUser(int $userId): array
     {
         try {
             $stmt = $this->db->prepare("
-                SELECT p.name
-                FROM role_permissions rp
-                JOIN permissions p ON rp.permission_id = p.id
-                WHERE rp.role_id = ?
+                SELECT DISTINCT p.name
+                FROM users u
+                JOIN role_permissions rp
+                  ON rp.role_id = u.role_id
+                  OR rp.role_id IN (
+                      SELECT ur.role_id
+                      FROM users_role ur
+                      WHERE ur.user_id = u.id
+                        AND (ur.tenant_id = u.tenant_id OR ur.tenant_id IS NULL)
+                  )
+                JOIN roles r ON r.id = rp.role_id
+                JOIN permissions p ON p.id = rp.permission_id
+                WHERE u.id = ?
+                  AND (
+                      r.tenant_id = u.tenant_id
+                      OR (r.tenant_id IS NULL AND r.is_system_role = 1)
+                  )
             ");
-            $stmt->execute([$roleId]);
+            $stmt->execute([$userId]);
 
-            $permissions = $stmt->fetchAll(PDO::FETCH_COLUMN);
-            return $permissions ?: [];
+            return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
         } catch (\Throwable $e) {
-            $this->logger->error('Failed to fetch permissions for role', [
-                'role_id' => $roleId,
+            $this->logger->error('Failed to fetch permissions for user', [
+                'user_id' => $userId,
                 'message' => $e->getMessage()
             ]);
             return [];

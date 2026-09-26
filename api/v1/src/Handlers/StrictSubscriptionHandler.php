@@ -122,6 +122,7 @@ class StrictSubscriptionHandler extends BaseHandler
             }
 
             $tenantId = $this->createSecureTenant($data, $ip, $fingerprint);
+            \App\Services\TenantRoleBootstrapper::ensureDefaults($this->db, $tenantId);
 
             $userData = $this->createSecureUser($tenantId, $data, $ip, $fingerprint);
             $userId = (int) $userData['user_id'];
