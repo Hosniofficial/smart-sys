@@ -1469,12 +1469,12 @@ class AccountingService
                 ];
             }
 
-            // Cr. سيولة (استلام من المورد)
+            // Dr. سيولة (استلام مبلغ المرتجع من المورد)
             if ($paidAmount > 0 && $liquidityAccountId !== null) {
                 $lines[] = [
                     'account_id'  => $liquidityAccountId,
-                    'debit'       => 0,
-                    'credit'      => $paidAmount,
+                    'debit'       => $paidAmount,
+                    'credit'      => 0,
                     'description' => 'استلام قيمة المرتجع نقداً/بشيك من المورد',
                 ];
             }
