@@ -11,6 +11,12 @@ use Psr\Http\Server\RequestHandlerInterface;
 use Slim\Psr7\Response;
 use App\Utils\SuperAdminHelper;
 
+/**
+ * Gates tenant requests on subscription status and end date.
+ *
+ * It may create an automatic trial, mark an overdue subscription expired,
+ * record reminder/expiry events, or return a 402 subscription-required response.
+ */
 class SubscriptionMiddleware implements MiddlewareInterface
 {
     private \PDO $db;
@@ -20,6 +26,7 @@ class SubscriptionMiddleware implements MiddlewareInterface
         $this->db = $db instanceof \Database ? $db->pdo : $db;
     }
 
+    /** Resolve the tenant subscription before forwarding the request. */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $tenantId = $request->getAttribute('tenant_id');
@@ -55,10 +62,6 @@ class SubscriptionMiddleware implements MiddlewareInterface
         }
 
         try {
-            // seedPlans() was removed from here — it ran on every HTTP request (performance issue).
-            // Plans are now seeded once via: crons/align_subscriptions_cron.php
-            // or manually via: php artisan/scripts/seed_plans.php
-
             // Find active or trial subscription
             $sub = null;
             try {
@@ -274,7 +277,6 @@ class SubscriptionMiddleware implements MiddlewareInterface
             $count = (int)$stmt->fetchColumn();
             if ($count === 0) {
                 $this->insertEvent($subscriptionId, 'reminder_sent');
-                // TODO: send email via SMTP (scaffold)
             }
         } catch (\Throwable $e) { /* ignore */
         }

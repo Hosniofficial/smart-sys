@@ -12,7 +12,6 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  * Centralises HTTP request utility functions used across handlers and middleware.
  *
  * Replaces the 5 duplicated getClientIp() implementations found in:
- *   - AuditTrailHandler      (reads $_SERVER directly — no Request object)
  *   - StrictSubscriptionHandler
  *   - StrictSubscriptionMiddleware
  *   - RequestRateLimiter
@@ -83,7 +82,7 @@ final class RequestHelper
 
     /**
      * Extract the real client IP from $_SERVER (for contexts without a
-     * PSR-7 Request object, e.g. AuditTrailHandler::logUserActivity).
+     * PSR-7 Request object).
      *
      * @return string
      */

@@ -224,7 +224,15 @@ export function useStatementData() {
         type: p.type === 'refund' ? 'return_payment' : 'receipt',
         reference: p.reference,
         reference_label: p.reference_label,
-        description: p.description
+        description: p.description,
+        source_label: p.source_label,
+        source_payment_type: p.source_payment_type,
+        payment_reference_number: p.payment_reference_number,
+        invoice_number: p.invoice_number,
+        allocated_invoice_numbers: p.allocated_invoice_numbers,
+        payment_method_name: p.payment_method_name,
+        journal_entry_id: p.journal_entry_id,
+        has_journal: p.has_journal
       }));
   };
 
@@ -239,7 +247,10 @@ export function useStatementData() {
       id: t.id || t.source_id,
       date: t.date,
       reference: t.reference,
+      reference_id: t.reference_id,
       reference_label: t.reference_label,
+      invoice_number: t.invoice_number,
+      payment_reference_number: t.payment_reference_number,
       description: t.description,
       
       // ✅ CRITICAL: Ensure transaction_type is explicitly preserved

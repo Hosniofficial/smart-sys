@@ -8,8 +8,7 @@ use Monolog\Handler\RotatingFileHandler;
 use Monolog\Formatter\LineFormatter;
 
 /**
- * Monolog Handler - Professional Logging System
- * Environment-aware logging with Monolog library
+ * Creates channel-specific Monolog loggers with environment-based handlers and request context.
  */
 class MonologHandler
 {
@@ -18,7 +17,6 @@ class MonologHandler
     private $env;
     private $logLevel;
 
-    // Monolog level mapping
     private static $levelMap = [
         'debug' => Logger::DEBUG,
         'info' => Logger::INFO,
@@ -29,6 +27,7 @@ class MonologHandler
         'emergency' => Logger::EMERGENCY,
     ];
 
+    /** Create a logger channel using APP_ENV and LOG_LEVEL configuration. */
     public function __construct($channel = 'erp')
     {
         $this->env = getenv('APP_ENV') ?: 'production';
@@ -38,9 +37,7 @@ class MonologHandler
         $this->setupHandlers();
     }
 
-    /**
-     * Get singleton instance for channel
-     */
+    /** Return the cached logger wrapper for a channel. */
     public static function getInstance($channel = 'erp'): self
     {
         if (!isset(self::$instances[$channel])) {
@@ -49,12 +46,9 @@ class MonologHandler
         return self::$instances[$channel];
     }
 
-    /**
-     * Setup Monolog handlers based on environment
-     */
+    /** Attach environment-specific file/console handlers and request context. */
     private function setupHandlers(): void
     {
-        // Custom formatter with structured data
         $formatter = new LineFormatter(
             "[%datetime%] %channel%.%level_name%: %message% %context%\n",
             'Y-m-d H:i:s',
@@ -63,32 +57,27 @@ class MonologHandler
         );
 
         if ($this->env === 'production') {
-            // Production: Error log file with rotation
             $logFile = __DIR__ . '/../../../../logs/erp-error.log';
             $errorHandler = new RotatingFileHandler($logFile, 30, Logger::ERROR);
             $errorHandler->setFormatter($formatter);
             $this->logger->pushHandler($errorHandler);
 
-            // Critical errors to separate file
             $criticalFile = __DIR__ . '/../../../../logs/erp-critical.log';
             $criticalHandler = new RotatingFileHandler($criticalFile, 30, Logger::CRITICAL);
             $criticalHandler->setFormatter($formatter);
             $this->logger->pushHandler($criticalHandler);
 
         } else {
-            // Development: All logs to console and file
             $logFile = __DIR__ . '/../../../../logs/erp-debug.log';
             $debugHandler = new RotatingFileHandler($logFile, 7, Logger::DEBUG);
             $debugHandler->setFormatter($formatter);
             $this->logger->pushHandler($debugHandler);
 
-            // Console output for development
             $consoleHandler = new StreamHandler('php://stdout', Logger::DEBUG);
             $consoleHandler->setFormatter($formatter);
             $this->logger->pushHandler($consoleHandler);
         }
 
-        // Add context processor
         $this->logger->pushProcessor(function ($record) {
             $record['extra']['tenant_id'] = $_SERVER['HTTP_X_TENANT_ID'] ?? null;
             $record['extra']['user_id'] = $_SESSION['user_id'] ?? null;
@@ -99,9 +88,7 @@ class MonologHandler
         });
     }
 
-    /**
-     * Check if logging should be enabled for the given level
-     */
+    /** Compare a requested level with the configured threshold. */
     private function shouldLog($level)
     {
         if (!isset(self::$levelMap[$level]) || !isset(self::$levelMap[$this->logLevel])) {
@@ -111,25 +98,19 @@ class MonologHandler
         return self::$levelMap[$level] >= self::$levelMap[$this->logLevel];
     }
 
-    /**
-     * Log a message with structured context
-     */
+    /** Add environment metadata and write a message when it meets the configured threshold. */
     public function log(string $level, string $message, array $context = []): void
     {
         if (!$this->shouldLog($level)) {
             return;
         }
 
-        // Add environment info to context
         $context['env'] = $this->env;
         $context['timestamp'] = date('Y-m-d H:i:s');
 
         $this->logger->log(self::$levelMap[$level], $message, $context);
     }
 
-    /**
-     * Convenience methods for different log levels
-     */
     public function debug(string $message, array $context = []): void
     {
         $this->log('debug', $message, $context);
@@ -155,9 +136,7 @@ class MonologHandler
         $this->log('critical', $message, $context);
     }
 
-    /**
-     * Log authentication events
-     */
+    /** Log an authentication event at info level. */
     public function auth(string $action, ?int $userId = null, ?int $tenantId = null, array $context = []): void
     {
         $this->info("Auth: {$action}", array_merge([
@@ -167,9 +146,7 @@ class MonologHandler
         ], $context));
     }
 
-    /**
-     * Log API requests
-     */
+    /** Log an API request at info level. */
     public function api(string $method, string $endpoint, ?int $userId = null, array $context = []): void
     {
         $this->info("API: {$method} {$endpoint}", array_merge([
@@ -179,9 +156,7 @@ class MonologHandler
         ], $context));
     }
 
-    /**
-     * Log database operations
-     */
+    /** Log a database operation at debug level. */
     public function db(string $operation, string $table, array $context = []): void
     {
         $this->debug("DB: {$operation} on {$table}", array_merge([
@@ -190,17 +165,13 @@ class MonologHandler
         ], $context));
     }
 
-    /**
-     * Log business events
-     */
+    /** Log a business event at info level. */
     public function business(string $event, array $context = []): void
     {
         $this->info("Business: {$event}", $context);
     }
 
-    /**
-     * Log performance metrics
-     */
+    /** Log performance metrics outside production. */
     public function performance(string $operation, float $duration, array $context = []): void
     {
         if ($this->env !== 'production') {
@@ -213,9 +184,7 @@ class MonologHandler
         }
     }
 
-    /**
-     * Log security events (always logged)
-     */
+    /** Log a security event at warning level, subject to the configured threshold. */
     public function security(string $event, array $context = []): void
     {
         $this->warning("Security: {$event}", array_merge([
@@ -226,17 +195,13 @@ class MonologHandler
         ], $context));
     }
 
-    /**
-     * Get the underlying Monolog logger instance
-     */
+    /** Return the underlying Monolog logger, bypassing this wrapper's context enrichment. */
     public function getLogger(): Logger
     {
         return $this->logger;
     }
 
-    /**
-     * Create logs directory if it doesn't exist
-     */
+    /** Create the repository log directory when it is absent. */
     public static function ensureLogsDirectory(): void
     {
         $logsDir = __DIR__ . '/../../../../logs';
@@ -246,5 +211,4 @@ class MonologHandler
     }
 }
 
-// Auto-create logs directory
 MonologHandler::ensureLogsDirectory();

@@ -6,118 +6,108 @@
       <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
     </div>
 
-    <!-- Page Header Area -->
-    <header class="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-3">
-      <div class="max-w-[1600px] mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div class="flex items-center gap-4">
-          <div class="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center text-white shadow-sm shrink-0">
-            <i class="fas fa-file-invoice-dollar text-sm"></i>
-          </div>
-          <div>
-            <h1 class="text-sm font-bold text-slate-900 leading-none tracking-tight">{{ title }}</h1>
-            <p class="text-[10px] text-slate-500 font-medium uppercase tracking-widest mt-1">سجل القيود اليومية والأرصدة المتراكمة</p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <button @click="backToContact" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2">
-            <i class="fas fa-arrow-right text-[10px]"></i> رجوع
+    <main class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
+      <PageHeader
+        :breadcrumb="breadcrumb"
+        :title="title"
+        :description="isCustomer
+          ? 'الفواتير والتحصيلات والحركات المالية ورصيد العميل خلال الفترة المحددة.'
+          : 'الفواتير والمدفوعات والحركات المالية ورصيد المورد خلال الفترة المحددة.'"
+        :branches="[]"
+      >
+        <template #controls>
+          <button
+            @click="showFilters = !showFilters"
+            :class="[showFilters ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 border-slate-200']"
+            class="h-9 px-4 rounded-md border text-xs font-bold transition-all flex items-center gap-2 shadow-sm"
+          >
+            <i class="fas fa-filter text-[10px]"></i>
+            {{ showFilters ? 'إخفاء أدوات التصفية' : 'تصفية النتائج' }}
           </button>
-          <button @click="exportPdf" :disabled="!data" class="h-9 px-4 rounded-md bg-blue-600 text-white text-xs font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-700 transition-all flex items-center gap-2 disabled:opacity-50">
+          <RouterLink :to="`/contacts/${type}/${id}/details`"
+                      class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2">
+            <i class="fas fa-user text-[10px]"></i> تفاصيل {{ isCustomer ? 'العميل' : 'المورد' }}
+          </RouterLink>
+          <button v-if="isCustomer && invoicesTotals.due > 0" @click="openPaymentModal" class="h-9 px-4 rounded-md bg-emerald-600 text-white text-xs font-bold shadow-lg shadow-emerald-900/20 hover:bg-emerald-700 transition-all flex items-center gap-2">
+            <i class="fas fa-hand-holding-usd text-[10px]"></i> تحصيل الآن
+          </button>
+          <button v-if="canExport" @click="exportPdf" :disabled="!data" class="h-9 px-4 rounded-md bg-blue-600 text-white text-xs font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-700 transition-all flex items-center gap-2 disabled:opacity-50">
             <i class="fas fa-print text-[10px]"></i> طباعة / PDF
           </button>
-        </div>
-      </div>
-    </header>
+        </template>
+      </PageHeader>
 
-    <main class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
-
-      <!-- Advanced Analytical Filters Area -->
-      <details class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden group">
-        <summary class="px-6 py-4 cursor-pointer flex items-center justify-between hover:bg-slate-50/50 transition-colors list-none">
-          <div class="flex items-center gap-3">
-            <i class="fas fa-filter text-slate-400 text-xs"></i>
-            <span class="text-xs font-bold text-slate-700 uppercase tracking-widest">خيارات تصفية البيانات والتحليل المتقدم</span>
-          </div>
-          <i class="fas fa-chevron-down text-slate-300 group-open:rotate-180 transition-transform text-[10px]"></i>
-        </summary>
-
-        <div class="px-6 pb-8 pt-2 space-y-8 border-t border-slate-50">
+      <!-- Filters Panel -->
+      <transition name="slide-down">
+        <div v-if="showFilters" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden animate-fadeIn">
+          <div class="p-6 space-y-6">
           <!-- Filter Grid -->
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div class="space-y-1.5">
-              <label class="metadata-label">من تاريخ</label>
-              <div class="relative group">
-                <input ref="startDateRef" type="date" v-model="startDate" @change="applyFilter" class="filter-input-v3 font-mono" />
-                <i class="fas fa-calendar absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-hover:text-blue-500 transition-colors pointer-events-none text-[10px]"></i>
+              <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">من تاريخ</label>
+              <div class="relative">
+                <input ref="startDateRef" type="date" v-model="startDate" @change="applyFilter" class="filter-input" style="padding-left: 2rem;" />
+                <i @click="startDateRef?.showPicker?.()" class="fas fa-calendar absolute left-3 top-1/2 -translate-y-1/2 cursor-pointer text-slate-300 hover:text-slate-500 transition-colors text-[10px]"></i>
               </div>
             </div>
             <div class="space-y-1.5">
-              <label class="metadata-label">إلى تاريخ</label>
-              <div class="relative group">
-                <input ref="endDateRef" type="date" v-model="endDate" @change="applyFilter" class="filter-input-v3 font-mono" />
-                <i class="fas fa-calendar-check absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-hover:text-blue-500 transition-colors pointer-events-none text-[10px]"></i>
+              <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">إلى تاريخ</label>
+              <div class="relative">
+                <input ref="endDateRef" type="date" v-model="endDate" @change="applyFilter" class="filter-input" style="padding-left: 2rem;" />
+                <i @click="endDateRef?.showPicker?.()" class="fas fa-calendar absolute left-3 top-1/2 -translate-y-1/2 cursor-pointer text-slate-300 hover:text-slate-500 transition-colors text-[10px]"></i>
               </div>
             </div>
             <div class="md:col-span-2 space-y-1.5">
-              <label class="metadata-label">النطاقات الزمنية</label>
+              <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">النطاقات الزمنية</label>
               <div class="flex flex-wrap gap-2">
                 <button v-for="range in [
                   { id: 'last7', label: 'آخر 7 أيام' },
                   { id: 'thisMonth', label: 'هذا الشهر' },
                   { id: 'prevMonth', label: 'الشهر السابق' }
-                ]" :key="range.id" @click="setQuickRange(range.id)" class="quick-range-pill">{{ range.label }}</button>
+                ]" :key="range.id" @click="setQuickRange(range.id)" class="filter-input w-auto px-3 cursor-pointer">{{ range.label }}</button>
               </div>
             </div>
           </div>
 
-          <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 pt-6 border-t border-slate-50">
-            <div class="lg:col-span-2 space-y-1.5">
-              <label class="metadata-label">بحث نصي سريع</label>
-              <div class="relative group">
-                <input v-model="searchText" type="text" placeholder="رقم فاتورة، مبلغ، وصف..." class="filter-input-v3 pr-9" />
-                <i class="fas fa-search absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px]"></i>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end pt-4 border-t border-slate-50">
+            <div class="md:col-span-2 space-y-1.5">
+              <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">بحث نصي سريع</label>
+              <div class="relative">
+                <input v-model="searchText" type="text" placeholder="رقم فاتورة، مبلغ، وصف..." class="filter-input" style="padding-right: 2rem;" />
+                <i class="fas fa-search absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] pointer-events-none"></i>
               </div>
             </div>
             <div class="space-y-1.5">
-              <label class="metadata-label">نوع العملية</label>
-              <select v-model="typeFilter" @change="applyFilter" class="filter-input-v3 appearance-none font-bold">
+              <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">نوع العملية</label>
+              <select v-model="typeFilter" @change="applyFilter" class="filter-input appearance-none">
                 <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
             </div>
             <div class="space-y-1.5">
-              <label class="metadata-label">طريقة الدفع</label>
-              <select v-model="paymentMethodId" @change="applyFilter" class="filter-input-v3 appearance-none font-bold">
+              <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">طريقة الدفع</label>
+              <select v-model="paymentMethodId" @change="applyFilter" class="filter-input appearance-none">
                 <option value="">كل الطرق</option>
                 <option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option>
               </select>
             </div>
-            <div class="space-y-1.5">
-              <label class="metadata-label">الفرع</label>
-              <select v-model="selectedBranch" @change="applyFilter" class="filter-input-v3 appearance-none font-bold">
-                <option value="">جميع الفروع</option>
-                <option v-for="w in branches" :key="w.id" :value="w.id">{{ w.name || w.branch_name }}</option>
-              </select>
-            </div>
           </div>
 
-          <div class="flex flex-col md:flex-row items-center justify-between gap-4 pt-6 border-t border-slate-50">
-            <div class="flex items-center gap-6">
-              <label class="flex items-center gap-2 cursor-pointer group select-none">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end pt-4 border-t border-slate-50">
+            <label class="flex items-center gap-2 cursor-pointer select-none text-[11px] font-bold text-slate-600">
                 <input type="checkbox" v-model="fillGaps" @change="applyFilter" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-0">
-                <span class="text-[11px] font-bold text-slate-500 group-hover:text-slate-900 transition-colors">إظهار الأيام الخالية</span>
+                إظهار الأيام الخالية
               </label>
-              <label class="flex items-center gap-2 cursor-pointer group select-none">
+              <label class="flex items-center gap-2 cursor-pointer select-none text-[11px] font-bold text-slate-600">
                 <input type="checkbox" v-model="onlyNonZero" @change="applyFilter" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-0">
-                <span class="text-[11px] font-bold text-slate-500 group-hover:text-slate-900 transition-colors">إخفاء الأرصدة الصفرية</span>
+                إخفاء الأرصدة الصفرية
               </label>
-            </div>
-            <button @click="exportCsv" class="h-9 px-6 rounded-md bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-600 hover:text-white border border-emerald-100 transition-all flex items-center gap-2">
+            <button @click="exportCsv" class="h-9 w-full rounded-md bg-slate-100 text-slate-600 text-[11px] font-bold hover:bg-slate-200 transition-all">
               <i class="fas fa-file-excel"></i> تصدير سجل CSV
             </button>
           </div>
+          </div>
         </div>
-      </details>
+      </transition>
 
       <!-- Loading State: Refined Overlay -->
       <div v-if="statementLoading" class="py-32 text-center bg-white border border-slate-200 rounded-xl shadow-sm">
@@ -246,47 +236,41 @@
                 <table class="w-full text-right border-collapse">
                   <thead>
                     <tr class="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px] tracking-widest">
-                      <th class="px-6 py-4">التاريخ</th>
-                      <th class="px-4 py-4">المستند</th>
-                      <!-- ✅ RESTORED: عمود المرجع -->
-                      <th class="px-4 py-4">المرجع</th>
-                      <th class="px-4 py-4">نوع الحركة</th>
-                      <th class="px-6 py-4">البيان / الوصف</th>
-                      <th class="px-4 py-4">مدين (+)</th>
-                      <th class="px-4 py-4">دائن (-)</th>
-                      <th class="px-6 py-4 text-left">الرصيد</th>
+                      <th class="px-4 py-3">التاريخ</th>
+                      <th class="px-4 py-3">المستند / الحركة</th>
+                      <th class="px-4 py-3">البيان</th>
+                      <th class="px-4 py-3">مدين (+)</th>
+                      <th class="px-4 py-3">دائن (-)</th>
+                      <th class="px-4 py-3 text-left">الرصيد</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-100 font-medium text-xs">
                     <tr v-if="!data.transactions?.length">
-                      <td colspan="8" class="py-20 text-center text-slate-300 font-bold uppercase tracking-widest italic">لا توجد حركات مسجلة للفترة المحددة</td>
+                      <td colspan="6" class="py-20 text-center text-slate-300 font-bold uppercase tracking-widest italic">لا توجد حركات مسجلة للفترة المحددة</td>
                     </tr>
                     <tr v-for="(t, idx) in pagedTransactions" :key="idx" :class="[rowClass(t), 'hover:bg-blue-50/20 transition-all group']">
-                      <td class="px-6 py-4 text-[10px] font-mono font-bold text-slate-400 group-hover:text-slate-900">{{ formatDateEn(t.date) }}</td>
-                      <td class="px-4 py-4">
-                        <RouterLink v-if="invoiceLink(t)" :to="invoiceLink(t)" class="text-blue-600 hover:underline font-bold">
-                          {{ t.invoice_number || ('#' + (t.id || refNumber(t.reference))) }}
-                        </RouterLink>
-                        <span v-else class="text-slate-900 font-bold">{{ t.invoice_number || refNumber(t.reference) || '-' }}</span>
+                      <td class="px-4 py-3 text-[10px] font-mono font-bold text-slate-400 group-hover:text-slate-900 whitespace-nowrap">{{ formatDateEn(t.date) }}</td>
+                      <td class="px-4 py-3 min-w-[190px]">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <RouterLink v-if="invoiceLink(t)" :to="invoiceLink(t)" class="text-blue-600 hover:underline font-bold">
+                            {{ transactionDocumentLabel(t) }}
+                          </RouterLink>
+                          <span v-else class="text-slate-900 font-bold">{{ transactionDocumentLabel(t) }}</span>
+                          <span :class="['px-2 py-0.5 rounded text-[9px] font-bold border whitespace-nowrap', badgeClass(t.type || t.transaction_type || t.reference_type || (t.reference || '').split('#')[0])]">
+                            {{ getTransactionTypeLabel(t.type || t.transaction_type || t.reference_type || (t.reference || '').split('#')[0]) || 'حركة' }}
+                          </span>
+                        </div>
+                        <div v-if="transactionRelatedReference(t) !== '—'" class="text-[9px] text-slate-400 mt-1 truncate max-w-[220px]" :title="transactionRelatedReference(t)">
+                          {{ transactionRelatedReference(t) }}
+                        </div>
                       </td>
-                      <!-- ✅ RESTORED: خلية المرجع -->
-                      <td class="px-4 py-4">
-                        <div class="font-bold text-slate-800 leading-none">{{ t.reference || '-' }}</div>
-                        <div class="text-[9px] text-slate-400 mt-1 uppercase tracking-tighter">{{ t.reference_label || refTypeLabel(t.reference) }}</div>
+                      <td class="px-4 py-3">
+                        <p class="text-slate-500 font-medium max-w-[320px] whitespace-normal break-words" :title="t.description">{{ t.description || '—' }}</p>
+                        <span v-if="getAllocatedInvoice(t)" class="text-[9px] text-indigo-700 mt-1 inline-block">تسوية: {{ getAllocatedInvoice(t) }}</span>
                       </td>
-                      <td class="px-4 py-4">
-                        <!-- ✅ RESTORED: سلسلة fallback الكاملة لتحديد نوع الحركة -->
-                        <span :class="['px-2 py-0.5 rounded text-[9px] font-bold border', badgeClass(t.type || t.transaction_type || t.reference_type || (t.reference || '').split('#')[0])]">
-                          {{ getTransactionTypeLabel(t.type || t.transaction_type || t.reference_type || (t.reference || '').split('#')[0]) || 'حركة' }}
-                        </span>
-                      </td>
-                      <td class="px-6 py-4">
-                        <p class="text-slate-500 font-bold truncate max-w-[200px]" :title="t.description">{{ t.description || '-' }}</p>
-                        <span v-if="getAllocatedInvoice(t)" class="text-[8px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded mt-1.5 inline-block border border-indigo-100">تسوية: {{ getAllocatedInvoice(t) }}</span>
-                      </td>
-                      <td class="px-4 py-4 text-rose-600 font-mono tracking-tighter">{{ t.debit > 0 ? formatPriceEn(t.debit) : '—' }}</td>
-                      <td class="px-4 py-4 text-emerald-600 font-mono tracking-tighter">{{ t.credit > 0 ? formatPriceEn(t.credit) : '—' }}</td>
-                      <td class="px-6 py-4 font-bold font-mono tracking-tighter text-left" :class="getBalanceColorClass(t)">
+                      <td class="px-4 py-3 text-rose-600 font-mono tracking-tighter whitespace-nowrap">{{ t.debit > 0 ? formatPriceEn(t.debit) : '—' }}</td>
+                      <td class="px-4 py-3 text-emerald-600 font-mono tracking-tighter whitespace-nowrap">{{ t.credit > 0 ? formatPriceEn(t.credit) : '—' }}</td>
+                      <td class="px-4 py-3 font-bold font-mono tracking-tighter text-left whitespace-nowrap" :class="getBalanceColorClass(t)">
                         <!-- ✅ RESTORED: أيقونات اتجاه الرصيد -->
                         <span class="inline-flex items-center gap-1">
                           <i v-if="String(t.balance_nature || 'zero').toLowerCase() === 'debit'" class="fas fa-arrow-up text-[9px]"></i>
@@ -298,10 +282,10 @@
                   </tbody>
                   <tfoot class="bg-slate-50/50 border-t border-slate-200">
                     <tr class="font-bold text-xs text-slate-900">
-                      <td colspan="5" class="px-6 py-4 text-[10px] text-slate-400 uppercase tracking-widest">إجمالي الحركات المعروضة</td>
-                      <td class="px-4 py-4 text-rose-600 font-mono">{{ formatPriceEn(pageTotals.debit) }}</td>
-                      <td class="px-4 py-4 text-emerald-600 font-mono">{{ formatPriceEn(pageTotals.credit) }}</td>
-                      <td class="px-6 py-4 font-mono text-left">{{ formatPriceEn(pageTotals.closing || 0) }}</td>
+                      <td colspan="3" class="px-4 py-3 text-[10px] text-slate-400 uppercase tracking-widest">إجمالي الحركات المعروضة</td>
+                      <td class="px-4 py-3 text-rose-600 font-mono">{{ formatPriceEn(pageTotals.debit) }}</td>
+                      <td class="px-4 py-3 text-emerald-600 font-mono">{{ formatPriceEn(pageTotals.credit) }}</td>
+                      <td class="px-4 py-3 font-mono text-left">{{ formatPriceEn(pageTotals.closing || 0) }}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -564,7 +548,10 @@
             <!-- ✅ RESTORED: تبويب "السندات المرجعية" — كان بديل بجملة نصية عامة بدون بيانات -->
             <div v-else-if="referencesSubTab === 'vouchers'" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
               <div class="px-6 py-4 bg-slate-50/30 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">السندات المرجعية ({{ referencesItems.length }} سند)</span>
+                <div>
+                  <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">السندات والمراجع ({{ referencesItems.length }} مستند)</span>
+                  <p class="mt-1 text-[10px] text-slate-500">عمليات القبض والصرف تظهر أيضًا في تبويب سجل المدفوعات.</p>
+                </div>
                 <div class="flex items-center gap-3">
                   <button v-if="referencesItems.length" @click="exportReferencesCsv" class="px-4 py-1.5 rounded-md bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all">تصدير CSV</button>
                   <div v-if="referencesItems.length" class="flex items-center gap-1">
@@ -581,7 +568,7 @@
                     <tr class="bg-slate-50/80 border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px] tracking-widest">
                       <th class="px-6 py-4">التاريخ</th>
                       <th class="px-4 py-4">النوع</th>
-                      <th class="px-4 py-4">رقم السند</th>
+                      <th class="px-4 py-4">رقم العملية</th>
                       <th class="px-4 py-4">المرجع</th>
                       <th class="px-4 py-4 text-right">المبلغ</th>
                       <th class="px-6 py-4">قيد محاسبي؟</th>
@@ -593,13 +580,14 @@
                       <td class="px-4 py-4">
                         <div class="flex flex-col gap-1">
                           <span class="px-2 py-1 rounded bg-slate-100 text-slate-600 text-[9px] font-bold uppercase tracking-widest w-fit">{{ resolvedRefType(r) }}</span>
+                          <span v-if="r.source_label" class="text-[9px] text-slate-500 px-1">{{ r.source_label }}</span>
                           <span v-if="getTransactionSubtypeLabel(r)" class="text-[8px] text-slate-400 font-semibold px-1">{{ getTransactionSubtypeLabel(r) }}</span>
                         </div>
                       </td>
-                      <td class="px-4 py-4 font-bold text-slate-900">{{ r.reference || r.invoice_number || ('#' + r.id) }}</td>
+                      <td class="px-4 py-4 font-bold text-slate-900">#{{ r.id }}</td>
                       <td class="px-4 py-4">
                         <div class="text-[9px]" :class="isReturnLinkedReceipt(r) ? 'text-rose-400 font-bold' : 'text-slate-400'">{{ resolvedRefLabel(r) }}</div>
-                        <div v-if="getAllocatedInvoice(r)" class="text-[9px] mt-1.5 px-2 py-0.5 bg-cyan-50 text-cyan-700 rounded font-bold tracking-tight w-fit">← تسوية: {{ getAllocatedInvoice(r) }}</div>
+                        <div v-if="allocatedInvoiceLabel(r)" class="text-[9px] mt-1.5 px-2 py-0.5 bg-cyan-50 text-cyan-700 rounded font-bold tracking-tight w-fit">{{ allocatedInvoiceLabel(r) }}</div>
                       </td>
                       <td class="px-4 py-4 text-right font-mono text-slate-900 font-bold">{{ formatPriceEn(r.total_amount || r.paid_amount || 0) }}</td>
                       <td class="px-6 py-4">
@@ -639,9 +627,17 @@
             <!-- ✅ RESTORED: تبويب "سجل المدفوعات" — نفس السبب -->
             <div v-else-if="referencesSubTab === 'payments'" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
               <div class="px-6 py-4 bg-slate-50/30 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">سجل المدفوعات والتحويلات ({{ referencesItems.length }} عملية)</span>
-                <div class="flex flex-wrap gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  <span v-if="referencesItems.length">إجمالي: <span class="text-slate-900 font-mono">{{ formatPriceEn(referencesItems.reduce((s, p) => s + Number(p.total_amount || p.paid_amount || 0), 0)) }}</span></span>
+                <div>
+                  <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">سجل التحصيلات والمدفوعات ({{ referencesItems.length }} عملية)</span>
+                  <p class="mt-1 text-[10px] text-slate-500">السندات المعروضة هنا قد تظهر أيضًا ضمن تبويب السندات والمراجع.</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  <span v-if="referencesItems.length">إجمالي السجلات: <span class="text-slate-900 font-mono">{{ formatPriceEn(referencesItems.reduce((s, p) => s + Number(p.total_amount || p.paid_amount || 0), 0)) }}</span></span>
+                  <div v-if="referencesItems.length" class="flex items-center gap-1">
+                    <button class="pagination-btn-v2" :disabled="refsPage <= 1" @click="refsPage = Math.max(1, refsPage - 1)"><i class="fas fa-chevron-right"></i></button>
+                    <span class="px-3 py-1 bg-white rounded border border-slate-200 text-[10px] font-bold">{{ refsPage }} / {{ referencesPages }}</span>
+                    <button class="pagination-btn-v2" :disabled="refsPage >= referencesPages" @click="refsPage = Math.min(referencesPages, refsPage + 1)"><i class="fas fa-chevron-left"></i></button>
+                  </div>
                 </div>
               </div>
 
@@ -650,9 +646,9 @@
                   <thead>
                     <tr class="bg-slate-50/80 border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px] tracking-widest">
                       <th class="px-6 py-4">التاريخ</th>
-                      <th class="px-4 py-4">رقم المرجع</th>
+                      <th class="px-4 py-4">رقم العملية</th>
                       <th class="px-4 py-4">نوع العملية</th>
-                      <th class="px-4 py-4">الفاتورة</th>
+                      <th class="px-4 py-4">الفاتورة / التوزيع</th>
                       <th class="px-4 py-4 text-right">المبلغ</th>
                       <th class="px-4 py-4">قيد محاسبي</th>
                     </tr>
@@ -660,12 +656,12 @@
                   <tbody class="divide-y divide-slate-50 font-medium">
                     <tr v-for="p in pagedReferences" :key="p.id" class="hover:bg-slate-50 transition-all font-bold">
                       <td class="px-6 py-4 text-slate-400 font-mono">{{ formatDateEn(p.date) }}</td>
-                      <td class="px-4 py-4 font-bold text-slate-900">{{ p.reference || ('#' + p.id) }}</td>
+                      <td class="px-4 py-4 font-bold text-slate-900">#{{ p.id }}</td>
                       <td class="px-4 py-4">
-                        <span :class="['px-2 py-1 rounded text-[9px] font-bold', p.type === 'receipt' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700']">{{ p.type_label || (p.type === 'receipt' ? 'سند قبض' : 'سند صرف') }}</span>
+                        <span :class="['px-2 py-1 rounded text-[9px] font-bold', p.type === 'receipt' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700']">{{ p.source_label || p.type_label || (p.type === 'receipt' ? 'قبض' : 'صرف') }}</span>
                       </td>
                       <td class="px-4 py-4">
-                        <span v-if="p.invoice_number" class="text-blue-600">{{ p.invoice_number }}</span>
+                        <span v-if="paymentInvoiceLabel(p)" class="text-blue-600">{{ paymentInvoiceLabel(p) }}</span>
                         <span v-else class="text-slate-300">—</span>
                       </td>
                       <td class="px-4 py-4 text-right font-mono font-bold text-purple-600">{{ formatPriceEn(p.total_amount || p.paid_amount) }}</td>
@@ -699,6 +695,71 @@
       </div>
     </main>
 
+    <!-- Payment Collection Modal — Teleported to body to escape Layout stacking context -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="showPaymentModal"
+          class="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"
+          @keydown.esc="showPaymentModal = false"
+          @click.self="showPaymentModal = false"
+        >
+          <div class="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn" dir="rtl">
+            <div class="px-8 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900">تحصيل دفعة من</h3>
+                <p class="text-xs text-slate-400 mt-0.5 font-medium">{{ partyInfo.name }}</p>
+              </div>
+              <button @click="showPaymentModal = false" class="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all flex items-center justify-center">
+                <i class="fas fa-times text-xs"></i>
+              </button>
+            </div>
+            <form @submit.prevent="submitPayment" class="px-8 py-6 space-y-4">
+              <p v-if="hasPendingCustomerPayment" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-800">
+                توجد دفعة لم تُحسم نتيجتها. أعد المحاولة بالبيانات نفسها قبل بدء دفعة أخرى.
+              </p>
+              <div class="space-y-1.5">
+                <label class="metadata-label">المبلغ <span class="text-rose-500">*</span></label>
+                <input v-model.number="paymentData.amount" :disabled="hasPendingCustomerPayment" type="number" step="0.01" min="0.01" class="filter-input-v3" placeholder="0.00" required />
+              </div>
+              <div class="space-y-1.5">
+                <label class="metadata-label">تاريخ الدفع <span class="text-rose-500">*</span></label>
+                <input v-model="paymentData.payment_date" :disabled="hasPendingCustomerPayment" type="date" class="filter-input-v3 font-mono" required />
+              </div>
+              <div class="space-y-1.5">
+                <label class="metadata-label">طريقة الدفع <span class="text-rose-500">*</span></label>
+                <select v-model="paymentData.payment_method_id" :disabled="hasPendingCustomerPayment" class="filter-input-v3 appearance-none" required>
+                  <option value="">اختر طريقة الدفع</option>
+                  <option v-for="m in collectiblePaymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option>
+                </select>
+              </div>
+              <div class="space-y-1.5">
+                <label class="metadata-label">الفرع <span class="text-rose-500">*</span></label>
+                <select v-model="paymentData.branch_id" :disabled="hasPendingCustomerPayment" class="filter-input-v3 appearance-none" required>
+                  <option value="">اختر الفرع</option>
+                  <option v-for="w in branches" :key="w.id" :value="w.id">{{ w.name || w.branch_name }}</option>
+                </select>
+              </div>
+              <div class="space-y-1.5">
+                <label class="metadata-label">ملاحظات</label>
+                <textarea v-model="paymentData.notes" :disabled="hasPendingCustomerPayment" rows="2" class="filter-input-v3 h-auto py-2 italic resize-none" placeholder="مرجع التحويل، شيك..."></textarea>
+              </div>
+              <div class="pt-4 border-t border-slate-100 flex gap-3">
+                <button type="button" @click="showPaymentModal = false"
+                        class="flex-1 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors rounded-md hover:bg-slate-50">
+                  إلغاء
+                </button>
+                <button type="submit" :disabled="loading"
+                        class="flex-[2] h-10 bg-emerald-600 text-white rounded-md text-xs font-bold shadow-lg shadow-emerald-900/20 active:scale-95 transition-all disabled:opacity-50">
+                  {{ loading ? 'جاري...' : (hasPendingCustomerPayment ? 'إعادة المحاولة بنفس البيانات' : 'تأكيد التحصيل') }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
   </div>
 </template>
 
@@ -707,18 +768,21 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useStatementData } from '@/composables/useStatementData';
 import { useStatementRBAC } from '@/composables/useStatementRBAC';
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import { usePaymentStore } from '@/stores/payment/paymentStore';
+import { useStatementStore } from '@/stores/statement/statementStore';
 import { useSettingsStore } from '@/stores/settings/settingsStore';
 import { useCustomerStore } from '@/stores/customer/customerStore';
 import { useSupplierStore } from '@/stores/supplier/supplierStore';
 import { useToast } from '@/composables/useToast';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useDateValidation } from '@/composables/useDateValidation';
+import { usePendingIdempotentRequest } from '@/composables/usePendingIdempotentRequest';
+import PageHeader from '@/components/PageHeader.vue';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
-import { getLocalDateISO } from '@/utils/date';
-import { getImageUrl } from '@/utils/imageHelpers';
+import { getLocalDateISO } from '@/utils';
+import { getImageUrl } from '@/utils';
 
 // --- Core Composables ---
 const route = useRoute();
@@ -751,9 +815,11 @@ const {
 const authStore = useAuthStore();
 const branchStore = useBranchStore();
 const paymentStore = usePaymentStore();
+const statementStore = useStatementStore();
 const settingsStore = useSettingsStore();
 const customerStore = useCustomerStore();
 const supplierStore = useSupplierStore();
+const showFilters = ref(false);
 
 // --- Component State ---
 const loading = ref(false);
@@ -761,6 +827,10 @@ const activeTab = ref('accounting');
 const viewMode = ref(route.query.view || 'detailed');
 const companyInfo = ref({ name: '', address: '', phone: '', email: '', logo: '' });
 const partyInfo = ref({ name: '', address: '', phone: '', email: '' });
+const showPaymentModal = ref(false);
+const paymentData = ref({ amount: null, payment_date: null, payment_method_id: null, branch_id: null, notes: '' });
+const pendingCustomerPayment = usePendingIdempotentRequest('customer-payment');
+const hasPendingCustomerPayment = computed(() => !!pendingCustomerPayment.pending.value);
 
 // --- Route Params & Defaults ---
 const type = computed(() => route.params.type);
@@ -797,15 +867,6 @@ const fillGaps = ref(typeof route.query.fill_gaps !== 'undefined' ? route.query.
 const onlyNonZero = ref(route.query.only_nonzero === '1');
 const statusFilter = ref(route.query.status || 'any');
 const paymentMethodId = ref(route.query.payment_method_id || '');
-const selectedBranch = computed({
-  get: () => route.query.branch_id || branchStore.selectedBranchId || '',
-  set: (val) => {
-    branchStore.setSelectedBranch(val || null);  // ← SYNC WITH STORE
-    const query = { ...route.query, branch_id: val || undefined };
-    router.replace({ query: Object.fromEntries(Object.entries(query).filter(([_, v]) => v !== undefined)) });
-  }
-});
-
 const typeOptions = [
     { value: '', label: 'كل العمليات' },
     { value: 'sale', label: 'فواتير المبيعات' },
@@ -824,6 +885,9 @@ const statusOptions = [
 ];
 
 const paymentMethods = computed(() => paymentStore.paymentMethods);
+const collectiblePaymentMethods = computed(() =>
+    paymentMethods.value.filter(method => String(method.kind || '').toLowerCase() !== 'credit')
+);
 const branches = computed(() => branchStore.branches);
 
 const txPerPage = ref(Number(route.query.tx_per_page) || 20);
@@ -989,8 +1053,15 @@ const pagedReferences = computed(() => {
     return referencesItems.value.slice(start, start + refsPerPage.value);
 });
 
-const title = computed(() => type.value === 'customers' ? 'كشف حساب عميل' : 'كشف حساب مورد');
+const title = computed(() => type.value === 'customers' ? 'كشف حساب العميل' : 'كشف حساب المورد');
 const isCustomer = computed(() => type.value === 'customers');
+const breadcrumb = computed(() => ({
+  parent: {
+    label: isCustomer.value ? 'العملاء' : 'الموردون',
+    path: isCustomer.value ? '/customers' : '/suppliers'
+  },
+  current: { label: title.value }
+}));
 const referencesTabLabel = computed(() => isCustomer.value ? 'مرجع الفواتير والسندات للعميل' : 'مرجع فواتير ومدفوعات المورد');
 
 const groupedByType = computed(() => {
@@ -1058,52 +1129,6 @@ const invoiceStatusMap = computed(() => {
     } catch { /* ignore */ }
     return map;
 });
-
-const paymentMethodDisplay = (r) => {
-    try {
-        const typeStr = String(r.type || '').trim();
-        const refStr = String(r.reference || '').trim();
-        const hashPrefix = String(r.reference || r.type || '').split('#')[0];
-        const isVoucher = ['receipt', 'payment', 'cash_voucher', 'expense', 'income'].includes(hashPrefix)
-            || /^(CV|PV|RV|BNK|CRD|POS|TRF|TRX|CASH|BANK|CARD|VCH)-/i.test(refStr)
-            || /سند\s*(قبض|دفع)/.test(typeStr);
-        if (!isVoucher) return '-';
-        const direct = r.payment_method_name || r.method_name || r.method_title || r.payment_method_title
-            || r.method_display_name || r.payment_method_display_name || r.method || r.payment_method
-            || r.channel_name || r.channel || r.gateway_name || r.gateway || '';
-        if (direct) return direct;
-        const nested = r.method_details?.name || r.payment_method_details?.name
-            || r.meta?.payment_method_name || r.meta?.method_name || r.meta?.channel_name || r.meta?.gateway_name
-            || r.details?.payment_method_name || r.details?.channel_name || r.details?.gateway_name
-            || r.payment?.method_name || r.payment?.channel_name || r.payment?.gateway_name
-            || r.payment_method?.name || r.payment_method?.title || r.payment_method?.display_name || r.payment_method?.label
-            || r.method_info?.name || r.method_info?.title || r.method_info?.display_name || '';
-        if (nested) return nested;
-        const refCode = (refStr.match(/^([A-Za-z]+)-/) || [])[1];
-        if (refCode) {
-            const codeMap = { CV: 'Cash', CASH: 'Cash', BNK: 'Bank', BANK: 'Bank', CRD: 'Card', CARD: 'Card', POS: 'Card', TRF: 'Transfer', TRX: 'Transfer' };
-            const m = codeMap[refCode.toUpperCase()];
-            if (m) return m;
-        }
-        const desc = String(r.description || '').toLowerCase();
-        if (/(cash|نقد)/.test(desc)) return 'Cash';
-        if (/(card|بطاقة|visa|master)/.test(desc)) return 'Card';
-        if (/(bank|بنك|تحويل|حوالة|transfer)/.test(desc)) return 'Bank';
-        const pmId = r.payment_method_id || r.method_id || r.meta?.payment_method_id || r.details?.payment_method_id || r.payment_method?.id;
-        const pmCode = r.payment_method_code || r.method_code || r.meta?.payment_method_code || r.payment_method?.code || r.channel_code || r.gateway_code;
-        if (Array.isArray(paymentMethods?.value) && paymentMethods.value.length) {
-            if (pmId) {
-                const byId = paymentMethods.value.find(m => Number(m.id) === Number(pmId));
-                if (byId?.name) return byId.name;
-            }
-            if (pmCode) {
-                const byCode = paymentMethods.value.find(m => String(m.code || m.key || m.slug || '').toLowerCase() === String(pmCode).toLowerCase());
-                if (byCode?.name) return byCode.name;
-            }
-        }
-    } catch (_) {}
-    return '-';
-};
 
 const taxAmount = (r) => {
     try {
@@ -1231,33 +1256,72 @@ const displayStatusLabel = (item, fallbackCode, fallbackLabel) => {
     return fallbackLabel || statusTextLocal(fallbackCode) || '-';
 };
 
-const derivedTxStatus = (t) => {
-    try {
-        const prefix = String(t.reference || '').split('#')[0];
-        if (['return', 'cash_voucher', 'receipt', 'payment', 'journal'].includes(prefix)) {
-            const labelMap = { return: 'مرتجع', cash_voucher: 'سند', receipt: 'سند', payment: 'سند', journal: 'قيد يومية' };
-            return { code: 'n/a', label: labelMap[prefix] || '—' };
-        }
-        const refNo = String(t.reference || '').includes('#') ? String(t.reference).split('#')[1] : '';
-        const rawId = t.sale_id || t.purchase_id || String(t.reference || '').split('#')[1] || t.id || '';
-        const itId = Number(rawId.toString());
-        if (!isNaN(itId) && (prefix === 'sale' || prefix === 'purchase')) {
-            const hitId = invoiceStatusMap.value[`${prefix}:${itId}`];
-            if (hitId) return hitId;
-            if (refNo) {
-                const hitRef = invoiceStatusMap.value[`${prefix}#${refNo}`];
-                if (hitRef) return hitRef;
-            }
-        }
-    } catch { /* ignore */ }
-    return null;
-};
-
 const formatDate = (date) => new Date(date).toLocaleDateString('en-GB');
 const formatDateEn = (date) => date ? new Date(date).toLocaleDateString('en-GB') : '';
 const formatPrice = (amount) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(amount || 0));
 const formatPriceEn = (amount) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(amount || 0));
-const refNumber = (reference) => String(reference || '-').split('#').pop();
+const referenceParts = (transaction) => {
+    const [type = '', id = ''] = String(transaction?.reference || '').split('#');
+    return { type: type.toLowerCase(), id: transaction?.reference_id ?? id };
+};
+
+const relatedInvoiceNumber = (transaction, type, id) => {
+    if (transaction?.invoice_number) return transaction.invoice_number;
+    if (!['sale', 'purchase'].includes(type) || !id) return null;
+    const items = referencesData.value?.items || salesOnly.value?.items || [];
+    const invoice = items.find(item => {
+        const invoiceType = item.type || String(item.reference || '').split('#')[0];
+        return invoiceType === type && String(item.id || item.sale_id || item.purchase_id) === String(id);
+    });
+    return invoice?.invoice_number || null;
+};
+
+const transactionDocumentLabel = (transaction) => {
+    const { type, id } = referenceParts(transaction);
+    const invoiceNumber = relatedInvoiceNumber(transaction, type, id);
+    const transactionType = String(transaction?.transaction_type || transaction?.type || '').toLowerCase();
+    if (invoiceNumber && ['receipt', 'payment', 'refund'].includes(transactionType)) {
+        return `${type === 'purchase' ? 'دفعة على فاتورة شراء' : 'تحصيل على فاتورة بيع'} ${invoiceNumber}`;
+    }
+    if (invoiceNumber) {
+        const invoiceType = type.includes('purchase') ? 'فاتورة شراء' : 'فاتورة بيع';
+        return `${invoiceType} ${invoiceNumber}`;
+    }
+    const labels = {
+        cash_voucher: 'سند قبض',
+        customer_payment: 'تحصيل من العميل',
+        customer_payment_reclassification: 'تسوية تحصيل',
+        supplier_payment: 'دفعة للمورد',
+        receipt: 'سند قبض',
+        payment: 'سند صرف',
+        refund: 'استرداد',
+        sales_return: 'مرتجع بيع',
+        purchase_return: 'مرتجع شراء',
+        journal: 'قيد يومية'
+    };
+    const label = labels[type] || getTransactionTypeLabel(transaction?.transaction_type || type);
+    return id ? `${label} #${id}` : label;
+};
+
+const documentNumber = (transaction) => {
+    if (transaction?.invoice_number) return transaction.invoice_number;
+    if (transaction?.payment_reference_number) return transaction.payment_reference_number;
+    if (transaction?.reference_number) return transaction.reference_number;
+
+    const { id } = referenceParts(transaction);
+    if (id) return `#${id}`;
+    return transaction?.id ? `#${transaction.id}` : transactionDocumentLabel(transaction);
+};
+
+const transactionRelatedReference = (transaction) => {
+    const { type, id } = referenceParts(transaction);
+    const invoiceNumber = relatedInvoiceNumber(transaction, type, id);
+    const transactionType = String(transaction?.transaction_type || transaction?.type || '').toLowerCase();
+    if (invoiceNumber && transactionType === type) return '—';
+    if (invoiceNumber) return `الفاتورة المرتبطة: ${invoiceNumber}`;
+    if (transaction?.payment_reference_number) return `مرجع التحصيل: ${transaction.payment_reference_number}`;
+    return '—';
+};
 
 const refTypeLabel = (reference) => {
     const t = String(reference || '').includes('#') ? String(reference).split('#')[0] : '';
@@ -1265,6 +1329,7 @@ const refTypeLabel = (reference) => {
         case 'sale': return 'فاتورة بيع';
         case 'purchase': return 'فاتورة شراء';
         case 'receipt': return 'قبض';
+        case 'customer_payment_reclassification': return 'تسوية تحصيل';
         case 'payment': return 'صرف';
         case 'sales_return': return 'مرتجع بيع';
         case 'purchase_return': return 'مرتجع شراء';
@@ -1284,6 +1349,7 @@ const getTransactionTypeLabel = (type) => {
         case 'purchase': return 'فاتورة شراء';
         case 'purchases': return 'فاتورة شراء';
         case 'receipt': return 'قبض';
+        case 'customer_payment_reclassification': return 'تسوية قيد التحصيل';
         case 'payment': return 'صرف';
         case 'refund': return 'صرف';
         case 'sales_return': return 'مرتجع بيع';
@@ -1292,7 +1358,7 @@ const getTransactionTypeLabel = (type) => {
         case 'purchase_return': return 'مرتجع شراء';
         case 'return_purchase': return 'مرتجع شراء';
         case 'return': return 'مرتجع';
-        case 'cash_voucher': return 'سند نقدي';
+        case 'cash_voucher': return isCustomer.value ? 'سند قبض' : 'سند صرف';
         case 'journal': return 'قيد يومية';
         case 'return_payment': return 'سداد مرتجع';
         case 'sales_return_refund': return 'استرداد عميل';
@@ -1326,11 +1392,30 @@ const resolvedRefType = (r) => {
 
 const resolvedRefLabel = (r) => {
     if (isReturnLinkedReceipt(r)) return 'سند صرف مرتجع';
+    if (r.source_label) {
+        if (r.invoice_number) return `فاتورة ${r.invoice_number}`;
+        if (r.payment_reference_number) return `مرجع التحصيل: ${r.payment_reference_number}`;
+        return r.source_label;
+    }
     if (r.reference_label) {
         return r.reference_label;
     }
     const ref = String(r.reference || '').split('#')[0];
     return refTypeLabel(ref) || '-';
+};
+
+const paymentInvoiceLabel = (payment) => {
+    if (payment?.invoice_number) return payment.invoice_number;
+    const allocatedInvoices = String(payment?.allocated_invoice_numbers || '').trim();
+    return allocatedInvoices ? `موزعة على: ${allocatedInvoices}` : null;
+};
+
+const allocatedInvoiceLabel = (payment) => {
+    const invoiceLabel = paymentInvoiceLabel(payment);
+    if (!invoiceLabel) return '';
+    return payment?.invoice_number
+        ? `مرتبطة بالفاتورة: ${invoiceLabel}`
+        : `توزيع التحصيل: ${invoiceLabel}`;
 };
 
 const getTransactionSubtypeLabel = (transaction) => {
@@ -1383,7 +1468,7 @@ const invoiceLink = (item) => {
         if (!ref.includes('#')) return null;
         const [rawPrefix, rawId] = ref.split('#');
         const prefix = String(rawPrefix || '').toLowerCase();
-        const linkId = Number(item.id || item.sale_id || item.purchase_id || rawId);
+        const linkId = Number(item.reference_id || item.sale_id || item.purchase_id || rawId);
         if (!linkId || Number.isNaN(linkId)) return null;
         if (prefix === 'sale' || prefix === 'sales') return { name: 'SalesHistory', query: { id: linkId } };
         if (prefix === 'purchase' || prefix === 'purchases') return { name: 'PurchaseHistory', query: { id: linkId } };
@@ -1417,15 +1502,6 @@ const daysBetween = (d) => {
     return Math.max(0, Math.floor((new Date() - start) / (1000 * 60 * 60 * 24)));
 };
 
-const coveredInvoice = (r) => {
-    return (
-        r.covers_invoice_number || r.applies_to_invoice_number || r.invoice_number_covered ||
-        (r.applies_to && (r.applies_to.invoice_number || r.applies_to.reference)) ||
-        r.sale_invoice_number || r.sale_number || r.sale_no ||
-        r.sale_reference || r.applies_to_reference || r.reference_target || ''
-    );
-};
-
 const rowClass = (t) => {
     const txType = String(t.reference || '').split('#')[0];
     if (txType.includes('sale') || txType.includes('purchase')) return 'border-r-4 border-r-rose-200';
@@ -1434,12 +1510,73 @@ const rowClass = (t) => {
     return '';
 };
 
-const backToContact = () => {
+const openPaymentModal = () => {
     try {
-        if (type.value === 'customers') { router.push({ name: 'CustomersManagement' }); return; }
-        if (type.value === 'suppliers') { router.push({ name: 'SuppliersManagement' }); return; }
-    } catch (_) { /* ignore, fallback below */ }
-    router.back();
+        const pending = pendingCustomerPayment.restore(id.value);
+        paymentData.value = pending?.payload
+            ? { ...pending.payload }
+            : {
+                amount: null,
+                payment_date: getLocalDateISO(new Date()),
+                payment_method_id: null,
+                branch_id: null,
+                notes: ''
+            };
+        showPaymentModal.value = true;
+    } catch (error) {
+        showToast(error.message || 'تعذر استعادة عملية التحصيل السابقة.', 'error');
+    }
+};
+
+const submitPayment = async () => {
+    if (!paymentData.value.amount || paymentData.value.amount <= 0) {
+        showToast('ادخل مبلغ صحيح', 'error');
+        return;
+    }
+    if (!paymentData.value.payment_method_id) {
+        showToast('اختر الطريقة', 'error');
+        return;
+    }
+    if (!paymentData.value.payment_date) {
+        showToast('الرجاء تحديد تاريخ الدفع', 'error');
+        return;
+    }
+
+    loading.value = true;
+    try {
+        const payload = {
+            amount: Number(paymentData.value.amount),
+            payment_date: paymentData.value.payment_date,
+            payment_method_id: Number(paymentData.value.payment_method_id),
+            branch_id: paymentData.value.branch_id ? Number(paymentData.value.branch_id) : undefined,
+            notes: paymentData.value.notes || '',
+        };
+        const pending = pendingCustomerPayment.prepare(id.value, payload);
+        const res = await customerStore.recordCustomerPayment(id.value, pending.payload, pending.key);
+        if (res.status === 'success') {
+            pendingCustomerPayment.clear(id.value);
+            showToast('تم التحصيل بنجاح', 'success');
+            showPaymentModal.value = false;
+            await fetchStatementData(type.value, id.value, {
+                start_date: startDate.value,
+                end_date: endDate.value,
+                status: statusFilter.value || 'any',
+                fill_gaps: fillGaps.value ? 1 : 0,
+                include_references: 1,
+            }, { force: true });
+        } else {
+            if (res.outcomeUnknown) {
+                showToast('تعذر تأكيد نتيجة التحصيل. أعد المحاولة بالبيانات نفسها.', 'error');
+            } else {
+                pendingCustomerPayment.clear(id.value);
+                showToast(res.message || 'فشل التسجيل', 'error');
+            }
+        }
+    } catch (e) {
+        showToast(e.response?.data?.message || e.message || 'فشل التسجيل', 'error');
+    } finally {
+        loading.value = false;
+    }
 };
 
 const fetchStatement = async () => {
@@ -1455,7 +1592,6 @@ const fetchStatement = async () => {
         include_references: 1,
         include_types: typeFilter.value || undefined,
         payment_method_id: paymentMethodId.value || undefined,
-        branch_id: selectedBranch.value || undefined,
         only_nonzero: onlyNonZero.value ? 1 : 0,
     });
     if (result.status !== 'success') {
@@ -1479,7 +1615,6 @@ const applyFilter = () => {
             type: typeFilter.value || undefined,
             status: statusFilter.value || undefined,
             payment_method_id: paymentMethodId.value || undefined,
-            branch_id: selectedBranch.value || undefined,
             view: viewMode.value || undefined,
             tx_per_page: String(txPerPage.value),
             tx_page: String(txPage.value),
@@ -1506,68 +1641,166 @@ const setQuickRange = (kind) => {
     applyFilter();
 };
 
-const exportPdf = () => {
-    if (!data.value) return;
-    const titleText = `${title.value} (${startDate.value} → ${endDate.value})`;
-    const rowsHtml = (data.value.transactions || []).map(t => `
-        <tr>
-            <td>${formatDate(t.date)}</td>
-            <td>${refNumber(t.reference)}</td>
-            <td>${t.reference_label || refTypeLabel(t.reference)}</td>
-            <td style="text-align:right">${(t.description || '-').toString().replace(/</g, '&lt;')}</td>
-            <td style="color:#b91c1c">${t.debit > 0 ? Number(t.debit).toFixed(2) : '-'}</td>
-            <td style="color:#065f46">${t.credit > 0 ? Number(t.credit).toFixed(2) : '-'}</td>
-            <td style="font-weight:600">${Number(t.balance || 0).toFixed(2)}</td>
-        </tr>
-    `).join('');
-    const totalsHtml = `
-        <div style="margin-top:12px;font-size:12px;color:#374151">
-            <span style="margin-inline:8px">إجمالي مدين: <b>${Number(data.value.total_debit || 0).toFixed(2)}</b></span>
-            <span style="margin-inline:8px">إجمالي دائن: <b>${Number(data.value.total_credit || 0).toFixed(2)}</b></span>
-            <span style="margin-inline:8px">رصيد ختامي: <b>${Number(data.value.closing_balance || 0).toFixed(2)}</b></span>
-        </div>`;
-    const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"/>
-        <title>${titleText}</title>
-        <style>
-            body{font-family:Tajawal,Arial,Segoe UI,Helvetica,sans-serif;color:#111827;margin:24px}
-            h1{font-size:18px;margin:0 0 12px 0}
-            .meta{font-size:12px;color:#6b7280;margin-bottom:12px}
-            table{width:100%;border-collapse:collapse;font-size:12px}
-            thead{background:#f9fafb}
-            th,td{border:1px solid #e5e7eb;padding:8px;text-align:center}
-            .kpis{display:flex;gap:12px;margin:12px 0}
-            .kpis div{background:#f3f4f6;padding:8px 12px;border-radius:6px}
-            @media print{@page{size:A4;margin:12mm}}
-        </style>
-        </head><body>
-        <h1>${titleText}</h1>
-        <div class="meta">رقم الحساب: ${data.value.account?.code || ''} • الاسم: ${data.value.account?.name || ''}</div>
-        <div class="kpis">
-            <div>رصيد افتتاحي: <b>${Number(data.value.opening_balance || 0).toFixed(2)}</b></div>
-            <div>مدين: <b>${Number(data.value.total_debit || 0).toFixed(2)}</b></div>
-            <div>دائن: <b>${Number(data.value.total_credit || 0).toFixed(2)}</b></div>
-            <div>رصيد ختامي: <b>${Number(data.value.closing_balance || 0).toFixed(2)}</b></div>
-        </div>
-        <table>
-            <thead><tr>
-                <th>التاريخ</th><th>رقم العملية</th><th>نوع العملية</th>
-                <th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th>
-            </tr></thead>
-            <tbody>${rowsHtml}</tbody>
-        </table>
-        ${totalsHtml}
-        </body></html>`;
+const exportPdf = async () => {
+    if (!data.value) {
+        showToast('لا توجد بيانات متاحة للطباعة.', 'error');
+        return;
+    }
+
     const win = window.open('', '_blank');
-    if (!win) return;
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
+    if (!win) {
+        showToast('تعذر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.', 'error');
+        return;
+    }
+
     try {
-        win.onload = () => {
-            win.print();
-            setTimeout(() => { try { win.close(); } catch (_) {} }, 300);
+        const requestParams = {
+            start_date: startDate.value,
+            end_date: endDate.value,
+            status: statusFilter.value || 'any',
+            fill_gaps: fillGaps.value ? 1 : 0,
+            include_references: 1,
+            include_types: typeFilter.value || undefined,
+            payment_method_id: paymentMethodId.value || undefined,
+            only_nonzero: onlyNonZero.value ? 1 : 0,
         };
-    } catch (_) {}
+        const statementResult = type.value === 'customers'
+            ? await statementStore.fetchCustomerStatement(id.value, requestParams, { force: true })
+            : await statementStore.fetchSupplierStatement(id.value, requestParams, { force: true });
+        const printData = statementResult?.status === 'success' ? statementResult.data : null;
+        if (!printData || !Array.isArray(printData.transactions)) {
+            win.close();
+            showToast(statementResult?.message || 'تعذر جلب بيانات كشف الحساب للطباعة.', 'error');
+            return;
+        }
+
+        const escapeHtml = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        const formatAmount = (value) => Number(value || 0).toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+        const reportTitle = `${title.value} (${startDate.value} - ${endDate.value})`;
+        const rows = printData.transactions.filter((transaction) => {
+            if (statusFilter.value === 'any' && ['rejected', 'canceled', 'cancelled'].includes(
+                String(transaction.status || transaction.invoice_status || '').toLowerCase()
+            )) {
+                return false;
+            }
+            if (!searchText.value) return true;
+            const search = String(searchText.value).toLowerCase();
+            return [
+                transaction.reference || transaction.invoice_number,
+                transaction.description,
+                transaction.debit,
+                transaction.credit,
+            ].some((value) => String(value || '').toLowerCase().includes(search));
+        });
+        const rowsHtml = rows.length
+            ? rows.map((transaction) => `
+                <tr>
+                    <td>${escapeHtml(formatDate(transaction.date))}</td>
+                    <td>${escapeHtml(documentNumber(transaction))}</td>
+                    <td>${escapeHtml(transaction.reference_label || refTypeLabel(transaction.reference))}</td>
+                    <td class="description">${escapeHtml(transaction.description || '-')}</td>
+                    <td class="debit">${Number(transaction.debit) > 0 ? formatAmount(transaction.debit) : '-'}</td>
+                    <td class="credit">${Number(transaction.credit) > 0 ? formatAmount(transaction.credit) : '-'}</td>
+                    <td>${formatAmount(transaction.balance)}</td>
+                </tr>
+            `).join('')
+            : '<tr><td colspan="7" class="empty">لا توجد حركات خلال الفترة المحددة.</td></tr>';
+        const logoHtml = companyInfo.value.logo
+            ? `<img class="logo" src="${escapeHtml(companyInfo.value.logo)}" alt="">`
+            : '';
+
+        const html = `<!DOCTYPE html>
+            <html dir="rtl" lang="ar">
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>${escapeHtml(reportTitle)}</title>
+                <style>
+                    *{box-sizing:border-box}
+                    body{font-family:Tajawal,Arial,Segoe UI,sans-serif;color:#111827;margin:0;padding:24px;font-size:12px}
+                    header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;border-bottom:2px solid #1e3a8a;padding-bottom:16px}
+                    .company{display:flex;align-items:center;gap:12px}
+                    .logo{max-width:64px;max-height:64px;object-fit:contain}
+                    h1{font-size:20px;margin:0 0 6px}
+                    h2{font-size:15px;margin:20px 0 6px}
+                    p{margin:4px 0;color:#4b5563}
+                    .period{font-weight:700;color:#1d4ed8}
+                    .summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0}
+                    .summary div{border:1px solid #dbe2ea;border-radius:6px;padding:10px;background:#f8fafc}
+                    .summary span{display:block;color:#64748b;font-size:10px;margin-bottom:5px}
+                    .summary strong{font-size:13px}
+                    table{width:100%;border-collapse:collapse;font-size:10px}
+                    thead{display:table-header-group;background:#eaf0f8}
+                    tr{break-inside:avoid}
+                    th,td{border:1px solid #d1d5db;padding:7px;text-align:center;vertical-align:top}
+                    td.description{text-align:right;white-space:pre-wrap;overflow-wrap:anywhere}
+                    .debit{color:#b91c1c;font-weight:700}
+                    .credit{color:#047857;font-weight:700}
+                    .empty{text-align:center;padding:24px;color:#64748b}
+                    footer{margin-top:12px;padding-top:8px;border-top:1px solid #d1d5db;display:flex;justify-content:space-between;color:#64748b;font-size:9px}
+                    @page{size:A4 landscape;margin:12mm}
+                    @media print{body{padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+                    @media screen and (max-width:700px){body{padding:12px}.summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+                </style>
+            </head>
+            <body>
+                <header>
+                    <div>
+                        <div class="company">${logoHtml}<div><h1>${escapeHtml(companyInfo.value.name || 'المؤسسة')}</h1><p>كشف حساب مالي رسمي</p></div></div>
+                        <p>${escapeHtml(companyInfo.value.address || '')}${companyInfo.value.phone ? ` • ${escapeHtml(companyInfo.value.phone)}` : ''}</p>
+                    </div>
+                    <div>
+                        <h2>${escapeHtml(isCustomer.value ? 'العميل' : 'المورد')}: ${escapeHtml(partyInfo.value.name || printData.account?.name || '')}</h2>
+                        <p>رقم الحساب: <strong>${escapeHtml(printData.account?.code || '')}</strong></p>
+                        <p class="period">الفترة: ${escapeHtml(startDate.value)} - ${escapeHtml(endDate.value)}</p>
+                    </div>
+                </header>
+                <section class="summary">
+                    <div><span>الرصيد الافتتاحي</span><strong>${formatAmount(printData.opening_balance)} ${escapeHtml(currencySymbol.value)}</strong></div>
+                    <div><span>إجمالي مدين</span><strong>${formatAmount(printData.total_debit)} ${escapeHtml(currencySymbol.value)}</strong></div>
+                    <div><span>إجمالي دائن</span><strong>${formatAmount(printData.total_credit)} ${escapeHtml(currencySymbol.value)}</strong></div>
+                    <div><span>الرصيد الختامي</span><strong>${formatAmount(printData.closing_balance)} ${escapeHtml(currencySymbol.value)}</strong></div>
+                </section>
+                <table>
+                    <thead><tr>
+                        <th>التاريخ</th><th>رقم العملية</th><th>نوع العملية</th>
+                        <th>البيان</th><th>مدين</th><th>دائن</th><th>الرصيد</th>
+                    </tr></thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+                <footer><span>عدد الحركات: ${rows.length}</span><span>تاريخ الطباعة: ${escapeHtml(new Date().toLocaleString('ar-EG'))}</span></footer>
+            </body>
+            </html>`;
+
+        win.addEventListener('afterprint', () => win.close(), { once: true });
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+        win.setTimeout(async () => {
+            try {
+                await win.document.fonts?.ready;
+                if (win.closed) return;
+                win.focus();
+                win.print();
+            } catch (error) {
+                if (!win.closed) win.close();
+                console.error('[AccountStatement] Browser print failed:', error);
+                showToast(error?.message || 'تعذر بدء طباعة كشف الحساب.', 'error');
+            }
+        }, 100);
+    } catch (error) {
+        if (!win.closed) win.close();
+        console.error('[AccountStatement] PDF print failed:', error);
+        showToast(error?.message || 'تعذر تجهيز كشف الحساب للطباعة.', 'error');
+    }
 };
 
 const exportCsv = () => {
@@ -1576,7 +1809,7 @@ const exportCsv = () => {
     data.value.transactions.forEach(t => {
         rows.push([
             formatDate(t.date),
-            refNumber(t.reference),
+            documentNumber(t),
             (t.reference_label || refTypeLabel(t.reference)),
             t.description || '-',
             t.debit > 0 ? Number(t.debit).toFixed(2) : '0.00',
@@ -1744,7 +1977,7 @@ watch([page, perPage, startDate, endDate], async () => {
         start_date: startDate.value,
         end_date: endDate.value,
         page: page.value,
-        per_page: perPage.value
+        per_page: perPage.value,
     });
     if (result.status !== 'success') {
         handleStatementError(result);
@@ -1788,7 +2021,6 @@ watch(() => route.query, (q) => {
     if (typeof q.type !== 'undefined') typeFilter.value = q.type;
     if (typeof q.status !== 'undefined') statusFilter.value = q.status;
     if (typeof q.payment_method_id !== 'undefined') paymentMethodId.value = q.payment_method_id;
-    if (typeof q.branch_id !== 'undefined') selectedBranch.value = q.branch_id;
     if (typeof q.view !== 'undefined') viewMode.value = q.view;
     if (typeof q.tx_per_page !== 'undefined') txPerPage.value = Number(q.tx_per_page) || 20;
     if (typeof q.tx_page !== 'undefined') txPage.value = Number(q.tx_page) || 1;
@@ -1800,13 +2032,17 @@ watch(() => route.query, (q) => {
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
 .filter-input-v3 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all;
+  @apply h-11 w-full bg-white border border-slate-200 rounded-xl px-3 text-xs font-semibold text-slate-700 hover:border-slate-300 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
 }
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1; }
+.filter-input {
+  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
+}
+
+.metadata-label { @apply block text-[10px] font-bold text-slate-500 tracking-wide px-1 mb-1; }
 
 .quick-range-pill {
-  @apply px-3 py-1.5 rounded-md bg-white border border-slate-200 text-[10px] font-bold text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-all;
+  @apply px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-[10px] font-bold text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-all;
 }
 
 .pagination-btn-v2 {
@@ -1815,6 +2051,9 @@ watch(() => route.query, (q) => {
 
 .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
+
+.slide-down-enter-active, .slide-down-leave-active { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.slide-down-enter-from, .slide-down-leave-to { opacity: 0; transform: translateY(-10px); }
 
 .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }

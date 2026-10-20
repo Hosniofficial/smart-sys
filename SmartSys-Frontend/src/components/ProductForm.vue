@@ -103,7 +103,7 @@
               <input type="number" :value="form.quantity || 0" readonly class="h-10 w-full bg-slate-100 border border-slate-200 rounded-md px-4 font-mono font-bold text-slate-500 cursor-not-allowed" />
               <i class="fas fa-lock absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px]"></i>
             </div>
-            <p class="text-[10px] text-slate-400 italic px-1">الرصيد يتم تحديثه عبر فواتير الشراء أو التسويات.</p>
+            <p class="text-[10px] text-slate-400 italic px-1">كمية المخزون تُحدَّث عبر فواتير الشراء والتسويات.</p>
           </div>
 
           <div class="space-y-1.5 group">
@@ -175,11 +175,15 @@
       </section>
 
       <!-- Section 4: Distribution & Branch Management -->
-      <section v-if="!isEditMode && branches.length > 0" class="space-y-6">
+      <section v-if="!isEditMode && branches.length > 0 && form.product_type === 'stock'" class="space-y-6">
         <header class="flex items-center gap-3 px-1">
           <span class="w-1 h-4 bg-amber-500 rounded-full"></span>
-          <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">4. تعيين النطاق والترصيد الأولي</h4>
+          <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">4. تحديد النطاق وإدخال الرصيد الافتتاحي</h4>
         </header>
+
+        <p class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-[11px] leading-relaxed text-blue-800">
+          سيربط النظام حسابات المنتج بالفروع المختارة تلقائيًا إذا كانت حسابات المخزون والمشتريات وتكلفة البضاعة مهيأة. إذا تعذر الربط، سيظهر تنبيه باسم الفرع ويظل تسجيل حركاته متوقفًا حتى استكمال الإعداد المحاسبي.
+        </p>
 
         <div class="grid grid-cols-1 gap-3">
           <label v-for="assign in [
@@ -220,7 +224,7 @@
               <input type="checkbox" v-model="enableOpeningBalance" class="w-5 h-5 mt-1 rounded border-slate-300 text-amber-500 focus:ring-0" />
               <div class="flex-grow">
                 <span class="text-sm font-bold text-slate-900 block">إدخال الرصيد الافتتاحي الآن</span>
-                <p class="text-[10px] text-slate-500 mt-1 leading-relaxed">قم بتمكين هذا الخيار إذا كنت ترغب في تحديد الكمية الحالية وتكلفة الوحدة فوراً. سيقوم النظام بإنشاء قيد محاسبي تلقائي (Opening Balance Journal).</p>
+                <p class="text-[10px] text-slate-500 mt-1 leading-relaxed">فعّل هذا الخيار إذا كنت ترغب في إدخال الكمية الافتتاحية وتكلفة الوحدة. سيُنشئ النظام قيدًا محاسبيًا تلقائيًا.</p>
               </div>
             </label>
 
@@ -231,7 +235,7 @@
                   <div class="space-y-1.5"><label class="metadata-label text-amber-600">تكلفة الوحدة (Cost)</label><input type="number" v-model.number="initialUnitCost" class="form-input-v3 h-10 font-mono font-bold" placeholder="0.00" /></div>
                 </div>
                 <div v-if="initialQuantity > 0 && initialUnitCost > 0" class="p-4 bg-slate-900 rounded-xl text-white flex justify-between items-center shadow-lg">
-                   <span class="text-[10px] font-bold text-blue-400 uppercase tracking-widest">إجمالي قيمة الترصيد</span>
+                   <span class="text-[10px] font-bold text-blue-400 uppercase tracking-widest">إجمالي قيمة الرصيد الافتتاحي</span>
                    <span class="text-xl font-bold font-mono tracking-tighter">{{ formatPriceEn(initialQuantity * initialUnitCost) }} {{ currencySymbol }}</span>
                 </div>
               </div>
@@ -251,7 +255,7 @@
 
 <script setup>
 import { ref, watch, computed, onMounted } from 'vue';
-import { useAuthStore } from '@/stores/auth';
+import { useAuthStore } from '@/stores/auth/authStore';
 import apiClient from '../config/axios';
 import { useToast } from '@/composables/useToast';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
@@ -403,12 +407,12 @@ const handleSubmit = async () => {
           else if (branchAssignmentType.value === 'selected') targetBranchIds = selectedBranches.value.length > 0 ? selectedBranches.value : [props.branchId];
           else targetBranchIds = props.branchId ? [props.branchId] : props.branches.map(b => b.id);
         }
-      } else { targetBranchIds = props.branchId ? [props.branchId] : props.branches.map(b => b.id); }
+      }
 
       payload.branch_assignments = {
         branch_ids: targetBranchIds,
-        initial_quantity: enableOpeningBalance.value ? initialQuantity.value : 0,
-        initial_unit_cost: enableOpeningBalance.value ? initialUnitCost.value : 0
+        initial_quantity: isStockProduct && enableOpeningBalance.value ? initialQuantity.value : 0,
+        initial_unit_cost: isStockProduct && enableOpeningBalance.value ? initialUnitCost.value : 0
       };
     }
 
@@ -416,8 +420,17 @@ const handleSubmit = async () => {
       await apiClient.put(`/products/${props.productData.id}`, payload);
       showToast('تم التحديث بنجاح!', 'success');
     } else {
-      await apiClient.post('/products', payload);
-      showToast('تم الإضافة بنجاح!', 'success');
+      const response = await apiClient.post('/products', payload);
+      const activation = response.data?.data?.branch_activation || [];
+      const setupRequired = activation.filter((branch) => branch.status === 'setup_required');
+      if (setupRequired.length) {
+        const branchNames = setupRequired.map((branch) => branch.branch_name).join('، ');
+        showToast(`تم إنشاء المنتج، لكن تعذر ربط حساباته في: ${branchNames}. أكمل التفعيل المحاسبي قبل تسجيل الحركات.`, 'warning');
+      } else if (activation.some((branch) => branch.status === 'active')) {
+        showToast('تمت إضافة المنتج وربط حساباته بالفروع المختارة بنجاح.', 'success');
+      } else {
+        showToast('تمت إضافة المنتج بنجاح.', 'success');
+      }
     }
     emit('success');
   } catch (error) {

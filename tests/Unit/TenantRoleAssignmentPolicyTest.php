@@ -31,7 +31,8 @@ final class TenantRoleAssignmentPolicyTest extends TestCase
             (21, 'tenant_b_role', 8, 0),
             (22, 'super_admin', 7, 0),
             (23, 'manager', 7, 0),
-            (24, 'finance_officer', 7, 0)");
+            (24, 'finance_officer', 7, 0),
+            (25, 'administrator', 7, 0)");
     }
 
     public function testReservesThePlatformSuperAdminRoleNameCaseInsensitively(): void
@@ -39,14 +40,15 @@ final class TenantRoleAssignmentPolicyTest extends TestCase
         self::assertTrue(TenantRoleAssignmentPolicy::isReservedRoleName('super_admin'));
         self::assertTrue(TenantRoleAssignmentPolicy::isReservedRoleName('  SUPER_ADMIN  '));
         self::assertTrue(TenantRoleAssignmentPolicy::isReservedRoleName('ADMIN'));
+        self::assertTrue(TenantRoleAssignmentPolicy::isReservedRoleName('administrator'));
         self::assertFalse(TenantRoleAssignmentPolicy::isReservedRoleName('tenant_manager'));
     }
 
     public function testAllowsTenantOwnedAndGlobalSystemRolesExceptPlatformSuperAdmin(): void
     {
         self::assertSame(
-            [20, 4, 23, 24],
-            TenantRoleAssignmentPolicy::validate($this->db, ['20', 4, 23, 24], 7)
+            [20, 4, 23, 24, 3, 9],
+            TenantRoleAssignmentPolicy::validate($this->db, ['20', 4, 23, 24, 3, 9], 7)
         );
     }
 
@@ -55,18 +57,16 @@ final class TenantRoleAssignmentPolicyTest extends TestCase
         self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [2, 1], 7));
     }
 
-    public function testRejectsSharedLegacyOperationalTemplates(): void
+    public function testRejectsLegacyBranchManagerTemplate(): void
     {
-        self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [3], 7));
         self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [10], 7));
-        self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [9], 7));
     }
 
-    public function testAllowsCanonicalSuperAdminOnlyWhenExplicitlyAuthorized(): void
+    public function testRejectsCanonicalSuperAdminEvenForPrivilegedCallers(): void
     {
-        self::assertSame([1], TenantRoleAssignmentPolicy::validate($this->db, [1], 7, true));
-        self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [22], 7, true));
-        self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [2], 7, true));
+        self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [1], 7));
+        self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [22], 7));
+        self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [2], 7));
     }
 
     public function testRejectsRolesOwnedByAnotherTenant(): void
@@ -76,13 +76,17 @@ final class TenantRoleAssignmentPolicyTest extends TestCase
 
     public function testRejectsUnscopedNonSystemRoles(): void
     {
-        self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [9], 7));
         self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [11], 7));
     }
 
     public function testRejectsTenantRoleUsingReservedSuperAdminName(): void
     {
         self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [22], 7));
+    }
+
+    public function testRejectsAdministratorAliasAsATenantRole(): void
+    {
+        self::assertNull(TenantRoleAssignmentPolicy::validate($this->db, [25], 7));
     }
 
     public function testRejectsUnknownOrMalformedRoleIds(): void

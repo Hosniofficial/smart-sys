@@ -11,8 +11,8 @@
       <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
-        title="المواقع والفروع"
-        description="إدارة فروع المؤسسة، مواقع التخزين، وحالات التشغيل اللحظية."
+        title="الفروع والمستودعات"
+        description="أدر فروع المؤسسة ومستودعاتها، وتابع حالة التشغيل لكل موقع."
         :branches="[]"
         :selectedBranch="null"
       >
@@ -196,8 +196,9 @@ import { ref, onMounted, computed, watch } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
 import { useToast } from '@/composables/useToast';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
-import BranchForm from '../../components/BranchForm.vue';
-import { useBranchStore } from '@/stores/branch';
+
+import BranchForm from '@/components/BranchForm.vue';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import AlertService from '@/services/AlertService';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import { useTableFilters } from '@/composables/useTableFilters';

@@ -160,6 +160,27 @@
                   <div class="space-y-1.5"><label class="metadata-label">تنسيق التاريخ</label><select v-model="general.dateFormat" class="filter-input-v2 h-10 font-mono"><option value="DD/MM/YYYY">DD/MM/YYYY</option><option value="YYYY-MM-DD">YYYY-MM-DD</option></select></div>
                   <div class="space-y-1.5"><label class="metadata-label">توقيت الساعة</label><select v-model="general.timeFormat" class="filter-input-v2 h-10"><option value="12">12 ساعة</option><option value="24">24 ساعة</option></select></div>
                 </div>
+                <div class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h4 class="text-xs font-bold text-slate-800">أسعار الصرف المرجعية</h4>
+                      <p class="mt-1 text-[10px] text-slate-500">مقابل العملة الأساسية {{ exchangeRates.base_currency_code || general.currency }}.</p>
+                    </div>
+                    <button type="button" @click="refreshCurrencyRates" :disabled="currencyRatesLoading" class="h-8 rounded-md border border-slate-200 px-3 text-[10px] font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-50">
+                      <i :class="currencyRatesLoading ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'" class="ml-1"></i>
+                      تحديث الأسعار
+                    </button>
+                  </div>
+                  <p v-if="currencyRatesError" class="mt-3 text-[10px] font-bold text-rose-600">{{ currencyRatesError }}</p>
+                  <div v-else-if="exchangeRates.rates?.length" class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                    <div v-for="rate in exchangeRates.rates" :key="rate.quote_currency_code" class="rounded-md bg-slate-50 px-3 py-2">
+                      <div class="text-[9px] font-bold text-slate-500">{{ rate.quote_currency_code }}</div>
+                      <div class="mt-1 text-xs font-bold text-slate-900">{{ Number(rate.rate).toLocaleString('en-US', { maximumFractionDigits: 6 }) }}</div>
+                    </div>
+                  </div>
+                  <p v-else class="mt-3 text-[10px] text-slate-500">لا توجد أسعار محفوظة حالياً؛ اضغط تحديث الأسعار لجلبها.</p>
+                  <p v-if="exchangeRates.rates?.length" class="mt-3 text-[9px] text-slate-400">آخر تحديث: {{ exchangeRates.rates[0]?.fetched_at || exchangeRates.rates[0]?.rate_date }}</p>
+                </div>
               </div>
             </div>
           </section>
@@ -189,6 +210,28 @@
 
             <!-- Configuration Grid -->
             <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm p-8 space-y-10">
+
+              <!-- ═══ Master Switch: تفعيل نظام الجلسات ═══ -->
+              <div class="space-y-4">
+                <h3 class="metadata-label text-slate-900"><i class="fas fa-power-off ml-2 text-blue-600"></i> تشغيل نظام الجلسات</h3>
+                <div class="space-y-3">
+                  <label class="setting-toggle-row bg-blue-50 border border-blue-200 px-4 rounded-lg h-14">
+                    <div class="flex flex-col">
+                      <span class="text-xs font-bold text-slate-800 uppercase tracking-tight">تفعيل نظام الورديات (Cashier Sessions)</span>
+                      <span class="text-[9px] text-slate-500 mt-0.5">عند التفعيل، يُلزَم الكاشير بفتح جلسة قبل تسجيل أي مبيعات نقدية</span>
+                    </div>
+                    <input type="checkbox" v-model="posSession.sessionsEnabled" class="ios-toggle" />
+                  </label>
+                  <label class="setting-toggle-row bg-amber-50 border border-amber-200 px-4 rounded-lg h-14">
+                    <div class="flex flex-col">
+                      <span class="text-xs font-bold text-slate-800 uppercase tracking-tight">السماح برصيد نقدي سالب أثناء الجلسة</span>
+                      <span class="text-[9px] text-slate-500 mt-0.5">يُطبَّق على حسابات النقد (Cash) فقط — يسمح بالصرف أكثر من الرصيد شرط أن تكون جلسة الكاشير مفتوحة</span>
+                    </div>
+                    <input type="checkbox" v-model="posSession.allowNegativeIntraday" class="ios-toggle" />
+                  </label>
+                </div>
+              </div>
+
               <!-- Role Restrictions -->
               <div class="space-y-6">
                 <div class="flex items-center justify-between border-b border-slate-50 pb-3">
@@ -401,72 +444,7 @@
           </section>
 
           <!-- ════════════════════════════════════════════════════════════ -->
-          <!-- 5. USER MANAGEMENT                                          -->
-          <!-- ════════════════════════════════════════════════════════════ -->
-          <section v-if="activeTab === 'users-settings'" class="animate-fadeIn space-y-8">
-            <div class="p-2 border-b border-slate-200 flex justify-between items-end">
-               <h2 class="text-sm font-bold text-slate-900 uppercase tracking-widest">الموظفين والصلاحيات</h2>
-               <button @click="addUser" class="h-8 px-4 rounded-md bg-slate-900 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all">إضافة مستخدم</button>
-            </div>
-
-            <!-- ✅ RESTORED: إجمالي المستخدمين -->
-            <div class="bg-slate-900 text-white rounded-xl p-5 flex items-center gap-4 shadow-sm">
-              <div class="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center text-lg"><i class="fas fa-users"></i></div>
-              <div>
-                <p class="text-[9px] font-bold text-blue-400 uppercase tracking-widest leading-none mb-1">إجمالي المسجلين</p>
-                <p class="text-xl font-bold tracking-tight leading-none">{{ usersTotal }} <span class="text-[10px] text-white/30 font-bold uppercase tracking-widest mr-1">مستخدم</span></p>
-              </div>
-            </div>
-
-            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative min-h-[400px]">
-              <div class="overflow-x-auto">
-                <table class="w-full text-right border-collapse text-xs">
-                  <thead>
-                    <tr class="bg-slate-50/50 border-b border-slate-200 text-slate-400 font-bold uppercase tracking-widest">
-                      <th class="px-6 py-4">الهوية / الموظف</th>
-                      <th class="px-4 py-4">اسم المستخدم</th>
-                      <th class="px-4 py-4">الصلاحيات</th>
-                      <th class="px-6 py-4 text-center">الإجراء</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-slate-100 font-medium">
-                    <tr v-if="usersLoading"><td colspan="4" class="py-20 text-center animate-pulse text-slate-300">جاري تحميل سجلات الموظفين...</td></tr>
-                    <tr v-for="user in users" :key="user.id" class="hover:bg-blue-50/20 transition-all group">
-                      <td class="px-6 py-4">
-                        <div class="flex items-center gap-3">
-                          <div class="w-8 h-8 rounded bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-colors uppercase">{{ user.name?.charAt(0) }}</div>
-                          <div><p class="font-bold text-slate-900">{{ user.name }}</p><p class="text-[10px] text-slate-400 mt-0.5">{{ user.email }}</p></div>
-                        </div>
-                      </td>
-                      <td class="px-4 py-4 font-mono text-slate-500 font-bold">@{{ user.username }}</td>
-                      <td class="px-4 py-4">
-                        <div class="flex flex-wrap gap-1">
-                          <span v-for="role in user.roles" :key="role" class="px-1.5 py-0.5 rounded text-[8px] font-bold border border-slate-200 bg-slate-50 text-slate-500 uppercase tracking-tighter">{{ translateRole(role) }}</span>
-                        </div>
-                      </td>
-                      <td class="px-6 py-4 text-center">
-                        <button @click="editUser(user)" class="w-7 h-7 rounded-md border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all"><i class="fas fa-pen text-[9px]"></i></button>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <!-- ✅ RESTORED: ترقيم الصفحات -->
-              <div v-if="usersTotal > usersLimit" class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  صفحة {{ usersPage }} من {{ Math.max(1, Math.ceil(usersTotal / usersLimit)) }} ({{ usersTotal }} مستخدم)
-                </span>
-                <div class="flex items-center gap-2">
-                  <button @click="prevUsersPage" :disabled="usersPage <= 1 || usersLoading" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-                  <button @click="nextUsersPage" :disabled="usersPage >= Math.ceil(usersTotal / usersLimit) || usersLoading" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- ════════════════════════════════════════════════════════════ -->
-          <!-- 6. PRINTING                                                 -->
+          <!-- 5. PRINTING                                                 -->
           <!-- ════════════════════════════════════════════════════════════ -->
           <section v-if="activeTab === 'printers-settings'" class="animate-fadeIn space-y-8">
             <div class="p-2 border-b border-slate-200">
@@ -478,11 +456,14 @@
               <div class="xl:col-span-7 space-y-8">
                 <div class="bg-white border border-slate-200 rounded-xl p-8 space-y-8 shadow-sm">
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div class="space-y-1.5"><label class="metadata-label">آلية الطباعة</label><select v-model="printMode" class="filter-input-v2 h-10 font-bold"><option value="browser">متصفح (نافذة النظام)</option><option value="qztray">طباعة مباشرة (QZ Tray)</option></select></div>
+                    <div class="space-y-1.5"><label class="metadata-label">آلية الطباعة</label><select v-model="printMode" class="filter-input-v2 h-10 font-bold"><option value="browser">متصفح (نافذة النظام)</option><option value="qztray" :disabled="isProductionBuild">طباعة مباشرة (QZ Tray — تطوير فقط)</option></select></div>
                     <div class="space-y-1.5"><label class="metadata-label">قالب الفاتورة</label><select v-model="printTemplate" class="filter-input-v2 h-10 font-bold"><option value="thermal-compact">حراري مختصر (80mm)</option><option value="a4-professional">A4 احترافي</option></select></div>
                   </div>
+                  <p v-if="isProductionBuild" class="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold">
+                    الطباعة المباشرة عبر QZ Tray متوقفة في الإنتاج حتى استكمال تكامل شهادة موثوقة وموقّع خادمي. استخدم طباعة المتصفح حاليًا.
+                  </p>
 
-                  <!-- ✅ RESTORED: اختيار طابعة QZ Tray -->
+                  <!-- اختيار طابعة QZ Tray في بيئة التطوير -->
                   <div v-if="printMode === 'qztray'" class="pt-4 border-t border-slate-50 space-y-3">
                     <div class="flex items-center justify-between">
                       <label class="metadata-label">اختر الطابعة</label>
@@ -543,54 +524,22 @@
       </div>
     </div>
 
-    <!-- User Modal -->
-    <BaseModal :show="showUserModal" @close="closeUserModal" maxWidth="xl">
-      <template #header>
-        <h3 class="text-sm font-bold text-slate-900 uppercase">{{ isEditingUser ? 'تحديث ملف الموظف' : 'تسجيل موظف جديد' }}</h3>
-      </template>
-
-      <form @submit.prevent="saveUser" class="space-y-6">
-        <div class="grid grid-cols-2 gap-4">
-          <div class="space-y-1.5"><label class="metadata-label">الاسم الكامل</label><input v-model="userForm.name" class="filter-input-v2 h-10 font-bold" /></div>
-          <div class="space-y-1.5"><label class="metadata-label">اسم المستخدم</label><input v-model="userForm.username" class="filter-input-v2 h-10 font-mono" /></div>
-          <div class="space-y-1.5"><label class="metadata-label">البريد</label><input v-model="userForm.email" class="filter-input-v2 h-10" /></div>
-          <div v-if="!isEditingUser" class="space-y-1.5"><label class="metadata-label">كلمة المرور</label><input v-model="userForm.password" type="password" class="filter-input-v2 h-10 font-mono" /></div>
-        </div>
-        <div class="space-y-4">
-          <label class="metadata-label">تعيين الصلاحيات</label>
-          <div class="grid grid-cols-2 gap-3">
-            <label v-for="role in filteredRoleOptions" :key="role.id" class="flex items-center gap-2 p-3 rounded-lg bg-slate-50 border border-slate-100 cursor-pointer hover:bg-white has-[:checked]:border-blue-500">
-              <input type="checkbox" :value="role.id" v-model="userForm.roles" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-0" />
-              <span class="text-[11px] font-bold text-slate-700">{{ translateRole(role.name) }}</span>
-            </label>
-          </div>
-        </div>
-      </form>
-
-      <template #footer>
-        <button type="button" @click="closeUserModal" class="px-6 h-10 text-xs font-bold text-slate-500">إلغاء</button>
-        <button @click="saveUser" :disabled="isSaving" class="px-10 h-10 bg-blue-600 text-white rounded-md text-xs font-bold shadow-lg shadow-blue-900/20 disabled:opacity-50">تأكيد الحفظ</button>
-      </template>
-    </BaseModal>
-
   </div>
 </template>
 
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import BaseModal from '@/components/BaseModal.vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
-import { useUserStore } from '@/stores/user/userStore';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import { useRoleStore } from '@/stores/role/roleStore';
 import { useAccountStore } from '@/stores/account/accountStore';
 import { useSettingsStore } from '@/stores/settings/settingsStore'
-import { getAvailablePrinters, getQzPrinterName, setQzPrinterName, printDocument } from '@/utils/PrintService';
+import { getAvailablePrinters, getQzPrinterName, setQzPrinterName, printDocument } from '@/utils';
 import { getBuilderByTemplate, buildReturnHtml, buildPurchaseHtml } from '@/utils/printTemplates';
 import { clearPrintConfigCache } from '@/utils/printTemplates/printConfig';
-import { getImageUrl } from '@/utils/imageHelpers';
+import { getImageUrl } from '@/utils';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency'
 import { useToast } from '@/composables/useToast'
 import { useDirtyTracking } from '@/composables/useSettings'
@@ -600,6 +549,8 @@ import AlertService from '@/services/AlertService'
 import { storeToRefs } from 'pinia'
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
+import { isSettingEnabled } from '@/utils';
+import { currencyService } from '@/services/currencies';
 
 // ─── Core Setup ───────────────────────────────────────────────────────────────
 const route = useRoute();
@@ -608,7 +559,6 @@ const router = useRouter();
 const { showToast } = useToast()
 const authStore = useAuthStore();
 const branchStore = useBranchStore();
-const userStore = useUserStore();
 const roleStore = useRoleStore();
 const accountStore = useAccountStore();
 const settingsStore = useSettingsStore();
@@ -618,9 +568,12 @@ const errorMessage = ref('')
 const successMessage = ref('')
 const logoPreview = ref(null)
 const logoFile = ref(null)
-const activeTab = ref(route.query.tab || 'general-settings')
+const activeTab = ref(route.query.tab === 'users-settings' ? 'general-settings' : route.query.tab || 'general-settings')
 const errors = ref({})
 const searchTerm = ref('')
+const exchangeRates = ref({ base_currency_code: '', supported_currencies: [], rates: [] })
+const currencyRatesLoading = ref(false)
+const currencyRatesError = ref('')
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 const tabs = [
@@ -628,7 +581,6 @@ const tabs = [
   { id: 'invoice-settings',  label: 'الفواتير والضرائب',     icon: 'fas fa-file-invoice' },
   { id: 'pos-settings',      label: 'نقطة البيع (POS)',      icon: 'fas fa-cash-register' },
   { id: 'accounting-settings', label: 'الحسابات المحاسبية', icon: 'fas fa-balance-scale' },
-  { id: 'users-settings',    label: 'إدارة المستخدمين',      icon: 'fas fa-users-cog' },
   { id: 'printers-settings', label: 'إعدادات الطابعات',      icon: 'fas fa-print' },
 ]
 
@@ -639,6 +591,7 @@ const filteredTabs = computed(() => {
 })
 
 // ─── Print Mode ───────────────────────────────────────────────────────────────
+const isProductionBuild = import.meta.env.PROD
 const printMode       = ref('browser')
 const qzPrinterName   = ref('')
 const qzPrinters      = ref([])
@@ -672,6 +625,7 @@ const invoice = ref({
 })
 
 const posSession = ref({
+  sessionsEnabled: false,
   enforceForRoles: [],
   mode: '',
   requireApproval: false,
@@ -679,6 +633,7 @@ const posSession = ref({
   periodCutoff: '15:00',
   allowManagerOverride: false,
   branchApprovals: {},
+  allowNegativeIntraday: false,
 })
 
 const printers = ref({
@@ -721,23 +676,13 @@ const accountingKeyLabels = {
   inventory_adjustment_account_id: 'حساب تسويات/فروق المخزون',
 }
 
-// ─── Users State ──────────────────────────────────────────────────────────────
-const users = ref([]);
-const usersLoading = ref(false);
-const usersPage = ref(1);
-const usersLimit = ref(10);
-const usersTotal = ref(0);
-const showUserModal = ref(false);
-const isEditingUser = ref(false);
 const rolesLoading = ref(false);
 const branchOptions = computed(() => branchStore.branches.map(w => ({ id: w.id, name: w.name })))
 const branchesLoading = ref(false)
-const userForm = ref({ id: null, name: '', username: '', email: '', password: '', roles: [], branch_id: null })
-const formErrors = ref({})
 
 // ─── Dirty Tracking ───────────────────────────────────────────────────────────
 const { isDirty, isSectionDirty, setSnapshotsFromCurrent, resetSectionToSnapshot } = useDirtyTracking({
-  general, invoice, pos: posSession, printers, accounting, users,
+  general, invoice, pos: posSession, printers, accounting,
 })
 
 // ─── Role Filters ─────────────────────────────────────────────────────────────
@@ -748,19 +693,6 @@ const filteredPosRoleOptions = computed(() => {
     return (roleOptions.value || []).filter(r => {
       const n = String(r.name || '').trim().toLowerCase()
       return !excludedPosRoleNames.some(x => n === String(x).toLowerCase())
-    })
-  } catch (_) { return roleOptions.value || [] }
-})
-
-const filteredRoleOptions = computed(() => {
-  try {
-    const userData = authStore.user?.user || authStore.user
-    const currentUserRole = (userData?.role || '').toLowerCase()
-    const isSuperAdmin = ['super_admin', 'manager'].includes(currentUserRole)
-    return (roleOptions.value || []).filter(r => {
-      const roleName = String(r.name || '').trim().toLowerCase()
-      if (!isSuperAdmin && ['super_admin', 'admin_system'].includes(roleName)) return false
-      return true
     })
   } catch (_) { return roleOptions.value || [] }
 })
@@ -796,7 +728,6 @@ function sectionKeyFromTab(tabId) {
     'general-settings':    'general',
     'invoice-settings':    'invoice',
     'pos-settings':        'pos',
-    'users-settings':      'users',
     'printers-settings':   'printers',
     'accounting-settings': 'accounting',
   }[tabId] || null
@@ -816,33 +747,31 @@ function setActiveTab(tabId) {
 
 // Sync URL query param with activeTab
 watch(() => route.query.tab, (newTab) => {
+  if (newTab === 'users-settings') {
+    router.replace({ name: 'UserManagement' })
+    return
+  }
   if (newTab && newTab !== activeTab.value) activeTab.value = String(newTab)
 })
 
 watch(activeTab, (tab) => {
-  if (tab === 'users-settings') {
+  if (tab === 'pos-settings') {
     if (!roleOptions.value.length) fetchRoleOptions();
     if (!branchOptions.value.length) fetchBranchOptions();
-    if (!users.value.length) fetchUsersList();
   }
-  if (tab === 'pos-settings' && !roleOptions.value.length) fetchRoleOptions();
 });
 
 // ─── Save Bar Handlers ────────────────────────────────────────────────────────
 async function saveActiveTab() {
   const key = sectionKeyFromTab(activeTab.value)
-  if (!key) { toast.info('لا يوجد ما يتم حفظه في هذا التبويب'); return }
-  if (!isSectionDirty(key)) { toast.info('لا توجد تغييرات لحفظها'); return }
+  if (!key) { showToast('لا يوجد ما يتم حفظه في هذا التبويب', 'info'); return }
+  if (!isSectionDirty(key)) { showToast('لا توجد تغييرات لحفظها', 'info'); return }
 
-  if (key === 'general')     await saveGeneralSettings()
+  if (key === 'general')          await saveGeneralSettings()
   else if (key === 'invoice')     await saveInvoiceSettings()
   else if (key === 'pos')         await savePosSettings()
   else if (key === 'printers')    await savePrinterSettings()
   else if (key === 'accounting')  await saveAccountingSettings()
-  else if (key === 'users') {
-    toast.info('سيتم تفعيل حفظ إعدادات المستخدمين لاحقاً.')
-    setSnapshotsFromCurrent()
-  }
 }
 
 function discardActiveTab() {
@@ -926,15 +855,13 @@ const hasSettingsAccess = computed(() => {
   // Role-based fallback
   const userData = authStore.user.user || authStore.user
   const role = (userData?.role || '').toLowerCase()
-  const roleId = typeof userData?.role_id === 'string'
-    ? parseInt(userData.role_id, 10)
-    : userData?.role_id
 
-  return roleId === 1 ||
-    ['super_admin', 'admin', 'administrator', 'manager', 'مدير', 'مدير_النظام'].includes(role)
+  return authStore.isSuperAdmin ||
+    (Number(userData?.tenant_id) > 0 &&
+      (role === 'admin' || role === 'manager'))
 })
 
-// ─── Data Fetching: Roles / Branches / Users ────────────────────────────────
+// ─── Data Fetching: Roles / Branches ────────────────────────────────────────
 async function fetchRoleOptions() {
   if (!hasSettingsAccess.value) return
   try {
@@ -959,121 +886,6 @@ async function fetchBranchOptions() {
     showError(err.response?.data?.message || 'فشل تحميل الفروع.')
   } finally {
     branchesLoading.value = false
-  }
-}
-
-async function fetchUsersList() {
-  if (!hasSettingsAccess.value) return
-  try {
-    usersLoading.value = true
-    const usersResponse = await userStore.fetchUsers({ page: usersPage.value, limit: usersLimit.value });
-    
-    if (usersResponse.status === 'success') {
-      const userData = usersResponse.data;
-      usersTotal.value = userData?.total || 0;
-      usersPage.value = userData?.page || usersPage.value;
-      usersLimit.value = userData?.limit || usersLimit.value;
-      users.value = (userData?.items || []).map(u => ({
-      ...u,
-      roles: Array.isArray(u.roles)
-        ? u.roles
-        : (typeof u.roles === 'string' && u.roles.length ? u.roles.split(',').map(r => r.trim()) : []),
-    }));
-    setSnapshotsFromCurrent();
-  }
-  } catch (error) {
-    console.error('Error fetching users:', error)
-    showError(error.response?.data?.message || 'فشل تحميل قائمة المستخدمين.')
-  } finally {
-    usersLoading.value = false
-  }
-}
-
-function nextUsersPage() {
-  const maxPage = Math.max(1, Math.ceil(usersTotal.value / usersLimit.value))
-  if (usersPage.value < maxPage) { usersPage.value += 1; fetchUsersList() }
-}
-
-function prevUsersPage() {
-  if (usersPage.value > 1) { usersPage.value -= 1; fetchUsersList() }
-}
-
-// ─── User Modal Actions ───────────────────────────────────────────────────────
-async function addUser() {
-  formErrors.value = {}
-  isEditingUser.value = false
-  userForm.value = { id: null, name: '', username: '', email: '', password: '', roles: [], branch_id: null }
-  if (!roleOptions.value.length) await fetchRoleOptions()
-  if (!branchOptions.value.length) await fetchBranchOptions()
-  showUserModal.value = true
-}
-
-async function editUser(user) {
-  formErrors.value = {}
-  isEditingUser.value = true
-  if (!roleOptions.value.length) await fetchRoleOptions()
-  if (!branchOptions.value.length) await fetchBranchOptions()
-
-  // Convert role names → IDs if needed
-  let roleIds = []
-  if (Array.isArray(user.roles)) {
-    if (user.roles.length && typeof user.roles[0] === 'string') {
-      const nameToId = new Map(roleOptions.value.map(r => [String(r.name).trim().toLowerCase(), r.id]))
-      roleIds = user.roles.map(n => nameToId.get(String(n).trim().toLowerCase())).filter(v => !!v)
-    } else {
-      roleIds = user.roles
-    }
-  }
-  userForm.value = { id: user.id, name: user.name || '', username: user.username || '', email: user.email || '', password: '', roles: roleIds, branch_id: user.branch_id ?? null }
-  showUserModal.value = true
-}
-
-function closeUserModal() {
-  showUserModal.value = false
-}
-
-function validateUserForm() {
-  const e = {}
-  if (!userForm.value.name?.trim())     e.name     = 'يرجى إدخال الاسم'
-  if (!userForm.value.username?.trim()) e.username  = 'يرجى إدخال اسم المستخدم'
-  if (!userForm.value.email?.trim())    e.email     = 'يرجى إدخال البريد الإلكتروني'
-  if (!isEditingUser.value && !userForm.value.password?.trim()) e.password = 'يرجى إدخال كلمة المرور'
-  if (!Array.isArray(userForm.value.roles) || userForm.value.roles.length === 0)
-    e.roles = 'يرجى اختيار دور واحد على الأقل'
-  formErrors.value = e
-  return Object.keys(e).length === 0
-}
-
-async function saveUser() {
-  if (!validateUserForm()) return
-  isSaving.value = true
-  try {
-    const payload = {
-      name: userForm.value.name,
-      username: userForm.value.username,
-      email: userForm.value.email,
-      roles: userForm.value.roles,
-      branch_id: userForm.value.branch_id || null,
-    }
-    if (!isEditingUser.value) payload.password = userForm.value.password
-
-    const resp = isEditingUser.value
-      ? await userStore.updateUser(userForm.value.id, payload)
-      : await userStore.createUser(payload)
-
-    if (resp?.status === 'success') {
-      showSuccess(isEditingUser.value ? 'تم تحديث المستخدم بنجاح' : 'تم إضافة المستخدم بنجاح')
-      closeUserModal()
-      await fetchUsersList()
-      setSnapshotsFromCurrent()
-    } else {
-      showError(resp?.message || 'حدث خطأ غير متوقع')
-    }
-  } catch (error) {
-    console.error('Error saving user:', error)
-    showError(error?.message || 'فشل حفظ بيانات المستخدم.')
-  } finally {
-    isSaving.value = false
   }
 }
 
@@ -1111,7 +923,7 @@ async function fetchSettings() {
         showTaxInPrice:    s['invoice.show_tax_in_price'] !== '0',
       }
 
-      printMode.value    = s['print.mode'] || 'browser'
+      printMode.value    = isProductionBuild ? 'browser' : (s['print.mode'] || 'browser')
       qzPrinterName.value = s['print.qztray_printer'] || getQzPrinterName()
       printers.value = {
         printHeader: s['printer.print_header'] !== '0',
@@ -1134,11 +946,13 @@ async function fetchSettings() {
         posSession.value.enforceForRoles = parsed.map(n => Number(n)).filter(n => !isNaN(n))
       })()
 
+      posSession.value.sessionsEnabled      = isSettingEnabled(s['pos.sessions.enabled'])
       posSession.value.mode                 = (s['pos.sessions.mode'] || '').toString()
       posSession.value.requireApproval      = s['pos.require_approval'] === '1'
       posSession.value.sessionTypeMode      = (s['pos.sessions.session_type_mode'] || '').toString()
       posSession.value.periodCutoff         = (s['pos.sessions.period_cutoff'] || '15:00').toString()
       posSession.value.allowManagerOverride = s['pos.sessions.allow_manager_override'] === '1'
+      posSession.value.allowNegativeIntraday = s['pos.cash_session.allow_negative_intraday'] === '1'
       // Per-branch approval overrides: stored as JSON object {branch_id: bool}
       try {
         const raw = s['pos.branch_approvals']
@@ -1175,6 +989,30 @@ async function fetchSettings() {
   } finally {
     isLoading.value = false
   }
+  await fetchCurrencyRates()
+}
+
+async function fetchCurrencyRates(forceRefresh = false) {
+  currencyRatesLoading.value = true
+  currencyRatesError.value = ''
+  try {
+    if (forceRefresh) {
+      await currencyService.refreshRates()
+    }
+    const response = await currencyService.getRates()
+    if (response.status !== 'success' || !response.data) {
+      throw new Error(response.message || 'لم يتم إرجاع أسعار الصرف')
+    }
+    exchangeRates.value = response.data
+  } catch (error) {
+    currencyRatesError.value = error.response?.data?.message || error.message || 'تعذر تحميل أسعار الصرف'
+  } finally {
+    currencyRatesLoading.value = false
+  }
+}
+
+async function refreshCurrencyRates() {
+  await fetchCurrencyRates(true)
 }
 
 // ─── Save Methods ─────────────────────────────────────────────────────────────
@@ -1218,6 +1056,7 @@ async function saveGeneralSettings() {
       const { refreshSettings } = useCompanyCurrency()
       await refreshSettings()
       await settingsStore.fetchSettings({ force: true })
+      await fetchCurrencyRates()
       // Update logoPreview immediately with the new logo from store
       const newLogo = settingsStore.settings?.['company.logo']
       if (newLogo) {
@@ -1240,13 +1079,20 @@ async function saveInvoiceSettings() {
   isSaving.value = true
   try {
     const settings = {
+      // Write tax settings under tax.* namespace (source of truth, matches Setup wizard & settingsStore.tax)
+      'tax.tax_number':              invoice.value.taxNumber,
+      'tax.tax_rate':                String(invoice.value.taxRate),
+      'tax.tax_name':                invoice.value.taxName,
+      'tax.tax_enabled':             invoice.value.taxEnabled ? '1' : '0',
+      // Keep company.* copies in sync so any legacy code reading that namespace still works
       'company.tax_number':          invoice.value.taxNumber,
-      'company.tax_rate':            invoice.value.taxRate,
+      'company.tax_rate':            String(invoice.value.taxRate),
       'company.tax_name':            invoice.value.taxName,
       'company.tax_enabled':         invoice.value.taxEnabled ? '1' : '0',
+      // Invoice layout settings
       'invoice.footer_text':         invoice.value.footerText,
       'invoice.prefix':              invoice.value.invoicePrefix,
-      'invoice.next_number':         invoice.value.nextInvoiceNumber,
+      'invoice.next_number':         String(invoice.value.nextInvoiceNumber),
       'invoice.show_tax_in_price':   invoice.value.showTaxInPrice ? '1' : '0',
     }
     const response = await settingsStore.updateSettings(settings)
@@ -1274,6 +1120,7 @@ async function savePosSettings() {
       .filter(n => !isNaN(Number(n))).map(n => Number(n))
 
     const settings = {
+      'pos.sessions.enabled':                 posSession.value.sessionsEnabled ? '1' : '0',
       'pos.sessions.enforce_for_roles':       JSON.stringify(enforce),
       'pos.sessions.mode':                    posSession.value.mode || '',
       'pos.require_approval':                 posSession.value.requireApproval ? '1' : '0',
@@ -1281,6 +1128,7 @@ async function savePosSettings() {
       'pos.sessions.period_cutoff':           posSession.value.periodCutoff || '15:00',
       'pos.sessions.allow_manager_override':  posSession.value.allowManagerOverride ? '1' : '0',
       'pos.branch_approvals':                 JSON.stringify(posSession.value.branchApprovals || {}),
+      'pos.cash_session.allow_negative_intraday': posSession.value.allowNegativeIntraday ? '1' : '0',
     }
     const response = await settingsStore.updateSettings(settings)
     if (response.status === 'success') {
@@ -1304,7 +1152,7 @@ async function savePrinterSettings() {
   isSaving.value = true
   try {
     const settings = {
-      'print.mode':              printMode.value,
+      'print.mode':              isProductionBuild ? 'browser' : printMode.value,
       'print.qztray_printer':   qzPrinterName.value,
       'printer.print_header':   printers.value.printHeader ? '1' : '0',
       'printer.print_footer': printers.value.printFooter ? '1' : '0',
@@ -1314,7 +1162,7 @@ async function savePrinterSettings() {
     }
     const response = await settingsStore.updateSettings(settings)
     if (response.status === 'success') {
-      localStorage.setItem('print.mode',                 printMode.value)
+      localStorage.setItem('print.mode',                 isProductionBuild ? 'browser' : printMode.value)
       setQzPrinterName(qzPrinterName.value)
       localStorage.setItem('pos_print_template',         printTemplate.value)
       localStorage.setItem('pos_print_header_enabled',   printers.value.printHeader ? '1' : '0')
@@ -1431,11 +1279,6 @@ async function testPrint() {
   await printDocument(html)
 }
 
-// ─── Currency Symbol Update ───────────────────────────────────────────────────
-const updateCurrencySymbol = () => {
-  // triggers re-render with new selection; actual save happens on form submit
-}
-
 // ─── Live Print Preview ───────────────────────────────────────────────────────
 const previewHtml = computed(() => {
   const type = previewType.value
@@ -1505,8 +1348,12 @@ onBeforeRouteLeave((to, from, next) => {
 });
 
 onMounted(async () => {
+  if (route.query.tab === 'users-settings') {
+    await router.replace({ name: 'UserManagement' })
+    return
+  }
   if (hasSettingsAccess.value) {
-    await Promise.all([fetchSettings(), loadAccountingAccounts(), fetchRoleOptions()])
+    await Promise.all([fetchSettings(), loadAccountingAccounts(), fetchRoleOptions(), fetchBranchOptions()])
   }
 });
 </script>

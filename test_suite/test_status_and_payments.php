@@ -65,7 +65,12 @@ echo ($res2['duplicate_retry'] ?? false ? "[PASS]" : "[FAIL]") . " B: second ide
 
 $paymentsCount = (int) $pdo->query("SELECT COUNT(*) FROM payments WHERE sale_id=201")->fetchColumn();
 $paidAmount    = (float) $pdo->query("SELECT paid_amount FROM sales WHERE id=201")->fetchColumn();
-$jeCount       = (int) $pdo->query("SELECT COUNT(*) FROM journal_entries WHERE reference_type='sale_payment' AND reference_id=201")->fetchColumn();
+$jeCount       = (int) $pdo->query("
+    SELECT COUNT(*)
+    FROM journal_entries je
+    JOIN payments p ON p.journal_entry_id = je.id
+    WHERE je.reference_type = 'customer_payment' AND p.sale_id = 201
+")->fetchColumn();
 check(assert_eq((string)$paymentsCount, '1', 'B payments row count stays 1 (not duplicated)'));
 check(assert_close($paidAmount, 500.0, 'B sales.paid_amount stays 500 (not doubled to 1000)'));
 check(assert_eq((string)$jeCount, '1', 'B journal_entries count stays 1'));
@@ -84,6 +89,13 @@ $paymentsCount2 = (int) $pdo->query("SELECT COUNT(*) FROM payments WHERE sale_id
 $paidAmount2    = (float) $pdo->query("SELECT paid_amount FROM sales WHERE id=202")->fetchColumn();
 check(assert_eq((string)$paymentsCount2, '2', 'C payments row count = 2 (two genuine payments)'));
 check(assert_close($paidAmount2, 600.0, 'C sales.paid_amount = 600 (300+300, not merged)'));
+$salePaymentJournals2 = (int) $pdo->query("
+    SELECT COUNT(*)
+    FROM journal_entries je
+    JOIN payments p ON p.journal_entry_id = je.id
+    WHERE je.reference_type = 'customer_payment' AND p.sale_id = 202
+")->fetchColumn();
+check(assert_eq((string)$salePaymentJournals2, '2', 'C each genuine payment has its own journal entry'));
 
 echo "\n" . ($failures === 0 ? "ALL PASS" : "{$failures} FAILURE(S)") . "\n";
 exit($failures === 0 ? 0 : 1);

@@ -59,7 +59,7 @@ We commit to responding to security vulnerability reports quickly:
 Currently there is no formal bounty program, but we greatly appreciate:
 
 - ✨ شكر خاص في ملف [SECURITY.md](SECURITY.md)
-- ✨ ذكر في [CHANGELOG.md](CHANGELOG.md) عند الإصلاح
+- ✨ ذكر في ملاحظات الإصدار عند نشر الإصلاح
 - ✨ شارة "Security Researcher" في ملفك على GitHub
 
 ---
@@ -126,7 +126,7 @@ $this->permissionMiddleware->requirePermission('products.create');
 
 #### 3. **تحديثات منتظمة | Regular Updates**
 - حدّث النظام فور توفر التحديثات الأمنية
-- راقب [CHANGELOG.md](CHANGELOG.md) للتحديثات
+- راقب إعلانات الإصدارات والتحديثات الأمنية الرسمية
 
 #### 4. **مراجعة الصلاحيات | Review Permissions**
 - راجع صلاحيات المستخدمين بانتظام

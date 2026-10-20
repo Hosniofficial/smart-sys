@@ -9,6 +9,13 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
 
+/**
+ * Provides reusable input validation and recursive string sanitization helpers.
+ *
+ * Validation rules are supplied by callers. The exists and unique rules query
+ * through $GLOBALS['db']; sanitization strips ASCII control characters and
+ * HTML-escapes string values.
+ */
 class ValidationHandler extends BaseHandler
 {
     public function __construct(PDO $db)
@@ -17,6 +24,7 @@ class ValidationHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('validation');
     }
 
+    /** Validate input against pipe-delimited rules; throw when any rule fails. */
     public static function validate($data, $rules)
     {
         $errors = [];
@@ -97,8 +105,6 @@ class ValidationHandler extends BaseHandler
                                 $query .= " AND tenant_id = ?";
                                 $params[] = $data['tenant_id'];
                             }
-                            // Note: This is a static method, so we need a way to access the database
-                            // Consider refactoring to use dependency injection instead of GLOBALS
                             if (!isset($GLOBALS['db'])) {
                                 throw new \Exception('Database connection not available in ValidationHandler::validate()');
                             }
@@ -124,8 +130,6 @@ class ValidationHandler extends BaseHandler
                                 $query .= " AND tenant_id = ?";
                                 $params[] = $data['tenant_id'];
                             }
-                            // Note: This is a static method, so we need a way to access the database
-                            // Consider refactoring to use dependency injection instead of GLOBALS
                             if (!isset($GLOBALS['db'])) {
                                 throw new \Exception('Database connection not available in ValidationHandler::validate()');
                             }
@@ -147,6 +151,7 @@ class ValidationHandler extends BaseHandler
         return true;
     }
 
+    /** Recursively remove ASCII control characters and HTML-escape strings. */
     public static function sanitize($data)
     {
         if (is_array($data)) {

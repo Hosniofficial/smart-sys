@@ -9,19 +9,10 @@ use App\Services\MonologHandler;
 use Throwable;
 
 /**
- * ✅ Single Source of Truth for Account Management
+ * Creates and manages tenant ledger accounts for parties, branches, contacts,
+ * and liquidity methods.
  *
- * Unified account creation, deletion, and management for:
- * - Party accounts (customers, suppliers, employees)
- * - Branch accounts (inventory per branch)
- * - Contact accounts (generic ledger accounts)
- *
- * Features:
- * - Centralized account code generation
- * - Automatic parent account resolution
- * - Tenant isolation
- * - Transaction safety with rollback
- * - Audit logging
+ * Uses PDO for account reads/writes and MonologHandler for operational logs.
  */
 class AccountManagementService
 {
@@ -53,13 +44,11 @@ class AccountManagementService
         ?int $parentAccountId = null
     ): ?int {
         try {
-            // Only begin transaction if not already inside one
             $inTransaction = $this->db->inTransaction();
             if (!$inTransaction) {
                 $this->db->beginTransaction();
             }
 
-            // 1 Map party type to parent account code
             $typeMapping = [
                 'customer' => ['code' => '1101', 'type' => 'asset', 'label' => 'حساب العميل'],
                 'supplier' => ['code' => '2101', 'type' => 'liability', 'label' => 'حساب المورد'],
@@ -72,7 +61,6 @@ class AccountManagementService
 
             $mapping = $typeMapping[$partyType];
 
-            // 2 Resolve parent account if not provided
             if (!$parentAccountId) {
                 $parentAccountId = $this->getAccountIdByCode($mapping['code'], $tenantId);
                 if (!$parentAccountId) {
@@ -88,7 +76,6 @@ class AccountManagementService
                 }
             }
 
-            // 3 Generate account code if not provided
             if (!$customCode) {
                 $customCode = $this->generateAccountCodeForParent(
                     $tenantId,
@@ -97,10 +84,8 @@ class AccountManagementService
                 );
             }
 
-            // 4️⃣ Format account name
             $accountName = "{$mapping['label']}: {$partyName}";
 
-            // 5️⃣ Create account
             $stmt = $this->db->prepare("
                 INSERT INTO accounts (
                     tenant_id,
@@ -123,7 +108,6 @@ class AccountManagementService
 
             $accountId = (int) $this->db->lastInsertId();
 
-            // 6️⃣ Log creation
             $this->logger->info('Party account created successfully', [
                 'party_type' => $partyType,
                 'party_name' => $partyName,
@@ -160,10 +144,7 @@ class AccountManagementService
     }
 
     /**
-     * Create a branch inventory account
-     *
-     * Creates hierarchical sub-account under account code 1301 (inventory)
-     * Auto-generates code like 1301-01, 1301-02, etc.
+     * Create a branch inventory sub-account under inventory account 1301.
      *
      * @param string $branchName
      * @param int $tenantId
@@ -177,13 +158,11 @@ class AccountManagementService
         ?string $location = null
     ): ?int {
         try {
-            // Only begin transaction if not already inside one
             $inTransaction = $this->db->inTransaction();
             if (!$inTransaction) {
                 $this->db->beginTransaction();
             }
 
-            // 1 Resolve parent account (1301 - Inventory)
             $parentAccountId = $this->getAccountIdByCode('1301', $tenantId);
             if (!$parentAccountId) {
                 $this->logger->error('Parent account 1301 not found for branch inventory', [
@@ -196,14 +175,12 @@ class AccountManagementService
                 return null;
             }
 
-            // 2 Generate hierarchical code (1301-01, 1301-02, etc.)
             $accountCode = $this->generateAccountCodeForParent(
                 $tenantId,
                 $parentAccountId,
                 '1301-'
             );
 
-            // 3️⃣ Create account
             $accountName = "مخزون - {$branchName}";
             $stmt = $this->db->prepare("
                 INSERT INTO accounts (
@@ -259,18 +236,9 @@ class AccountManagementService
     }
 
     /**
-     * Create a generic contact ledger account
+     * Create a contact sub-account under the supplied parent account.
      *
-     * Used for creating accounts for any contact type dynamically
-     * without predefined account hierarchy
-     *
-     * @param int $contactId
-     * @param string $contactName
-     * @param int $parentAccountId Parent account under which to create
-     * @param int $tenantId
-     * @param ?string $accountType Optional account type (asset/liability/equity/etc)
-     *
-     * @return ?int Created account ID, or null on failure
+     * @return ?int Created account ID, or null when creation fails.
      */
     public function createContactAccount(
         int $contactId,
@@ -280,20 +248,17 @@ class AccountManagementService
         ?string $accountType = 'asset'
     ): ?int {
         try {
-            // Only begin transaction if not already inside one
             $inTransaction = $this->db->inTransaction();
             if (!$inTransaction) {
                 $this->db->beginTransaction();
             }
 
-            // 1️⃣ Generate code for this contact
             $accountCode = $this->generateAccountCodeForParent(
                 $tenantId,
                 $parentAccountId,
                 null // Will use parent code + suffix
             );
 
-            // 2️⃣ Create account
             $stmt = $this->db->prepare("
                 INSERT INTO accounts (
                     code,
@@ -349,17 +314,7 @@ class AccountManagementService
     }
 
     /**
-     * Provision a liquidity account (Cash/Bank/Wallet peer) — Idempotent.
-     *
-     * يُنشئ حساب سيولة جديد (نقير من 1001/1002) إذا لم يكن موجوداً.
-     * لو الحساب موجود مسبقاً يرجع id الموجود بدون إنشاء جديد.
-     *
-     * @param string $code    كود الحساب المطلوب (مثل '1003')
-     * @param string $name    اسم الحساب (مثل 'محفظة إلكترونية')
-     * @param string $kind    نوع طريقة الدفع (wallet, cash, bank...)
-     * @param int    $tenantId
-     * @return int  معرف الحساب (جديد أو موجود)
-     * @throws \Exception إذا فشل الإنشاء
+     * Return an existing liquidity account by code or create a new one.
      */
     public function provisionLiquidityAccount(
         string $code,
@@ -367,7 +322,6 @@ class AccountManagementService
         string $kind,
         int    $tenantId
     ): int {
-        // 1️⃣ Idempotent: إرجاع الحساب الموجود مباشرة
         $existing = $this->getAccountIdByCode($code, $tenantId);
         if ($existing) {
             $this->logger->info('provisionLiquidityAccount: account already exists', [
@@ -378,7 +332,6 @@ class AccountManagementService
             return $existing;
         }
 
-        // 2️⃣ نجد والد حساب 1001 (الصندوق) لنضع الحساب الجديد كأخ له
         $cashAccountId = $this->getAccountIdByCode('1001', $tenantId);
         if (!$cashAccountId) {
             throw new \Exception("حساب الصندوق (1001) غير موجود للـ tenant {$tenantId} — لا يمكن إنشاء حساب {$name}.");
@@ -394,7 +347,6 @@ class AccountManagementService
             throw new \Exception("لم يتم العثور على والد حساب الصندوق (1001) — يرجى مراجعة شجرة الحسابات.");
         }
 
-        // 3️⃣ إنشاء الحساب الجديد
         $this->db->beginTransaction();
 
         try {
@@ -439,25 +391,15 @@ class AccountManagementService
     }
 
     /**
-     * Safe account deletion with validation
+     * Delete a tenant account after checking child accounts and journal lines.
      *
-     * Checks for:
-     * - Connected journal entries
-     * - Non-zero balances
-     * - Child accounts
-     *
-     * @param int $accountId
-     * @param int $tenantId
-     * @param bool $forceDelete If true, deletes even with balance/entries (dangerous)
-     *
-     * @return bool true if successful, false otherwise
+     * @return bool Whether the delete statement completed without an exception.
      */
     public function deleteAccount(int $accountId, int $tenantId, bool $forceDelete = false): bool
     {
         try {
             $this->db->beginTransaction();
 
-            // 1️⃣ Check for child accounts
             $stmtChild = $this->db->prepare("
                 SELECT COUNT(*) FROM accounts 
                 WHERE parent_id = ? AND tenant_id = ?
@@ -474,7 +416,6 @@ class AccountManagementService
                 return false;
             }
 
-            // 2️⃣ Check for journal entry lines
             $stmtLines = $this->db->prepare("
                 SELECT COUNT(*) FROM journal_entry_lines 
                 WHERE account_id = ? AND tenant_id = ?
@@ -491,7 +432,6 @@ class AccountManagementService
                 return false;
             }
 
-            // 3️⃣ Delete account
             $stmtDel = $this->db->prepare("
                 DELETE FROM accounts 
                 WHERE id = ? AND tenant_id = ?
@@ -526,12 +466,7 @@ class AccountManagementService
     }
 
     /**
-     * Helper: Get account ID by code for a tenant
-     *
-     * @param string $code Account code (e.g., '1101', '2101', '1301')
-     * @param int $tenantId
-     *
-     * @return ?int Account ID or null if not found
+     * Find an account by code, preferring a tenant-owned row over a global row.
      */
     public function getAccountIdByCode(string $code, int $tenantId): ?int
     {
@@ -547,15 +482,7 @@ class AccountManagementService
     }
 
     /**
-     * Helper: Generate next account code under a parent
-     *
-     * Handles both simple (1101-0001) and compound (1301-01) numbering
-     *
-     * @param int $tenantId
-     * @param int $parentAccountId
-     * @param ?string $prefixHint Optional prefix override (e.g., '1301-' or null for auto)
-     *
-     * @return string Generated account code
+     * Generate a child code from existing siblings, with a fallback on query errors.
      */
     private function generateAccountCodeForParent(
         int $tenantId,
@@ -563,7 +490,6 @@ class AccountManagementService
         ?string $prefixHint = null
     ): string {
         try {
-            // 1️⃣ Get parent account code
             $stmtParent = $this->db->prepare("
                 SELECT code FROM accounts 
                 WHERE id = ? AND tenant_id = ?
@@ -575,10 +501,8 @@ class AccountManagementService
                 throw new \RuntimeException('Parent account not found');
             }
 
-            // 2️⃣ Determine prefix
             $prefix = $prefixHint ?? ($parentCode . '-');
 
-            // 3️⃣ Find existing child codes
             $stmtCodes = $this->db->prepare("
                 SELECT code FROM accounts 
                 WHERE tenant_id = ? AND parent_id = ? AND code LIKE ?
@@ -586,7 +510,6 @@ class AccountManagementService
             $stmtCodes->execute([$tenantId, $parentAccountId, $prefix . '%']);
             $codes = $stmtCodes->fetchAll(PDO::FETCH_COLUMN) ?: [];
 
-            // 4️⃣ Find max suffix
             $maxSuffix = 0;
             $prefixLen = strlen(str_replace('-', '', $prefix));
 
@@ -598,7 +521,6 @@ class AccountManagementService
                 }
             }
 
-            // 5️⃣ Generate next code
             $nextSuffix = $maxSuffix + 1;
             $paddedSuffix = str_pad((string) $nextSuffix, 4, '0', STR_PAD_LEFT);
 
@@ -611,18 +533,12 @@ class AccountManagementService
                 'error' => $e->getMessage()
             ]);
 
-            // Fallback: return parent code + suffix
             return ($prefixHint ?? 'ACC') . '-' . date('YmdHis');
         }
     }
 
     /**
-     * Helper: Check if account exists and is accessible by tenant
-     *
-     * @param int $accountId
-     * @param int $tenantId
-     *
-     * @return bool true if exists and accessible
+     * Check whether an account belongs to the specified tenant.
      */
     public function accountExists(int $accountId, int $tenantId): bool
     {

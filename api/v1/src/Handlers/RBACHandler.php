@@ -10,7 +10,16 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
 use App\Utils\SuperAdminHelper;
 use App\Security\TenantRoleAssignmentPolicy;
+use App\Security\PermissionResolver;
+use App\Services\UserSessionService;
 
+/**
+ * Handles tenant user/role administration and platform permission-catalog management.
+ *
+ * TenantRoleAssignmentPolicy validates assignable roles, PermissionResolver backs
+ * permission checks, and the global permission catalog requires platform
+ * super-admin access. Route registrations are in rbac.php and users.php.
+ */
 class RBACHandler extends BaseHandler
 {
     public function __construct(PDO $db)
@@ -19,10 +28,7 @@ class RBACHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('rbac');
     }
 
-    // ── Security helper ────────────────────────────────────────────────
-    /**
-     * Returns [userId, roleId, null] if caller is admin, or [null, null, errorResponse] if not.
-     */
+    /** Return the caller IDs or a 403 response when tenant-admin access is absent. */
     private function requireAdminAccess(Request $request, Response $response): array
     {
         $userData = $request->getAttribute('user');
@@ -43,59 +49,7 @@ class RBACHandler extends BaseHandler
         return [$callerId, $roleId, null];
     }
 
-    /**
-     * ── AUDIT FIX (SECURITY, HIGH) — discovered during a systematic tenant-isolation
-     * sweep across the codebase ──────────────────────────────────────────────────
-     *
-     * createPermission()/updatePermission()/deletePermission() below used to be
-     * gated only by requireAdminAccess(), which accepts SuperAdminHelper::
-     * isAdminOrAbove() — and that helper explicitly accepts the ordinary
-     * per-tenant 'admin' role, not just 'super_admin' (confirmed directly in
-     * SuperAdminHelper's own docblock: "Used by AdminSettingsHandler and
-     * RBACHandler which allow both roles").
-     *
-     * The `permissions` table itself has NO tenant_id column at all (confirmed:
-     * its own INSERT statement never sets one) — it is a single, global catalog
-     * shared by every tenant on the platform. Combined, this meant: any ordinary
-     * customer's own 'admin'-role user (not a platform operator) could create,
-     * rename, or delete a system-wide permission definition (e.g. 'sales.create')
-     * — silently corrupting or breaking RBAC enforcement for every OTHER tenant
-     * on the platform, not just their own. This is a cross-tenant blast-radius
-     * issue, not merely a same-tenant data-exposure one.
-     *
-     * updateRole()/deleteRole() were checked and are NOT affected — both already
-     * correctly scope by `WHERE id = ? AND tenant_id = ?` before mutating a
-     * tenant's own custom roles, which is the intended, tenant-scoped resource.
-     * This guard is needed specifically for the global `permissions` catalog.
-     *
-     * Fix: a strictly narrower guard requiring true platform super_admin only,
-     * used exclusively by the three permission-catalog mutation endpoints.
-     * Every other requireAdminAccess() call site is untouched — those operate on
-     * already tenant-scoped resources where ordinary tenant-admin access is
-     * legitimate and correctly bounded.
-     */
-    private function requireSuperAdminAccess(Request $request, Response $response): array
-    {
-        $userData = $request->getAttribute('user');
-        if (is_object($userData)) {
-            $userData = (array) $userData;
-        }
-
-        $callerId = isset($userData['id']) ? (int) $userData['id'] : null;
-        $roleId   = isset($userData['role_id']) ? (int) $userData['role_id'] : null;
-
-        if (!$callerId || !SuperAdminHelper::is($userData)) {
-            return [null, null, $this->errorResponse(
-                $response,
-                'هذا الإجراء يمس كتالوج صلاحيات مشترك بين كل المستأجرين على المنصة، ويتطلب صلاحية مدير النظام الرئيسي (super_admin) حصريًا.',
-                403
-            )];
-        }
-
-        return [$callerId, $roleId, null];
-    }
-
-    // User Management Methods
+    /** List users and their assigned roles for the current tenant. */
     public function getUsers(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -145,6 +99,7 @@ class RBACHandler extends BaseHandler
         }
     }
 
+    /** Create a tenant user with validated role and branch assignments. */
     public function createUser(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -161,7 +116,8 @@ class RBACHandler extends BaseHandler
             $data = $request->getParsedBody() ?? [];
 
             if (
-                !isset($data['username'], $data['password'], $data['email']) ||
+                !isset($data['name'], $data['username'], $data['password'], $data['email']) ||
+                trim((string) $data['name']) === '' ||
                 trim((string) $data['username']) === '' ||
                 trim((string) $data['password']) === '' ||
                 trim((string) $data['email']) === ''
@@ -178,7 +134,7 @@ class RBACHandler extends BaseHandler
             }
 
             $stmt = $this->db->prepare("
-                SELECT id
+                SELECT id, is_owner
                 FROM users
                 WHERE (username = ? OR email = ?)
                   AND tenant_id = ?
@@ -201,44 +157,54 @@ class RBACHandler extends BaseHandler
             } elseif (isset($data['role_id']) && $data['role_id'] !== '') {
                 $requestedRoles = [$data['role_id']];
             }
-            $currentUser = $request->getAttribute('user');
-            if (is_object($currentUser)) {
-                $currentUser = (array) $currentUser;
-            }
             $rolesList = TenantRoleAssignmentPolicy::validate(
                 $this->db,
                 $requestedRoles,
-                (int) $tenantId,
-                SuperAdminHelper::is(is_array($currentUser) ? $currentUser : null)
+                (int) $tenantId
             );
             if ($rolesList === null) {
                 return $this->errorResponse($response, 'دور واحد أو أكثر غير متاح لهذا المستأجر.', 403);
             }
             $primaryRoleId = $rolesList[0] ?? null;
 
+            $branchId = null;
+            if (isset($data['branch_id']) && $data['branch_id'] !== '') {
+                if (filter_var($data['branch_id'], FILTER_VALIDATE_INT) === false || (int) $data['branch_id'] <= 0) {
+                    return $this->errorResponse($response, 'الفرع المحدد غير صالح.', 400);
+                }
+                $branchId = (int) $data['branch_id'];
+                $branchStmt = $this->db->prepare('SELECT id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1');
+                $branchStmt->execute([$branchId, $tenantId]);
+                if (!$branchStmt->fetch()) {
+                    return $this->errorResponse($response, 'الفرع المحدد غير متاح لهذا المستأجر.', 403);
+                }
+            }
+
             $this->db->beginTransaction();
 
             $stmt = $this->db->prepare("
                 INSERT INTO users (
-                    username, password, email, phone, status, tenant_id, role_id, is_owner
+                    name, username, password, email, phone, status, tenant_id, role_id, branch_id, created_by, is_owner
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, 0
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0
                 )
             ");
             $stmt->execute([
+                trim((string) $data['name']),
                 trim((string) $data['username']),
                 password_hash((string) $data['password'], PASSWORD_DEFAULT),
                 trim((string) $data['email']),
                 isset($data['phone']) ? trim((string) $data['phone']) : null,
                 $data['status'] ?? 'active',
                 $tenantId,
-                $primaryRoleId
+                $primaryRoleId,
+                $branchId,
+                $this->extractUserId($request)
             ]);
 
             $userId    = (int) $this->db->lastInsertId();
             $createdBy = $this->extractUserId($request);
 
-            // Always populate users_role — use primaryRoleId as fallback if rolesList empty
             $rolesToInsert = !empty($rolesList) ? $rolesList : ($primaryRoleId ? [$primaryRoleId] : []);
             if (!empty($rolesToInsert)) {
                 $insertRoleStmt = $this->db->prepare("
@@ -271,6 +237,7 @@ class RBACHandler extends BaseHandler
         }
     }
 
+    /** Update a tenant user and optionally replace their roles or branch assignment. */
     public function updateUser(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -289,15 +256,10 @@ class RBACHandler extends BaseHandler
 
             $rolesList = null;
             if (isset($data['roles']) && is_array($data['roles'])) {
-                $currentUser = $request->getAttribute('user');
-                if (is_object($currentUser)) {
-                    $currentUser = (array) $currentUser;
-                }
                 $rolesList = TenantRoleAssignmentPolicy::validate(
                     $this->db,
                     array_values($data['roles']),
-                    (int) $tenantId,
-                    SuperAdminHelper::is(is_array($currentUser) ? $currentUser : null)
+                    (int) $tenantId
                 );
                 if ($rolesList === null) {
                     return $this->errorResponse($response, 'دور واحد أو أكثر غير متاح لهذا المستأجر.', 403);
@@ -307,26 +269,81 @@ class RBACHandler extends BaseHandler
                 }
             }
 
+            $branchId = null;
+            if (array_key_exists('branch_id', $data) && $data['branch_id'] !== null && $data['branch_id'] !== '') {
+                if (filter_var($data['branch_id'], FILTER_VALIDATE_INT) === false || (int) $data['branch_id'] <= 0) {
+                    return $this->errorResponse($response, 'الفرع المحدد غير صالح.', 400);
+                }
+                $branchId = (int) $data['branch_id'];
+                $branchStmt = $this->db->prepare('SELECT id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1');
+                $branchStmt->execute([$branchId, $tenantId]);
+                if (!$branchStmt->fetch()) {
+                    return $this->errorResponse($response, 'الفرع المحدد غير متاح لهذا المستأجر.', 403);
+                }
+            }
+
             $stmt = $this->db->prepare("
-                SELECT id
+                SELECT id, is_owner
                 FROM users
                 WHERE id = ? AND tenant_id = ?
                 LIMIT 1
             ");
             $stmt->execute([$userId, $tenantId]);
 
-            if (!$stmt->fetch()) {
+            $targetUser = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$targetUser || (int) $targetUser['is_owner'] === 1) {
                 return $this->errorResponse($response, 'المستخدم غير موجود', 404);
             }
-
-            $this->db->beginTransaction();
 
             $updates = [];
             $params = [];
 
+            if (isset($data['name'])) {
+                if (trim((string) $data['name']) === '') {
+                    return $this->errorResponse($response, 'الاسم الكامل مطلوب.', 400);
+                }
+                $updates[] = 'name = ?';
+                $params[] = trim((string) $data['name']);
+            }
+
+            $identityChecks = [];
+            $identityParams = [];
+            if (isset($data['username'])) {
+                if (trim((string) $data['username']) === '') {
+                    return $this->errorResponse($response, 'اسم المستخدم مطلوب.', 400);
+                }
+                $updates[] = 'username = ?';
+                $params[] = trim((string) $data['username']);
+                $identityChecks[] = 'username = ?';
+                $identityParams[] = trim((string) $data['username']);
+            }
+
             if (isset($data['email'])) {
+                if (trim((string) $data['email']) === '' || !filter_var(trim((string) $data['email']), FILTER_VALIDATE_EMAIL)) {
+                    return $this->errorResponse($response, 'صيغة البريد الإلكتروني غير صحيحة.', 400);
+                }
                 $updates[] = "email = ?";
                 $params[] = trim((string) $data['email']);
+                $identityChecks[] = 'email = ?';
+                $identityParams[] = trim((string) $data['email']);
+            }
+
+            if ($identityChecks !== []) {
+                $identityStmt = $this->db->prepare("
+                    SELECT id
+                    FROM users
+                    WHERE id <> ? AND (" . implode(' OR ', $identityChecks) . ")
+                    LIMIT 1
+                ");
+                $identityStmt->execute(array_merge([$userId], $identityParams));
+                if ($identityStmt->fetch()) {
+                    return $this->errorResponse($response, 'اسم المستخدم أو البريد الإلكتروني موجود بالفعل.', 400);
+                }
+            }
+
+            if (array_key_exists('branch_id', $data)) {
+                $updates[] = 'branch_id = ?';
+                $params[] = $branchId;
             }
 
             if (isset($data['phone'])) {
@@ -339,10 +356,11 @@ class RBACHandler extends BaseHandler
                 $params[] = $data['status'];
             }
 
-            if (isset($data['password']) && trim((string) $data['password']) !== '') {
-                $updates[] = "password = ?";
-                $params[] = password_hash((string) $data['password'], PASSWORD_DEFAULT);
-            }
+            $newPassword = isset($data['password']) && trim((string) $data['password']) !== ''
+                ? (string) $data['password']
+                : null;
+
+            $this->db->beginTransaction();
 
             if (!empty($updates)) {
                 $params[] = $userId;
@@ -354,6 +372,10 @@ class RBACHandler extends BaseHandler
                     WHERE id = ? AND tenant_id = ? AND is_owner = 0
                 ");
                 $stmt->execute($params);
+            }
+
+            if ($newPassword !== null) {
+                (new UserSessionService($this->db))->changePassword($userId, (int) $tenantId, $newPassword);
             }
 
             if ($rolesList !== null) {
@@ -401,6 +423,7 @@ class RBACHandler extends BaseHandler
         }
     }
 
+    /** Delete a tenant user, except the caller or the tenant owner. */
     public function deleteUser(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -416,7 +439,6 @@ class RBACHandler extends BaseHandler
         try {
             $userId = (int) ($args['id'] ?? 0);
 
-            // Cannot delete yourself
             if ($userId === $callerId) {
                 return $this->errorResponse($response, 'لا يمكنك حذف حسابك الخاص', 403);
             }
@@ -434,7 +456,6 @@ class RBACHandler extends BaseHandler
                 return $this->errorResponse($response, 'المستخدم غير موجود', 404);
             }
 
-            // Cannot delete account owner
             if ((int) $target['is_owner'] === 1) {
                 return $this->errorResponse($response, 'لا يمكن حذف حساب مالك النظام', 403);
             }
@@ -460,7 +481,7 @@ class RBACHandler extends BaseHandler
         }
     }
 
-    // Role Management Methods
+    /** List tenant roles and assignable shared system roles with their permissions. */
     public function getRoles(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -479,18 +500,32 @@ class RBACHandler extends BaseHandler
                     r.*,
                     GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') AS permissions
                 FROM roles r
-                LEFT JOIN role_permissions rp ON r.id = rp.role_id
-                LEFT JOIN permissions p ON rp.permission_id = p.id
-                WHERE r.tenant_id = ?
+                LEFT JOIN role_permissions rp
+                  ON r.id = rp.role_id AND (rp.tenant_id IS NULL OR rp.tenant_id = ?)
+                LEFT JOIN permissions p
+                  ON rp.permission_id = p.id AND (p.tenant_id IS NULL OR p.tenant_id = ?)
+                WHERE (r.tenant_id = ? AND LOWER(r.name) <> 'administrator')
                    OR (
                        r.tenant_id IS NULL
-                       AND r.is_system_role = 1
-                       AND LOWER(r.name) NOT IN ('super_admin', 'admin', 'manager', 'branch_manager', 'finance_officer')
+                       AND (
+                           (
+                               r.is_system_role = 1
+                               AND LOWER(r.name) NOT IN ('super_admin', 'admin', 'manager', 'branch_manager', 'finance_officer', 'administrator')
+                           )
+                           OR LOWER(r.name) IN ('manager', 'cashier', 'finance_officer', 'inventory_clerk')
+                       )
+                       AND LOWER(r.name) <> 'administrator'
+                       AND NOT EXISTS (
+                           SELECT 1
+                           FROM roles tenant_role
+                           WHERE tenant_role.tenant_id = ?
+                             AND LOWER(tenant_role.name) = LOWER(r.name)
+                       )
                    )
                 GROUP BY r.id
                 ORDER BY COALESCE(r.tenant_id, 0) DESC, r.name
             ");
-            $stmt->execute([$tenantId]);
+            $stmt->execute([$tenantId, $tenantId, $tenantId, $tenantId]);
             $roles = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
             foreach ($roles as &$role) {
                 unset($role['tenant_scope_id']);
@@ -508,634 +543,15 @@ class RBACHandler extends BaseHandler
         }
     }
 
-    public function createRole(Request $request, Response $response): Response
-    {
-        [, , $err] = $this->requireAdminAccess($request, $response);
-        if ($err) {
-            return $err;
-        }
-
-        $tenantId = $this->extractTenantId($request);
-        if (!$tenantId) {
-            return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-        }
-
-        try {
-            $data = $request->getParsedBody() ?? [];
-
-            if (!isset($data['name']) || trim((string) $data['name']) === '') {
-                return $this->errorResponse($response, 'اسم الدور مطلوب', 400);
-            }
-            if (TenantRoleAssignmentPolicy::isReservedRoleName((string) $data['name'])) {
-                return $this->errorResponse($response, 'اسم الدور محجوز لدور النظام.', 403);
-            }
-
-            $stmt = $this->db->prepare("
-                SELECT id
-                FROM roles
-                WHERE name = ? AND tenant_id = ?
-                LIMIT 1
-            ");
-            $stmt->execute([trim((string) $data['name']), $tenantId]);
-
-            if ($stmt->fetch()) {
-                return $this->errorResponse($response, 'الدور موجود بالفعل', 400);
-            }
-
-            $this->db->beginTransaction();
-
-            $stmt = $this->db->prepare("
-                INSERT INTO roles (name, description, created_by, tenant_id)
-                VALUES (?, ?, ?, ?)
-            ");
-            $stmt->execute([
-                trim((string) $data['name']),
-                $data['description'] ?? null,
-                $this->extractUserId($request),
-                $tenantId
-            ]);
-
-            $roleId = (int) $this->db->lastInsertId();
-
-            if (isset($data['permissions']) && is_array($data['permissions'])) {
-                $insertPermissionStmt = $this->db->prepare("
-                    INSERT INTO role_permissions (role_id, permission_id, created_by)
-                    VALUES (?, ?, ?)
-                ");
-
-                $createdBy = $this->extractUserId($request);
-
-                foreach ($data['permissions'] as $permissionId) {
-                    $insertPermissionStmt->execute([
-                        $roleId,
-                        (int) $permissionId,
-                        $createdBy
-                    ]);
-                }
-            }
-
-            $this->db->commit();
-
-            return $this->jsonResponse($response, [
-                'status' => 'success',
-                'message' => 'تم إنشاء الدور بنجاح',
-                'data' => ['id' => $roleId]
-            ]);
-        } catch (\Throwable $e) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
-            }
-
-            $this->logger->error('Failed to create role', [
-                'tenant_id' => $tenantId,
-                'message' => $e->getMessage()
-            ]);
-
-            return $this->errorResponse($response, 'حدث خطأ أثناء معالجة الطلب', 500);
-        }
-    }
-
-    public function updateRole(Request $request, Response $response, array $args): Response
-    {
-        [, , $err] = $this->requireAdminAccess($request, $response);
-        if ($err) {
-            return $err;
-        }
-
-        $tenantId = $this->extractTenantId($request);
-        if (!$tenantId) {
-            return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-        }
-
-        try {
-            $roleId = (int) ($args['id'] ?? 0);
-            $data = $request->getParsedBody() ?? [];
-
-            $stmt = $this->db->prepare("
-                SELECT id, is_system_role
-                FROM roles
-                WHERE id = ? AND tenant_id = ?
-                LIMIT 1
-            ");
-            $stmt->execute([$roleId, $tenantId]);
-            $role = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$role) {
-                return $this->errorResponse($response, 'الدور غير موجود', 404);
-            }
-
-            if (!empty($role['is_system_role'])) {
-                return $this->errorResponse($response, 'لا يمكن تعديل الأدوار النظامية', 400);
-            }
-            if (isset($data['name']) && TenantRoleAssignmentPolicy::isReservedRoleName((string) $data['name'])) {
-                return $this->errorResponse($response, 'اسم الدور محجوز لدور النظام.', 403);
-            }
-
-            $this->db->beginTransaction();
-
-            if (isset($data['name']) || isset($data['description'])) {
-                $updates = [];
-                $params = [];
-
-                if (isset($data['name'])) {
-                    $updates[] = "name = ?";
-                    $params[] = trim((string) $data['name']);
-                }
-
-                if (isset($data['description'])) {
-                    $updates[] = "description = ?";
-                    $params[] = $data['description'];
-                }
-
-                if (!empty($updates)) {
-                    $params[] = $roleId;
-                    $params[] = $tenantId;
-
-                    $stmt = $this->db->prepare("
-                        UPDATE roles
-                        SET " . implode(", ", $updates) . "
-                        WHERE id = ? AND tenant_id = ?
-                    ");
-                    $stmt->execute($params);
-                }
-            }
-
-            if (isset($data['permissions']) && is_array($data['permissions'])) {
-                $stmt = $this->db->prepare("
-                    DELETE FROM role_permissions
-                    WHERE role_id = ?
-                ");
-                $stmt->execute([$roleId]);
-
-                $insertPermissionStmt = $this->db->prepare("
-                    INSERT INTO role_permissions (role_id, permission_id, created_by)
-                    VALUES (?, ?, ?)
-                ");
-
-                $createdBy = $this->extractUserId($request);
-
-                foreach ($data['permissions'] as $permissionId) {
-                    $insertPermissionStmt->execute([
-                        $roleId,
-                        (int) $permissionId,
-                        $createdBy
-                    ]);
-                }
-            }
-
-            $this->db->commit();
-
-            return $this->jsonResponse($response, [
-                'status' => 'success',
-                'message' => 'تم تحديث الدور بنجاح'
-            ]);
-        } catch (\Throwable $e) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
-            }
-
-            $this->logger->error('Failed to update role', [
-                'tenant_id' => $tenantId,
-                'role_id' => $args['id'] ?? null,
-                'message' => $e->getMessage()
-            ]);
-
-            return $this->errorResponse($response, 'حدث خطأ أثناء معالجة الطلب', 500);
-        }
-    }
-
-    public function deleteRole(Request $request, Response $response, array $args): Response
-    {
-        [, , $err] = $this->requireAdminAccess($request, $response);
-        if ($err) {
-            return $err;
-        }
-
-        $tenantId = $this->extractTenantId($request);
-        if (!$tenantId) {
-            return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-        }
-
-        try {
-            $roleId = (int) ($args['id'] ?? 0);
-
-            $stmt = $this->db->prepare("
-                SELECT id, is_system_role
-                FROM roles
-                WHERE id = ? AND tenant_id = ?
-                LIMIT 1
-            ");
-            $stmt->execute([$roleId, $tenantId]);
-            $role = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$role) {
-                return $this->errorResponse($response, 'الدور غير موجود', 404);
-            }
-
-            if (!empty($role['is_system_role'])) {
-                return $this->errorResponse($response, 'لا يمكن حذف الأدوار النظامية', 400);
-            }
-
-            $stmt = $this->db->prepare("
-                DELETE FROM roles
-                WHERE id = ? AND tenant_id = ?
-            ");
-            $stmt->execute([$roleId, $tenantId]);
-
-            return $this->jsonResponse($response, [
-                'status' => 'success',
-                'message' => 'تم حذف الدور بنجاح'
-            ]);
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to delete role', [
-                'tenant_id' => $tenantId,
-                'role_id' => $args['id'] ?? null,
-                'message' => $e->getMessage()
-            ]);
-
-            return $this->errorResponse($response, 'حدث خطأ أثناء معالجة الطلب', 500);
-        }
-    }
-
-    // Permission Management Methods
-    public function getPermissions(Request $request, Response $response): Response
-    {
-        [, , $err] = $this->requireAdminAccess($request, $response);
-        if ($err) {
-            return $err;
-        }
-
-        try {
-            $stmt = $this->db->query("
-                SELECT *
-                FROM permissions
-                ORDER BY category, name
-            ");
-            $permissions = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            $groupedPermissions = [];
-            foreach ($permissions as $permission) {
-                $category = $permission['category'] ?? 'general';
-                if (!isset($groupedPermissions[$category])) {
-                    $groupedPermissions[$category] = [];
-                }
-                $groupedPermissions[$category][] = $permission;
-            }
-
-            return $this->successResponse($response, $groupedPermissions, 200);
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to get permissions', [
-                'message' => $e->getMessage()
-            ]);
-
-            return $this->errorResponse($response, 'حدث خطأ أثناء معالجة الطلب', 500);
-        }
-    }
-
-    public function getRolePermissions(Request $request, Response $response, array $args): Response
-    {
-        [, , $err] = $this->requireAdminAccess($request, $response);
-        if ($err) {
-            return $err;
-        }
-
-        $tenantId = $this->extractTenantId($request);
-        if (!$tenantId) {
-            return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-        }
-
-        try {
-            $roleId = (int) ($args['id'] ?? 0);
-
-            // Verify role belongs to tenant
-            $stmt = $this->db->prepare("
-                SELECT id FROM roles
-                WHERE id = ?
-                  AND (tenant_id = ? OR (tenant_id IS NULL AND is_system_role = 1))
-            ");
-            $stmt->execute([$roleId, $tenantId]);
-            if (!$stmt->fetch()) {
-                return $this->errorResponse($response, 'الدور غير موجود', 404);
-            }
-
-            $stmt = $this->db->prepare("
-                SELECT
-                    p.id,
-                    p.name,
-                    p.description,
-                    p.category,
-                    CASE WHEN rp.role_id IS NOT NULL THEN 1 ELSE 0 END AS assigned
-                FROM permissions p
-                LEFT JOIN role_permissions rp
-                    ON p.id = rp.permission_id
-                   AND rp.role_id = ?
-                ORDER BY p.category, p.name
-            ");
-            $stmt->execute([$roleId]);
-            $permissions = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            return $this->successResponse($response, $permissions, 200);
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to get role permissions', [
-                'tenant_id' => $tenantId,
-                'role_id' => $args['id'] ?? null,
-                'message' => $e->getMessage()
-            ]);
-
-            return $this->errorResponse($response, 'حدث خطأ أثناء معالجة الطلب', 500);
-        }
-    }
-
-    public function updateRolePermissions(Request $request, Response $response, array $args): Response
-    {
-        [, , $err] = $this->requireAdminAccess($request, $response);
-        if ($err) {
-            return $err;
-        }
-
-        $tenantId = $this->extractTenantId($request);
-        if (!$tenantId) {
-            return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-        }
-
-        try {
-            $roleId = (int) ($args['id'] ?? 0);
-
-            // Verify role belongs to tenant
-            $stmt = $this->db->prepare("
-                SELECT id FROM roles
-                WHERE id = ? AND tenant_id = ?
-            ");
-            $stmt->execute([$roleId, $tenantId]);
-            if (!$stmt->fetch()) {
-                return $this->errorResponse($response, 'الدور غير موجود', 404);
-            }
-
-            $data = $request->getParsedBody() ?? [];
-
-            if (!isset($data['permissions']) || !is_array($data['permissions'])) {
-                return $this->errorResponse($response, 'مصفوفة الصلاحيات مطلوبة', 400);
-            }
-
-            $this->db->beginTransaction();
-
-            $stmt = $this->db->prepare("
-                DELETE FROM role_permissions
-                WHERE role_id = ?
-            ");
-            $stmt->execute([$roleId]);
-
-            if (!empty($data['permissions'])) {
-                $insertStmt = $this->db->prepare("
-                    INSERT INTO role_permissions (role_id, permission_id, created_by)
-                    VALUES (?, ?, ?)
-                ");
-
-                $createdBy = $this->extractUserId($request);
-
-                foreach ($data['permissions'] as $permissionId) {
-                    $insertStmt->execute([
-                        $roleId,
-                        (int) $permissionId,
-                        $createdBy
-                    ]);
-                }
-            }
-
-            $this->db->commit();
-
-            return $this->jsonResponse($response, [
-                'status' => 'success',
-                'message' => 'تم تحديث صلاحيات الدور بنجاح'
-            ]);
-        } catch (\Throwable $e) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
-            }
-
-            $this->logger->error('Failed to update role permissions', [
-                'tenant_id' => $tenantId,
-                'role_id' => $args['id'] ?? null,
-                'message' => $e->getMessage()
-            ]);
-
-            return $this->errorResponse($response, 'حدث خطأ أثناء معالجة الطلب', 500);
-        }
-    }
-
-    public function getUserPermissions(Request $request, Response $response, array $args): Response
-    {
-        [, , $err] = $this->requireAdminAccess($request, $response);
-        if ($err) {
-            return $err;
-        }
-
-        $tenantId = $this->extractTenantId($request);
-        if (!$tenantId) {
-            return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-        }
-
-        try {
-            $userId = (int) ($args['id'] ?? 0);
-
-            // Verify the user belongs to the same tenant
-            $userStmt = $this->db->prepare("
-                SELECT tenant_id FROM users WHERE id = ? LIMIT 1
-            ");
-            $userStmt->execute([$userId]);
-            $user = $userStmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$user || $user['tenant_id'] != $tenantId) {
-                return $this->errorResponse($response, 'المستخدم غير موجود أو لا ينتمي إلى المستأجر الحالي', 404);
-            }
-
-            $stmt = $this->db->prepare("
-                SELECT DISTINCT
-                    p.id,
-                    p.name,
-                    p.description,
-                    p.category,
-                    r.name AS role_name
-                FROM permissions p
-                JOIN role_permissions rp ON p.id = rp.permission_id
-                JOIN roles r ON rp.role_id = r.id
-                JOIN users_role ur ON r.id = ur.role_id
-                WHERE ur.user_id = ?
-                  AND (ur.tenant_id = ? OR ur.tenant_id IS NULL)
-                  AND (r.tenant_id = ? OR (r.tenant_id IS NULL AND r.is_system_role = 1))
-                ORDER BY p.category, p.name
-            ");
-            $stmt->execute([$userId, $tenantId, $tenantId]);
-            $permissions = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            return $this->successResponse($response, $permissions, 200);
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to get user permissions', [
-                'user_id' => $args['id'] ?? null,
-                'message' => $e->getMessage()
-            ]);
-
-            return $this->errorResponse($response, 'حدث خطأ أثناء معالجة الطلب', 500);
-        }
-    }
-
-    public function createPermission(Request $request, Response $response): Response
-    {
-        [, , $err] = $this->requireSuperAdminAccess($request, $response);
-        if ($err) {
-            return $err;
-        }
-
-        try {
-            $data = $request->getParsedBody() ?? [];
-
-            if (
-                !isset($data['name'], $data['category']) ||
-                trim((string) $data['name']) === '' ||
-                trim((string) $data['category']) === ''
-            ) {
-                return $this->errorResponse($response, 'الاسم والتصنيف مطلوبان', 400);
-            }
-
-            $stmt = $this->db->prepare("
-                INSERT INTO permissions (name, description, category, created_by)
-                VALUES (?, ?, ?, ?)
-            ");
-            $createdBy = $this->extractUserId($request) ?? null;
-            $stmt->execute([
-                trim((string) $data['name']),
-                $data['description'] ?? null,
-                trim((string) $data['category']),
-                $createdBy
-            ]);
-
-            $permissionId = (int) $this->db->lastInsertId();
-
-            return $this->jsonResponse($response, [
-                'status' => 'success',
-                'message' => 'تم إنشاء الصلاحية بنجاح',
-                'data' => ['id' => $permissionId]
-            ]);
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to create permission', [
-                'message' => $e->getMessage()
-            ]);
-
-            return $this->errorResponse($response, 'حدث خطأ أثناء معالجة الطلب', 500);
-        }
-    }
-
-    public function updatePermission(Request $request, Response $response, array $args): Response
-    {
-        [, , $err] = $this->requireSuperAdminAccess($request, $response);
-        if ($err) {
-            return $err;
-        }
-
-        try {
-            $permissionId = (int) ($args['id'] ?? 0);
-            $data = $request->getParsedBody() ?? [];
-
-            $updates = [];
-            $params = [];
-
-            if (isset($data['name'])) {
-                $updates[] = "name = ?";
-                $params[] = trim((string) $data['name']);
-            }
-
-            if (isset($data['description'])) {
-                $updates[] = "description = ?";
-                $params[] = $data['description'];
-            }
-
-            if (isset($data['category'])) {
-                $updates[] = "category = ?";
-                $params[] = trim((string) $data['category']);
-            }
-
-            if (!empty($updates)) {
-                $params[] = $permissionId;
-
-                $stmt = $this->db->prepare("
-                    UPDATE permissions
-                    SET " . implode(", ", $updates) . "
-                    WHERE id = ?
-                ");
-                $stmt->execute($params);
-            }
-
-            return $this->jsonResponse($response, [
-                'status' => 'success',
-                'message' => 'تم تحديث الصلاحية بنجاح'
-            ]);
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to update permission', [
-                'permission_id' => $args['id'] ?? null,
-                'message' => $e->getMessage()
-            ]);
-
-            return $this->errorResponse($response, 'حدث خطأ أثناء معالجة الطلب', 500);
-        }
-    }
-
-    public function deletePermission(Request $request, Response $response, array $args): Response
-    {
-        [, , $err] = $this->requireSuperAdminAccess($request, $response);
-        if ($err) {
-            return $err;
-        }
-
-        try {
-            $permissionId = (int) ($args['id'] ?? 0);
-
-            $stmt = $this->db->prepare("
-                SELECT COUNT(*)
-                FROM role_permissions
-                WHERE permission_id = ?
-            ");
-            $stmt->execute([$permissionId]);
-
-            if ((int) $stmt->fetchColumn() > 0) {
-                return $this->errorResponse($response, 'لا يمكن حذف الصلاحية لأنها مرتبطة بواحد أو أكثر من الأدوار', 400);
-            }
-
-            $stmt = $this->db->prepare("
-                DELETE FROM permissions
-                WHERE id = ?
-            ");
-            $stmt->execute([$permissionId]);
-
-            return $this->jsonResponse($response, [
-                'status' => 'success',
-                'message' => 'تم حذف الصلاحية بنجاح'
-            ]);
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to delete permission', [
-                'permission_id' => $args['id'] ?? null,
-                'message' => $e->getMessage()
-            ]);
-
-            return $this->errorResponse($response, 'حدث خطأ أثناء معالجة الطلب', 500);
-        }
-    }
-
-    // Helper method to check if user has permission
+    /** Resolve a user's effective permission; errors are logged and denied. */
     public function hasPermission($userId, $permissionName): bool
     {
         try {
-            $stmt = $this->db->prepare("
-                SELECT COUNT(*) AS has_permission
-                FROM users u
-                JOIN users_role ur ON u.id = ur.user_id
-                JOIN role_permissions rp ON ur.role_id = rp.role_id
-                JOIN permissions p ON rp.permission_id = p.id
-                WHERE u.id = ? AND p.name = ?
-            ");
-            $stmt->execute([(int) $userId, (string) $permissionName]);
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            return ((int) ($result['has_permission'] ?? 0)) > 0;
+            return PermissionResolver::hasPermission(
+                $this->db,
+                (int) $userId,
+                (string) $permissionName
+            );
         } catch (\Throwable $e) {
             $this->logger->error('Failed to check permission', [
                 'user_id' => $userId,

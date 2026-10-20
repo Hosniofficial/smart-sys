@@ -16,8 +16,6 @@ private_key.pem
 # -------- DEPENDENCIES --------
 /vendor/
 /node_modules/
-composer.lock
-package-lock.json
 yarn.lock
 
 # -------- LOGS --------
@@ -87,6 +85,7 @@ coverage/
 *.dump
 *.sqlite
 *.db
+/database/production/*manifest*.json
 
 # -------- ARCHIVES --------
 *.rar

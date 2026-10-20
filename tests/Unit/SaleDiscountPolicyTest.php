@@ -86,6 +86,245 @@ final class SaleDiscountPolicyTest extends TestCase
         );
     }
 
+    public function testAllowsManualPriceOverrideWithoutProductDiscountCapWhenAbovePriceFloor(): void
+    {
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item([
+                'sale_price' => 95.0,
+                'fixed_discount_percentage' => 0.0,
+                'manual_price_override' => true,
+            ])],
+            0.0,
+            95.0,
+            true
+        );
+
+        self::assertTrue(true);
+    }
+
+    public function testRequiresDiscountPermissionForManualPriceOverride(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('لا تملك صلاحية تطبيق خصم');
+
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item([
+                'sale_price' => 95.0,
+                'fixed_discount_percentage' => 0.0,
+                'manual_price_override' => true,
+            ])],
+            0.0,
+            95.0,
+            false
+        );
+    }
+
+    public function testManualPriceOverrideDoesNotBypassProductCapForInvoiceDiscount(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('لم يتم تحديد حد خصم');
+
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item([
+                'sale_price' => 95.0,
+                'fixed_discount_percentage' => 0.0,
+                'manual_price_override' => true,
+            ])],
+            1.0,
+            95.0,
+            true
+        );
+    }
+
+    public function testManualPriceOverrideAllowsInvoiceDiscountWithinProductCap(): void
+    {
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item([
+                'sale_price' => 95.0,
+                'min_sale_price' => 80.0,
+                'fixed_discount_percentage' => 5.0,
+                'manual_price_override' => true,
+            ])],
+            4.75,
+            95.0,
+            true
+        );
+
+        self::assertTrue(true);
+    }
+
+    public function testManualPriceOverrideStillEnforcesMinimumSalePrice(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('يلزم تأكيد المشرف');
+
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item([
+                'sale_price' => 85.0,
+                'fixed_discount_percentage' => 0.0,
+                'manual_price_override' => true,
+            ])],
+            0.0,
+            85.0,
+            true
+        );
+    }
+
+    public function testRequiresDiscountPermissionToOverrideMinimumSalePrice(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('لا تملك صلاحية تجاوز أقل سعر مسموح');
+
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item([
+                'sale_price' => 85.0,
+                'fixed_discount_percentage' => 0.0,
+                'manual_price_override' => true,
+                'below_minimum_price_confirmed' => true,
+            ])],
+            0.0,
+            85.0,
+            false
+        );
+    }
+
+    public function testAllowsConfirmedMinimumPriceOverrideWithDiscountPermission(): void
+    {
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item([
+                'sale_price' => 85.0,
+                'fixed_discount_percentage' => 0.0,
+                'manual_price_override' => true,
+                'below_minimum_price_confirmed' => true,
+            ])],
+            0.0,
+            85.0,
+            true
+        );
+
+        self::assertTrue(true);
+    }
+
+    public function testMinimumPriceOverrideRequiresExplicitConfirmation(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('يلزم تأكيد المشرف');
+
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item([
+                'sale_price' => 85.0,
+                'fixed_discount_percentage' => 0.0,
+                'manual_price_override' => true,
+            ])],
+            0.0,
+            85.0,
+            true
+        );
+    }
+
+    public function testBlocksSaleBelowCostWithoutDiscountPermission(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('لا تملك صلاحية اعتماد البيع بأقل من تكلفة المنتج');
+
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item([
+                'sale_price' => 95.0,
+                'purchase_price' => 100.0,
+                'manual_price_override' => true,
+                'below_cost_confirmed' => true,
+            ])],
+            0.0,
+            95.0,
+            false
+        );
+    }
+
+    public function testRequiresSupervisorConfirmationForSaleBelowCost(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('يلزم تأكيد المشرف');
+
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item([
+                'sale_price' => 95.0,
+                'purchase_price' => 100.0,
+                'manual_price_override' => true,
+            ])],
+            0.0,
+            95.0,
+            true,
+            true,
+            'Approved below-cost sale'
+        );
+    }
+
+    public function testAllowsConfirmedSaleBelowCostWithDiscountPermission(): void
+    {
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item([
+                'sale_price' => 95.0,
+                'purchase_price' => 100.0,
+                'manual_price_override' => true,
+                'below_cost_confirmed' => true,
+            ])],
+            0.0,
+            95.0,
+            true,
+            true,
+            'Approved below-cost sale'
+        );
+
+        self::assertTrue(true);
+    }
+
+    public function testChecksBelowCostAfterInvoiceDiscount(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('يلزم تأكيد المشرف');
+
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item([
+                'purchase_price' => 95.0,
+            ])],
+            10.0,
+            100.0,
+            true,
+            true,
+            'Approved below-cost sale'
+        );
+    }
+
+    public function testRejectsZeroOrNegativeQuantities(): void
+    {
+        foreach ([0.0, -1.0] as $quantity) {
+            try {
+                SaleDiscountPolicy::assertAllowed(
+                    [$this->item(['quantity' => $quantity])],
+                    0.0,
+                    100.0,
+                    false
+                );
+                self::fail('Expected invalid quantity to be rejected.');
+            } catch (DomainException $exception) {
+                self::assertSame('كمية الصنف يجب أن تكون أكبر من صفر.', $exception->getMessage());
+            }
+        }
+    }
+
+    public function testRejectsNonFiniteQuantities(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('كمية الصنف يجب أن تكون أكبر من صفر.');
+
+        SaleDiscountPolicy::assertAllowed(
+            [$this->item(['quantity' => INF])],
+            0.0,
+            100.0,
+            false
+        );
+    }
+
     public function testProratesInvoiceDiscountBeforeCheckingEachProductCap(): void
     {
         $this->expectException(DomainException::class);

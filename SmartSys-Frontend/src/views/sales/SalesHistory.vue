@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="isLoadingList || isLoadingDetails || isMarkingPaid" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
+    <div v-if="isLoadingList || isLoadingDetails || isMarkingPaid || isVoidingSale || isUpdatingSale" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
       <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
     </div>
 
@@ -27,7 +27,7 @@
         :breadcrumb="breadcrumb"
         title="سجل عمليات البيع"
         description="تتبع، فلترة، وإدارة جميع الفواتير الصادرة من النظام."
-        :branches="branches"
+        :branches="canSelectBranch ? branches : []"
         :selectedBranch="selectedBranch"
         :hasExplicitSelection="hasExplicitBranchSelection"
         @branch-changed="onBranchChange"
@@ -124,14 +124,14 @@
       </transition>
 
       <!-- Active Filter Chips -->
-      <div v-if="filters.hasActiveFilters.value || filters.customerFilter.value || (isExempt.value && hasExplicitBranchSelection)" class="flex flex-wrap gap-2 animate-fadeIn">
+      <div v-if="filters.hasActiveFilters.value || filters.customerFilter.value || (canSelectBranch && selectedBranch !== null)" class="flex flex-wrap gap-2 animate-fadeIn">
         <div v-for="chip in [
           { show: filters.searchQuery.value, label: filters.searchQuery.value, clear: () => filters.searchQuery.value = '' },
           { show: filters.dateFrom.value, label: `من: ${filters.dateFrom.value}`, clear: () => filters.dateFrom.value = '' },
           { show: filters.dateTo.value, label: `إلى: ${filters.dateTo.value}`, clear: () => filters.dateTo.value = '' },
           { show: filters.statusFilter.value, label: getStatusLabel(filters.statusFilter.value), clear: () => filters.statusFilter.value = '' },
           { show: filters.customerFilter.value, label: filters.customerSearch.value, clear: () => filters.clearCustomerFilter() },
-          { show: (isExempt.value && hasExplicitBranchSelection), label: `الفرع: ${branches.find(b => b.id == selectedBranch)?.name || selectedBranch}`, clear: () => onBranchChange(null) }
+          { show: (canSelectBranch && selectedBranch !== null), label: `الفرع: ${branches.find(b => String(b.id) === String(selectedBranch))?.name || selectedBranch}`, clear: () => onBranchChange(null) }
         ].filter(c => c.show)" :key="chip.label" class="inline-flex items-center gap-2 px-2.5 py-1 bg-blue-50 border border-blue-100 rounded-md text-[10px] font-bold text-blue-700">
           {{ chip.label }}
           <i @click="chip.clear" class="fas fa-times cursor-pointer hover:text-blue-900 opacity-60"></i>
@@ -181,6 +181,7 @@
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">العميل</th>
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الأصناف</th>
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">الإجمالي</th>
+                <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">المدفوع / المتبقي</th>
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الحالة</th>
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">إجراءات</th>
               </tr>
@@ -188,11 +189,11 @@
             <tbody class="divide-y divide-slate-100">
               <template v-if="isLoadingList">
                 <tr v-for="n in 5" :key="n" class="animate-pulse">
-                  <td v-for="m in 8" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
+                  <td v-for="m in 9" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                 </tr>
               </template>
               <tr v-else-if="!sales.length">
-                <td colspan="8" class="py-20 text-center text-slate-300">
+                <td colspan="9" class="py-20 text-center text-slate-300">
                    <i class="fas fa-receipt text-3xl mb-4 opacity-20"></i>
                    <p class="text-xs font-bold uppercase tracking-widest">لا توجد فواتير مبيعات حتى الآن</p>
                 </td>
@@ -208,10 +209,14 @@
                   <span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-500">{{ sale.total_items }}</span>
                 </td>
                 <td class="px-4 py-4 text-xs font-bold text-blue-600">{{ formatPrice(getSaleGross(sale)) }}</td>
+                <td class="px-4 py-4 text-[10px] font-bold whitespace-nowrap">
+                  <div class="text-emerald-700">مدفوع: {{ formatPrice(getSalePaid(sale)) }}</div>
+                  <div class="text-rose-600 mt-1">متبقي: {{ formatPrice(getSaleRemaining(sale)) }}</div>
+                </td>
                 <td class="px-4 py-4 text-center">
                   <div class="flex items-center justify-center gap-2">
                     <span :class="[getDynamicStatusClass(sale.dynamic_status)]" class="px-2 py-0.5 rounded text-[9px] font-bold border">
-                      {{ getStatusLabel(sale.dynamic_status) }}
+                      {{ getStatusLabel(sale.status === 'canceled' ? 'canceled' : sale.dynamic_status) }}
                     </span>
                     <span v-if="getAgeBadge(sale)" :class="[getAgeBadge(sale).cls]" class="px-1.5 py-0.5 rounded text-[8px] font-bold border">
                       {{ getAgeBadge(sale).label }}
@@ -254,25 +259,65 @@
     </div>
 
     <!-- Details Modal -->
-    <BaseModal :show="showDetailsModal && !!selectedSale" @close="showDetailsModal = false" maxWidth="4xl">
-      <template #header>
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-xs"><i class="fas fa-receipt"></i></div>
-          <h3 class="text-sm font-bold text-slate-900 uppercase">تفاصيل الفاتورة {{ selectedSale?.invoice_number || '#' + selectedSale?.id }}</h3>
-        </div>
-      </template>
+    <HistoryDetailsModal
+      :show="showDetailsModal && !!selectedSale"
+      @close="showDetailsModal = false"
+      :title="`تفاصيل فاتورة البيع ${selectedSale?.invoice_number || '#' + selectedSale?.id}`"
+      icon="fas fa-receipt"
+    >
 
-      <div class="space-y-8">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+      <form v-if="isEditingSale" class="space-y-5" @submit.prevent="submitSaleEdit">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="space-y-1.5">
+            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">تاريخ الفاتورة</span>
+            <input v-model="saleEditForm.sale_date" type="date" required class="filter-input" />
+          </label>
+          <label class="space-y-1.5">
+            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">طريقة الدفع</span>
+            <select v-model="saleEditForm.payment_method_id" class="filter-input" :disabled="hasSalePayment">
+              <option value="" :disabled="!!selectedSale?.payment_method_id">غير محددة</option>
+              <option v-for="method in paymentMethods" :key="method.id" :value="String(method.id)">
+                {{ method.name }}
+              </option>
+            </select>
+            <span v-if="hasSalePayment" class="block text-[10px] text-amber-700">
+              لا يمكن تغيير طريقة الدفع بعد تسجيل دفعة.
+            </span>
+          </label>
+          <label class="space-y-1.5">
+            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">مركز التكلفة</span>
+            <select v-model="saleEditForm.cost_center_id" class="filter-input" :disabled="!costCenters.length">
+              <option value="">بدون مركز تكلفة</option>
+              <option v-for="center in costCenters" :key="center.id" :value="String(center.id)">
+                {{ center.name }}
+              </option>
+            </select>
+            <span v-if="!costCenters.length" class="block text-[10px] text-amber-700">
+              تعذر تحميل مراكز التكلفة؛ لن يتم تغيير المركز الحالي.
+            </span>
+          </label>
+        </div>
+        <label class="block space-y-1.5">
+          <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">ملاحظات الفاتورة</span>
+          <textarea v-model="saleEditForm.notes" rows="3" class="filter-input h-auto py-2"></textarea>
+        </label>
+        <p class="text-[10px] text-slate-500">
+          التعديل متاح للفواتير غير المعتمدة وغير المرحلة محاسبياً، ولا يشمل الأصناف أو الكميات.
+        </p>
+      </form>
+
+      <div v-else class="space-y-6">
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
           <div v-for="info in [
             { l: 'العميل', v: selectedSale?.customer_name || 'عميل نقدي' },
-            { l: 'طريقة الدفع', v: getPaymentMethodName(selectedSalePaymentMethodId) },
             { l: 'الفرع', v: selectedSale?.branch_name || '-' },
-            { l: 'حالة الفاتورة', v: getStatusLabel(selectedSale?.dynamic_status) },
-            { l: 'التاريخ', v: formatDateTime(selectedSale?.created_at) }
-          ]" :key="info.l" class="space-y-1">
-            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{{ info.l }}</p>
-            <p class="text-xs font-bold text-slate-800">{{ info.v }}</p>
+            { l: 'التاريخ', v: formatDateTime(selectedSale?.sale_date || selectedSale?.created_at) },
+            { l: 'الكاشير', v: selectedSale?.created_by_name || '-' },
+            { l: 'طريقة الدفع', v: getPaymentMethodName(selectedSalePaymentMethodId) },
+            { l: 'حالة الفاتورة', v: getStatusLabel(selectedSale?.status === 'canceled' ? 'canceled' : selectedSale?.dynamic_status) },
+          ]" :key="info.l" class="min-w-0 space-y-1 rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-2">
+            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">{{ info.l }}</p>
+            <p class="break-words text-[11px] font-bold leading-4 text-slate-800">{{ info.v }}</p>
           </div>
         </div>
 
@@ -281,32 +326,32 @@
           <p class="text-xs font-bold text-blue-700">{{ getStatusMessage(selectedSale?.dynamic_status) }}</p>
         </div>
 
-        <div class="border border-slate-100 rounded-xl overflow-hidden">
+        <div class="overflow-x-auto rounded-xl border border-slate-100 shadow-sm">
           <table class="w-full text-right text-xs">
             <thead>
               <tr class="bg-slate-50 border-b border-slate-100">
-                <th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">المنتج</th>
-                <th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase text-center">الكمية</th>
-                <th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">سعر الوحدة</th>
-                <th class="px-4 py-3 text[10px] font-bold text-slate-400 uppercase">الإجمالي الأصلي</th>
-                <th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">الخصم</th>
-                <th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">الضريبة</th>
-                <th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">الصافي للوحدة</th>
-                <th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">الإجمالي</th>
+                <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">المنتج</th>
+                <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase text-center">الكمية</th>
+                <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">سعر الوحدة</th>
+                <th class="px-2 py-3 text[10px] font-bold text-slate-400 uppercase">الإجمالي الأصلي</th>
+                <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">الخصم</th>
+                <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">الضريبة</th>
+                <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">الصافي للوحدة</th>
+                <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">الإجمالي</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
               <tr v-for="item in selectedSale?.items" :key="item.id">
-                <td class="px-4 py-3">
+                <td class="px-2 py-3">
                   <p class="font-bold text-slate-800">{{ item.product_name }}</p>
                 </td>
-                <td class="px-4 py-3 text-center font-bold text-slate-500">{{ item.quantity }}</td>
-                <td class="px-4 py-3 font-bold text-slate-700">{{ formatPrice(item.sale_price) }}</td>
-                <td class="px-4 py-3 font-bold text-slate-700">{{ formatPrice((item.sale_price || 0) * (item.quantity || 0)) }}</td>
-                <td class="px-4 py-3 font-bold text-rose-500">{{ formatPrice(item.discount_value || 0) }}</td>
-                <td class="px-4 py-3 font-bold text-indigo-500">{{ formatPrice((item.net_price || 0) * (taxRate / 100)) }}</td>
-                <td class="px-4 py-3 font-bold text-slate-700">{{ formatPrice(item.net_price || 0) }}</td>
-                <td class="px-4 py-3 font-bold text-slate-900">{{ formatPrice(item.net_total * (1 + taxRate / 100)) }}</td>
+                <td class="px-2 py-3 text-center font-bold text-slate-500">{{ item.quantity }}</td>
+                <td class="px-2 py-3 font-bold text-slate-700">{{ formatPrice(item.sale_price) }}</td>
+                <td class="px-2 py-3 font-bold text-slate-700">{{ formatPrice((item.sale_price || 0) * (item.quantity || 0)) }}</td>
+                <td class="px-2 py-3 font-bold text-rose-500">{{ formatPrice(item.discount_value || 0) }}</td>
+                <td class="px-2 py-3 font-bold text-indigo-500">{{ formatPrice((item.net_price || 0) * (taxRate / 100)) }}</td>
+                <td class="px-2 py-3 font-bold text-slate-700">{{ formatPrice(item.net_price || 0) }}</td>
+                <td class="px-2 py-3 font-bold text-slate-900">{{ formatPrice(item.net_total * (1 + taxRate / 100)) }}</td>
               </tr>
             </tbody>
           </table>
@@ -325,44 +370,220 @@
               <span class="text-xs font-bold uppercase tracking-widest text-blue-400">الصافي</span>
               <span class="text-2xl font-bold tracking-tighter">{{ formatPrice(finalNetTotal * (1 + taxRate / 100)) }}</span>
             </div>
+            <div class="pt-3 border-t border-white/10 space-y-2">
+              <div class="flex justify-between text-[11px] font-medium text-slate-300">
+                <span>صافي التحصيل</span>
+                <span>{{ formatPrice(getSalePaid(selectedSale)) }}</span>
+              </div>
+              <div v-if="Number(selectedSale?.return_amount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-300">
+                <span>قيمة المرتجعات</span>
+                <span class="text-amber-300">{{ formatPrice(selectedSale.return_amount) }}</span>
+              </div>
+              <div class="flex justify-between text-[11px] font-bold text-rose-300">
+                <span>المتبقي</span>
+                <span>{{ formatPrice(getSaleRemaining(selectedSale)) }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       <template #footer>
-        <span class="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-2 ml-auto mr-0">
-          <i class="fas fa-shield-alt text-emerald-500"></i> مستند رسمي معتمد
-        </span>
-        <button @click="showDetailsModal = false" class="px-4 h-9 text-xs font-bold text-slate-500">إغلاق</button>
-        <button @click="printSaleDetails" class="px-6 h-9 bg-blue-600 text-white rounded-md text-xs font-bold shadow-lg shadow-blue-900/20"><i class="fas fa-print ml-1.5"></i> طباعة الفاتورة</button>
+        <div dir="rtl" class="mr-auto flex flex-row-reverse flex-wrap items-center gap-3">
+        <button
+          v-if="canEditSelectedSale && !isEditingSale"
+          @click="openSaleEdit"
+          class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-blue-200 px-4 text-xs font-bold text-blue-700 hover:bg-blue-50"
+        >
+          <i class="fas fa-edit ml-1.5"></i>تعديل الفاتورة
+        </button>
+        <button
+          v-if="isEditingSale"
+          @click="cancelSaleEdit"
+          :disabled="isUpdatingSale"
+          class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500"
+        >
+          إلغاء التعديل
+        </button>
+        <button
+          v-if="isEditingSale"
+          @click="submitSaleEdit"
+          :disabled="isUpdatingSale"
+          class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md bg-blue-600 px-5 text-xs font-bold text-white disabled:opacity-50"
+        >
+          {{ isUpdatingSale ? 'جارٍ الحفظ...' : 'حفظ التعديلات' }}
+        </button>
+        <button
+          v-if="canVoidSelectedSale && !isEditingSale"
+          @click="voidSelectedSale"
+          :disabled="isVoidingSale"
+          class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-rose-200 px-4 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+        >
+          <i class="fas fa-ban ml-1.5"></i>{{ isVoidingSale ? 'جارٍ الإلغاء...' : 'إلغاء البيع' }}
+        </button>
+        <!-- زر تحصيل دفعة — يظهر فقط للفواتير غير المدفوعة أو المدفوعة جزئياً -->
+        <button
+          v-if="canCollectPayment && !isEditingSale"
+          @click="openCollectModal"
+          class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-emerald-200 px-4 text-xs font-bold text-emerald-700 transition-all hover:bg-emerald-50"
+        >
+          <i class="fas fa-hand-holding-usd text-[10px]"></i> تحصيل دفعة
+        </button>
+        <button v-if="!isEditingSale" @click="printSaleDetails" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-indigo-600 px-5 text-xs font-bold text-white shadow-lg shadow-indigo-900/20"><i class="fas fa-print"></i> طباعة الفاتورة</button>
+        <button @click="showDetailsModal = false" :disabled="isUpdatingSale" class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500 disabled:opacity-50">إغلاق</button>
+        </div>
       </template>
-    </BaseModal>
+    </HistoryDetailsModal>
+
+    <!-- Collect Payment Modal — Teleported to body to escape BaseModal stacking context -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="showCollectModal"
+          class="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"
+          @click.self="showCollectModal = false"
+          @keydown.esc="showCollectModal = false"
+        >
+          <div class="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn" dir="rtl">
+            <!-- Header -->
+            <div class="px-8 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900">تحصيل دفعة</h3>
+                <p class="text-[10px] text-slate-400 mt-0.5 font-medium font-mono">
+                  فاتورة {{ selectedSale?.invoice_number || '#' + selectedSale?.id }}
+                  <span v-if="collectOutstanding > 0" class="text-rose-500 mr-2">
+                    · متبقي {{ formatPrice(collectOutstanding) }}
+                  </span>
+                </p>
+              </div>
+              <button type="button" @click="showCollectModal = false"
+                      class="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all flex items-center justify-center">
+                <i class="fas fa-times text-xs"></i>
+              </button>
+            </div>
+
+            <!-- Form -->
+            <form @submit.prevent="submitCollectPayment" class="px-8 py-6 space-y-4">
+              <p
+                v-if="pendingCollectPayment"
+                class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-800"
+              >
+                توجد عملية تحصيل لم تُحسم نتيجتها. أعد المحاولة بالبيانات نفسها حتى لا تُسجل الدفعة مرتين.
+              </p>
+
+              <!-- المبلغ -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  المبلغ <span class="text-rose-500">*</span>
+                </label>
+                <input
+                  v-model.number="collectForm.amount"
+                  type="number" step="0.01" min="0.01"
+                  :disabled="!!pendingCollectPayment"
+                  class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-mono"
+                  placeholder="0.00" required
+                />
+                <button
+                  v-if="collectOutstanding > 0"
+                  type="button"
+                  @click="collectForm.amount = collectOutstanding"
+                  :disabled="!!pendingCollectPayment"
+                  class="text-[9px] font-bold text-blue-600 hover:underline px-1"
+                >
+                  تحصيل المتبقي كاملاً ({{ formatPrice(collectOutstanding) }})
+                </button>
+              </div>
+
+              <!-- تاريخ الدفع -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  تاريخ الدفع <span class="text-rose-500">*</span>
+                </label>
+                <input
+                  v-model="collectForm.payment_date"
+                  type="date"
+                  :disabled="!!pendingCollectPayment"
+                  class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-mono"
+                  required
+                />
+              </div>
+
+              <!-- طريقة الدفع -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  طريقة الدفع <span class="text-rose-500">*</span>
+                </label>
+                <select
+                  v-model="collectForm.payment_method_id"
+                  :disabled="!!pendingCollectPayment"
+                  class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none"
+                  required
+                >
+                  <option value="">اختر طريقة الدفع</option>
+                  <option v-for="m in collectiblePaymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option>
+                </select>
+              </div>
+
+              <!-- الفرع -->
+              <!-- ملاحظات -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">ملاحظات</label>
+                <textarea
+                  v-model="collectForm.notes"
+                  :disabled="!!pendingCollectPayment"
+                  rows="2"
+                  class="w-full bg-white border border-slate-200 rounded-md px-3 py-2 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all italic resize-none"
+                  placeholder="مرجع التحويل، رقم الشيك..."
+                ></textarea>
+              </div>
+
+              <!-- أزرار -->
+              <div class="pt-4 border-t border-slate-100 flex gap-3">
+                <button
+                  type="button"
+                  @click="showCollectModal = false"
+                  class="flex-1 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors rounded-md hover:bg-slate-50"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  :disabled="isCollecting"
+                  class="flex-[2] h-10 bg-emerald-600 text-white rounded-md text-xs font-bold shadow-lg shadow-emerald-900/20 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {{ isCollecting ? 'جاري التحصيل...' : 'تأكيد التحصيل' }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
-import BaseModal from '@/components/BaseModal.vue';
+import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
 import { useRoute } from 'vue-router';
 import { useHistoryFilters } from '@/composables/useHistoryFilters';
 import { useSessionExemption } from '@/composables/useCashierSessionGuard';
 import { useBranchIsolation } from '@/composables/useBranchIsolation';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import { useSalesStore } from '@/stores/sales/salesStore';
 import { useSettingsStore } from '@/stores/settings/settingsStore';
 import { useCustomerStore } from '@/stores/customer/customerStore';
 import { usePaymentStore } from '@/stores/payment/paymentStore';
-import { useBootstrapStore } from '@/stores/bootstrap';
+import { useBootstrapStore } from '@/stores/bootstrap/bootstrapStore';
+import { useCostCenterStore } from '@/stores/costCenter/costCenterStore';
 import AlertService from '@/services/AlertService';
 import { useToast } from '@/composables/useToast';
 import { useLoader } from '@/composables/useLoader';
-import { getLocalDateISO } from '@/utils/date';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
-import { getBuilderByTemplate } from '@/utils/printTemplates';
-import { printDocument } from '@/utils/PrintService';
+import { getLocalDateISO, printDocument } from '@/utils';
 import PageHeader from '@/components/PageHeader.vue';
 
 const { showToast } = useToast();
@@ -375,8 +596,9 @@ const settingsStore = useSettingsStore();
 const customerStore = useCustomerStore();
 const paymentStore = usePaymentStore();
 const bootstrapStore = useBootstrapStore();
+const costCenterStore = useCostCenterStore();
 const route = useRoute();
-const { isExempt, ensureLoaded: ensureExemptionLoaded } = useSessionExemption();
+const { ensureLoaded: ensureExemptionLoaded } = useSessionExemption();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const { breadcrumb } = useBreadcrumb();
 const formatPrice = (amount) => formatCurrencyLocale(amount, 2);
@@ -386,22 +608,27 @@ const taxRateDisplay = computed(() => taxRate.value.toFixed(0));
 
 const sales = ref([]);
 const paymentMethods = computed(() => paymentStore.paymentMethods);
+const collectiblePaymentMethods = computed(() =>
+  paymentMethods.value.filter(method => String(method.kind || '').toLowerCase() !== 'credit')
+);
 const customers = computed(() => customerStore.customers);
 const branches = computed(() => branchStore.branches);
+const costCenters = computed(() => costCenterStore.costCenters);
 
 const selectedBranch = computed(() => branchStore.selectedBranchId);
+const canSelectBranch = computed(() => branchIsolation.isExempt.value);
 
 // ✅ يتتبع الاختيار اليدوي للفرع — لا يعتمد على localStorage مباشرة
 // لأن fetchBranches() يكتب default branch في localStorage تلقائياً عند أول دخول
 const userChoseBranch = ref(
   localStorage.getItem('selectedBranchId') !== null
-  && localStorage.getItem('selectedBranchId') !== 'all'
 );
-const hasExplicitBranchSelection = computed(() => userChoseBranch.value && branchStore.selectedBranchId !== null);
+const hasExplicitBranchSelection = computed(() => userChoseBranch.value);
 
 const onBranchChange = (newBranchId) => {
+  if (!canSelectBranch.value) return;
   branchStore.setSelectedBranch(newBranchId);
-  userChoseBranch.value = (newBranchId !== null && newBranchId !== '' && newBranchId !== 'all');
+  userChoseBranch.value = true;
   filters.page.value = 1;
   fetchSalesHistory(true);  // ✅ force=true لإعادة جلب البيانات عند تغيير الفرع
 };
@@ -415,7 +642,8 @@ const statusOptions = [
   { value: '', label: 'كل الحالات' },
   { value: 'paid', label: 'مدفوعة' },
   { value: 'partial', label: 'جزئي' },
-  { value: 'unpaid', label: 'مستحقة' }
+  { value: 'unpaid', label: 'مستحقة' },
+  { value: 'canceled', label: 'ملغاة' }
 ];
 
 const filters = useHistoryFilters('sales_hist_filters');
@@ -433,6 +661,10 @@ const totalPages = computed(() => Math.max(1, Math.ceil(filters.total.value / fi
 const isLoadingList = ref(false);
 const isLoadingDetails = ref(false);
 const isMarkingPaid = ref(false);
+const isVoidingSale = ref(false);
+const isUpdatingSale = ref(false);
+const isEditingSale = ref(false);
+const saleEditForm = ref({ sale_date: '', notes: '', payment_method_id: '', cost_center_id: '' });
 const isDataStale = ref(false);
 const lastSuccessfulUpdate = ref(null);
 let listAbortCtrl = null;
@@ -470,6 +702,166 @@ const selectedSalePaymentMethodId = computed(() => {
 
 const showDetailsModal = ref(false);
 const selectedSale = ref(null);
+const canEditSelectedSale = computed(() => {
+  const sale = selectedSale.value;
+  if (!sale) return false;
+  const hasPermission = authStore.isSuperAdmin || authStore.user?.permissions?.includes('sale.edit') === true;
+  return hasPermission
+    && ['draft', 'pending_approval', 'rejected'].includes(String(sale.status || '').toLowerCase())
+    && !Number(sale.journal_entry_id || 0);
+});
+const hasSalePayment = computed(() =>
+  selectedSale.value?.has_payment_records === true
+  || Number(selectedSale.value?.actual_paid_amount ?? selectedSale.value?.paid_amount ?? 0) > 0.009
+);
+const canVoidSelectedSale = computed(() => {
+  const sale = selectedSale.value;
+  if (!sale) return false;
+  const hasPermission = authStore.isSuperAdmin || authStore.user?.permissions?.includes('sale.void') === true;
+  const status = String(sale.status || '').toLowerCase();
+  return hasPermission
+    && !['paid', 'canceled', 'cancelled'].includes(status)
+    && Number(sale.actual_paid_amount ?? sale.paid_amount ?? 0) <= 0.009
+    && Number(sale.return_amount ?? 0) <= 0.009
+    && Number(sale.return_credit_amount ?? 0) <= 0.009;
+});
+
+// ─── Collect Payment Modal ────────────────────────────────────────────────
+const showCollectModal = ref(false);
+const isCollecting = ref(false);
+const collectForm = ref({ amount: null, payment_date: null, payment_method_id: null, notes: '' });
+const pendingCollectPayment = ref(null);
+
+const collectPaymentStorageKey = (saleId) =>
+  `pending_sale_payment:${authStore.user?.tenant_id || 'platform'}:${authStore.user?.id || 'current'}:${saleId}`;
+
+const createIdempotencyKey = () => {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+};
+
+const loadPendingCollectPayment = (saleId) => {
+  try {
+    const storageKey = collectPaymentStorageKey(saleId);
+    const storedValue = sessionStorage.getItem(storageKey);
+    if (!storedValue) return null;
+    return JSON.parse(storedValue);
+  } catch (error) {
+    console.error('Unable to restore pending sale payment:', error);
+    showToast('تعذر استعادة عملية التحصيل السابقة؛ ابدأ عملية جديدة.', 'error');
+    return null;
+  }
+};
+
+// الفاتورة قابلة للتحصيل إذا لم تكن مدفوعة كاملاً أو ملغاة
+const canCollectPayment = computed(() => {
+  const sale = selectedSale.value;
+  if (!sale) return false;
+  // نتحقق من dynamic_status أولاً (يعكس المرتجعات والتسويات)، ثم status
+  const status = String(sale.dynamic_status || sale.status || '').toLowerCase();
+  if (['paid', 'returned', 'canceled', 'cancelled', 'closed_by_return', 'settled_by_return', 'settled_by_credit'].includes(status)) return false;
+  if (getSaleRemaining(sale) <= 0.009) return false;
+  return authStore.isSuperAdmin || authStore.user?.permissions?.includes('sale.payment.create') === true;
+});
+
+// المبلغ المتبقي على الفاتورة — يستخدم total_amount (شامل الضريبة) ليطابق paid_amount
+const collectOutstanding = computed(() => {
+  const sale = selectedSale.value;
+  return getSaleRemaining(sale);
+});
+
+const openCollectModal = () => {
+  const sale = selectedSale.value;
+  if (!sale) return;
+
+  const pending = loadPendingCollectPayment(sale.id);
+  pendingCollectPayment.value = pending;
+  showCollectModal.value = true;
+  collectForm.value = pending
+    ? { ...pending.payload }
+    : {
+        amount: collectOutstanding.value > 0 ? collectOutstanding.value : null,
+        payment_date: getLocalDateISO(new Date()),
+        payment_method_id: cashMethodId.value || (collectiblePaymentMethods.value[0]?.id ?? null),
+        notes: '',
+      };
+};
+
+const submitCollectPayment = async () => {
+  const sale = selectedSale.value;
+  if (!sale) return;
+
+  if (!collectForm.value.amount || collectForm.value.amount <= 0) {
+    showToast('ادخل مبلغ صحيح', 'error'); return;
+  }
+  if (!collectForm.value.payment_method_id) {
+    showToast('اختر طريقة الدفع', 'error'); return;
+  }
+  if (!collectForm.value.payment_date) {
+    showToast('الرجاء تحديد تاريخ الدفع', 'error'); return;
+  }
+
+  isCollecting.value = true;
+  showLoader();
+  try {
+    const formPayload = {
+      sale_id: Number(sale.id),
+      customer_id: sale.customer_id ? Number(sale.customer_id) : undefined,
+      amount: Number(collectForm.value.amount),
+      payment_date: collectForm.value.payment_date,
+      payment_method_id: Number(collectForm.value.payment_method_id),
+      notes: collectForm.value.notes || undefined,
+    };
+    let pending = pendingCollectPayment.value;
+
+    if (pending && pending.fingerprint !== JSON.stringify(formPayload)) {
+      showToast('توجد دفعة غير مؤكدة لهذه الفاتورة. أعد المحاولة بنفس البيانات قبل تغييرها.', 'error');
+      return;
+    }
+
+    const payload = pending?.payload || formPayload;
+    const payloadFingerprint = JSON.stringify(payload);
+    if (!pending) {
+      pending = {
+        key: createIdempotencyKey(),
+        payload,
+        fingerprint: payloadFingerprint,
+      };
+      sessionStorage.setItem(collectPaymentStorageKey(sale.id), JSON.stringify(pending));
+      pendingCollectPayment.value = pending;
+    }
+
+    const res = await salesStore.addSalePayment(payload, pending.key);
+
+    if (res?.status === 'success') {
+      sessionStorage.removeItem(collectPaymentStorageKey(sale.id));
+      pendingCollectPayment.value = null;
+      showToast('تم التحصيل بنجاح', 'success');
+      showCollectModal.value = false;
+      // أعد تحميل تفاصيل الفاتورة لتحديث الحالة والمبلغ المدفوع في الـ modal
+      await viewSaleDetails(sale.id);
+      // وأعد تحميل القائمة في الخلفية
+      fetchSalesHistory();
+    } else {
+      const isOutcomeUnknown = !res?.httpStatus || res.httpStatus >= 500;
+      if (isOutcomeUnknown) {
+        pendingCollectPayment.value = pending;
+        showToast('تعذر تأكيد نتيجة التحصيل. أعد المحاولة بنفس البيانات لإتمام التحقق بأمان.', 'error');
+      } else {
+        sessionStorage.removeItem(collectPaymentStorageKey(sale.id));
+        pendingCollectPayment.value = null;
+        showToast(res?.message || 'فشل التحصيل', 'error');
+      }
+    }
+  } catch (e) {
+    showToast(e?.response?.data?.message || e?.message || 'فشل التحصيل', 'error');
+  } finally {
+    isCollecting.value = false;
+    hideLoader();
+  }
+};
 
 watch(showDetailsModal, (val) => {
   if (typeof window !== 'undefined') {
@@ -486,6 +878,8 @@ const formatDateTime = (dateTimeString) => {
 const getStatusLabel = (status) => {
   const map = {
     paid: 'مدفوعة',
+    canceled: 'ملغاة',
+    cancelled: 'ملغاة',
     settled: 'مسددة',
     unpaid: 'غير مدفوعة',
     partial: 'مدفوعة جزئياً',
@@ -511,6 +905,8 @@ const getStatusMessage = (status) => {
 const getDynamicStatusClass = (status) => {
   const classMap = {
     paid: 'status-paid-v2',
+    canceled: 'status-unpaid-v2',
+    cancelled: 'status-unpaid-v2',
     settled: 'status-paid-v2',
     unpaid: 'status-unpaid-v2',
     partial: 'status-partial-v2',
@@ -531,6 +927,21 @@ const getSaleGross = (s) => {
   const tax = (s.tax_amount !== undefined && s.tax_amount !== null) ? (parseFloat(s.tax_amount) || 0) : (net * (taxRate.value / 100));
   return net + tax;
 };
+const isSaleCanceled = (sale) =>
+  ['canceled', 'cancelled'].includes(String(sale?.status || sale?.dynamic_status || '').toLowerCase());
+const getSalePaid = (s) => Math.max(0, parseFloat(s?.actual_paid_amount ?? s?.paid_amount ?? 0) || 0);
+const getSaleRemaining = (s) => {
+  if (!s || isSaleCanceled(s)) return 0;
+  const status = String(s.dynamic_status || s.status || '').toLowerCase();
+  if (['returned', 'closed_by_return', 'settled_by_return', 'settled_by_credit'].includes(status)) return 0;
+  if (s.remaining_balance !== null && s.remaining_balance !== undefined && s.remaining_balance !== '') {
+    return Math.max(0, parseFloat(s.remaining_balance) || 0);
+  }
+  return Math.max(
+    0,
+    getSaleGross(s) - getSalePaid(s) - (parseFloat(s?.return_credit_amount ?? s?.return_credits ?? 0) || 0)
+  );
+};
 
 const getPaymentMethodName = (id) => {
   if (!id) return 'غير محددة';
@@ -539,7 +950,7 @@ const getPaymentMethodName = (id) => {
 };
 
 const getAgeBadge = (sale) => {
-  if (!sale || ['paid', 'returned', 'settled_by_return', 'closed_by_return', 'settled_by_credit', 'settled_mixed'].includes(sale.dynamic_status)) return null;
+  if (!sale || isSaleCanceled(sale) || ['paid', 'returned', 'settled_by_return', 'closed_by_return', 'settled_by_credit', 'settled_mixed'].includes(sale.dynamic_status)) return null;
   const base = sale.due_date || sale.created_at;
   if (!base) return null;
   const days = Math.max(0, Math.floor((Date.now() - new Date(base).getTime()) / (1000 * 60 * 60 * 24)));
@@ -555,7 +966,7 @@ const fetchSalesHistory = async (forceRefresh = false) => {
   showLoader();
   try {
     const params = filters.getApiParams({ includeTotals: true, force: forceRefresh });
-    if (!isExempt.value) {
+    if (!canSelectBranch.value) {
       try {
         const wid = branchIsolation.getRequiredBranchId();
         params.branchId = String(wid);
@@ -568,11 +979,10 @@ const fetchSalesHistory = async (forceRefresh = false) => {
       params.branchId = String(branchStore.selectedBranchId);
     }
     
-    // ✅ Log: تحقق من القيم قبل الإرسال
     console.log('[fetchSalesHistory] API Call params:', {
       branchId: params.branchId,
       selectedBranchId: branchStore.selectedBranchId,
-      isExempt: isExempt.value,
+      canSelectBranch: canSelectBranch.value,
       paramsPayload: params
     });
     
@@ -609,11 +1019,93 @@ const viewSaleDetails = async (saleId) => {
     const payload = await salesStore.fetchSaleDetails(saleId);
     const saleData = payload?.data || payload;
     selectedSale.value = (saleData && saleData.sale) ? saleData.sale : saleData;
+    isEditingSale.value = false;
     showDetailsModal.value = true;
   } catch (e) {
     const isAborted = e?.name === 'CanceledError' || e?.name === 'AbortError' || e?.message === 'canceled';
     if (!isAborted) showToast('فشل في تحميل تفاصيل الفاتورة', 'error');
   } finally { isLoadingDetails.value = false; hideLoader(); }
+};
+
+const openSaleEdit = async () => {
+  if (!selectedSale.value || !canEditSelectedSale.value) return;
+  if (!costCenters.value.length) {
+    await costCenterStore.fetchCostCenters();
+  }
+  const sale = selectedSale.value;
+  saleEditForm.value = {
+    sale_date: String(sale.sale_date || sale.created_at || '').slice(0, 10),
+    notes: sale.notes || '',
+    payment_method_id: sale.payment_method_id ? String(sale.payment_method_id) : '',
+    cost_center_id: sale.cost_center_id ? String(sale.cost_center_id) : '',
+  };
+  isEditingSale.value = true;
+};
+
+const cancelSaleEdit = () => {
+  isEditingSale.value = false;
+};
+
+const submitSaleEdit = async () => {
+  const sale = selectedSale.value;
+  if (!sale || !canEditSelectedSale.value || isUpdatingSale.value) return;
+  if (!saleEditForm.value.sale_date) {
+    showToast('حدد تاريخ الفاتورة', 'error');
+    return;
+  }
+
+  isUpdatingSale.value = true;
+  showLoader();
+  try {
+    const payload = {
+      sale_date: saleEditForm.value.sale_date,
+      notes: saleEditForm.value.notes,
+      cost_center_id: saleEditForm.value.cost_center_id || null,
+    };
+    if (!hasSalePayment.value) {
+      payload.payment_method_id = saleEditForm.value.payment_method_id || null;
+    }
+    const result = await salesStore.updateSale(sale.id, payload);
+    if (result?.status !== 'success') {
+      showToast(result?.message || 'تعذر تعديل فاتورة البيع', 'error');
+      return;
+    }
+    isEditingSale.value = false;
+    showToast('تم تحديث الفاتورة بنجاح', 'success');
+    await viewSaleDetails(sale.id);
+    await fetchSalesHistory(true);
+  } finally {
+    isUpdatingSale.value = false;
+    hideLoader();
+  }
+};
+
+const voidSelectedSale = async () => {
+  const sale = selectedSale.value;
+  if (!sale || !canVoidSelectedSale.value || isVoidingSale.value) return;
+  const confirmed = await AlertService.confirm(
+    'سيتم إلغاء الفاتورة وعكس قيدها وحركة مخزونها إن وُجدت. لا يمكن إلغاء فاتورة عليها تحصيل أو مرتجع. هل تريد المتابعة؟',
+    'تأكيد إلغاء البيع'
+  );
+  if (!confirmed) return;
+
+  isVoidingSale.value = true;
+  showLoader();
+  try {
+    const result = await salesStore.voidSale(sale.id, 'إلغاء من سجل المبيعات');
+    if (result?.status !== 'success') {
+      showToast(result?.message || 'تعذر إلغاء فاتورة البيع', 'error');
+      return;
+    }
+    showDetailsModal.value = false;
+    selectedSale.value = null;
+    filters.clearSelection();
+    showToast('تم إلغاء فاتورة البيع بنجاح', 'success');
+    await fetchSalesHistory(true);
+  } finally {
+    isVoidingSale.value = false;
+    hideLoader();
+  }
 };
 
 const toggleSort = (key) => {
@@ -627,25 +1119,72 @@ const markSelectedAsPaid = async () => {
   if (!filters.selectedIds.value.length || isMarkingPaid.value) return;
   const rows = (sales.value || []).filter(s => new Set(filters.selectedIds.value).has(s.id));
   const payable = rows.filter(s => {
-    const net = parseFloat(s.net_total_amount ?? s.total_amount ?? 0);
-    const paid = parseFloat(s.paid_amount ?? 0);
-    return s.status !== 'paid' && (net - paid > 0.0001);
+    const status = String(s.dynamic_status || s.status || '').toLowerCase();
+    const paid = parseFloat(s.actual_paid_amount ?? s.paid_amount ?? 0);
+    const returnCredits = parseFloat(s.return_credit_amount ?? 0);
+    return !['paid', 'canceled', 'cancelled', 'closed_by_return', 'settled_by_return', 'settled_by_credit'].includes(status)
+      && (getSaleGross(s) - paid - returnCredits > 0.0001);
   });
   if (!payable.length) { showToast('لا توجد فواتير قابلة للتحصيل ضمن المحدد', 'info'); return; }
+  const batchPaymentMethodId = cashMethodId.value ?? collectiblePaymentMethods.value[0]?.id;
+  if (!batchPaymentMethodId) { showToast('لا توجد طريقة دفع متاحة لتحصيل الفواتير المحددة', 'error'); return; }
   const confirmed = await AlertService.confirm(`سيتم تعليم ${payable.length} فاتورة كمسددة. هل تريد المتابعة؟`, 'تسديد الفواتير');
   if (!confirmed) return;
   isMarkingPaid.value = true; showLoader();
   let ok = 0, fail = 0;
   for (const s of payable) {
     try {
-      const remaining = Math.max(0, parseFloat(s.net_total_amount ?? s.total_amount ?? 0) - parseFloat(s.paid_amount ?? 0));
+      const paid = parseFloat(s.actual_paid_amount ?? s.paid_amount ?? 0);
+      const returnCredits = parseFloat(s.return_credit_amount ?? 0);
+      const remaining = Math.max(0, getSaleGross(s) - paid - returnCredits);
       if (remaining <= 0) { ok++; continue; }
-      const res = await salesStore.payDebt({ sale_id: s.id, customer_id: s.customer_id, amount: remaining, payment_method_id: cashMethodId.value ?? (paymentMethods.value[0]?.id || 1) });
-      if (res?.status === 'success') ok++; else fail++;
-    } catch { fail++; }
+      const paymentMethodId = Number(batchPaymentMethodId);
+      const storageKey = collectPaymentStorageKey(s.id);
+      const intendedPayload = {
+        sale_id: Number(s.id),
+        customer_id: s.customer_id ? Number(s.customer_id) : undefined,
+        amount: Number(remaining),
+        payment_date: getLocalDateISO(new Date()),
+        payment_method_id: paymentMethodId,
+      };
+      let pending = loadPendingCollectPayment(s.id);
+      if (pending && (
+        Number(pending.payload.sale_id) !== intendedPayload.sale_id
+        || Number(pending.payload.amount) !== intendedPayload.amount
+        || Number(pending.payload.payment_method_id) !== intendedPayload.payment_method_id
+        || Number(pending.payload.customer_id || 0) !== Number(intendedPayload.customer_id || 0)
+      )) {
+        fail++;
+        continue;
+      }
+      if (!pending) {
+        pending = {
+          key: createIdempotencyKey(),
+          payload: intendedPayload,
+          fingerprint: JSON.stringify(intendedPayload),
+        };
+        sessionStorage.setItem(storageKey, JSON.stringify(pending));
+      }
+
+      const res = await salesStore.addSalePayment(pending.payload, pending.key);
+      if (res?.status === 'success') {
+        sessionStorage.removeItem(storageKey);
+        ok++;
+      } else if (!res?.httpStatus || res.httpStatus >= 500) {
+        fail++;
+      } else {
+        sessionStorage.removeItem(storageKey);
+        fail++;
+      }
+    } catch (error) {
+      console.error(`Bulk sale payment failed for sale ${s.id}:`, error);
+      fail++;
+    }
   }
-  hideLoader(); isMarkingPaid.value = false; showToast(`تمت معالجة ${ok} بنجاح، وفشل ${fail}`, fail ? 'warning' : 'success');
-  filters.clearSelection(); fetchSalesHistory();
+  hideLoader(); isMarkingPaid.value = false;
+  showToast(`تمت معالجة ${ok} بنجاح، وفشل ${fail}${fail ? '؛ ستبقى الفواتير الفاشلة محددة لإعادة المحاولة' : ''}`, fail ? 'warning' : 'success');
+  if (!fail) filters.clearSelection();
+  fetchSalesHistory();
 };
 
 const exportSelectedCsv = () => {
@@ -659,7 +1198,7 @@ const exportSelectedCsv = () => {
     s.customer_name || 'عميل نقدي',
     s.total_items,
     formatPrice(getSaleGross(s)),
-    getStatusLabel(s.dynamic_status),
+    getStatusLabel(s.status === 'canceled' ? 'canceled' : s.dynamic_status),
     getPaymentMethodName(s.payment_method_id)
   ]);
   
@@ -753,10 +1292,7 @@ onMounted(async () => {
   }
   try { taxRate.value = settingsStore.isTaxEnabled.value ? settingsStore.getTaxRate.value : 0; } catch {}
   
-  // ✅ FIX: تهيئة/استعادة branch context قبل أول API call
-  // سجّل ما إذا كان المستخدم اختار فرعاً في جلسة سابقة (قبل fetchBranches يكتب default)
-  const hadPriorBranchChoice = localStorage.getItem('selectedBranchId') !== null
-                                && localStorage.getItem('selectedBranchId') !== 'all';
+  const hadPriorBranchChoice = localStorage.getItem('selectedBranchId') !== null;
   try {
     branchStore.loadFromStorage();
     if (!branchStore.branches || branchStore.branches.length === 0) {
@@ -767,12 +1303,11 @@ onMounted(async () => {
     showToast('فشل في تحميل قائمة الفروع', 'error');
     return;
   }
-  // بعد fetchBranches: أعد تعيين الـ flag بما كان موجوداً قبل الكتابة
+
   userChoseBranch.value = hadPriorBranchChoice;
   
-  // التحقق من أن selectedBranchId جاهز فعلياً
   let resolvedBranchId = branchStore.selectedBranchId;
-  if (!isExempt.value) {
+  if (!canSelectBranch.value) {
     try {
       resolvedBranchId = branchIsolation.getRequiredBranchId();
     } catch (err) {
@@ -785,7 +1320,7 @@ onMounted(async () => {
   console.log('[SalesHistory] Before first API call:', {
     selectedBranchId: branchStore.selectedBranchId,
     selectedBranch: branchStore.selectedBranch?.name || null,
-    isExempt: isExempt.value,
+    canSelectBranch: canSelectBranch.value,
     resolvedBranchId,
     branchesCount: branchStore.branches.length
   });
@@ -807,32 +1342,84 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-@keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+/* Animations */
+@keyframes loading {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
 
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.98) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Form Inputs */
 .filter-input {
   @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
 }
 
-.status-paid-v2 { @apply bg-emerald-50 text-emerald-600 border-emerald-100; }
-.status-unpaid-v2 { @apply bg-rose-50 text-rose-600 border-rose-100; }
-.status-partial-v2 { @apply bg-amber-50 text-amber-600 border-amber-100; }
+/* Status Badges */
+.status-paid-v2 {
+  @apply bg-emerald-50 text-emerald-600 border-emerald-100;
+}
 
+.status-unpaid-v2 {
+  @apply bg-rose-50 text-rose-600 border-rose-100;
+}
+
+.status-partial-v2 {
+  @apply bg-amber-50 text-amber-600 border-amber-100;
+}
+
+/* Pagination */
 .pagination-btn-v2 {
   @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
 }
 
-.custom-scroll::-webkit-scrollbar { width: 5px; }
-.custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
+/* Scrollbar */
+.custom-scroll::-webkit-scrollbar {
+  width: 5px;
+}
 
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+.custom-scroll::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full;
+}
 
-.slide-down-enter-active, .slide-down-leave-active { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-.slide-down-enter-from, .slide-down-leave-to { opacity: 0; transform: translateY(-10px); }
+/* Transition Classes */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
 
-.slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-.slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translate(-50%, 20px); }
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 
-@keyframes modalIn { from { opacity: 0; transform: scale(0.98) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-.animate-modalIn { animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 20px);
+}
+
+/* Animation Classes */
+.animate-modalIn {
+  animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
 </style>

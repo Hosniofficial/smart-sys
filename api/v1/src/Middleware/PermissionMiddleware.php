@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Middleware;
 
-use App\Security\Permissions;
+use App\Security\PermissionResolver;
 use App\Utils\SuperAdminHelper;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -14,32 +14,10 @@ use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 use Slim\Psr7\Response as SlimResponse;
 
 /**
- * PermissionMiddleware — enforces RBAC on individual routes.
+ * Enforces route permissions using the user's effective tenant role grants.
  *
- * ─── Usage in routes ────────────────────────────────────────────────────────
- *
- * Single permission:
- *   $group->delete('/{id}', [$handler, 'delete'])
- *         ->add(PermissionMiddleware::require(Permissions::SALE_VOID, $db));
- *
- * Any-of (user needs at least one):
- *   ->add(PermissionMiddleware::anyOf([Permissions::SETTINGS_VIEW,
- *                                      Permissions::SETTINGS_MANAGE], $db));
- *
- * All-of (user needs every one):
- *   ->add(PermissionMiddleware::allOf([Permissions::SALE_EDIT,
- *                                      Permissions::SALE_DISCOUNT], $db));
- *
- * ─── Bypass rules ───────────────────────────────────────────────────────────
- *
- * super_admin (role_id = 1) bypasses ALL permission checks implicitly.
- * This is intentional: super_admin is a platform-level role, not a tenant role.
- * Do NOT add super_admin rows to role_permissions — the bypass is here.
- *
- * ─── Error response ─────────────────────────────────────────────────────────
- *
- * Returns 403 JSON:
- *   { "status": "error", "message": "...", "required": ["perm.name"] }
+ * Supports any-of/all-of checks and an optional tenant-owner bypass.
+ * Platform super-admin bypass is restricted by SuperAdminHelper.
  */
 class PermissionMiddleware implements MiddlewareInterface
 {
@@ -53,8 +31,6 @@ class PermissionMiddleware implements MiddlewareInterface
 
     /** tenant owner bypass — when true, is_owner=1 users pass without permission check */
     private bool $allowOwner = false;
-
-    // ── Constructors ─────────────────────────────────────────────────────────
 
     /**
      * @param string[] $permissions
@@ -70,8 +46,6 @@ class PermissionMiddleware implements MiddlewareInterface
         $this->db          = $db;
         $this->mode        = $mode;
     }
-
-    // ── Static factory helpers ────────────────────────────────────────────────
 
     /**
      * Require exactly one permission.
@@ -92,12 +66,7 @@ class PermissionMiddleware implements MiddlewareInterface
     }
 
     /**
-     * Allow tenant owners to bypass this permission check.
-     * Useful for endpoints that owners need during initial setup
-     * before their role has been fully configured.
-     *
-     * Usage:
-     *   PermissionMiddleware::anyOf([Permissions::SETTINGS_VIEW, ...], $db)->orOwner()
+     * Return a clone that also permits tenant owners to bypass the check.
      */
     public function orOwner(): self
     {
@@ -116,8 +85,7 @@ class PermissionMiddleware implements MiddlewareInterface
         return new self($permissions, $db, 'all');
     }
 
-    // ── PSR-15 process ────────────────────────────────────────────────────────
-
+    /** Authenticate the user context and enforce the configured permission set. */
     public function process(Request $request, RequestHandler $handler): Response
     {
         $user   = $request->getAttribute('user');
@@ -156,8 +124,6 @@ class PermissionMiddleware implements MiddlewareInterface
         return $handler->handle($request);
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
-
     /**
      * Fetch all permission names granted to this user (via their roles).
      * Checks both users_role table AND users.role_id column as fallback.
@@ -167,32 +133,7 @@ class PermissionMiddleware implements MiddlewareInterface
     private function resolveGranted(int $userId): array
     {
         try {
-            // Primary: permissions via users_role join table
-            $stmt = $this->db->prepare("
-                SELECT DISTINCT p.name
-                FROM   permissions p
-                JOIN   role_permissions rp ON rp.permission_id = p.id
-                JOIN   users_role ur       ON ur.role_id = rp.role_id
-                WHERE  ur.user_id = :user_id
-            ");
-            $stmt->execute([':user_id' => $userId]);
-            $granted = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
-
-            // Fallback: if users_role is empty, use users.role_id directly
-            // This handles legacy users created before users_role was enforced
-            if (empty($granted)) {
-                $stmt2 = $this->db->prepare("
-                    SELECT DISTINCT p.name
-                    FROM   permissions p
-                    JOIN   role_permissions rp ON rp.permission_id = p.id
-                    JOIN   users u             ON u.role_id = rp.role_id
-                    WHERE  u.id = :user_id
-                ");
-                $stmt2->execute([':user_id' => $userId]);
-                $granted = $stmt2->fetchAll(PDO::FETCH_COLUMN) ?: [];
-            }
-
-            return $granted;
+            return PermissionResolver::getGrantedPermissionNames($this->db, $userId);
         } catch (\Throwable $e) {
             // On DB error, fail closed (deny access) — never fail open.
             return [];

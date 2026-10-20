@@ -26,25 +26,14 @@ mysql -u root smarttest < seed.sql
 for f in test_*.php; do php "$f"; done
 ```
 
-## Group K — RBAC security fix (added in the "full ownership" review pass)
+## Historical Group K — retired unregistered RBAC operations
 
-**10-12/12 checks PASS** (`test_rbac_security.php`) — this is the strongest test in
-the suite: it invokes the REAL public HTTP-handler methods
-(`RBACHandler::createPermission/updatePermission/deletePermission/updateRole`)
-end-to-end using genuine PSR-7 `ServerRequestInterface`/`ResponseInterface`
-implementations (interfaces cloned directly from github.com/php-fig/http-message,
-not reimplemented), not just internal logic.
-
-Proves:
-- An ordinary tenant `admin` role is now correctly rejected (403) from
-  create/update/delete on the global `permissions` catalog.
-- A genuine `super_admin` can still perform these actions (no lockout).
-- A control check confirms `updateRole` (a legitimately tenant-scoped resource)
-  remains fully reachable by an ordinary tenant admin — the fix is narrowly
-  scoped, not an over-broad lockdown of admin functionality generally.
-
-See `stubs/psr7_stubs.php` for the PSR-7 test doubles and note in the header
-comment there.
+The former `test_rbac_security.php` checked permission-catalog mutations and role
+updates by calling `RBACHandler` methods directly. Those operations had no route
+registration and no frontend consumer, so the handler methods and this direct-call
+test have since been removed. The old 10-12/12 result describes that earlier
+revision only; `tests/Unit/RBACHandlerSurfaceTest.php` now guards the current
+registered handler surface instead.
 
 ## Group L — SetupHandler::isOwner() tenant-scoping fix
 

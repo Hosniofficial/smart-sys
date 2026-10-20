@@ -12,6 +12,15 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
 use App\Services\AccountManagementService;
 
+/**
+ * Handles the tenant-owner setup workflow.
+ *
+ * Reads tenant settings and branches, persists setup sections and progress in a
+ * transaction, and provisions branch accounting records through
+ * AccountManagementService when a branch is created. Each endpoint requires
+ * authenticated tenant context and verifies tenant ownership. Routes are
+ * registered in app/routes/setup.php.
+ */
 class SetupHandler extends BaseHandler
 {
     public function __construct(PDO $db)
@@ -20,13 +29,10 @@ class SetupHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('setup');
     }
 
-    /**
-     * جلب حالة الإعداد للـ tenant
-     */
+    /** Return setup progress, grouped settings, and tenant branches to the owner. */
     public function getSetupStatus(Request $request, Response $response): Response
     {
         try {
-            // Use BaseHandler helper instead of repeating code
             $context = $this->requireTenantContext($request);
             $tenantId = $context['tenant_id'];
             $userId = $context['user_id'];
@@ -117,13 +123,10 @@ class SetupHandler extends BaseHandler
         }
     }
 
-    /**
-     * حفظ إعدادات الـ tenant
-     */
+    /** Persist supported setup sections, branch creation, and setup progress atomically. */
     public function saveSetup(Request $request, Response $response): Response
     {
         try {
-            // Use BaseHandler helper instead of repeating code
             $context = $this->requireTenantContext($request);
             $tenantId = $context['tenant_id'];
             $userId = $context['user_id'];
@@ -188,6 +191,10 @@ class SetupHandler extends BaseHandler
                         'tenant_id' => $tenantId
                     ]);
                     $this->saveInvoiceSettings((int) $tenantId, $data['invoice']);
+                }
+
+                if (isset($data['sessions']) && is_array($data['sessions'])) {
+                    $this->saveSessionSettings((int) $tenantId, $data['sessions']);
                 }
 
                 if (isset($data['print']) && is_array($data['print'])) {
@@ -279,9 +286,6 @@ class SetupHandler extends BaseHandler
         }
     }
 
-    /**
-     * التحقق من أن المستخدم هو owner للـ tenant
-     */
     private function isOwner(int $tenantId, int $userId): bool
     {
         try {
@@ -296,20 +300,7 @@ class SetupHandler extends BaseHandler
                  WHERE id = ?
                    AND tenant_id = ?
                    AND (
-                        -- ── AUDIT FIX (ownership review): the role-name subquery
-                        -- below was missing its own tenant_id scope. `roles` is a
-                        -- per-tenant table (confirmed via RBACHandler's own
-                        -- updateRole/deleteRole, which correctly filter by
-                        -- tenant_id). Without scoping this subquery too, it always
-                        -- resolved to whichever tenant's 'owner'-named role has the
-                        -- lowest id in the whole roles table — NOT necessarily this
-                        -- tenant's own 'owner' role. For every other tenant, this
-                        -- role_id match would silently fail, leaving is_owner=1 as
-                        -- the only working signal — so any account where that flag
-                        -- wasn't reliably set would be wrongly denied access to its
-                        -- own setup page. Confined by the outer tenant_id filter on
-                        -- `users`, so this could not grant access across tenants —
-                        -- but it could incorrectly deny a legitimate tenant owner.
+                        -- Roles are tenant-owned; scope this lookup to the same tenant.
                         role_id = (SELECT id FROM roles WHERE name = 'owner' AND tenant_id = ? LIMIT 1)
                         OR is_owner = 1
                    )"
@@ -336,9 +327,7 @@ class SetupHandler extends BaseHandler
         }
     }
 
-    /**
-     * جلب جميع الإعدادات للـ tenant
-     */
+    /** Load settings and group recognized prefixes for the setup response. */
     private function getSettings(int $tenantId): array
     {
         $stmt = $this->db->prepare(
@@ -389,25 +378,36 @@ class SetupHandler extends BaseHandler
         return $settings;
     }
 
-    /**
-     * حفظ إعدادات الشركة
-     */
+    /** Persist company fields and store locale preferences under app.*. */
     private function saveCompanySettings(int $tenantId, array $company): void
     {
         $fields = [
-            'name' => 'string',
-            'address' => 'string',
-            'phone' => 'string',
-            'email' => 'string',
-            'logo' => 'string',
-            'currency' => 'string',
-            'currency_code' => 'string',
-            'currency_symbol' => 'string'
+            'name'            => 'string',
+            'address'         => 'string',
+            'phone'           => 'string',
+            'email'           => 'string',
+            'logo'            => 'string',
+            'currency'        => 'string',
+            'currency_code'   => 'string',
+            'currency_symbol' => 'string',
         ];
 
         foreach ($fields as $field => $type) {
             if (isset($company[$field])) {
                 $this->saveSetting($tenantId, "company.{$field}", $company[$field], $type);
+            }
+        }
+
+        // Locale/format settings: canonical namespace is app.* (matches frontend SettingsView).
+        // Write under app.* so the frontend always reads fresh values without namespace mismatch.
+        $localeFields = [
+            'timezone'    => 'string',
+            'date_format' => 'string',
+            'time_format' => 'string',
+        ];
+        foreach ($localeFields as $field => $type) {
+            if (isset($company[$field])) {
+                $this->saveSetting($tenantId, "app.{$field}", $company[$field], $type);
             }
         }
 
@@ -421,9 +421,7 @@ class SetupHandler extends BaseHandler
         }
     }
 
-    /**
-     * حفظ إعدادات الضريبة
-     */
+    /** Persist the supported tax fields with their database types. */
     private function saveTaxSettings(int $tenantId, array $tax): void
     {
         $fields = [
@@ -448,9 +446,7 @@ class SetupHandler extends BaseHandler
         }
     }
 
-    /**
-     * حفظ إعدادات الفاتورة
-     */
+    /** Persist the supported invoice fields with their database types. */
     private function saveInvoiceSettings(int $tenantId, array $invoice): void
     {
         $fields = [
@@ -476,9 +472,7 @@ class SetupHandler extends BaseHandler
         }
     }
 
-    /**
-     * حفظ إعدادات الطباعة
-     */
+    /** Persist the supported print fields. */
     private function savePrintSettings(int $tenantId, array $print): void
     {
         $fields = [
@@ -494,9 +488,26 @@ class SetupHandler extends BaseHandler
         }
     }
 
-    /**
-     * حفظ إعداد واحد
-     */
+    /** Persist cashier-session switches used by cash workflows. */
+    private function saveSessionSettings(int $tenantId, array $sessions): void
+    {
+        $fields = [
+            'enabled' => 'pos.sessions.enabled',
+            'allow_negative_intraday' => 'pos.cash_session.allow_negative_intraday',
+        ];
+
+        foreach ($fields as $field => $key) {
+            if (array_key_exists($field, $sessions)) {
+                $this->saveSetting(
+                    $tenantId,
+                    $key,
+                    !empty($sessions[$field]) ? 1 : 0,
+                    'boolean'
+                );
+            }
+        }
+    }
+
     private function saveSetting(int $tenantId, string $key, $value, string $type): void
     {
         if ($type === 'array' || $type === 'object') {
@@ -514,9 +525,7 @@ class SetupHandler extends BaseHandler
         $stmt->execute([$tenantId, $key, $value, $type]);
     }
 
-    /**
-     * إنشاء مستودع جديد مع حماية ضد التكرار
-     */
+    /** Create a branch and its accounting records, skipping an existing same-name branch. */
     private function createBranch(int $tenantId, array $branch, int $userId): void
     {
         $branchName = trim($branch['name'] ?? '');
@@ -524,7 +533,6 @@ class SetupHandler extends BaseHandler
             throw new Exception('اسم المستودع مطلوب.', 400);
         }
 
-        // ✅ تجنب تكرار إنشاء نفس المستودع (Idempotency)
         $checkStmt = $this->db->prepare(
             "SELECT id FROM branches WHERE tenant_id = ? AND LOWER(name) = LOWER(?) LIMIT 1"
         );
@@ -534,7 +542,7 @@ class SetupHandler extends BaseHandler
                 'tenant_id' => $tenantId,
                 'branch_name' => $branchName
             ]);
-            return; // Skip if branch already exists
+            return;
         }
 
         $inTransaction = $this->db->inTransaction();
@@ -585,7 +593,7 @@ class SetupHandler extends BaseHandler
                 throw new Exception('Failed to create branch inventory account');
             }
 
-            // Get the created account code for response
+            // Use the inventory account code for the branch cost center.
             $stmtGetCode = $this->db->prepare("SELECT code FROM accounts WHERE id = ? AND tenant_id = ?");
             $stmtGetCode->execute([$newAccountId, $tenantId]);
             $newCode = $stmtGetCode->fetchColumn();
@@ -639,7 +647,6 @@ class SetupHandler extends BaseHandler
                 $newCostCenterId = null;
             }
 
-            // ✅ Try to create branch, with cleanup if it fails
             try {
                 $stmt = $this->db->prepare(
                     "INSERT INTO branches (
@@ -703,13 +710,10 @@ class SetupHandler extends BaseHandler
         }
     }
 
-    /**
-     * تخطي الإعداد
-     */
+    /** Mark setup as skipped for the owning tenant. */
     public function skipSetup(Request $request, Response $response): Response
     {
         try {
-            // Use BaseHandler helper instead of repeating code
             $context = $this->requireTenantContext($request);
             $tenantId = $context['tenant_id'];
             $userId = $context['user_id'];

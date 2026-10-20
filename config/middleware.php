@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Middleware\CorsMiddleware;
 use App\Middleware\HttpsEnforcementMiddleware;
+use App\Middleware\RequestRateLimiter;
 use App\Middleware\SecurityHeadersMiddleware;
 use App\Exceptions\ForbiddenException;
 use DI\Container;
@@ -46,6 +47,24 @@ return function (App $app, Container $container): void {
         true,
         ['/health', '/status', '/metrics']
     ));
+
+    $rateLimitingConfig = $securityConfig['rate_limiting'] ?? [];
+    $rateLimitedPaths = array_values(array_filter(array_map(
+        static fn(array $rule): string => (string) ($rule['path'] ?? ''),
+        $rateLimitingConfig['rules'] ?? []
+    )));
+    if (($rateLimitingConfig['enabled'] ?? false) && $rateLimitedPaths !== []) {
+        $app->add(function (Request $request, $handler) use ($container, $rateLimitedPaths) {
+            $path = rtrim($request->getUri()->getPath(), '/') ?: '/';
+            foreach ($rateLimitedPaths as $rateLimitedPath) {
+                if (strpos($path, $rateLimitedPath) !== false) {
+                    return $container->get(RequestRateLimiter::class)->process($request, $handler);
+                }
+            }
+
+            return $handler->handle($request);
+        });
+    }
 
     $app->add(function (Request $request, $handler) {
         $uri = $request->getUri();

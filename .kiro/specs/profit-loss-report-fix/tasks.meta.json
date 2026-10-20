@@ -1,0 +1,249 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 إضافة `use App\\Services\\DateRangeResolver;` في رأس `AdvancedReportsHandler.php` إن لم تكن موجودة": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667290862
+      },
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667325454
+      },
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667366611
+      }
+    ],
+    "1.2 استبدال تعريف `$startDate`/`$endDate` باستدعاء `DateRangeResolver::resolve()`": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667292947
+      },
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667372348
+      },
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667435472
+      }
+    ],
+    "2.1 تعديل `revenueSql` — استبدال `DATE(s.created_at) BETWEEN :start_date AND :end_date` بـ `s.created_at >= :from AND s.created_at < :to_exclusive`": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667294582
+      },
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667442418
+      },
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667516871
+      }
+    ],
+    "2.2 تعديل `returnsSql` — استبدال `DATE(r.created_at) BETWEEN` بنطاق نصف مفتوح": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667295163
+      },
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667442741
+      },
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667517484
+      }
+    ],
+    "3. Checkpoint — تأكد من صحة استعلامات الإيراد": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667295368
+      },
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667559958
+      },
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667580847
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667913281
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667948411
+      }
+    ],
+    "4.1 تعديل `expensesSql1` (cash_vouchers) — استبدال `cv.date BETWEEN :start_date AND :end_date` بـ `cv.date >= :from_date AND cv.date < :to_date`": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667295512
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667956950
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790668063141
+      }
+    ],
+    "4.2 تعديل `expensesSql2` (cash_transactions) — استبدال `DATE(created_at) BETWEEN` بنطاق نصف مفتوح على `created_at`": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667295625
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667957958
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790668063334
+      }
+    ],
+    "5.1 تعديل استعلام `journal_entry_lines` — استبدال `DATE(je.entry_date) BETWEEN :start AND :end` بـ `je.entry_date >= :from AND je.entry_date < :to_exclusive`": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667295762
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667959040
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790668064214
+      }
+    ],
+    "5.2 تعديل استعلام `periodSales` (CostingService fallback) — استبدال `DATE(created_at) BETWEEN :start_date AND :end_date` بنطاق نصف مفتوح": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667295893
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667960165
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790668065089
+      }
+    ],
+    "5.3 تعديل استعلام `returnedProducts` — استبدال `DATE(r.created_at) BETWEEN :start_date AND :end_date` بنطاق نصف مفتوح": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667296029
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667960699
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790668065957
+      }
+    ],
+    "6.1 استبدال `'start_date' => $startDate` و`'end_date' => $endDate` بـ `$startDateDisplay` و`$endDateDisplay` في مصفوفة `$result['period']`": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667296140
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667961985
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790668066951
+      }
+    ],
+    "7. Final Checkpoint — تشغيل كامل": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667296262
+      },
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790668075583
+      }
+    ],
+    "1. إضافة استيراد DateRangeResolver وتطبيع التواريخ": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667435599
+      }
+    ],
+    "2. تعديل استعلامات الإيراد والمرتجعات": [
+      {
+        "executionId": "5c680c15-dd55-476f-a27b-3e16314f4f4a",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790667517635
+      }
+    ],
+    "4. تعديل استعلامات المصروفات": [
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790668063456
+      }
+    ],
+    "5. تعديل استعلامات COGS (mode = 'cogs')": [
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790668066070
+      }
+    ],
+    "6. تحديث حقول `period` في الاستجابة": [
+      {
+        "executionId": "6db01954-aff5-46f5-8f0b-236fbe49f1ed",
+        "chatSessionId": "sess_a87ca178-840f-448a-9550-f1de9731dd6c",
+        "timestamp": 1790668067222
+      }
+    ]
+  }
+}

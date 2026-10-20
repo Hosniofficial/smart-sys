@@ -8,3 +8,8 @@ export async function listSuppliers(params = {}) {
   if (Array.isArray(data?.data?.items)) return data.data.items;
   return [];
 }
+
+export async function ensureCashSupplier() {
+  const { data } = await apiClient.post('/suppliers/cash-default');
+  return data;
+}

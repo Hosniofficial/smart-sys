@@ -7,66 +7,42 @@ namespace App\Handlers;
 use Exception;
 use App\Services\MonologHandler;
 use App\Services\EmailVerificationService;
+use App\Services\AuthSessionService;
 use App\Exceptions\NotFoundException;
+use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 /**
- * EmailVerificationHandler
+ * HTTP endpoints for email verification and password recovery.
  *
- * Thin HTTP wrapper — all business logic lives in EmailVerificationService.
+ * Validates request payloads and delegates token, email, and password operations
+ * to EmailVerificationService; registration and email-change verification may
+ * also issue an authenticated session through AuthHandler.
  */
 class EmailVerificationHandler extends BaseHandler
 {
+    private ?AuthSessionService $authSession;
+
+    public function __construct(PDO $db, ?AuthSessionService $authSession = null)
+    {
+        parent::__construct($db);
+        $this->authSession = $authSession;
+        $this->logger = MonologHandler::getInstance('email_verification');
+    }
+
+    private function authSessionService(): AuthSessionService
+    {
+        return $this->authSession ??= new AuthSessionService($this->db);
+    }
+
+    /** Resolve the shared email verification service. */
     private function emailVerificationService(): EmailVerificationService
     {
         return $this->services->emailVerification();
     }
 
-    // =========================================================
-    // Send verification email
-    // =========================================================
-
-    public function sendVerificationEmail(Request $request, Response $response): Response
-    {
-        try {
-            $data = $request->getParsedBody();
-            if (!is_array($data)) {
-                return $this->errorResponse($response, 'Invalid request data', 400);
-            }
-
-            $email   = trim((string) ($data['email'] ?? ''));
-            $purpose = (string) ($data['purpose'] ?? 'registration');
-
-            if ($email === '') {
-                return $this->errorResponse($response, 'البريد الإلكتروني مطلوب', 400);
-            }
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                return $this->errorResponse($response, 'تنسيق البريد الإلكتروني غير صالح', 400);
-            }
-
-            $result = $this->emailVerificationService()->sendVerification($email, $purpose, $request);
-
-            return $this->successResponse($response, array_merge(
-                ['message' => 'Verification email sent'],
-                $result
-            ));
-        } catch (NotFoundException $e) {
-            return $this->errorResponse($response, $e->getMessage(), 404);
-        } catch (Exception $e) {
-            $this->logger->error('sendVerificationEmail failed', ['message' => $e->getMessage()]);
-            $msg = $e->getMessage();
-            if (str_contains($msg, 'Rate limit')) {
-                return $this->errorResponse($response, 'Too many requests', 429);
-            }
-            return $this->errorResponse($response, 'Failed to send verification email', 500);
-        }
-    }
-
-    // =========================================================
-    // Verify email token
-    // =========================================================
-
+    /** Verify a token and issue login credentials when the purpose permits it. */
     public function verifyEmail(Request $request, Response $response): Response
     {
         try {
@@ -82,7 +58,6 @@ class EmailVerificationHandler extends BaseHandler
 
             $result = $this->emailVerificationService()->verifyToken($token);
 
-            // Auto-login: generate access token for registration/email_change
             $accessToken = null;
             $refreshToken = null;
             $userData = null;
@@ -93,22 +68,14 @@ class EmailVerificationHandler extends BaseHandler
                 && !empty($result['user'])
             ) {
                 try {
-                    // Use container to get AuthHandler with all dependencies resolved
-                    global $container;
-                    if ($container && $container->has(\App\Handlers\AuthHandler::class)) {
-                        $authHandler = $container->get(\App\Handlers\AuthHandler::class);
-                    } else {
-                        $authHandler = new \App\Handlers\AuthHandler($this->db);
-                    }
-
                     $userId = (int) $result['user']['id'];
 
-                    // Generate both access and refresh tokens
-                    $accessToken = $authHandler->generateAccessTokenPublic($result['user']);
-                    $refreshToken = $authHandler->generateRefreshTokenPublic($userId);
-                    $authHandler->storeRefreshTokenPublic($userId, $refreshToken);
+                    $authSession = $this->authSessionService();
+                    $identity = $authSession->resolveIdentity($result['user']);
+                    $accessToken = $authSession->generateAccessToken($identity);
+                    $refreshToken = $authSession->generateRefreshToken($userId);
+                    $authSession->storeRefreshToken($userId, $refreshToken);
 
-                    // Format user data for Frontend (only needed fields)
                     $userData = [
                         'id' => $userId,
                         'name' => $result['user']['name'] ?? '',
@@ -123,7 +90,6 @@ class EmailVerificationHandler extends BaseHandler
                         'is_setup_complete' => (int) ($result['is_setup_complete'] ?? 0),
                     ];
 
-                    // Build response with both tokens
                     $baseResponse = $this->jsonResponse($response, [
                         'status'       => 'success',
                         'message'      => 'Email verified successfully',
@@ -134,8 +100,7 @@ class EmailVerificationHandler extends BaseHandler
                         ],
                     ], 200, false);
 
-                    // Set refresh token cookie in response
-                    $baseResponse = $authHandler->setRefreshTokenCookiePublic($baseResponse, $refreshToken);
+                    $baseResponse = $authSession->setRefreshTokenCookie($baseResponse, $refreshToken);
 
                     $this->logger->info('verifyEmail: auto-login tokens generated and stored successfully', [
                         'user_id' => $userId,
@@ -151,7 +116,7 @@ class EmailVerificationHandler extends BaseHandler
                         'trace'   => $e->getTraceAsString(),
                     ]);
 
-                    // Fallback: return without refresh token
+                    // Keep verification successful if optional auto-login fails.
                     return $this->jsonResponse($response, [
                         'status'       => 'success',
                         'message'      => 'Email verified successfully (access token only)',
@@ -187,10 +152,7 @@ class EmailVerificationHandler extends BaseHandler
         }
     }
 
-    // =========================================================
-    // Resend verification email
-    // =========================================================
-
+    /** Request another verification message for the given address and purpose. */
     public function resendVerificationEmail(Request $request, Response $response): Response
     {
         try {
@@ -220,41 +182,10 @@ class EmailVerificationHandler extends BaseHandler
         }
     }
 
-    // =========================================================
-    // Check verification status
-    // =========================================================
-
-    public function checkVerificationStatus(Request $request, Response $response): Response
-    {
-        try {
-            $data = $request->getParsedBody();
-            if (!is_array($data)) {
-                return $this->errorResponse($response, 'Invalid request data', 400);
-            }
-
-            $email = trim((string) ($data['email'] ?? ''));
-            if ($email === '') {
-                return $this->errorResponse($response, 'البريد الإلكتروني مطلوب', 400);
-            }
-
-            $status = $this->emailVerificationService()->getStatus($email);
-
-            return $this->successResponse($response, ['data' => $status]);
-        } catch (NotFoundException $e) {
-            return $this->errorResponse($response, $e->getMessage(), 404);
-        } catch (Exception $e) {
-            $this->logger->error('checkVerificationStatus failed', ['message' => $e->getMessage()]);
-            return $this->errorResponse($response, 'Failed to check verification status', 500);
-        }
-    }
-
-    // =========================================================
-    // Forgot password
-    // =========================================================
-
+    /** Request a password-reset message without disclosing account existence. */
     public function forgotPassword(Request $request, Response $response): Response
     {
-        // رسالة عامة دائماً — لا نكشف وجود الحساب
+        // Use the same response for known and unknown addresses.
         $genericMsg = ['message' => 'إذا كان الإيميل مسجلاً، ستصلك رسالة خلال دقائق'];
 
         try {
@@ -277,10 +208,7 @@ class EmailVerificationHandler extends BaseHandler
         }
     }
 
-    // =========================================================
-    // Reset password
-    // =========================================================
-
+    /** Validate a reset token and delegate the password change. */
     public function resetPassword(Request $request, Response $response): Response
     {
         try {
@@ -300,7 +228,7 @@ class EmailVerificationHandler extends BaseHandler
 
             return $this->jsonResponse($response, [
                 'status'  => 'success',
-                'message' => 'تم تحديث كلمة المرور بنجاح',
+                'message' => 'تم تحديث كلمة المرور وتسجيل الخروج من جميع الأجهزة.',
                 'data'    => null,
             ], 200, false);
         } catch (Exception $e) {

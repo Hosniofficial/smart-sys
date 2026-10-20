@@ -6,8 +6,8 @@
  */
 
 import { computed } from 'vue';
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
 
 export function useBranchIsolation() {
   const authStore = useAuthStore();
@@ -17,10 +17,10 @@ export function useBranchIsolation() {
   // نفس المعيار بالضبط — بدون async ولا ref(false) ينتظر ensureLoaded()
   const isExempt = computed(() => {
     const role = String(authStore.user?.role || '').toLowerCase();
-    const rid  = Number(authStore.user?.role_id || 0);
     return (
-      ['admin', 'administrator', 'manager', 'owner', 'superadmin', 'super_admin'].includes(role) ||
-      rid === 1
+      authStore.isSuperAdmin ||
+      authStore.isAdmin ||
+      role === 'manager'
     );
   });
   
@@ -119,6 +119,7 @@ export function useBranchIsolation() {
   });
   
   return {
+    isExempt,
     selectedBranchId,
     getRequiredBranchId,
     enforceBranchIdInParams,

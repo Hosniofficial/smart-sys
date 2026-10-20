@@ -5,19 +5,19 @@
  * Run this script periodically (e.g., every 5 minutes) via system cron
  *
  * Usage: php align_subscriptions_cron.php
- * OR: php align_subscriptions_cron.php --http (HTTP call) *
+ * OR: php align_subscriptions_cron.php --http (HTTP call)
  * Add to crontab (local execution):
  * 5 * * * * /usr/bin/php /path/to/smartsys/api/v1/crons/align_subscriptions_cron.php
  *
- * Add to crontab (HTTP execution - uses ADMIN_API_URL from .env):
- * 5 * * * * curl -X POST "$(grep ADMIN_API_URL /path/to/.env | cut -d= -f2)" -H "X-Cron-Token: YOUR_CRON_SECRET"
+ * Add to crontab (HTTP execution - uses ADMIN_API_URL and CRON_SECRET from .env):
+ * 5 * * * * /usr/bin/php /path/to/smartsys/api/v1/crons/align_subscriptions_cron.php --http
  */
 
 require_once __DIR__ . '/../../../vendor/autoload.php';
+$dotenv = \Dotenv\Dotenv::createImmutable(__DIR__ . '/../../../');
+$dotenv->safeLoad();
 require_once __DIR__ . '/../../../config/database.php';
 require_once __DIR__ . '/../../../config/bootstrap.php';
-
-use PDO;
 
 class AlignSubscriptionsCron
 {
@@ -160,12 +160,25 @@ class AlignSubscriptionsCron
 
 // Process command line arguments
 $runViaHttp = in_array('--http', $argv ?? [], true);
-$useRemote = getenv('RUN_CRON_REMOTE') === '1' || $runViaHttp;
+$runCronRemote = $_ENV['RUN_CRON_REMOTE'] ?? getenv('RUN_CRON_REMOTE') ?? '';
+$useRemote = $runCronRemote === '1' || $runViaHttp;
 
 if ($useRemote) {
     // Call via HTTP with X-Cron-Token header
-    $apiUrl = getenv('ADMIN_API_URL') ?: (getenv('API_BASE_URL') . '/admin/subscriptions/cron');
-    $cronSecret = getenv('CRON_SECRET') ?: 'missing_cron_secret';
+    $apiUrl = trim((string) ($_ENV['ADMIN_API_URL'] ?? getenv('ADMIN_API_URL') ?? ''));
+    if (!$apiUrl) {
+        $apiBaseUrl = rtrim((string) ($_ENV['API_BASE_URL'] ?? getenv('API_BASE_URL') ?? ''), '/');
+        if ($apiBaseUrl === '') {
+            fwrite(STDERR, "ADMIN_API_URL or API_BASE_URL must be configured for remote cron execution.\n");
+            exit(1);
+        }
+        $apiUrl = $apiBaseUrl . '/smartsys/api/v1/admin/subscriptions/cron';
+    }
+    $cronSecret = (string) ($_ENV['CRON_SECRET'] ?? getenv('CRON_SECRET') ?? '');
+    if ($cronSecret === '') {
+        fwrite(STDERR, "CRON_SECRET must be configured for remote cron execution.\n");
+        exit(1);
+    }
 
     $ch = curl_init();
     curl_setopt_array($ch, [

@@ -10,10 +10,11 @@ use Psr\Http\Message\ResponseInterface as Response;
 use App\Services\MonologHandler;
 
 /**
- * PosAnalyticsHandler
+ * Provides cashier-dashboard and point-of-sale performance summaries.
  *
- * Handles POS/cashier-related analytics.
- * Real extraction from AnalyticsHandler — logic lives here, no delegation.
+ * Uses tenant-scoped PDO queries across sales, returns, payments, and cash
+ * transactions. Date ranges are resolved by BaseHandler; analytics.php and
+ * reports.php expose the corresponding endpoints.
  */
 class PosAnalyticsHandler extends BaseHandler
 {
@@ -23,57 +24,7 @@ class PosAnalyticsHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('analytics');
     }
 
-    // =========================================================
-    // GET /analytics/daily-cash
-    // =========================================================
-
-    public function getDailyCashDrawerSummary(Request $request, Response $response): Response
-    {
-        try {
-            $tenantId = $this->extractTenantId($request);
-            if (!$tenantId) {
-                return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-            }
-
-            $date = $request->getQueryParams()['date'] ?? date('Y-m-d');
-
-            $stmt = $this->db->prepare("SELECT COALESCE(SUM(total_amount + COALESCE(tax_amount, 0)), 0) as total_cash_sales, COUNT(*) as transaction_count FROM sales WHERE DATE(created_at) = DATE(:date) AND status = 'paid' AND tenant_id = :tenant_id");
-            $stmt->execute([':date' => $date, ':tenant_id' => $tenantId]);
-            $salesData = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            $stmt = $this->db->prepare("SELECT COALESCE(SUM(amount), 0) as total_receipts, COUNT(*) as receipt_count FROM cash_vouchers WHERE type = 'receipt' AND DATE(created_at) = DATE(:date) AND tenant_id = :tenant_id");
-            $stmt->execute([':date' => $date, ':tenant_id' => $tenantId]);
-            $receiptsData = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            $stmt = $this->db->prepare("SELECT COALESCE(SUM(amount), 0) as total_payments, COUNT(*) as payment_count FROM cash_vouchers WHERE type = 'payment' AND DATE(created_at) = DATE(:date) AND tenant_id = :tenant_id");
-            $stmt->execute([':date' => $date, ':tenant_id' => $tenantId]);
-            $paymentsData = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            $openingBalance = 0;
-            $expectedCash   = $openingBalance
-                + (float) $salesData['total_cash_sales']
-                + (float) $receiptsData['total_receipts']
-                - (float) $paymentsData['total_payments'];
-
-            return $this->successResponse($response, [
-                'date'            => $date,
-                'opening_balance' => (float) $openingBalance,
-                'cash_sales'      => ['amount' => (float) $salesData['total_cash_sales'], 'transactions' => (int) $salesData['transaction_count']],
-                'receipts'        => ['amount' => (float) $receiptsData['total_receipts'], 'count' => (int) $receiptsData['receipt_count']],
-                'payments'        => ['amount' => (float) $paymentsData['total_payments'], 'count' => (int) $paymentsData['payment_count']],
-                'expected_cash'   => (float) $expectedCash,
-                'closing_balance' => (float) $expectedCash,
-            ]);
-        } catch (\Throwable $e) {
-            $this->logger->error('getDailyCashDrawerSummary error', ['message' => $e->getMessage()]);
-            return $this->errorResponse($response, 'فشل في جلب ملخص النقدية اليومية', 500);
-        }
-    }
-
-    // =========================================================
-    // GET /analytics/cashier/dashboard-summary
-    // =========================================================
-
+    /** Build a cashier summary from sales, returns, completed payments, and cash activity. */
     public function cashierDashboardSummary(Request $request, Response $response): Response
     {
         try {
@@ -84,14 +35,9 @@ class PosAnalyticsHandler extends BaseHandler
 
             $params    = $request->getQueryParams();
             $sessionId = $params['session_id'] ?? null;
-            // ⚠️ إصلاح: كانت القيم الافتراضية فقط ('00:00:00'/'23:59:59') تُطبَّق حين لا يُرسل
-            // العميل start_date/end_date إطلاقاً. أما القيمة الشائعة الفعلية (تاريخ فقط بدون
-            // وقت، كما ترسلها كل واجهات اختيار التاريخ الأخرى في النظام) كانت تمر بدون أي
-            // تطبيع، فيصبح end_date = '2026-08-01' بدون وقت، ما يجعل
-            // "created_at BETWEEN start AND end" يستبعد تقريباً كل سجلات اليوم الأخير
-            // (لأن MySQL تقرأها كـ '2026-08-01 00:00:00'). استُبدل بـ DateRangeResolver
-            // الموحّد الذي يطبّع الحالتين بنفس الطريقة دائماً.
-            [$startDate, $endDateExclusive] = \App\Services\DateRangeResolver::resolve(
+            // Use tenant-local dates and an exclusive end bound for date-only filters.
+            [$startDate, $endDateExclusive] = $this->resolveTenantDateRange(
+                (int) $tenantId,
                 $params['start_date'] ?? null,
                 $params['end_date'] ?? null
             );
@@ -101,17 +47,27 @@ class PosAnalyticsHandler extends BaseHandler
             $queryParams  = [$tenantId, $startDate, $endDate];
             $branchFilter  = '';
             $sessionFilter = '';
-            // For returns: session_id is on the linked sale (s2), not on returns directly
+            $activitySalesBranchFilter = '';
+            $activityReturnBranchFilter = '';
+            $activityCashBranchFilter = '';
+            $activitySalesSessionFilter = '';
+            $activityCashSessionFilter = '';
+            // For returns: session_id is on the linked sale (s2), not on returns directly.
             $returnSessionFilter = '';
 
             if ($branchId) {
-                $branchFilter  = ' AND branch_id = ? ';
+                $branchFilter = ' AND branch_id = ? ';
+                $activitySalesBranchFilter = ' AND s.branch_id = ? ';
+                $activityReturnBranchFilter = ' AND r.branch_id = ? ';
+                $activityCashBranchFilter = ' AND ct.branch_id = ? ';
                 $queryParams[] = $branchId;
             }
             if ($sessionId) {
-                $sessionFilter       = ' AND session_id = ? ';
+                $sessionFilter = ' AND session_id = ? ';
                 $returnSessionFilter = ' AND s2.session_id = ? ';
-                $queryParams[]       = $sessionId;
+                $activitySalesSessionFilter = ' AND s.session_id = ? ';
+                $activityCashSessionFilter = ' AND ct.session_id = ? ';
+                $queryParams[] = $sessionId;
             }
 
             // Opening balance
@@ -126,10 +82,14 @@ class PosAnalyticsHandler extends BaseHandler
             $recentActivitiesQuery = "
                 (SELECT s.id, 'sale' COLLATE utf8mb4_unicode_ci as type, s.id as reference_id,
                         CAST(s.invoice_number AS CHAR) COLLATE utf8mb4_unicode_ci as reference_code,
-                        (s.total_amount + COALESCE(s.tax_amount, 0)) as amount, s.created_at,
+                        (COALESCE(s.net_total_amount, s.total_amount) + COALESCE(s.tax_amount, 0)) as amount, s.created_at,
                         CONCAT('فاتورة مبيعات #', s.invoice_number) COLLATE utf8mb4_unicode_ci as description
                  FROM sales s WHERE s.tenant_id = ? AND s.created_at >= ? AND s.created_at < ?
-                 {$branchFilter} {$sessionFilter} AND s.status IN ('paid', 'settled_by_credit', 'closed_by_return', 'settled_mixed'))
+                 {$activitySalesBranchFilter} {$activitySalesSessionFilter}
+                   AND LOWER(COALESCE(s.status, '')) NOT IN (
+                       'draft', 'pending', 'pending_approval', 'awaiting_approval',
+                       'rejected', 'canceled', 'cancelled'
+                   ))
                 UNION ALL
                 (SELECT r.id, 'return' COLLATE utf8mb4_unicode_ci as type, r.id as reference_id,
                         CAST(r.return_number AS CHAR) COLLATE utf8mb4_unicode_ci as reference_code,
@@ -137,10 +97,13 @@ class PosAnalyticsHandler extends BaseHandler
                         CONCAT('مرتجع مبيعات #', r.return_number) COLLATE utf8mb4_unicode_ci as description
                  FROM returns r LEFT JOIN sales s2 ON s2.id = r.sale_id
                  WHERE r.tenant_id = ? AND r.created_at >= ? AND r.created_at < ?
-                 {$branchFilter} {$returnSessionFilter} AND r.status = 'approved')
+                 {$activityReturnBranchFilter} {$returnSessionFilter} AND r.return_type = 'sale' AND r.status = 'approved')
                 UNION ALL
                 (SELECT ct.id,
-                        (CASE WHEN ct.type = 'expense' THEN 'withdrawal' ELSE 'deposit' END) COLLATE utf8mb4_unicode_ci as type,
+                        (CASE
+                            WHEN ct.type IN ('expense', 'withdrawal', 'return_payment') THEN 'withdrawal'
+                            ELSE 'deposit'
+                        END) COLLATE utf8mb4_unicode_ci as type,
                         ct.id as reference_id,
                         CAST(COALESCE(
                             CASE
@@ -152,13 +115,21 @@ class PosAnalyticsHandler extends BaseHandler
                             CONCAT('TX-', ct.id)
                         ) AS CHAR) COLLATE utf8mb4_unicode_ci as reference_code,
                         ct.amount, ct.created_at,
-                        (CASE WHEN ct.type = 'expense' THEN CONCAT('سحب نقدي #', COALESCE(cv.reference, CONCAT('TX-', ct.id))) ELSE CONCAT('إيداع نقدي #', COALESCE(cv.reference, CONCAT('TX-', ct.id))) END) COLLATE utf8mb4_unicode_ci as description
+                        (CASE
+                            WHEN ct.reference_type = 'return' AND r_ct.return_type = 'purchase'
+                                THEN CONCAT('استرداد نقدي من المورد #', r_ct.return_number)
+                            WHEN ct.reference_type = 'return' AND r_ct.return_type = 'sale'
+                                THEN CONCAT('رد نقدي للعميل #', r_ct.return_number)
+                            WHEN ct.type IN ('expense', 'withdrawal')
+                                THEN CONCAT('سحب نقدي #', COALESCE(cv.reference, CONCAT('TX-', ct.id)))
+                            ELSE CONCAT('إيداع نقدي #', COALESCE(cv.reference, CONCAT('TX-', ct.id)))
+                        END) COLLATE utf8mb4_unicode_ci as description
                  FROM cash_transactions ct
                  LEFT JOIN cash_vouchers cv    ON cv.id    = ct.reference_id AND ct.reference_type = 'cash_voucher'
                  LEFT JOIN sales s_ct          ON s_ct.id  = ct.reference_id AND ct.reference_type = 'sale'
                  LEFT JOIN returns r_ct        ON r_ct.id  = ct.reference_id AND ct.reference_type = 'return'
                  WHERE ct.tenant_id = ? AND ct.created_at >= ? AND ct.created_at < ?
-                 {$branchFilter} {$sessionFilter} AND ct.status = 'completed')
+                 {$activityCashBranchFilter} {$activityCashSessionFilter} AND ct.status = 'completed')
                 ORDER BY created_at DESC LIMIT 10
             ";
 
@@ -183,27 +154,31 @@ class PosAnalyticsHandler extends BaseHandler
             $stmt->execute($recentParams);
             $recentActivities = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // Total sales
-            // ── AUDIT FIX #5 (HIGH) ──────────────────────────────────────────────
-            // `sales.status` is never written as 'completed' anywhere in the
-            // codebase (see AccountingService/SaleCreationService/SalePaymentService
-            // — the values actually used are 'paid', 'partial', 'pending_payment',
-            // 'pending_approval', 'cancelled'). This filter matched zero rows
-            // unconditionally, so the cashier dashboard's "total sales" always
-            // showed 0 regardless of actual sales volume. Aligned with the
-            // already-correct pattern used in AdvancedReportsHandler.
-            // ── AUDIT SELF-REVIEW FIX 15-A (vocabulary rollout) ──────────────────
-            // Expanded further to include all fully-settled states
-            // (settled_by_credit/closed_by_return/settled_mixed) now that status
-            // carries that vocabulary — a sale this cashier rang up and that was
-            // settled via return credit is still a real sale for this session.
-            $stmt = $this->db->prepare("SELECT COALESCE(SUM(total_amount + COALESCE(tax_amount,0)),0) as total_sales, COUNT(*) as sales_count FROM sales s WHERE s.tenant_id = ? AND s.created_at >= ? AND s.created_at < ? {$branchFilter} {$sessionFilter} AND s.status IN ('paid', 'settled_by_credit', 'closed_by_return', 'settled_mixed')");
+            // Sales volume includes open and partially paid invoices; payment totals
+            // below are derived separately from completed payment records.
+            $stmt = $this->db->prepare("SELECT COALESCE(SUM(COALESCE(net_total_amount, total_amount) + COALESCE(tax_amount,0)),0) as total_sales, COUNT(*) as sales_count FROM sales s WHERE s.tenant_id = ? AND s.created_at >= ? AND s.created_at < ? {$branchFilter} {$sessionFilter} AND LOWER(COALESCE(s.status, '')) NOT IN ('draft', 'pending', 'pending_approval', 'awaiting_approval', 'rejected', 'canceled', 'cancelled')");
             $stmt->execute($queryParams);
             $salesData = $stmt->fetch(PDO::FETCH_ASSOC);
 
+            $stmt = $this->db->prepare("
+                SELECT DATE_FORMAT(s.created_at, '%H:00') AS hour,
+                       COALESCE(SUM(COALESCE(s.net_total_amount, s.total_amount) + COALESCE(s.tax_amount, 0)), 0) AS total_sales
+                FROM sales s
+                WHERE s.tenant_id = ? AND s.created_at >= ? AND s.created_at < ?
+                  {$branchFilter} {$sessionFilter}
+                  AND LOWER(COALESCE(s.status, '')) NOT IN (
+                      'draft', 'pending', 'pending_approval', 'awaiting_approval',
+                      'rejected', 'canceled', 'cancelled'
+                  )
+                GROUP BY DATE_FORMAT(s.created_at, '%H')
+                ORDER BY DATE_FORMAT(s.created_at, '%H')
+            ");
+            $stmt->execute($queryParams);
+            $hourlySales = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
             // Total returns — نستخدم JOIN مع sales للوصول لـ session_id (جدول returns لا يملك session_id مباشرة)
             $returnsParams = [$tenantId, $startDate, $endDate];
-            $returnsWhere  = "r.tenant_id = ? AND r.created_at >= ? AND r.created_at < ?";
+            $returnsWhere  = "r.tenant_id = ? AND r.created_at >= ? AND r.created_at < ? AND r.return_type = 'sale'";
             if ($branchId) {
                 $returnsWhere   .= " AND r.branch_id = ?";
                 $returnsParams[] = $branchId;
@@ -221,37 +196,76 @@ class PosAnalyticsHandler extends BaseHandler
             $stmt->execute($returnsParams);
             $returnsData = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            // Payment breakdown
-            // ── AUDIT SELF-REVIEW FIX 15-A (vocabulary rollout) ───────────────────
-            // Intentionally NOT expanded to settled_by_credit/closed_by_return: by
-            // definition those sales received zero actual cash/card payment, so
-            // attributing them to a payment_method_id here would misstate how much
-            // money actually moved through each method. Stays scoped to 'paid'
-            // (genuine full cash/card settlement) only — same reasoning as the
-            // cash-drawer query in AdvancedReportsHandler.
-            $stmt = $this->db->prepare("SELECT s.payment_method_id, COALESCE(SUM(s.total_amount + COALESCE(s.tax_amount,0)),0) as total_amount, COUNT(*) as transaction_count FROM sales s WHERE s.tenant_id = ? AND s.created_at >= ? AND s.created_at < ? {$branchFilter} {$sessionFilter} AND s.status = 'paid' GROUP BY s.payment_method_id");
-            $stmt->execute($queryParams);
+            // Payment breakdown reports actual completed receipts/refunds, not invoice
+            // totals or the invoice's default payment method.
+            $paymentWhere = [
+                'p.tenant_id = ?',
+                'p.created_at >= ?',
+                'p.created_at < ?',
+                "p.status = 'completed'",
+                'COALESCE(p.is_draft, 0) = 0',
+                "(p.sale_id IS NOT NULL OR p.type IN ('debt_payment', 'customer', 'return_payment'))",
+            ];
+            $paymentParams = [$tenantId, $startDate, $endDate];
+            if ($branchId) {
+                $paymentWhere[] = '(p.branch_id = ? OR s.branch_id = ? OR EXISTS (
+                    SELECT 1
+                    FROM customer_payment_allocations cpa
+                    JOIN sales allocated_sale
+                      ON allocated_sale.id = cpa.sale_id AND allocated_sale.tenant_id = cpa.tenant_id
+                    WHERE cpa.tenant_id = p.tenant_id AND cpa.payment_id = p.id
+                      AND allocated_sale.branch_id = ?
+                ))';
+                array_push($paymentParams, $branchId, $branchId, $branchId);
+            }
+            if ($sessionId) {
+                $paymentWhere[] = 'COALESCE(p.session_id, s.session_id) = ?';
+                $paymentParams[] = $sessionId;
+            }
+            $stmt = $this->db->prepare("
+                SELECT LOWER(COALESCE(pm.kind, 'other')) AS kind,
+                       COALESCE(SUM(CASE WHEN p.type = 'return_payment' THEN -p.amount ELSE p.amount END), 0) AS total_amount
+                FROM payments p
+                LEFT JOIN sales s ON s.id = p.sale_id AND s.tenant_id = p.tenant_id
+                LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id AND pm.tenant_id = p.tenant_id
+                WHERE " . implode(' AND ', $paymentWhere) . "
+                GROUP BY LOWER(COALESCE(pm.kind, 'other'))
+            ");
+            $stmt->execute($paymentParams);
             $paymentBreakdown = [];
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $methodId = $row['payment_method_id'];
-                $stmtMethod = $this->db->prepare("SELECT name, kind FROM payment_methods WHERE id = ? AND tenant_id = ? LIMIT 1");
-                $stmtMethod->execute([$methodId, $tenantId]);
-                $methodData = $stmtMethod->fetch(PDO::FETCH_ASSOC);
-                if ($methodData) {
-                    $kind = $methodData['kind'] ?? 'other';
-                    $paymentBreakdown[$kind . '_total'] = ($paymentBreakdown[$kind . '_total'] ?? 0) + (float) $row['total_amount'];
-                }
+                $kind = (string) $row['kind'];
+                $paymentBreakdown[$kind . '_total'] = (float) $row['total_amount'];
             }
 
+            $invoiceOutstandingSql = \App\Services\SalesOutstandingBalance::sqlExpression();
+            $stmt = $this->db->prepare("
+                SELECT COALESCE(SUM(CASE WHEN {$invoiceOutstandingSql} > 0
+                    THEN {$invoiceOutstandingSql} ELSE 0 END), 0)
+                FROM sales s
+                WHERE s.tenant_id = ? AND s.created_at >= ? AND s.created_at < ?
+                  {$branchFilter} {$sessionFilter}
+                  AND LOWER(COALESCE(s.status, '')) NOT IN (
+                      'draft', 'pending', 'pending_approval', 'awaiting_approval',
+                      'rejected', 'canceled', 'cancelled', 'returned'
+                  )
+            ");
+            $stmt->execute($queryParams);
+            $paymentBreakdown['credit_total'] = (float) $stmt->fetchColumn();
+
             // Expenses
-            $stmt = $this->db->prepare("SELECT COALESCE(SUM(amount),0) as total_expenses FROM cash_transactions WHERE tenant_id = ? AND created_at >= ? AND created_at < ? {$branchFilter} {$sessionFilter} AND type = 'withdrawal' AND status = 'completed'");
+            $stmt = $this->db->prepare("SELECT COALESCE(SUM(amount),0) as total_expenses FROM cash_transactions WHERE tenant_id = ? AND created_at >= ? AND created_at < ? {$branchFilter} {$sessionFilter} AND type IN ('expense', 'withdrawal') AND status = 'completed'");
             $stmt->execute($queryParams);
             $expensesTotal = (float) $stmt->fetchColumn();
+
+            // Only physical cash contributes to the drawer; bank/card/wallet are separate settlements.
+            $paymentBreakdown['cash_drawer'] = (float) ($paymentBreakdown['cash_total'] ?? 0);
 
             return $this->successResponse($response, [
                 'openingBalance'   => $openingBalance,
                 'totalSales'       => (float) $salesData['total_sales'],
                 'salesCount'       => (int) $salesData['sales_count'],
+                'hourly_sales'     => $hourlySales,
                 'totalReturns'     => (float) $returnsData['total_returns'],
                 'returnsCount'     => (int) $returnsData['returns_count'],
                 'expenses'         => $expensesTotal,
@@ -264,10 +278,7 @@ class PosAnalyticsHandler extends BaseHandler
         }
     }
 
-    // =========================================================
-    // GET /reports/pos
-    // =========================================================
-
+    /** Aggregate non-cancelled sale items by branch for the requested date range. */
     public function listPos(Request $request, Response $response): Response
     {
         try {
@@ -277,7 +288,7 @@ class PosAnalyticsHandler extends BaseHandler
             }
 
             $params = $request->getQueryParams();
-            $where  = ['s.tenant_id = ?'];
+            $where  = ['s.tenant_id = ?', "LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')"];
             $qp     = [$tenantId];
 
             if (!empty($params['start_date'])) {
@@ -291,7 +302,7 @@ class PosAnalyticsHandler extends BaseHandler
 
             $sql = "SELECT s.branch_id AS pos_id, b.name AS pos_name,
                            COUNT(DISTINCT s.id) as orders,
-                           COALESCE(SUM(si.quantity * si.sale_price), 0) as amount
+                           COALESCE(SUM(COALESCE(si.net_total, si.quantity * si.sale_price)), 0) as amount
                     FROM sales s
                     LEFT JOIN branches b ON b.id = s.branch_id AND (b.tenant_id = s.tenant_id OR b.tenant_id IS NULL)
                     JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id
@@ -308,10 +319,7 @@ class PosAnalyticsHandler extends BaseHandler
         }
     }
 
-    // =========================================================
-    // GET /analytics/pos-performance
-    // =========================================================
-
+    /** Aggregate cashier sales and returns with optional branch/session filters. */
     public function getPosPerformance(Request $request, Response $response): Response
     {
         try {
@@ -321,27 +329,64 @@ class PosAnalyticsHandler extends BaseHandler
             }
 
             $params    = $request->getQueryParams();
-            $startDate = $params['start_date'] ?? date('Y-m-d', strtotime('-7 days'));
-            $endDate   = $params['end_date']   ?? date('Y-m-d');
+            [$from, $toExclusive] = $this->resolveTenantDateRange(
+                (int) $tenantId,
+                $params['start_date'] ?? null,
+                $params['end_date'] ?? null,
+                7
+            );
+            $startDate = substr($from, 0, 10);
+            $endDate = date('Y-m-d', strtotime($toExclusive . ' -1 day'));
+            $where = [
+                's.tenant_id = ?',
+                "LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')",
+                's.created_at >= ?',
+                's.created_at < ?',
+            ];
+            $queryParams = [$tenantId, $from, $toExclusive];
+
+            foreach (['branch_id' => 's.branch_id', 'session_id' => 's.session_id'] as $filterKey => $column) {
+                if (!array_key_exists($filterKey, $params)) {
+                    continue;
+                }
+
+                $filterValue = filter_var($params[$filterKey], FILTER_VALIDATE_INT);
+                if ($filterValue === false || $filterValue < 1) {
+                    return $this->errorResponse($response, 'معرف الفرع أو الجلسة غير صالح.', 400);
+                }
+
+                $where[] = $column . ' = ?';
+                $queryParams[] = $filterValue;
+            }
 
             $sql = "
                 SELECT s.user_id, u.name as cashier_name, u.username as user_name,
                        COUNT(DISTINCT s.id) as orders_count,
-                       COALESCE(SUM(s.total_amount), 0) as total_sales,
-                       COALESCE(SUM(CASE
-                           WHEN s.discount_type = 'percentage' THEN s.total_amount * (1 - s.discount_value / 100)
-                           WHEN s.discount_type = 'fixed'      THEN s.total_amount - s.discount_value
-                           ELSE s.total_amount END), 0) as net_sales,
-                       COALESCE(AVG(s.total_amount), 0) as avg_order_value
+                       COALESCE(SUM(COALESCE(s.net_total_amount, s.total_amount)), 0) as total_sales,
+                       COALESCE(SUM(s.total_amount), 0) as gross_sales,
+                       COALESCE(SUM(COALESCE(s.net_total_amount, s.total_amount)), 0)
+                           - COALESCE(SUM(sale_returns.total_returns), 0) as net_sales,
+                       COALESCE(AVG(COALESCE(s.net_total_amount, s.total_amount)), 0) as avg_order_value
                 FROM sales s
                 LEFT JOIN users u ON u.id = s.user_id AND u.tenant_id = s.tenant_id
-                WHERE s.tenant_id = ? AND DATE(s.created_at) BETWEEN ? AND ?
+                LEFT JOIN (
+                    SELECT r.tenant_id, r.sale_id, SUM(r.total_amount) AS total_returns
+                    FROM returns r
+                    WHERE r.tenant_id = ?
+                      AND r.return_type = 'sale'
+                      AND LOWER(COALESCE(r.status, '')) NOT IN ('canceled', 'cancelled', 'rejected')
+                      AND r.created_at >= ?
+                      AND r.created_at < ?
+                    GROUP BY r.tenant_id, r.sale_id
+                ) sale_returns ON sale_returns.tenant_id = s.tenant_id
+                              AND sale_returns.sale_id = s.id
+                WHERE " . implode(' AND ', $where) . "
                 GROUP BY s.user_id, u.name, u.username
                 ORDER BY total_sales DESC
             ";
 
             $stmt = $this->db->prepare($sql);
-            $stmt->execute([$tenantId, $startDate, $endDate]);
+            $stmt->execute(array_merge([$tenantId, $from, $toExclusive], $queryParams));
             $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             $posPerformance = array_map(fn ($row) => [
@@ -351,6 +396,7 @@ class PosAnalyticsHandler extends BaseHandler
                 'device_name'     => 'POS-' . str_pad((string) ($row['user_id'] ?? '0'), 3, '0', STR_PAD_LEFT),
                 'orders_count'    => (int)   $row['orders_count'],
                 'total_sales'     => (float) $row['total_sales'],
+                'gross_sales' => (float) $row['gross_sales'],
                 'net_sales'       => (float) $row['net_sales'],
                 'avg_order_value' => (float) $row['avg_order_value'],
             ], $results);

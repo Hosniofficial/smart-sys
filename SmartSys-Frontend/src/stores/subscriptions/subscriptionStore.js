@@ -62,7 +62,7 @@ export const useSubscriptionStore = defineStore('subscription', {
       this.promise = (async () => {
         try {
           if (import.meta.env.DEV) {
-            const { useAuthStore } = await import('@/stores/auth');
+            const { useAuthStore } = await import('@/stores/auth/authStore');
             const authStore = useAuthStore();
             console.log('[SubscriptionStore] Fetching /subscription/me');
             console.log('  authStore.token:', authStore.token ? '✓ Present' : '✗ Missing');
@@ -108,64 +108,5 @@ export const useSubscriptionStore = defineStore('subscription', {
 
     async refresh() { return this.fetchSubscription(true) },
 
-    /**
-     * Generate smart subscription alerts
-     * Returns an array of notification objects based on days remaining
-     * Triggered every day to create escalating alerts
-     */
-    generateSubscriptionAlerts() {
-      if (!this.current || this.current.status === 'inactive' || this.current.days_left <= 0) {
-        return []
-      }
-
-      const alerts = []
-      const daysLeft = this.current.days_left
-      const isTrialPlan = this.current.status === 'trial'
-      const planName = this.current.plan_name || (isTrialPlan ? 'باقة تجريبية' : 'اشتراك سنوي')
-
-      // Alert 1: Last 7 days - Yellow/Warning
-      if (daysLeft <= 7 && daysLeft > 3) {
-        alerts.push({
-          type: 'subscription_warning',
-          title: `تنبيه: متبقي ${daysLeft} أيام`,
-          message: `متبقي ${daysLeft} أيام على انتهاء صلاحية ${planName}. يرجى الترقية لضمان استمرار الخدمة.`,
-          priority: 'warning',
-          color: 'yellow',
-          icon: '⏳',
-          action: { label: 'ترقية الآن', path: '/upgrade' },
-          dismissible: false,
-        })
-      }
-
-      // Alert 2: Last 3 days - Orange/Important
-      if (daysLeft <= 3 && daysLeft > 1) {
-        alerts.push({
-          type: 'subscription_important',
-          title: `تنبيه مهم: متبقي ${daysLeft} أيام فقط`,
-          message: `متبقي ${daysLeft} أيام فقط! تأكد من الترقية لضمان عدم توقف الخدمة.`,
-          priority: 'important',
-          color: 'orange',
-          icon: '⚠️',
-          action: { label: 'ترقية الآن', path: '/upgrade' },
-          dismissible: false,
-        })
-      }
-
-      // Alert 3: Last day - Red/Critical
-      if (daysLeft === 1) {
-        alerts.push({
-          type: 'subscription_critical',
-          title: '🔴 آخر يوم! الترقية مطلوبة فوراً',
-          message: 'هذا هو آخر يوم في صلاحية الاشتراك! يرجى الترقية فوراً لتجنب قطع الخدمة.',
-          priority: 'critical',
-          color: 'red',
-          icon: '🚨',
-          action: { label: 'ترقية الآن', path: '/upgrade' },
-          dismissible: false,
-        })
-      }
-
-      return alerts
-    },
   },
 })

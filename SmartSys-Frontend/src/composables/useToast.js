@@ -1,4 +1,4 @@
-import { useUiStore } from '../stores/ui'
+import { useUiStore } from '@/stores/ui/uiStore'
 
 export function useToast() {
   const ui = useUiStore()

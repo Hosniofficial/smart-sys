@@ -11,6 +11,12 @@ use App\Services\MonologHandler;
 use App\Services\AccountingPeriodCloseService;
 use App\Security\Permissions;
 
+/**
+ * Handles tenant-scoped accounting period listing, creation, closure, reopening, and deletion.
+ *
+ * Period closure and its blocker/override audit rules are delegated to
+ * AccountingPeriodCloseService; the other operations use the period table directly.
+ */
 class AccountingPeriodsHandler extends BaseHandler
 {
     public function __construct(PDO $db)
@@ -19,7 +25,7 @@ class AccountingPeriodsHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('accounting_periods');
     }
 
-    // GET /accounting-periods
+    /** List tenant periods, optionally filtered by status. */
     public function list(Request $request, Response $response): Response
     {
         try {
@@ -51,7 +57,7 @@ class AccountingPeriodsHandler extends BaseHandler
         }
     }
 
-    // POST /accounting-periods
+    /** Create an open period for the current tenant. */
     public function create(Request $request, Response $response): Response
     {
         try {
@@ -152,7 +158,7 @@ class AccountingPeriodsHandler extends BaseHandler
         }
     }
 
-    // PUT /accounting-periods/{id}/reopen
+    /** Reopen a closed period belonging to the current tenant. */
     public function reopen(Request $request, Response $response, array $args): Response
     {
         try {
@@ -181,7 +187,7 @@ class AccountingPeriodsHandler extends BaseHandler
         }
     }
 
-    // DELETE /accounting-periods/{id}
+    /** Delete an open period belonging to the current tenant. */
     public function delete(Request $request, Response $response, array $args): Response
     {
         try {

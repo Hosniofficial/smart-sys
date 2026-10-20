@@ -6,56 +6,46 @@ namespace App\Handlers;
 
 use PDO;
 use Exception;
-use Firebase\JWT\JWT;
-use Firebase\JWT\Key;
 use App\Services\SecurityLogger;
-use App\Services\SecurityEventDispatcher;
 use App\Services\JwtBlacklistService;
 use App\Services\MonologHandler;
+use App\Services\AuthSessionService;
+use App\Services\UserSessionService;
 use App\Services\TwoFactorEncryptionService;
 use App\Utils\RequestHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
+/**
+ * Handles login, token lifecycle, logout, and login-time two-factor verification.
+ *
+ * Delegates token issuance and refresh-cookie handling to AuthSessionService.
+ */
 class AuthHandler extends BaseHandler
 {
-    private string $jwtKey;
-    private string $jwtRefreshSecret;
-    private int $tokenExpiry;
-    private int $refreshTokenExpiry;
     private ?JwtBlacklistService $jwtBlacklistService;
     private ?SecurityLogger $securityLogger;
-    private ?SecurityEventDispatcher $eventDispatcher;
+    private AuthSessionService $authSession;
     private \PHPGangsta_GoogleAuthenticator $ga;
     private TwoFactorEncryptionService $twoFaEncryption;
 
     public function __construct(
         PDO $db,
         ?JwtBlacklistService $jwtBlacklistService = null,
-        ?SecurityLogger $securityLogger = null
+        ?SecurityLogger $securityLogger = null,
+        ?AuthSessionService $authSession = null
     ) {
         parent::__construct($db);
 
         $this->logger = MonologHandler::getInstance('auth');
         $this->jwtBlacklistService = $jwtBlacklistService;
         $this->securityLogger = $securityLogger;
-
-        $securityConfigPath = __DIR__ . '/../../../../config/security.php';
-        $securityConfig = file_exists($securityConfigPath) ? require $securityConfigPath : [];
-        $jwtConfig = $securityConfig['jwt'] ?? [];
-
-        $this->jwtKey = (string) ($jwtConfig['secret'] ?? ($_ENV['JWT_SECRET'] ?? getenv('JWT_SECRET') ?: ''));
-        $this->jwtRefreshSecret = (string) ($jwtConfig['refresh_secret'] ?? ($_ENV['JWT_REFRESH_SECRET'] ?? getenv('JWT_REFRESH_SECRET') ?: ''));
-        $this->tokenExpiry = (int) ($jwtConfig['access_token_expiry'] ?? 3600);
-        $this->refreshTokenExpiry = (int) ($jwtConfig['refresh_token_expiry'] ?? 2592000);
+        $this->authSession = $authSession ?? new AuthSessionService($db);
         $this->ga = new \PHPGangsta_GoogleAuthenticator();
         $this->twoFaEncryption = new TwoFactorEncryptionService();
-
-        if ($this->jwtKey === '' || $this->jwtRefreshSecret === '') {
-            throw new Exception('JWT secrets are not set in environment variables.');
-        }
     }
 
+    /** Authenticate credentials and optional 2FA, then issue access and refresh tokens. */
     public function login(Request $request, Response $response): Response
     {
         try {
@@ -186,9 +176,13 @@ class AuthHandler extends BaseHandler
                 }
             }
 
-            $accessToken = $this->generateAccessToken($user);
-            $refreshToken = $this->generateRefreshToken((int) $user['id']);
-            $this->storeRefreshToken((int) $user['id'], $refreshToken);
+            $lastLoginStmt = $this->db->prepare('UPDATE users SET last_login = NOW() WHERE id = ?');
+            $lastLoginStmt->execute([(int) $user['id']]);
+
+            $user = $this->authSession->resolveIdentity($user);
+            $accessToken = $this->authSession->generateAccessToken($user);
+            $refreshToken = $this->authSession->generateRefreshToken((int) $user['id']);
+            $this->authSession->storeRefreshToken((int) $user['id'], $refreshToken);
 
             $this->recordLoginAttempt($username, true, $clientIp);
 
@@ -198,7 +192,7 @@ class AuthHandler extends BaseHandler
                 'Successful login',
                 [
                     'username' => $username,
-                    'role' => $this->mapRoleName((int) $user['role_id']),
+                    'role' => $user['identity_role_name'],
                     'ip' => $clientIp,
                     'tenant_id' => $user['tenant_id'],
                     'branch_id' => $user['branch_id']
@@ -211,27 +205,24 @@ class AuthHandler extends BaseHandler
                 'user_id' => $user['id'],
                 'username' => $username,
                 'tenant_id' => $user['tenant_id'],
-                'role' => $this->mapRoleName((int) $user['role_id'])
+                'role' => $user['identity_role_name']
             ]);
 
-            // Include permissions from every role assigned to the user.
-            $permissions = $this->getPermissionsForUser((int) $user['id']);
-
-            return $this->setRefreshTokenCookie(
+            return $this->authSession->setRefreshTokenCookie(
                 $this->successResponse($response, [
                     'access_token' => $accessToken,
                     'user' => [
                         'id'              => (int) $user['id'],
                         'name'            => $user['name'],
                         'username'        => $user['username'],
-                        'role_id'         => (int) $user['role_id'],
-                        'role'            => $this->mapRoleName((int) $user['role_id']),
-                        'isAdmin'         => $this->isAdmin((int) $user['role_id']),
+                        'role_id'         => $user['identity_role_id'],
+                        'role'            => $user['identity_role_name'],
+                        'isAdmin'         => $user['isAdmin'],
                         'tenant_id'       => (int) $user['tenant_id'],
                         'branch_id'       => isset($user['branch_id']) ? (int) $user['branch_id'] : null,
                         'is_owner'        => (int) ($user['is_owner'] ?? 0),
                         'is_setup_complete' => (int) ($user['is_setup_complete'] ?? 0),
-                        'permissions'     => $permissions,
+                        'permissions'     => $user['permissions'],
                     ],
                 ], 200),
                 $refreshToken
@@ -247,6 +238,7 @@ class AuthHandler extends BaseHandler
         }
     }
 
+    /** Validate and rotate a refresh token, returning a new access token and cookie. */
     public function refreshToken(Request $request, Response $response): Response
     {
         try {
@@ -263,7 +255,7 @@ class AuthHandler extends BaseHandler
                 'source'       => !empty($request->getCookieParams()['refresh_token']) ? 'cookie' : 'body',
             ]);
 
-            $decoded = JWT::decode($refreshToken, new Key($this->jwtRefreshSecret, 'HS256'));
+            $decoded = $this->authSession->decodeRefreshToken($refreshToken);
 
             if (($decoded->type ?? null) !== 'refresh') {
                 return $this->errorResponse($response, 'نوع الرمز غير صالح', 401);
@@ -313,12 +305,14 @@ class AuthHandler extends BaseHandler
                 return $this->errorResponse($response, 'المستخدم غير موجود أو غير نشط', 403);
             }
 
+            $user = $this->authSession->resolveIdentity($user);
+
             // Rotate: revoke old, issue new
-            $newAccessToken  = $this->generateAccessToken($user);
-            $newRefreshToken = $this->generateRefreshToken((int) $user['id']);
+            $newAccessToken  = $this->authSession->generateAccessToken($user);
+            $newRefreshToken = $this->authSession->generateRefreshToken((int) $user['id']);
 
             $this->revokeRefreshToken($refreshToken);
-            $this->storeRefreshToken((int) $user['id'], $newRefreshToken);
+            $this->authSession->storeRefreshToken((int) $user['id'], $newRefreshToken);
 
             $this->logger->info('Token refresh successful', [
                 'user_id'   => $user['id'],
@@ -326,24 +320,21 @@ class AuthHandler extends BaseHandler
                 'tenant_id' => $user['tenant_id'],
             ]);
 
-            // Include permissions from every role assigned to the user.
-            $permissions = $this->getPermissionsForUser((int) $user['id']);
-
             // New refresh token goes into HttpOnly cookie; access token in body
-            return $this->setRefreshTokenCookie(
+            return $this->authSession->setRefreshTokenCookie(
                 $this->successResponse($response, [
                     'access_token' => $newAccessToken,
                     'user' => [
                         'id'              => (int) $user['id'],
                         'name'            => $user['name'],
                         'username'        => $user['username'],
-                        'role_id'         => (int) $user['role_id'],
-                        'role'            => $this->mapRoleName((int) $user['role_id']),
-                        'isAdmin'         => $this->isAdmin((int) $user['role_id']),
+                        'role_id'         => $user['identity_role_id'],
+                        'role'            => $user['identity_role_name'],
+                        'isAdmin'         => $user['isAdmin'],
                         'tenant_id'       => (int) $user['tenant_id'],
                         'branch_id'       => isset($user['branch_id']) ? (int) $user['branch_id'] : null,
                         'is_owner'        => (int) ($user['is_owner'] ?? 0),
-                        'permissions'     => $permissions,
+                        'permissions'     => $user['permissions'],
                     ],
                 ], 200),
                 $newRefreshToken
@@ -358,6 +349,7 @@ class AuthHandler extends BaseHandler
         }
     }
 
+    /** Revoke the presented refresh token and blacklist its bearer token when supported. */
     public function logout(Request $request, Response $response): Response
     {
         try {
@@ -404,7 +396,7 @@ class AuthHandler extends BaseHandler
                 'tenant_id' => $tenantId,
             ]);
 
-            return $this->clearRefreshTokenCookie(
+            return $this->authSession->clearRefreshTokenCookie(
                 $this->jsonResponse($response, [
                     'status'  => 'success',
                     'message' => 'تم تسجيل الخروج بنجاح',
@@ -420,10 +412,7 @@ class AuthHandler extends BaseHandler
         }
     }
 
-    /**
-     * Logout from ALL devices — revokes every refresh token for this user.
-     * POST /auth/logout-all-devices  (requires valid JWT)
-     */
+    /** Revoke all refresh tokens for the authenticated user and blacklist the current access token. */
     public function logoutAllDevices(Request $request, Response $response): Response
     {
         try {
@@ -437,14 +426,15 @@ class AuthHandler extends BaseHandler
                 return $this->errorResponse($response, 'غير مصرح', 401);
             }
 
-            $stmt = $this->db->prepare("
-                UPDATE refresh_tokens
-                SET    is_revoked = 1
-                WHERE  user_id    = ?
-                  AND  is_revoked = 0
-            ");
-            $stmt->execute([$userId]);
-            $revokedCount = $stmt->rowCount();
+            $countStmt = $this->db->prepare(
+                'SELECT COUNT(*) FROM refresh_tokens WHERE user_id = ? AND is_revoked = 0'
+            );
+            $countStmt->execute([$userId]);
+            $revokedCount = (int) $countStmt->fetchColumn();
+            (new UserSessionService($this->db))->revokeAllSessions(
+                $userId,
+                (int) $tenantId
+            );
 
             $authHeader = $request->getHeaderLine('Authorization');
             if ($authHeader !== '' && preg_match('/Bearer\s+(\S+)/', $authHeader, $matches)) {
@@ -465,7 +455,7 @@ class AuthHandler extends BaseHandler
                 'tokens_revoked' => $revokedCount,
             ]);
 
-            return $this->clearRefreshTokenCookie(
+            return $this->authSession->clearRefreshTokenCookie(
                 $this->jsonResponse($response, [
                     'status'         => 'success',
                     'message'        => 'تم تسجيل الخروج من جميع الأجهزة بنجاح',
@@ -479,127 +469,19 @@ class AuthHandler extends BaseHandler
         }
     }
 
-    // ── Cookie configuration ──────────────────────────────────────────────────
-    // Centralised so login, refresh, and logout all use identical settings.
-    private function getRefreshCookiePath(): string
-    {
-        $basePath = trim((string) ($_ENV['APP_BASE_PATH'] ?? getenv('APP_BASE_PATH') ?? '/api/v1'));
-        $basePath = trim($basePath, '/');
-
-        if ($basePath === '') {
-            return '/';
-        }
-
-        $cookiePath = '/' . $basePath;
-        if (!str_ends_with($cookiePath, '/auth')) {
-            $cookiePath .= '/auth';
-        }
-
-        return $cookiePath;
-    }
-
-    private function setRefreshTokenCookie(Response $response, string $token): Response
-    {
-        $secure   = ($_ENV['HTTPS_ENFORCEMENT_ENABLED'] ?? 'false') === 'true' ? '; Secure' : '';
-        $sameSite = '; SameSite=Strict';
-        $path     = '; Path=' . $this->getRefreshCookiePath();
-        $maxAge   = '; Max-Age=' . $this->refreshTokenExpiry;
-        $httpOnly = '; HttpOnly';
-
-        return $response->withAddedHeader(
-            'Set-Cookie',
-            'refresh_token=' . urlencode($token) . $httpOnly . $secure . $sameSite . $path . $maxAge
-        );
-    }
-
-    private function clearRefreshTokenCookie(Response $response): Response
-    {
-        $secure   = ($_ENV['HTTPS_ENFORCEMENT_ENABLED'] ?? 'false') === 'true' ? '; Secure' : '';
-        $sameSite = '; SameSite=Strict';
-        $path     = '; Path=' . $this->getRefreshCookiePath();
-
-        return $response->withAddedHeader(
-            'Set-Cookie',
-            'refresh_token=; HttpOnly' . $secure . $sameSite . $path . '; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT'
-        );
-    }
-
-    /**
-     * Extract refresh token — cookie first, body as fallback.
-     *
-     * Cookie mode is the secure default (HttpOnly, SameSite=Strict).
-     * Body fallback supports legacy clients and the transition period.
-     */
+    /** Read the refresh token from its cookie, falling back to the request body for legacy clients. */
     private function extractRefreshToken(Request $request): string
     {
-        // 1. Try HttpOnly cookie (preferred — not accessible to JS)
         $cookies = $request->getCookieParams();
         if (!empty($cookies['refresh_token'])) {
             return urldecode((string) $cookies['refresh_token']);
         }
 
-        // 2. Fallback: body (legacy / transition period)
         $data = $request->getParsedBody();
         return (string) ($data['refresh_token'] ?? '');
     }
 
-    private function generateAccessToken(array $user): string
-    {
-        $permissions = $this->getPermissionsForUser((int) $user['id']);
-        $jti = bin2hex(random_bytes(16));
-
-        $payload = [
-            'user_id'    => (int) $user['id'],
-            'username'   => $user['username'],
-            'role_id'    => (int) $user['role_id'],
-            'role'       => $this->mapRoleName((int) $user['role_id']),
-            'isAdmin'    => $this->isAdmin((int) $user['role_id']),
-            'tenant_id'  => (int) $user['tenant_id'],
-            'branch_id'  => isset($user['branch_id']) ? (int) $user['branch_id'] : null,
-            'is_owner'   => (int) ($user['is_owner'] ?? 0),
-            'permissions' => $permissions,
-            'jti'        => $jti,
-            'iat'        => time(),
-            'exp'        => time() + $this->tokenExpiry,
-            'iss'        => $_SERVER['HTTP_HOST'] ?? 'erp-system',
-            'type'       => 'access'
-        ];
-
-        return JWT::encode($payload, $this->jwtKey, 'HS256');
-    }
-
-    /**
-     * Public wrapper for generateAccessToken — used by EmailVerificationHandler
-     * to issue an auto-login token after email verification.
-     */
-    public function generateAccessTokenPublic(array $user): string
-    {
-        return $this->generateAccessToken($user);
-    }
-
-    private function generateRefreshToken(int $userId): string
-    {
-        $payload = [
-            'user_id' => $userId,
-            'jti' => bin2hex(random_bytes(16)),
-            'iat' => time(),
-            'exp' => time() + $this->refreshTokenExpiry,
-            'iss' => $_SERVER['HTTP_HOST'] ?? 'erp-system',
-            'type' => 'refresh'
-        ];
-
-        return JWT::encode($payload, $this->jwtRefreshSecret, 'HS256');
-    }
-
-    private function storeRefreshToken(int $userId, string $token): void
-    {
-        $stmt = $this->db->prepare("
-            INSERT INTO refresh_tokens (user_id, token, expires_at)
-            VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))
-        ");
-        $stmt->execute([$userId, $token, $this->refreshTokenExpiry]);
-    }
-
+    /** Mark a stored refresh token as revoked. */
     private function revokeRefreshToken(string $token): void
     {
         $stmt = $this->db->prepare("
@@ -610,6 +492,7 @@ class AuthHandler extends BaseHandler
         $stmt->execute([$token]);
     }
 
+    /** Record a login attempt; logging failures are reported without interrupting authentication. */
     private function recordLoginAttempt(string $username, bool $success, string $ip): void
     {
         try {
@@ -623,279 +506,4 @@ class AuthHandler extends BaseHandler
         }
     }
 
-    private function mapRoleName(int $roleId): string
-    {
-        try {
-            $stmt = $this->db->prepare("SELECT name FROM roles WHERE id = ? LIMIT 1");
-            $stmt->execute([$roleId]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if ($row && !empty($row['name'])) {
-                return (string) $row['name'];
-            }
-        } catch (\Throwable $e) {
-            // fallback below
-        }
-
-        $roles = [
-            1 => 'super_admin',
-            2 => 'admin',
-            3 => 'manager',
-            4 => 'cashier',
-            5 => 'inventory_clerk',
-            6 => 'finance_officer',
-        ];
-
-        return $roles[$roleId] ?? 'user';
-    }
-
-    private function isAdmin(int $roleId): bool
-    {
-        return in_array($roleId, [1, 2], true);
-    }
-
-    private function getPermissionsForUser(int $userId): array
-    {
-        try {
-            $stmt = $this->db->prepare("
-                SELECT DISTINCT p.name
-                FROM users u
-                JOIN role_permissions rp
-                  ON rp.role_id = u.role_id
-                  OR rp.role_id IN (
-                      SELECT ur.role_id
-                      FROM users_role ur
-                      WHERE ur.user_id = u.id
-                        AND (ur.tenant_id = u.tenant_id OR ur.tenant_id IS NULL)
-                  )
-                JOIN roles r ON r.id = rp.role_id
-                JOIN permissions p ON p.id = rp.permission_id
-                WHERE u.id = ?
-                  AND (
-                      r.tenant_id = u.tenant_id
-                      OR (r.tenant_id IS NULL AND r.is_system_role = 1)
-                  )
-            ");
-            $stmt->execute([$userId]);
-
-            return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to fetch permissions for user', [
-                'user_id' => $userId,
-                'message' => $e->getMessage()
-            ]);
-            return [];
-        }
-    }
-
-    // =========================================================================
-    // PUBLIC WRAPPERS FOR EXTERNAL HANDLERS
-    // =========================================================================
-
-    /**
-     * Generate refresh token (public wrapper for EmailVerificationHandler)
-     */
-    public function generateRefreshTokenPublic(int $userId): string
-    {
-        return $this->generateRefreshToken($userId);
-    }
-
-    /**
-     * Store refresh token (public wrapper for EmailVerificationHandler)
-     */
-    public function storeRefreshTokenPublic(int $userId, string $token): void
-    {
-        $this->storeRefreshToken($userId, $token);
-    }
-
-    /**
-     * Set refresh token cookie (public wrapper for EmailVerificationHandler)
-     */
-    public function setRefreshTokenCookiePublic(Response $response, string $token): Response
-    {
-        return $this->setRefreshTokenCookie($response, $token);
-    }
-
-    /**
-     * Setup 2FA for user
-     */
-    public function setup2FA(Request $request, Response $response): Response
-    {
-        try {
-            $data = $request->getParsedBody();
-            $data = is_array($data) ? $data : [];
-
-            $jwtUserId = $this->extractUserId($request);
-            if (!$jwtUserId) {
-                return $this->errorResponse($response, 'Unauthorized', 401);
-            }
-
-            if (!isset($data['user_id'])) {
-                return $this->errorResponse($response, 'User ID is required', 400);
-            }
-
-            $requestUserId = (int) $data['user_id'];
-
-            if ($requestUserId !== $jwtUserId) {
-                return $this->errorResponse($response, 'أنت غير مصرح بإعداد 2FA لمستخدم آخر', 403);
-            }
-
-            $secret = $this->ga->createSecret();
-            $qrCodeUrl = $this->ga->getQRCodeGoogleUrl('SmartSys', $secret);
-
-            $this->logger->info('2FA setup initiated', ['user_id' => $requestUserId]);
-
-            return $this->successResponse($response, [
-                'secret_key' => $secret,
-                'qr_code' => $qrCodeUrl
-            ], 200);
-        } catch (Exception $e) {
-            $this->logger->error('2FA setup error', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return $this->errorResponse($response, 'فشل إعداد المصادقة الثنائية. يرجى المحاولة مرة أخرى.', 400);
-        }
-    }
-
-    public function verify2FA(Request $request, Response $response): Response
-    {
-        try {
-            $data = $request->getParsedBody();
-            $data = is_array($data) ? $data : [];
-
-            if (!isset($data['user_id'], $data['code'])) {
-                return $this->errorResponse($response, 'User ID and verification code are required', 400);
-            }
-
-            // ✅ Security: verify caller owns this user_id
-            $jwtUserId = $this->extractUserId($request);
-            if (!$jwtUserId) {
-                return $this->errorResponse($response, 'Unauthorized', 401);
-            }
-
-            $requestUserId = (int) $data['user_id'];
-            if ($requestUserId !== $jwtUserId) {
-                $this->logger->warning('2FA verify: user_id mismatch', [
-                    'jwt_user_id'     => $jwtUserId,
-                    'request_user_id' => $requestUserId,
-                ]);
-                return $this->errorResponse($response, 'أنت غير مصرح بالتحقق من 2FA لمستخدم آخر', 403);
-            }
-
-            $userId = $requestUserId;
-            $code   = (string) $data['code'];
-
-            // Security: Scope query by tenant_id to prevent cross-tenant reads
-            $tenantId = $this->extractTenantId($request);
-            $stmt = $this->db->prepare("
-                SELECT two_fa_secret
-                FROM users
-                WHERE id = ? AND tenant_id = ?
-                LIMIT 1
-            ");
-            $stmt->execute([$userId, $tenantId]);
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$user || empty($user['two_fa_secret'])) {
-                return $this->errorResponse($response, 'Invalid verification code', 401);
-            }
-
-            $isValid = $this->ga->verifyCode((string) $this->twoFaEncryption->decrypt($user['two_fa_secret']), $code);
-
-            if (!$isValid) {
-                $this->logger->warning('Invalid 2FA code attempt', ['user_id' => $userId]);
-                return $this->errorResponse($response, 'Invalid verification code', 401);
-            }
-
-            $this->logger->info('2FA verification successful', ['user_id' => $userId]);
-
-            return $this->jsonResponse($response, [
-                'status' => 'success',
-                'message' => '2FA verification successful'
-            ]);
-        } catch (Exception $e) {
-            $this->logger->error('2FA verification error', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return $this->errorResponse($response, 'فشل التحقق من المصادقة الثنائية. تأكد من صحة الرمز.', 400);
-        }
-    }
-
-    /**
-     * Enable 2FA for user
-     */
-    public function enable2FA(Request $request, Response $response): Response
-    {
-        try {
-            $data = $request->getParsedBody();
-            $data = is_array($data) ? $data : [];
-
-            if (!isset($data['user_id'], $data['code'], $data['secret'])) {
-                return $this->errorResponse($response, 'User ID, code and secret are required', 400);
-            }
-
-            // ✅ Security: verify caller owns this user_id
-            $jwtUserId = $this->extractUserId($request);
-            if (!$jwtUserId) {
-                return $this->errorResponse($response, 'Unauthorized', 401);
-            }
-
-            $requestUserId = (int) $data['user_id'];
-            if ($requestUserId !== $jwtUserId) {
-                $this->logger->warning('2FA enable: user_id mismatch', [
-                    'jwt_user_id'     => $jwtUserId,
-                    'request_user_id' => $requestUserId,
-                ]);
-                return $this->errorResponse($response, 'أنت غير مصرح بتفعيل 2FA لمستخدم آخر', 403);
-            }
-
-            $userId   = $requestUserId;
-            $code     = (string) $data['code'];
-            $secret   = (string) $data['secret'];
-            $tenantId = $this->extractTenantId($request);
-
-            $isValid = $this->ga->verifyCode($secret, $code);
-
-            if (!$isValid) {
-                $this->logger->warning('Invalid code for 2FA enable', ['user_id' => $userId]);
-                return $this->errorResponse($response, 'Invalid verification code', 400);
-            }
-
-            // Security: WHERE includes tenant_id to prevent cross-tenant updates
-            // Encrypt secret before storing for security
-            $encryptedSecret = $this->twoFaEncryption->encrypt($secret);
-            $stmt = $this->db->prepare("
-                UPDATE users
-                SET two_fa_secret = ?, two_fa_enabled = 1
-                WHERE id = ? AND tenant_id = ?
-            ");
-            $stmt->execute([$encryptedSecret, $userId, $tenantId]);
-
-            if ($stmt->rowCount() === 0) {
-                // No row updated — user doesn't exist in this tenant
-                $this->logger->warning('2FA enable: no matching user in tenant', [
-                    'user_id'   => $userId,
-                    'tenant_id' => $tenantId,
-                ]);
-                return $this->errorResponse($response, 'User not found', 404);
-            }
-
-            $this->logger->info('2FA enabled', ['user_id' => $userId]);
-
-            return $this->jsonResponse($response, [
-                'status'  => 'success',
-                'message' => '2FA enabled successfully',
-            ]);
-        } catch (Exception $e) {
-            $this->logger->error('2FA enable error', [
-                'message' => $e->getMessage(),
-                'trace'   => $e->getTraceAsString(),
-            ]);
-
-            return $this->errorResponse($response, 'فشل تفعيل المصادقة الثنائية. يرجى المحاولة مرة أخرى.', 400);
-        }
-    }
 }

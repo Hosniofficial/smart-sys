@@ -14,8 +14,6 @@ const alertState = reactive({
   reject: null
 })
 
-// Alert component reference
-let alertComponent = null
 // Track auto-close timer to cancel it when a new alert opens
 let autoCloseTimer = null
 
@@ -24,14 +22,6 @@ let autoCloseTimer = null
  * Provides different types of alerts: success, warning, error, info, and confirm
  */
 class AlertService {
-  /**
-   * Register the alert component instance
-   * @param {Object} component - Alert component instance
-   */
-  static registerComponent(component) {
-    alertComponent = component
-  }
-
   /**
    * Show a success alert
    * @param {string} message - Alert message
@@ -208,13 +198,6 @@ class AlertService {
     alertState.resolve = null
     alertState.reject = null
     alertState.isVisible = false
-  }
-
-  /**
-   * Get current alert state (for component binding)
-   */
-  static getState() {
-    return alertState
   }
 
   /**

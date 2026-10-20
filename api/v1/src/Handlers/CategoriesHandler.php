@@ -9,6 +9,12 @@ use App\Services\MonologHandler;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
+/**
+ * Manages tenant categories within branch scope.
+ *
+ * Uses PDO for category, branch, and product queries; app/routes/categories.php
+ * applies the category permissions to each endpoint.
+ */
 class CategoriesHandler extends BaseHandler
 {
     public function __construct(PDO $db)
@@ -17,9 +23,7 @@ class CategoriesHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('categories');
     }
 
-    // =====================================================================
-    // GET ALL — branch-specific
-    // =====================================================================
+    /** List categories for the requested branch in the authenticated tenant. */
     public function getAll(Request $request, Response $response): Response
     {
         try {
@@ -61,81 +65,7 @@ class CategoriesHandler extends BaseHandler
         }
     }
 
-    // =====================================================================
-    // GET SINGLE — with branch-specific product quantities
-    // =====================================================================
-    public function get(Request $request, Response $response, array $args): Response
-    {
-        try {
-            $tenantId = $this->extractTenantId($request);
-            if (!$tenantId) {
-                return $this->errorResponse($response, 'غير مصرح', 403);
-            }
-
-            $categoryId = isset($args['id']) ? (int)$args['id'] : 0;
-            if ($categoryId <= 0) {
-                return $this->errorResponse($response, 'غير موجود', 404);
-            }
-
-            $branchId = $this->getValidatedBranchId($request, (int)$tenantId);
-
-            $stmt = $this->db->prepare('
-                SELECT *
-                FROM categories
-                WHERE id = ? AND branch_id = ? AND tenant_id = ?
-                LIMIT 1
-            ');
-            $stmt->execute([$categoryId, $branchId, $tenantId]);
-            $category = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$category) {
-                return $this->errorResponse($response, 'غير موجود', 404);
-            }
-
-            // Stock filtered to THIS branch only
-            $stmt = $this->db->prepare('
-                SELECT p.*,
-                       COALESCE(SUM(bp.quantity), 0) AS quantity
-                FROM products p
-                LEFT JOIN branch_products bp
-                    ON p.id = bp.product_id
-                   AND bp.branch_id = ?
-                   AND bp.tenant_id = p.tenant_id
-                WHERE p.category_id = ?
-                  AND p.active = 1
-                  AND p.tenant_id = ?
-                GROUP BY p.id
-                ORDER BY p.name
-            ');
-            $stmt->execute([$branchId, $categoryId, $tenantId]);
-            $category['products'] = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            $this->logger->info('Category retrieved', [
-                'tenant_id'   => $tenantId,
-                'branch_id'   => $branchId,
-                'category_id' => $categoryId,
-            ]);
-
-            return $this->successResponse($response, $category, 200);
-
-        } catch (\InvalidArgumentException $e) {
-            return $this->errorResponse($response, 'غير مصرح', 403);
-        } catch (\RuntimeException $e) {
-            return $this->errorResponse($response, 'غير موجود', 404);
-        } catch (\Throwable $e) {
-            $this->logger->error('Error retrieving category', [
-                'error'       => $e->getMessage(),
-                'branch_id'   => $branchId ?? null,
-                'tenant_id'   => $tenantId ?? null,
-                'category_id' => $args['id'] ?? null,
-            ]);
-            return $this->errorResponse($response, 'خطأ في الاسترجاع', 500);
-        }
-    }
-
-    // =====================================================================
-    // CREATE
-    // =====================================================================
+    /** Create a category under a tenant branch, optionally attaching a same-branch parent. */
     public function create(Request $request, Response $response): Response
     {
         try {
@@ -165,7 +95,6 @@ class CategoriesHandler extends BaseHandler
                 $this->assertCategoryExistsInBranch($parentId, $branchId, (int)$tenantId);
             }
 
-            // Duplicate name guard
             $stmt = $this->db->prepare('
                 SELECT id FROM categories
                 WHERE name = ? AND branch_id = ? AND tenant_id = ?
@@ -214,193 +143,11 @@ class CategoriesHandler extends BaseHandler
         }
     }
 
-    // =====================================================================
-    // UPDATE
-    // =====================================================================
-    public function update(Request $request, Response $response, array $args): Response
-    {
-        try {
-            $data = $request->getParsedBody();
-            $data = is_array($data) ? $data : [];
-
-            $tenantId = $this->extractTenantId($request);
-            if (!$tenantId) {
-                return $this->errorResponse($response, 'غير مصرح', 403);
-            }
-
-            $categoryId = isset($args['id']) ? (int)$args['id'] : 0;
-            if ($categoryId <= 0) {
-                return $this->errorResponse($response, 'غير موجود', 404);
-            }
-
-            $branchId = $this->getValidatedBranchId($request, (int)$tenantId);
-            $this->assertCategoryExistsInBranch($categoryId, $branchId, (int)$tenantId);
-
-            // Validate name if provided
-            if (isset($data['name'])) {
-                $name = trim((string)$data['name']);
-                if ($name === '') {
-                    return $this->errorResponse($response, 'غير موجود', 404);
-                }
-
-                $stmt = $this->db->prepare('
-                    SELECT id FROM categories
-                    WHERE name = ? AND id != ? AND branch_id = ? AND tenant_id = ?
-                    LIMIT 1
-                ');
-                $stmt->execute([$name, $categoryId, $branchId, $tenantId]);
-                if ($stmt->fetch()) {
-                    return $this->errorResponse($response, 'غير موجود', 404);
-                }
-            }
-
-            $updates = [];
-            $params  = [];
-
-            if (isset($data['name'])) {
-                $updates[] = 'name = ?';
-                $params[]  = trim((string)$data['name']);
-            }
-
-            // array_key_exists allows explicit null to detach parent
-            if (array_key_exists('parent_id', $data)) {
-                $parentId = ($data['parent_id'] === '' || $data['parent_id'] === null)
-                    ? null
-                    : (int)$data['parent_id'];
-
-                if ($parentId === $categoryId) {
-                    return $this->errorResponse($response, 'غير موجود', 404);
-                }
-
-                if ($parentId !== null) {
-                    $this->assertCategoryExistsInBranch($parentId, $branchId, (int)$tenantId);
-                }
-
-                $updates[] = 'parent_id = ?';
-                $params[]  = $parentId;
-            }
-
-            if (empty($updates)) {
-                return $this->errorResponse($response, 'غير موجود', 404);
-            }
-
-            $params[] = $categoryId;
-            $params[] = $branchId;
-            $params[] = $tenantId;
-
-            $stmt = $this->db->prepare('
-                UPDATE categories
-                SET ' . implode(', ', $updates) . '
-                WHERE id = ? AND branch_id = ? AND tenant_id = ?
-            ');
-            $stmt->execute($params);
-
-            $this->logger->info('Category updated', [
-                'tenant_id'   => $tenantId,
-                'branch_id'   => $branchId,
-                'category_id' => $categoryId,
-            ]);
-
-            return $this->successResponse($response, ['message' => 'Category updated successfully'], 200);
-
-        } catch (\InvalidArgumentException $e) {
-            return $this->errorResponse($response, 'غير مصرح', 403);
-        } catch (\RuntimeException $e) {
-            return $this->errorResponse($response, 'غير موجود', 404);
-        } catch (\Throwable $e) {
-            $this->logger->error('Error updating category', [
-                'error'       => $e->getMessage(),
-                'branch_id'   => $branchId ?? null,
-                'tenant_id'   => $tenantId ?? null,
-                'category_id' => $args['id'] ?? null,
-            ]);
-            return $this->errorResponse($response, 'خطأ في الاسترجاع', 500);
-        }
-    }
-
-    // =====================================================================
-    // DELETE (guarded by products + children check)
-    // =====================================================================
-    public function delete(Request $request, Response $response, array $args): Response
-    {
-        try {
-            $tenantId = $this->extractTenantId($request);
-            if (!$tenantId) {
-                return $this->errorResponse($response, 'غير مصرح', 403);
-            }
-
-            $categoryId = isset($args['id']) ? (int)$args['id'] : 0;
-            if ($categoryId <= 0) {
-                return $this->errorResponse($response, 'غير موجود', 404);
-            }
-
-            $branchId = $this->getValidatedBranchId($request, (int)$tenantId);
-            $this->assertCategoryExistsInBranch($categoryId, $branchId, (int)$tenantId);
-
-            // Guard: products
-            $stmt = $this->db->prepare('
-                SELECT COUNT(*) FROM products
-                WHERE category_id = ? AND tenant_id = ?
-            ');
-            $stmt->execute([$categoryId, $tenantId]);
-            if ((int)$stmt->fetchColumn() > 0) {
-                return $this->errorResponse(
-                    $response,
-                    'غير موجود',
-                    404
-                );
-            }
-
-            // Guard: child categories
-            $stmt = $this->db->prepare('
-                SELECT COUNT(*) FROM categories
-                WHERE parent_id = ? AND branch_id = ? AND tenant_id = ?
-            ');
-            $stmt->execute([$categoryId, $branchId, $tenantId]);
-            if ((int)$stmt->fetchColumn() > 0) {
-                return $this->errorResponse(
-                    $response,
-                    'غير موجود',
-                    404
-                );
-            }
-
-            $stmt = $this->db->prepare('
-                DELETE FROM categories
-                WHERE id = ? AND branch_id = ? AND tenant_id = ?
-            ');
-            $stmt->execute([$categoryId, $branchId, $tenantId]);
-
-            $this->logger->info('Category deleted', [
-                'tenant_id'   => $tenantId,
-                'branch_id'   => $branchId,
-                'category_id' => $categoryId,
-            ]);
-
-            return $this->successResponse($response, ['message' => 'Category deleted successfully'], 200);
-
-        } catch (\InvalidArgumentException $e) {
-            return $this->errorResponse($response, 'غير مصرح', 403);
-        } catch (\RuntimeException $e) {
-            return $this->errorResponse($response, 'غير موجود', 404);
-        } catch (\Throwable $e) {
-            $this->logger->error('Error deleting category', [
-                'error'       => $e->getMessage(),
-                'branch_id'   => $branchId ?? null,
-                'tenant_id'   => $tenantId ?? null,
-                'category_id' => $args['id'] ?? null,
-            ]);
-            return $this->errorResponse($response, 'خطأ في الاسترجاع', 500);
-        }
-    }
-
-    // =====================================================================
-    // PRIVATE HELPERS
-    // =====================================================================
-
     /**
-     * Extracts and validates branch_id from query params, checks ownership.
-     * Throws InvalidArgumentException (missing) or RuntimeException (not found).
+     * Read branch_id from query parameters and confirm it belongs to the tenant.
+     *
+     * @throws \InvalidArgumentException If branch_id is missing or invalid.
+     * @throws \RuntimeException If the branch does not belong to the tenant.
      */
     private function getValidatedBranchId(Request $request, int $tenantId): int
     {
@@ -414,10 +161,7 @@ class CategoriesHandler extends BaseHandler
         return $this->assertBranchBelongsToTenant($branchId, $tenantId);
     }
 
-    /**
-     * Confirms branch belongs to tenant. Returns branchId on success.
-     * Throws RuntimeException if not found.
-     */
+    /** Confirm branch ownership and return its ID. */
     private function assertBranchBelongsToTenant(int $branchId, int $tenantId): int
     {
         $stmt = $this->db->prepare('
@@ -434,10 +178,7 @@ class CategoriesHandler extends BaseHandler
         return $branchId;
     }
 
-    /**
-     * Confirms category exists within the given branch + tenant.
-     * Throws RuntimeException if not found.
-     */
+    /** Confirm category ownership within the specified branch and tenant. */
     private function assertCategoryExistsInBranch(int $categoryId, int $branchId, int $tenantId): void
     {
         $stmt = $this->db->prepare('

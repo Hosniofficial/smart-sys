@@ -11,8 +11,8 @@
       <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
-        title="ترصيد المخزون الأولي"
-        description="إعداد الكميات والتكاليف الافتتاحية للمنتجات عبر كافة الفروع."
+        title="ترحيل الرصيد الافتتاحي"
+        description="سجّل الكميات والتكاليف الافتتاحية للأصناف، وحدّد أرصدتها في كل فرع عند بدء استخدام النظام."
         :branches="[]"
         :selectedBranch="null"
       >
@@ -72,7 +72,7 @@
           <div class="absolute top-0 left-0 w-32 h-32 bg-white/5 rounded-full -translate-x-12 -translate-y-12"></div>
           <div class="flex items-center gap-6 relative z-10">
             <div>
-              <p class="text-[9px] font-bold text-white/30 uppercase tracking-[0.2em] mb-1">الكمية الإجمالية للسجل</p>
+              <p class="text-[9px] font-bold text-white/30 uppercase tracking-[0.2em] mb-1">إجمالي الكميات المسجلة</p>
               <p class="text-2xl font-bold font-mono tracking-tighter leading-none text-blue-400">{{ formatNumber(totalQuantity) }}</p>
             </div>
             <div class="h-10 w-px bg-white/10 mx-2"></div>
@@ -378,7 +378,7 @@ import { useProductStore } from '@/stores/product/productStore'
 import apiClient from '@/config/axios'
 import ExcelJS from 'exceljs'
 import AlertService from '@/services/AlertService'
-import { useBranchStore } from '@/stores/branch'
+import { useBranchStore } from '@/stores/branch/branchStore'
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
 
@@ -681,7 +681,7 @@ function validateBulkText() {
     if (parts.length < 5) { errors.push(`صف ${i + 1}: يجب أن يحتوي على 5-6 حقول`); continue }
     const qty = parseFloat(parts[3])
     const cst = parseFloat(parts[4])
-    if (isNaN(qty) || qty < 0) { errors.push(`صف ${i + 1}: الكمية يجب أن تكون رقماً موجباً`); continue }
+    if (isNaN(qty) || qty < 0) { errors.push(`صف ${i + 1}: يجب أن تكون الكمية رقمًا موجبًا أو صفرًا`); continue }
     if (isNaN(cst) || cst < 0) { errors.push(`صف ${i + 1}: التكلفة يجب أن تكون رقماً موجباً`); continue }
     validRows++
   }
@@ -1029,13 +1029,12 @@ async function commit() {
         detail: {
           timestamp: new Date().toISOString(),
           itemCount: items.value.length,
-          message: 'تم ترصيد الرصيد الافتتاحي بنجاح'
+          message: 'تم ترحيل الرصيد الافتتاحي بنجاح'
         }
       })
       window.dispatchEvent(event)
       console.log('📡 openingBalancePosted event emitted', { itemCount: items.value.length })
       
-      // ✅ تحديث cache المنتجات في POS (يؤثر على الكميات)
       if (typeof productStore !== 'undefined' && productStore.invalidateCache) {
         productStore.invalidateCache()
       }

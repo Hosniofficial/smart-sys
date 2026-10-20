@@ -5,10 +5,11 @@
       <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
-        title="الرقابة المخزنية"
-        description="متابعة الأرصدة، القيمة المالية، وحركة الأصناف عبر الفروع."
+        title="إدارة المخزون"
+        description="تابع الكميات المتاحة وقيمة المخزون، وراجع حركة الأصناف بين الفروع."
         :branches="branches"
         :selectedBranch="selectedBranch"
+        branch-selection-mode="required"
         @branch-changed="handleBranchChange"
       >
         <template #controls>
@@ -174,7 +175,7 @@
 
                     <td class="px-4 py-4 text-center">
                       <button v-if="item.gl_status === 'draft'" @click="openActivateModal(item)" class="h-7 px-3 text-[10px] font-bold bg-blue-600 text-white rounded hover:bg-blue-700 transition-all">تفعيل</button>
-                      <button v-else-if="item.gl_status === 'active'" @click="openOpeningBalanceModal(item)" class="h-7 px-3 text-[10px] font-bold bg-amber-500 text-white rounded hover:bg-amber-600 transition-all">ترصيد</button>
+                      <button v-else-if="item.gl_status === 'active'" @click="openOpeningBalanceModal(item)" class="h-7 px-3 text-[10px] font-bold bg-amber-500 text-white rounded hover:bg-amber-600 transition-all">ترحيل الرصيد الافتتاحي</button>
                       <i v-else-if="item.gl_status === 'posted'" class="fas fa-check-double text-emerald-500 text-xs"></i>
                     </td>
                   </template>
@@ -183,6 +184,15 @@
                     <div class="flex items-center justify-center gap-1.5">
                       <template v-if="selectedBranch">
                         <button @click="adjustStock(item)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-amber-600 hover:border-amber-200 transition-all flex items-center justify-center shadow-sm"><i class="fas fa-sliders text-[10px]"></i></button>
+                        <button
+                          v-if="canReverseOpeningBalance && item.opening_balance_id && item.opening_balance_has_transaction"
+                          @click="reverseOpeningBalance(item)"
+                          :disabled="reversingOpeningBalanceId === item.id"
+                          title="عكس الرصيد الافتتاحي"
+                          class="w-8 h-8 rounded-lg border border-rose-200 text-rose-500 hover:bg-rose-50 disabled:opacity-50 transition-all flex items-center justify-center shadow-sm"
+                        >
+                          <i :class="reversingOpeningBalanceId === item.id ? 'fas fa-spinner fa-spin' : 'fas fa-rotate-left'" class="text-[10px]"></i>
+                        </button>
                         <button @click="openTransferModal(item)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all flex items-center justify-center shadow-sm"><i class="fas fa-exchange-alt text-[10px]"></i></button>
                       </template>
                       <button @click="viewDetails(item)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center shadow-sm"><i class="fas fa-eye text-[10px]"></i></button>
@@ -312,6 +322,14 @@
 
       <template #footer>
         <button @click="closeDetailsModal" class="px-6 h-10 text-xs font-bold text-slate-500">إغلاق</button>
+        <button
+          v-if="canReverseOpeningBalance && productDetails?.opening_balance_id && productDetails?.opening_balance_has_transaction"
+          @click="reverseOpeningBalance(productDetails)"
+          :disabled="reversingOpeningBalanceId === productDetails.id"
+          class="px-6 h-10 bg-rose-600 text-white rounded-md text-xs font-bold disabled:opacity-50"
+        >
+          {{ reversingOpeningBalanceId === productDetails.id ? 'جارٍ العكس...' : 'عكس الرصيد الافتتاحي' }}
+        </button>
         <button @click="adjustStock(productDetails)" class="px-10 h-10 bg-blue-600 text-white rounded-md text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all">تعديل المخزون</button>
       </template>
     </BaseModal>
@@ -374,13 +392,13 @@
           <span class="text-xl font-bold text-emerald-700 font-mono">{{ formatCurrency((obQuantity || 0) * (obUnitCost || 0)) }}</span>
         </div>
         <div class="p-4 bg-blue-50 rounded-xl border border-blue-100 text-blue-700">
-          <p class="text-xs font-bold flex items-start gap-2"><i class="fas fa-info-circle mt-0.5 shrink-0"></i><span>سيتم إنشاء قيد محاسبي افتتاحي برصيد الكمية والقيمة المالية</span></p>
+          <p class="text-xs font-bold flex items-start gap-2"><i class="fas fa-info-circle mt-0.5 shrink-0"></i><span>سيتم إنشاء قيد محاسبي لإثبات الرصيد الافتتاحي للمخزون من حيث الكمية والقيمة المالية.</span></p>
         </div>
 
         <div class="flex gap-3 pt-2">
           <button type="button" @click="showOpeningBalanceModal = false" class="flex-1 h-10 text-xs font-bold text-slate-500">إلغاء</button>
           <button type="submit" class="flex-2 h-10 bg-emerald-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-emerald-900/20 active:scale-95 flex items-center justify-center gap-2 px-8">
-            <i class="fas fa-check text-xs"></i> ترصيد الآن
+            <i class="fas fa-check text-xs"></i> ترحيل الرصيد الافتتاحي
           </button>
         </div>
       </form>
@@ -403,11 +421,11 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
 import { useRoute } from 'vue-router';
-import { useLoader } from '../../composables/useLoader';
-import { useCompanyCurrency } from '../../composables/useCompanyCurrency';
+import { useLoader } from '@/composables/useLoader';
+import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useToast } from '@/composables/useToast';
 import { useTableFilters } from '@/composables/useTableFilters';
-import getLocalDateISO from '@/utils/date';
+import { getLocalDateISO } from '@/utils';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
@@ -415,9 +433,10 @@ import LoadingButton from '@/components/ui/LoadingButton.vue';
 import AlertService from '@/services/AlertService';
 import { useSessionExemption } from '@/composables/useCashierSessionGuard';
 import { useBranchIsolation } from '@/composables/useBranchIsolation';
+import { useRequiredBranch } from '@/composables/useRequiredBranch';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import { useProductStore } from '@/stores/product/productStore';
 import { useInventoryStore } from '@/stores/inventory/inventoryStore';
 import PageHeader from '@/components/PageHeader.vue';
@@ -434,12 +453,20 @@ const { showLoader, hideLoader } = useLoader();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const { showToast } = useToast();
 const { ensureLoaded: ensureExemptionLoaded, isExempt } = useSessionExemption();
+const { ensureBranchSelected, setRequiredBranch } = useRequiredBranch();
 const { breadcrumb } = useBreadcrumb();
 const authStore = useAuthStore();
+const canReverseOpeningBalance = computed(() => {
+  const permissions = authStore.user?.permissions || [];
+  return authStore.isSuperAdmin
+    || (permissions.includes('inventory.adjust') && permissions.includes('accounting.je.reverse'));
+});
 
 // ✅ Use branchStore directly - single source of truth
 const branches = computed(() => branchStore.branches);
-const selectedBranch = computed(() => branchStore.selectedBranchId);
+const selectedBranch = computed(() => branchIsolation.isExempt.value
+  ? branchStore.selectedBranchId
+  : authStore.user?.branch_id ?? null);
 
 const currentBranchName = computed(() => {
   const branch = branches.value.find(b => b.id === selectedBranch.value);
@@ -469,13 +496,12 @@ const isLoadingDetails = ref(false);
 const showPickerPanel = ref(false);
 const pickerSearch = ref('');
 
-// ─── GL Integration State (moved from ProductManagement) ─────────────────────
-const glProductStatuses = ref({});
 const showActivateModal = ref(false);
 const showOpeningBalanceModal = ref(false);
 const selectedProductForActivation = ref(null);
 const obQuantity = ref(0);
 const obUnitCost = ref(0);
+const reversingOpeningBalanceId = ref(null);
 
 // ─── Transfer State (moved from BranchInventory) ─────────────────────────────
 const showTransferModal = ref(false);
@@ -556,6 +582,10 @@ const paginatedInventory = computed(() => {
 
 // ─── Summary Loader ───────────────────────────────────────────────────
 const loadSummary = async (force = false) => {
+  if (!selectedBranch.value) {
+    stats.value = { totalProducts: 0, totalValue: 0, lowStock: 0, aboutToFinish: 0, expiringSoon: 0 };
+    return;
+  }
   const res = await inventoryStore.fetchInventorySummary({
     branchId: selectedBranch.value || null,
     force
@@ -573,7 +603,7 @@ const loadSummary = async (force = false) => {
 
 // ─── Branch Change Handler ───────────────────────────────────────────────────
 const handleBranchChange = (newBranchId) => {
-  branchStore.setSelectedBranch(newBranchId);
+  if (!setRequiredBranch(newBranchId)) return;
   // Reload data with new branch
   Promise.all([
     loadInventory(true),
@@ -595,18 +625,39 @@ const loadInventory = async (force = false) => {
         showToast(e.message || 'لم يتم تعيين مخزن', 'warning');
         return;
       }
-    } else if (selectedBranch.value) {
+    } else {
+      if (!selectedBranch.value) {
+        inventory.value = [];
+        products.value = [];
+        return;
+      }
       params.branchId = String(selectedBranch.value);
     }
 
     const response = await productStore.fetchProducts(params);
     if (response.status === 'success') {
       const data = response.data?.items || response.data || [];
+      const openingBalancesResponse = await productStore.fetchActiveOpeningBalances(selectedBranch.value);
+      if (openingBalancesResponse.status !== 'success') {
+        showToast(openingBalancesResponse.message || 'تعذر تحميل حالة الأرصدة الافتتاحية.', 'warning');
+      }
+      const openingBalancesByProduct = new Map(
+        (openingBalancesResponse.data || []).map(opening => [String(opening.product_id), opening])
+      );
       
       // Map new API response fields to component properties
       // New API returns: current_quantity, inventory_status, gl_status, profit_margin_percent, profit_markup_percent
       products.value  = data.map(p => ({
         ...p,
+        ...(openingBalancesByProduct.has(String(p.id))
+          ? {
+              opening_balance_id: openingBalancesByProduct.get(String(p.id)).opening_balance_id,
+              opening_quantity: openingBalancesByProduct.get(String(p.id)).opening_quantity,
+              opening_unit_cost: openingBalancesByProduct.get(String(p.id)).opening_unit_cost,
+              opening_balance_has_transaction: Boolean(Number(openingBalancesByProduct.get(String(p.id)).has_inventory_transaction)),
+              opening_balance_has_journal: Boolean(Number(openingBalancesByProduct.get(String(p.id)).has_journal_entry)),
+            }
+          : { opening_balance_id: null }),
         id: p.id,
         name: p.name,
         barcode: p.barcode,
@@ -634,8 +685,6 @@ const loadInventory = async (force = false) => {
     await AlertService.error('حدث خطأ أثناء تحميل بيانات المخزون: ' + (error.response?.data?.message || error.message), 'خطأ في التحميل');
   }
 };
-
-const loadProducts = () => loadInventory();
 
 // ─── Price Logic (UPDATED to use API purchase_price) ──────────────────────────────────────────────────
 const getPrice = item => {
@@ -677,6 +726,34 @@ const handleStockAdjusted = async () => {
   productStore.invalidateCache();
 };
 
+const reverseOpeningBalance = async (item) => {
+  if (!canReverseOpeningBalance.value || !selectedBranch.value || !item?.id) return;
+
+  const confirmed = await AlertService.confirm(
+    `${item.opening_balance_has_journal ? 'سيتم عكس القيد المحاسبي وحركة المخزون' : 'سيتم عكس حركة المخزون فقط لعدم وجود قيد محاسبي مرحّل'} للرصيد الافتتاحي الخاص بـ "${item.name}" في فرع "${currentBranchName.value}". لا يُسمح بالعكس عند وجود أي حركة مخزون لاحقة أو رصيد محاسبي غير مطابق، وسيبقى سجل المنتج محفوظًا. هل تريد المتابعة؟`
+  );
+  if (!confirmed) return;
+
+  reversingOpeningBalanceId.value = item.id;
+  try {
+    const result = await productStore.reverseOpeningBalance({
+      productId: item.id,
+      branchId: selectedBranch.value,
+    });
+    if (result.status !== 'success') {
+      throw new Error(result.message || 'تعذر عكس الرصيد الافتتاحي.');
+    }
+
+    showToast(result.message || 'تم عكس الرصيد الافتتاحي مع الاحتفاظ بسجل المنتج.', 'success');
+    productStore.invalidateCacheForBranch(selectedBranch.value);
+    await Promise.all([loadInventory(true), loadSummary(true)]);
+  } catch (error) {
+    showToast(error?.message || 'تعذر عكس الرصيد الافتتاحي.', 'error');
+  } finally {
+    reversingOpeningBalanceId.value = null;
+  }
+};
+
 // ─── Transfer Handlers (moved from BranchInventory) ──────────────────────────
 const openTransferModal = (item) => {
   if (!selectedBranch.value) {
@@ -698,7 +775,7 @@ const submitTransfer = async () => {
     return;
   }
   if (transferData.value.quantity > (transferItem.value?.quantity || 0)) {
-    showToast('الكمية المطلوبة تتجاوز المتوفر في المخزون', 'warning');
+    showToast('الكمية المطلوبة تتجاوز الكمية المتاحة في المخزون.', 'warning');
     return;
   }
   isTransferring.value = true;
@@ -726,27 +803,6 @@ const submitTransfer = async () => {
   }
 };
 
-// ─── GL Integration (DEPRECATED - kept for future reference) ─────────────────
-// NOTE: glProductStatuses, getGLStatusKey, getProductCostBasis, and loadProductGLStatuses
-// are no longer actively used. GL status is now provided by the API directly via item.gl_status.
-// These functions are kept for reference only in case GL-specific logic is needed in the future.
-
-const getGLStatusKey = (productId) => {
-  // DEPRECATED: Use item.gl_status from API instead
-  return 'draft'; // placeholder
-};
-
-const getProductCostBasis = (productId) => {
-  // DEPRECATED: Use item.purchase_price from API instead
-  return 0; // placeholder
-};
-
-const loadProductGLStatuses = async (branchId, force = false) => {
-  // DEPRECATED: GL status now comes from API in loadInventory()
-  // This function is kept for reference but is no longer called
-  if (!branchId) return;
-  console.debug('loadProductGLStatuses called but deprecated - GL status comes from API now');
-};
 
 const openActivateModal = (item) => {
   // Ensure a branch is selected
@@ -816,7 +872,7 @@ const handleOpeningBalanceSubmit = async () => {
     });
 
     if (response.status === 'success') {
-      showToast('تم ترصيد الرصيد الافتتاحي وإنشاء قيود محاسبية بنجاح', 'success');
+      showToast('تم ترحيل الرصيد الافتتاحي وإنشاء القيود المحاسبية بنجاح', 'success');
       showOpeningBalanceModal.value = false;
       obQuantity.value = 0;
       obUnitCost.value = 0;
@@ -825,11 +881,11 @@ const handleOpeningBalanceSubmit = async () => {
       // ✅ تحديث cache المنتجات في POS
       productStore.invalidateCache();
     } else {
-      showToast(response.message || 'فشل الترصيد', 'error');
+      showToast(response.message || 'فشل ترحيل الرصيد الافتتاحي', 'error');
     }
   } catch (e) {
     console.error('Opening balance error:', e);
-    showToast(e.response?.data?.message || e.message || 'فشل الترصيد', 'error');
+    showToast(e.response?.data?.message || e.message || 'فشل ترحيل الرصيد الافتتاحي', 'error');
   }
 };
 
@@ -911,9 +967,6 @@ const getQuantityClass = item => {
     'N/A': 'bg-slate-50 text-slate-600'            // ⚪ Gray
   }[status] || 'bg-slate-50 text-slate-600';
 };
-
-const getAdjustmentTypeText = type =>
-  ({ add: 'إضافة وارد', subtract: 'خصم / سحب', set: 'تعيين يدوي' }[type] || type);
 
 const getMovementTypeText = (type) => ({
   out:             'بيع',
@@ -1023,7 +1076,7 @@ const checkPendingOpeningBalance = async () => {
         await handleOpeningBalancePosted({
           detail: {
             ...data,
-            message: 'تم ترصيد الرصيد الافتتاحي (تحديث من الجلسة السابقة)'
+            message: 'تم ترحيل الرصيد الافتتاحي (تحديثًا من الجلسة السابقة)'
           }
         });
         sessionStorage.removeItem('lastOpeningBalancePosted');
@@ -1039,8 +1092,8 @@ onMounted(async () => {
   try {
     await fetchSettings();
     await ensureExemptionLoaded();
-    // ✅ replaced initializePreferences with branchStore.fetchBranches()
     await branchStore.fetchBranches();
+    if (isExempt.value) await ensureBranchSelected();
     await Promise.all([
       loadInventory(),
       loadSummary(),
@@ -1058,8 +1111,11 @@ onMounted(async () => {
     const productId = route.query.product_id ? Number(route.query.product_id) : null;
     const branchId  = route.query.branch_id;
     if (action && productId) {
-      if (branchId && String(branchId) !== String(selectedBranch.value)) {
-        branchStore.setSelectedBranch(branchId);
+      if (branchId && isExempt.value && String(branchId) !== String(selectedBranch.value)) {
+        if (!setRequiredBranch(branchId)) {
+          showToast('الفرع المطلوب غير متاح لحسابك.', 'error');
+          return;
+        }
         await loadInventory();
       }
       const item = inventory.value.find(
@@ -1082,29 +1138,65 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-@keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+/* Animations */
+@keyframes loading {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
 
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.98) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes dropdownIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Form Inputs */
 .filter-input-v2 {
   @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
 }
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1; }
+.metadata-label {
+  @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1;
+}
 
-.status-badge { @apply px-2 py-0.5 rounded text-[9px] font-bold border flex items-center justify-center gap-1.5 w-fit mx-auto; }
+/* Status Badges */
+.status-badge {
+  @apply px-2 py-0.5 rounded text-[9px] font-bold border flex items-center justify-center gap-1.5 w-fit mx-auto;
+}
 
+/* Pagination */
 .pagination-btn-v2 {
   @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
 }
 
-.custom-scroll::-webkit-scrollbar { width: 5px; }
-.custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
+/* Scrollbar */
+.custom-scroll::-webkit-scrollbar {
+  width: 5px;
+}
 
-.animate-fadeIn { animation: fadeIn 0.4s ease-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.custom-scroll::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full;
+}
 
-@keyframes modalIn { from { opacity: 0; transform: scale(0.98) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-.animate-modalIn { animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+/* Animation Classes */
+.animate-fadeIn {
+  animation: fadeIn 0.4s ease-out;
+}
 
-.dropdown-enter-active { animation: dropdownIn 0.2s ease-out; }
-@keyframes dropdownIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+.animate-modalIn {
+  animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dropdown-enter-active {
+  animation: dropdownIn 0.2s ease-out;
+}
 </style>

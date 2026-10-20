@@ -9,11 +9,9 @@ return function (RouteCollectorProxy $group, Container $container): void {
 
         $group->group('/sessions', function (RouteCollectorProxy $group) use ($handler) {
             $group->post('/open', [$handler, 'open']);
-            $group->post('/close', [$handler, 'close']);
             $group->post('/batch-summaries', [$handler, 'batchSummaries']);  // 🆕 Batch API (must be BEFORE /{id} routes)
             $group->post('/{id}/close', [$handler, 'close']);
             $group->get('/current', [$handler, 'current']);
-            $group->get('/summary/daily', [$handler, 'dailySummary']);
             $group->get('', [$handler, 'listSessions']);
             $group->get('/{id}/summary', [$handler, 'summary']);
         });

@@ -10,6 +10,12 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 use Psr\Log\LoggerInterface;
 
+/**
+ * Adds baseline response security headers and a Content Security Policy.
+ *
+ * Header values can be supplied by the caller; the CSP and reporting headers
+ * are assembled by this middleware.
+ */
 class SecurityHeadersMiddleware implements MiddlewareInterface
 {
     private array $defaultHeaders;
@@ -122,22 +128,20 @@ class SecurityHeadersMiddleware implements MiddlewareInterface
         ]);
     }
 
+    /** Add security headers to the downstream response, except on status paths. */
     public function process(Request $request, RequestHandler $handler): Response
     {
         $response = $handler->handle($request);
 
-        // Skip adding headers for specific paths
         $path = $request->getUri()->getPath();
         if (preg_match('#^/(health|status|metrics|phpinfo)#', $path)) {
             return $response;
         }
 
-        // Add HSTS header for HTTPS only
         if ($request->getUri()->getScheme() === 'https') {
             $this->headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload';
         }
 
-        // Add security headers
         foreach ($this->headers as $key => $value) {
             try {
                 if (!empty($value)) {
@@ -151,14 +155,12 @@ class SecurityHeadersMiddleware implements MiddlewareInterface
             }
         }
 
-        // Add additional security headers
         $response = $response
             ->withHeader('X-Permitted-Cross-Domain-Policies', 'none')
             ->withHeader('X-Download-Options', 'noopen')
             ->withHeader('X-Content-Type-Options', 'nosniff')
             ->withHeader('X-DNS-Prefetch-Control', 'off');
 
-        // Add X-Request-ID if not present
         if (!$response->hasHeader('X-Request-ID')) {
             $requestId = $request->getHeaderLine('X-Request-ID') ?: $this->generateRequestId();
             $response = $response->withHeader('X-Request-ID', $requestId);
@@ -167,9 +169,7 @@ class SecurityHeadersMiddleware implements MiddlewareInterface
         return $response;
     }
 
-    /**
-     * Build the Content-Security-Policy header from directives
-     */
+    /** Serialize configured directives into a Content-Security-Policy value. */
     private function buildCspHeader(): string
     {
         $cspParts = [];
@@ -185,9 +185,7 @@ class SecurityHeadersMiddleware implements MiddlewareInterface
         return implode('; ', $cspParts);
     }
 
-    /**
-     * Generate a unique request ID
-     */
+    /** Generate a random request identifier. */
     private function generateRequestId(): string
     {
         return bin2hex(random_bytes(16));

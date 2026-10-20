@@ -18,16 +18,7 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->get('', [$handler, 'getAll'])
             ->add(PermissionMiddleware::require(Permissions::CATEGORY_VIEW, $db));
 
-        $group->get('/{id:[0-9]+}', [$handler, 'get'])
-            ->add(PermissionMiddleware::require(Permissions::CATEGORY_VIEW, $db));
-
         $group->post('', [$handler, 'create'])
             ->add(PermissionMiddleware::require(Permissions::CATEGORY_CREATE, $db));
-
-        $group->put('/{id:[0-9]+}', [$handler, 'update'])
-            ->add(PermissionMiddleware::require(Permissions::CATEGORY_EDIT, $db));
-
-        $group->delete('/{id:[0-9]+}', [$handler, 'delete'])
-            ->add(PermissionMiddleware::require(Permissions::CATEGORY_DELETE, $db));
     });
 };

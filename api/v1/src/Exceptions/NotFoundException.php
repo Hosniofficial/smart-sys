@@ -4,16 +4,7 @@ declare(strict_types=1);
 
 namespace App\Exceptions;
 
-/**
- * Thrown when a requested resource does not exist.
- *
- * Caught by handlers to return a 404 JSON response without fragile
- * string-matching on exception messages.
- *
- * Usage:
- *   throw new NotFoundException('الفاتورة غير موجودة');
- *   throw new NotFoundException('المرتجع غير موجود');
- */
+/** Resource-not-found exception carrying HTTP status code 404. */
 class NotFoundException extends \RuntimeException
 {
     public function __construct(

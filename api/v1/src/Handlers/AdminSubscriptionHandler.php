@@ -12,6 +12,12 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
 
+/**
+ * Manages tenant subscriptions and plans for the administration API.
+ *
+ * Reads and writes subscription, plan, and event records with PDO; protected routes
+ * are registered through SuperAdminMiddleware in app/routes/admin.php.
+ */
 class AdminSubscriptionHandler extends BaseHandler
 {
     public function __construct(PDO $db)
@@ -20,10 +26,7 @@ class AdminSubscriptionHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('admin_subscription');
     }
 
-    /**
-     * GET /admin/subscriptions
-     * عرض جميع الاشتراكات مع فلاتر اختيارية
-     */
+    /** List up to 200 subscriptions, optionally filtered by plan, status, or tenant. */
     public function listSubscriptions(Request $request, Response $response): Response
     {
         try {
@@ -70,9 +73,7 @@ class AdminSubscriptionHandler extends BaseHandler
             $stmt->execute($params);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            // Process each row to parse security_flags JSON and format data
             $processedRows = array_map(function($row) {
-                // Parse security_flags JSON
                 if (!empty($row['security_flags'])) {
                     $flags = json_decode($row['security_flags'], true);
                     $row['security_flags'] = is_array($flags) ? $flags : [];
@@ -80,7 +81,6 @@ class AdminSubscriptionHandler extends BaseHandler
                     $row['security_flags'] = [];
                 }
 
-                // Convert boolean strings to integers for consistency
                 $row['email_verified'] = (int) $row['email_verified'];
                 $row['auto_renew'] = (int) $row['auto_renew'];
 
@@ -99,10 +99,7 @@ class AdminSubscriptionHandler extends BaseHandler
         }
     }
 
-    /**
-     * POST /admin/subscriptions/{id}/activate
-     * تفعيل اشتراك وتحديد الخطة
-     */
+    /** Activate a subscription on its current or requested active plan and record an event. */
     public function activateSubscription(Request $request, Response $response, array $args): Response
     {
         $id = (int) ($args['id'] ?? 0);
@@ -210,10 +207,7 @@ class AdminSubscriptionHandler extends BaseHandler
         }
     }
 
-    /**
-     * POST /admin/subscriptions/{id}/change-plan
-     * تغيير خطة الاشتراك
-     */
+    /** Change the plan and optionally extend the subscription period; record the change. */
     public function changePlan(Request $request, Response $response, array $args): Response
     {
         $id = (int) ($args['id'] ?? 0);
@@ -327,10 +321,7 @@ class AdminSubscriptionHandler extends BaseHandler
         }
     }
 
-    /**
-     * POST /admin/subscriptions/{id}/security-check
-     * فحص أمان الاشتراك والـ tenant
-     */
+    /** Recalculate and persist the subscription risk score from tenant security signals. */
     public function securityCheck(Request $request, Response $response, array $args): Response
     {
         $id = (int) ($args['id'] ?? 0);
@@ -416,10 +407,7 @@ class AdminSubscriptionHandler extends BaseHandler
         }
     }
 
-    /**
-     * POST /admin/subscriptions/{id}/block
-     * حظر اشتراك و tenant
-     */
+    /** Block the subscription and tenant, then record subscription and security events. */
     public function blockSubscription(Request $request, Response $response, array $args): Response
     {
         $id = (int) ($args['id'] ?? 0);
@@ -500,10 +488,7 @@ class AdminSubscriptionHandler extends BaseHandler
         }
     }
 
-    /**
-     * POST /admin/subscriptions/{id}/expire
-     * انتهاء صلاحية الاشتراك فوراً
-     */
+    /** Mark the subscription expired and set its end date to the current time. */
     public function expireSubscription(Request $request, Response $response, array $args): Response
     {
         $id = (int) ($args['id'] ?? 0);
@@ -568,10 +553,7 @@ class AdminSubscriptionHandler extends BaseHandler
         }
     }
 
-    /**
-     * POST /admin/subscriptions/{id}/extend
-     * تمديد الاشتراك بعدد أيام
-     */
+    /** Extend the current end date by the requested positive number of days. */
     public function extendSubscription(Request $request, Response $response, array $args): Response
     {
         $id = (int) ($args['id'] ?? 0);
@@ -646,10 +628,7 @@ class AdminSubscriptionHandler extends BaseHandler
         }
     }
 
-    /**
-     * GET /admin/plans
-     * عرض جميع الخطط
-     */
+    /** List available subscription plan definitions. */
     public function listPlans(Request $request, Response $response): Response
     {
         try {
@@ -678,10 +657,7 @@ class AdminSubscriptionHandler extends BaseHandler
         }
     }
 
-    /**
-     * POST /admin/plans
-     * إنشاء خطة جديدة
-     */
+    /** Create a plan after validating its code, name, price, and billing cycle. */
     public function createPlan(Request $request, Response $response): Response
     {
         $data = $request->getParsedBody();
@@ -748,10 +724,7 @@ class AdminSubscriptionHandler extends BaseHandler
         }
     }
 
-    /**
-     * PUT /admin/plans/{code}
-     * تحديث خطة موجودة
-     */
+    /** Update allowed fields on the monthly or yearly plan. */
     public function updatePlan(Request $request, Response $response, array $args): Response
     {
         $code = strtolower(trim((string) ($args['code'] ?? '')));
@@ -827,10 +800,7 @@ class AdminSubscriptionHandler extends BaseHandler
         }
     }
 
-    /**
-     * DELETE /admin/plans/{code}
-     * حذف خطة
-     */
+    /** Delete a non-trial plan unless it still has trial or active subscriptions. */
     public function deletePlan(Request $request, Response $response, array $args): Response
     {
         $code = strtolower(trim((string) ($args['code'] ?? '')));

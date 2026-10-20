@@ -11,9 +11,16 @@ use App\Services\MonologHandler;
 use App\Services\LabelService;
 use App\Services\BalanceCalculationService;
 
+/**
+ * Builds account statements from journal entry lines and optional party references.
+ *
+ * Applies tenant, branch, date, status, cost-center, and reference-type filters;
+ * returns opening/closing balances, transactions, daily balances, and customer or
+ * supplier documents. Delegates account lookup and customer receivable calculation
+ * to AccountingService and BalanceCalculationService.
+ */
 class AccountStatementHandler extends BaseHandler
 {
-    // كاش لربط (tenant_id, code) -> account_id لتقليل الاستعلامات المتكررة
     private array $accountCache = [];
     private BalanceCalculationService $balanceCalcService;
 
@@ -21,13 +28,15 @@ class AccountStatementHandler extends BaseHandler
     {
         parent::__construct($db);
         $this->logger = MonologHandler::getInstance('account_statement');
-        // 🎯 توحيد فعلي: بدل حساب outstanding داخلياً بصيغة منفصلة (كانت صحيحة لكنها
-        // نسخة ثانية مستقلة)، تُستدعى الآن نفس الخدمة المركزية المُستخدَمة (أو المفروض
-        // استخدامها) من كل مكان آخر في النظام — راجع getCustomerSalesOnly تحت.
         $this->balanceCalcService = new BalanceCalculationService($db);
     }
 
-    // GET: كشف حساب عميل/مورد/حساب
+    /**
+     * Return an account ledger for the requested period, with optional customer or supplier references.
+     *
+     * Account identifiers may come from route arguments or query parameters; date, status,
+     * branch, cost-center, reference-type, and pagination filters are read from the query.
+     */
     public function getStatement(Request $request, Response $response, array $args = []): Response
     {
         try {
@@ -36,47 +45,39 @@ class AccountStatementHandler extends BaseHandler
                 return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID)', 403);
             }
 
-            // allow account resolution by id or code
             $accountId = $args['account_id'] ?? null;
-
-            // Optional: party context (e.g., customer/supplier) for reference sections
-            // Prefer route args, but allow query params (frontend sends as query)
             $partyType = $args['party_type'] ?? null; // e.g., 'customer' | 'supplier'
             $partyId = $args['party_id'] ?? null;
 
             $params = $request->getQueryParams();
+            [$branchId, $branchCostCenterId] = $this->resolveBranchScope($request, (int) $tenantId);
             if (!$partyType && isset($params['party_type'])) {
                 $partyType = $params['party_type'];
             }
             if (!$partyId && isset($params['party_id'])) {
                 $partyId = $params['party_id'];
             }
-            $startDate = $params['start_date'] ?? date('Y-m-01'); // بداية الشهر الحالي إذا لم يتم التحديد
-            $endDate = $params['end_date'] ?? date('Y-m-d'); // اليوم الحالي إذا لم يتم التحديد (وليس نهاية الشهر)
-            // التحقق من صحة نطاق التاريخ قبل تنفيذ أي استعلامات
+            $startDate = $params['start_date'] ?? date('Y-m-01');
+            $endDate = $params['end_date'] ?? date('Y-m-d');
             if (!$this->validateDateRange($startDate, $endDate)) {
                 return $this->errorResponse($response, 'نطاق التاريخ غير صالح', 400);
             }
             $statusAny = isset($params['status']) && strtolower($params['status']) === 'any';
 
-            // Filters suitable for large datasets
             $includeTypes = isset($params['include_types']) ? $this->parseTypes($params['include_types']) : [];
             $excludeTypes = isset($params['exclude_types']) ? $this->parseTypes($params['exclude_types']) : [];
 
-            // Optional cost center filter (null means no filtering)
             $costCenterId = null;
             if (isset($params['cost_center_id']) && $params['cost_center_id'] !== '') {
                 $parsed = (int)$params['cost_center_id'];
                 $costCenterId = $parsed > 0 ? $parsed : null;
             }
 
-            // Pagination (optional)
             $perPage = isset($params['per_page']) ? max(1, (int)$params['per_page']) : null;
             $page = isset($params['page']) ? max(1, (int)$params['page']) : 1;
             $limit = $perPage;
             $offset = $perPage ? ($page - 1) * $perPage : null;
 
-            // Resolve account by code if id not provided
             if (!$accountId) {
                 $accountCode = $args['account_code'] ?? ($params['account_code'] ?? null);
                 if ($accountCode) {
@@ -86,10 +87,8 @@ class AccountStatementHandler extends BaseHandler
             if (!$accountId) {
                 return $this->errorResponse($response, 'مطلوب رقم الحساب أو account_code', 400);
             }
-            // Locale from headers (fallback to 'ar')
             $acceptLang = $request->getHeaderLine('Accept-Language');
             $locale = (stripos($acceptLang, 'ar') === 0) ? 'ar' : 'en';
-            // 1. جلب بيانات الحساب
             $accountStmt = $this->db->prepare(
                 "SELECT id, name, code, type FROM accounts WHERE id = :id AND tenant_id = :tenant_id"
             );
@@ -100,24 +99,63 @@ class AccountStatementHandler extends BaseHandler
                 return $this->errorResponse($response, 'لم يتم العثور على الحساب', 404);
             }
 
-            // 2. حساب الرصيد الافتتاحي (قبل تاريخ البداية)
-            $openingBalance = $this->calculateOpeningBalance($accountId, $startDate, $tenantId, $statusAny, $includeTypes, $excludeTypes, $costCenterId);
+            $openingBalance = $this->calculateOpeningBalance(
+                $accountId,
+                $startDate,
+                $tenantId,
+                $statusAny,
+                $includeTypes,
+                $excludeTypes,
+                $costCenterId,
+                $branchId,
+                $branchCostCenterId
+            );
 
-            // 3. جلب الحركات خلال الفترة المحددة مع الحسابات
-            $transactionsData = $this->getTransactions($accountId, $startDate, $endDate, $tenantId, $statusAny, $includeTypes, $excludeTypes, $limit, $offset, $costCenterId);
-            // Localize labels for transactions
-            // Use transaction_type (actual type) instead of reference_type
-            // This ensures settlement lines show correct labels (e.g., 'قبض' instead of 'فاتورة بيع')
+            $transactionsData = $this->getTransactions(
+                $accountId,
+                $startDate,
+                $endDate,
+                $tenantId,
+                $statusAny,
+                $includeTypes,
+                $excludeTypes,
+                $limit,
+                $offset,
+                $costCenterId,
+                $branchId,
+                $branchCostCenterId
+            );
             if (!empty($transactionsData['transactions'])) {
                 foreach ($transactionsData['transactions'] as &$tx) {
-                    // Use transaction_type which already accounts for settlement line detection
                     $type = isset($tx['transaction_type']) ? strtolower((string)$tx['transaction_type']) : null;
                     if (!$type && isset($tx['reference_type'])) {
                         $type = strtolower((string)$tx['reference_type']);
                     }
+
                     $statusCode = isset($tx['status_code']) ? strtolower((string)$tx['status_code']) : null;
-                    $tx['reference_label'] = $this->referenceLabel($type, $locale);
-                    // For payment vouchers (receipts/refunds), don't show the status
+                    $referenceType = strtolower((string) ($tx['reference_type'] ?? ''));
+                    if ($referenceType === 'customer_payment_reclassification') {
+                        $type = 'customer_payment_reclassification';
+                        $tx['transaction_type'] = $type;
+                        $tx['description'] = $locale === 'ar'
+                            ? 'إثبات تحصيل سابق في حساب العميل — تسوية محاسبية وليست قبضًا جديدًا'
+                            : 'Previously recorded receipt applied to the customer account — accounting reclassification, not a new receipt';
+                    } elseif (
+                        $referenceType === 'customer_payment'
+                        && ($tx['payment_type'] ?? null) === 'customer'
+                        && empty($tx['payment_sale_id'])
+                    ) {
+                        $tx['description'] = $locale === 'ar'
+                            ? 'تحصيل دفعة من العميل'
+                            : 'General customer payment';
+                    }
+                    $tx['reference_label'] = $referenceType === 'customer_payment'
+                        && ($tx['payment_type'] ?? null) === 'customer'
+                        && empty($tx['payment_sale_id'])
+                        ? ($locale === 'ar' ? 'تحصيل دفعة' : 'Customer Payment')
+                        : ($referenceType === 'customer_payment_reclassification'
+                            ? ($locale === 'ar' ? 'تسوية قيد التحصيل' : 'Receipt Reclassification')
+                            : $this->referenceLabel($type, $locale));
                     if (in_array($type, ['payment', 'receipt', 'refund', 'cash_voucher'])) {
                         $tx['status_label'] = $locale === 'ar' ? 'مُرحّل' : 'Posted';
                     } else {
@@ -127,12 +165,8 @@ class AccountStatementHandler extends BaseHandler
                 unset($tx);
             }
             $transactions = $transactionsData['transactions'];
-            // Always fill daily gaps for consistent reporting across all systems
-            // This ensures charts, analytics, and dashboards display uniformly (like SAP, Odoo, NetSuite)
-            // All daily_balances arrays include every day in the date range, even with zero transactions
             $dailyBalances = $this->fillDailyGaps($transactionsData['daily_balances'], $startDate, $endDate);
 
-            // Optional: Filter to show only days with activity (for specialized reports)
             $onlyNonZero = isset($params['only_nonzero']) && (string)$params['only_nonzero'] === '1';
             if ($onlyNonZero && !empty($dailyBalances)) {
                 $dailyBalances = array_values(array_filter($dailyBalances, function ($d) {
@@ -141,16 +175,14 @@ class AccountStatementHandler extends BaseHandler
             }
             $closingBalance = !empty($dailyBalances) ? end($dailyBalances)['closing_balance'] : $openingBalance;
 
-            // 4. أقسام مرجعية إضافية لا تؤثر على الأرصدة (حسب نوع الطرف)
             $extras = [];
             if ($partyType === 'customer' && $partyId) {
-                $extras['sales_only'] = $this->getCustomerSalesOnly($partyId, $startDate, $endDate, $tenantId);
-                $extras['references'] = $this->getCustomerReferences($partyId, $startDate, $endDate, $tenantId, $costCenterId);
+                $extras['sales_only'] = $this->getCustomerSalesOnly($partyId, $startDate, $endDate, $tenantId, $branchId);
+                $extras['references'] = $this->getCustomerReferences($partyId, $startDate, $endDate, $tenantId, $costCenterId, $branchId);
             } elseif ($partyType === 'supplier' && $partyId) {
-                $extras['references'] = $this->getSupplierReferences($partyId, $startDate, $endDate, $tenantId);
+                $extras['references'] = $this->getSupplierReferences($partyId, $startDate, $endDate, $tenantId, $branchId);
             }
 
-            // 5. إرجاع النتيجة
             $responseData = [
                 'status' => 'success',
                 'data' => [
@@ -185,17 +217,11 @@ class AccountStatementHandler extends BaseHandler
                 $responseData['data']['sales_only'] = $extras['sales_only'];
             }
             if (isset($extras['references'])) {
-                // Localize reference items labels
-                // The 'type' field from getCustomerReferences already contains
-                // the correct type (e.g., 'receipt' for payments), so use it as-is
                 if (!empty($extras['references']['items'])) {
                     foreach ($extras['references']['items'] as &$ref) {
-                        // 'type' field already contains correct type from getCustomerReferences
-                        // (e.g., 'receipt' for payments, not 'sale')
                         $type = isset($ref['type']) ? strtolower((string)$ref['type']) : null;
                         $statusCode = isset($ref['status']) ? strtolower((string)$ref['status']) : null;
                         $ref['reference_label'] = $this->referenceLabel($type, $locale);
-                        // For payment vouchers (receipts/refunds), don't show the status
                         if (in_array($type, ['payment', 'receipt', 'refund', 'cash_voucher'])) {
                             $ref['status_label'] = $locale === 'ar' ? 'مُرحّل' : 'Posted';
                         } else {
@@ -209,13 +235,95 @@ class AccountStatementHandler extends BaseHandler
             }
 
             return $this->successResponse($response, $responseData['data'], 200);
+        } catch (\DomainException $e) {
+            $statusCode = (int) $e->getCode();
+            return $this->errorResponse($response, $e->getMessage(), in_array($statusCode, [400, 403], true) ? $statusCode : 400);
         } catch (\Throwable $e) {
             $this->logger->error('Account statement error', ['error' => $e->getMessage(), 'tenant_id' => $tenantId ?? null]);
             return $this->errorResponse($response, 'فشل في إنشاء كشف الحساب', 500);
         }
     }
 
-    // التحقق من صحة نطاق التاريخ (YYYY-MM-DD) وأن البداية لا تتجاوز النهاية
+    private function resolveBranchScope(Request $request, int $tenantId): array
+    {
+        $user = $request->getAttribute('user');
+        $isBranchPrivileged = \App\Utils\SuperAdminHelper::isAdminOrAbove(
+            is_array($user) ? $user : null
+        ) || (
+            is_array($user)
+            && (int) ($user['tenant_id'] ?? 0) > 0
+            && strtolower((string) ($user['role'] ?? '')) === 'manager'
+        );
+
+        $branchId = null;
+        if ($isBranchPrivileged) {
+            $requestedBranchId = trim((string) ($request->getQueryParams()['branch_id'] ?? ''));
+            if ($requestedBranchId !== '') {
+                if (!ctype_digit($requestedBranchId) || (int) $requestedBranchId <= 0) {
+                    throw new \DomainException('معرف الفرع غير صالح.', 400);
+                }
+                $branchId = (int) $requestedBranchId;
+            }
+        } else {
+            $userId = $this->extractUserId($request);
+            if (!$userId) {
+                throw new \DomainException('تعذر تحديد المستخدم الحالي.', 403);
+            }
+            $userBranchStmt = $this->db->prepare(
+                'SELECT branch_id FROM users WHERE id = ? AND tenant_id = ? LIMIT 1'
+            );
+            $userBranchStmt->execute([$userId, $tenantId]);
+            $branchId = (int) $userBranchStmt->fetchColumn();
+            if ($branchId <= 0) {
+                throw new \DomainException('لم يتم تعيين فرع لحسابك.', 403);
+            }
+        }
+
+        if ($branchId === null) {
+            return [null, null];
+        }
+
+        $branchStmt = $this->db->prepare(
+            'SELECT cost_center_id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1'
+        );
+        $branchStmt->execute([$branchId, $tenantId]);
+        $branch = $branchStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$branch) {
+            throw new \DomainException('الفرع المحدد غير متاح لهذا المستأجر.', 403);
+        }
+
+        return [$branchId, !empty($branch['cost_center_id']) ? (int) $branch['cost_center_id'] : null];
+    }
+
+    private function buildBranchScopeSql(?int $branchId, ?int $branchCostCenterId, string $jeAlias = 'je', string $lineAlias = 'jel'): string
+    {
+        if ($branchId === null) {
+            return '';
+        }
+
+        $branch = (int) $branchId;
+        $conditions = [
+            "{$jeAlias}.voucher_id IN (SELECT cv.id FROM cash_vouchers cv WHERE cv.tenant_id = {$jeAlias}.tenant_id AND cv.branch_id = {$branch})",
+            "({$jeAlias}.reference_type = 'cash_voucher' AND EXISTS (SELECT 1 FROM cash_vouchers cv WHERE cv.id = {$jeAlias}.reference_id AND cv.tenant_id = {$jeAlias}.tenant_id AND cv.branch_id = {$branch}))",
+            "({$jeAlias}.reference_type = 'sale' AND EXISTS (SELECT 1 FROM sales bs WHERE bs.id = {$jeAlias}.reference_id AND bs.tenant_id = {$jeAlias}.tenant_id AND bs.branch_id = {$branch}))",
+            "({$jeAlias}.reference_type = 'purchase' AND EXISTS (SELECT 1 FROM purchases bp WHERE bp.id = {$jeAlias}.reference_id AND bp.tenant_id = {$jeAlias}.tenant_id AND bp.branch_id = {$branch}))",
+            "({$jeAlias}.reference_type IN ('return', 'sale_return', 'purchase_return') AND EXISTS (SELECT 1 FROM returns br WHERE br.id = {$jeAlias}.reference_id AND br.tenant_id = {$jeAlias}.tenant_id AND br.branch_id = {$branch}))",
+            "({$jeAlias}.reference_type IN ('customer_payment', 'customer_payment_reclassification', 'supplier_payment', 'payment', 'receipt', 'return_payment') AND EXISTS (SELECT 1 FROM payments bp WHERE bp.id = {$jeAlias}.reference_id AND bp.tenant_id = {$jeAlias}.tenant_id AND (bp.branch_id = {$branch} OR EXISTS (SELECT 1 FROM sales bs WHERE bs.id = bp.sale_id AND bs.tenant_id = bp.tenant_id AND bs.branch_id = {$branch}) OR EXISTS (SELECT 1 FROM purchases bpu WHERE bpu.id = bp.purchase_id AND bpu.tenant_id = bp.tenant_id AND bpu.branch_id = {$branch}) OR EXISTS (SELECT 1 FROM returns br WHERE br.id = bp.return_id AND br.tenant_id = bp.tenant_id AND br.branch_id = {$branch}))))",
+            "EXISTS (SELECT 1 FROM sales bs WHERE bs.journal_entry_id = {$jeAlias}.id AND bs.tenant_id = {$jeAlias}.tenant_id AND bs.branch_id = {$branch})",
+            "EXISTS (SELECT 1 FROM purchases bp WHERE bp.journal_entry_id = {$jeAlias}.id AND bp.tenant_id = {$jeAlias}.tenant_id AND bp.branch_id = {$branch})",
+            "EXISTS (SELECT 1 FROM returns br WHERE br.journal_entry_id = {$jeAlias}.id AND br.tenant_id = {$jeAlias}.tenant_id AND br.branch_id = {$branch})",
+            "EXISTS (SELECT 1 FROM payments bp WHERE bp.journal_entry_id = {$jeAlias}.id AND bp.tenant_id = {$jeAlias}.tenant_id AND bp.branch_id = {$branch})",
+            "EXISTS (SELECT 1 FROM cash_vouchers cv WHERE cv.journal_entry_id = {$jeAlias}.id AND cv.tenant_id = {$jeAlias}.tenant_id AND cv.branch_id = {$branch})",
+        ];
+        if ($branchCostCenterId !== null) {
+            $costCenter = (int) $branchCostCenterId;
+            $conditions[] = "{$jeAlias}.cost_center_id = {$costCenter}";
+            $conditions[] = "{$lineAlias}.cost_center_id = {$costCenter}";
+        }
+
+        return ' AND (' . implode(' OR ', $conditions) . ')';
+    }
+
     private function validateDateRange($startDate, $endDate): bool
     {
         $start = \DateTime::createFromFormat('Y-m-d', $startDate);
@@ -228,19 +336,7 @@ class AccountStatementHandler extends BaseHandler
         return $start <= $end;
     }
 
-    /**
-     * تطبيع حالة الفاتورة بناءً على البيانات المالية
-     *
-     * يطبق منطق التطبيع الموحد على جميع الفواتير لضمان توحيد الـ status بين
-     * sales_only و references sections
-     *
-     * @param string $status: الحالة الأصلية من قاعدة البيانات
-     * @param float $paid: المبلغ المدفوع نقداً
-     * @param float $returnCredits: مبلغ return credits المطبق
-     * @param float $grandTotal: الإجمالي (net + tax)
-     * @param bool $hasReturns: هل الفاتورة لها مرتجعات
-     * @return string: الحالة المطبعة (normalized status)
-     */
+    /** Derive a display status from the invoice balance, payments, and returns. */
     private function normalizeInvoiceStatus(
         string $status,
         float $paid,
@@ -250,38 +346,25 @@ class AccountStatementHandler extends BaseHandler
         float $returnedAmount = 0.0
     ): string {
 
-        // ── AUDIT FIX (new): $returnedAmount مضافة الآن للخصم من outstanding —
-        // معامل اختياري افتراضيًا 0.0 فلا يغيّر سلوك جانب المبيعات (الذي يمرّر
-        // returnCredits بالفعل ولا يستخدم هذا المعامل الجديد)، بينما جانب
-        // المشتريات (الذي لا يملك آلية return_credit_allocations) يستخدمه الآن
-        // ليعكس قيمة المرتجع الفعلية بدل تجاهلها بالكامل.
+        // Purchase returns are passed as returnedAmount; sales use allocated return credits.
         $outstanding = max(0.0, round($grandTotal - $paid - $returnCredits - $returnedAmount, 2));
 
-        // 1. Fully settled by credit note only (no cash paid)
+        // Credit-note settlement without an outstanding balance.
         if ($returnCredits > 0.01 && $outstanding < 0.01 && !$hasReturns) {
             return 'settled_by_credit';
         }
 
-        // 2. Fully paid cash invoice, including invoices that later got returns
+        // Cash-settled invoices remain marked as returned when a return exists.
         if ($outstanding < 0.01 && $paid >= $grandTotal - 0.01) {
             return $hasReturns || $returnCredits > 0.01 ? 'returned' : 'paid';
         }
 
-        // 3. Fully settled by mixed cash + return credits
         if ($outstanding < 0.01 && $paid > 0.01 && ($returnCredits > 0.01 || $returnedAmount > 0.01)) {
             return 'settled_mixed';
         }
 
-        // 4. Fully settled by return credit allocation without any cash payment
         if ($outstanding < 0.01 && $paid < 0.01) {
-            // ── AUDIT FIX (found via dynamic test I5): a fully-returned, unpaid
-            // purchase (paid=0, returnedAmount alone >= grandTotal) fell into this
-            // branch and returned 'closed_by_return' instead of 'returned'. When
-            // the return amount alone accounts for the whole invoice, it's a full
-            // return by definition — same semantic as Case 2's hasReturns-driven
-            // 'returned' when fully paid. Guarded by $returnedAmount > 0.01 so the
-            // sales-side call sites (which never pass this param, default 0.0)
-            // are completely unaffected.
+            // A fully returned, unpaid purchase is reported as returned, not merely closed.
             if ($returnedAmount > 0.01 && $returnedAmount >= $grandTotal - 0.01) {
                 return 'returned';
             }
@@ -291,7 +374,6 @@ class AccountStatementHandler extends BaseHandler
             return 'closed_by_return';
         }
 
-        // 5. Partial or unpaid invoice
         if ($paid <= 0.01) {
             return $status;
         }
@@ -299,8 +381,7 @@ class AccountStatementHandler extends BaseHandler
         return $status;
     }
 
-    // حساب الرصيد الافتتاحي
-    private function calculateOpeningBalance($accountId, $startDate, $tenantId, $statusAny = false, array $includeTypes = [], array $excludeTypes = [], $costCenterId = null)
+    private function calculateOpeningBalance($accountId, $startDate, $tenantId, $statusAny = false, array $includeTypes = [], array $excludeTypes = [], $costCenterId = null, ?int $branchId = null, ?int $branchCostCenterId = null)
     {
         $sql = "
             SELECT 
@@ -314,7 +395,7 @@ class AccountStatementHandler extends BaseHandler
                 AND je.entry_date < :start_date
         ";
         if (!$statusAny) {
-            $sql .= " AND (je.status IS NULL OR je.status = 'posted')";
+            $sql .= " AND (je.status IS NULL OR je.status IN ('posted', 'reversed'))";
         }
         $params = [
             ':account_id' => $accountId,
@@ -325,7 +406,7 @@ class AccountStatementHandler extends BaseHandler
             $sql .= " AND je.cost_center_id = :cost_center_id";
             $params[':cost_center_id'] = $costCenterId;
         }
-        // include/exclude reference_type
+        $sql .= $this->buildBranchScopeSql($branchId, $branchCostCenterId);
         if (!empty($includeTypes)) {
             $inPlaceholders = [];
             foreach ($includeTypes as $i => $t) {
@@ -348,8 +429,7 @@ class AccountStatementHandler extends BaseHandler
         return (float) $stmt->fetchColumn();
     }
 
-    // جلب الحركات خلال الفترة مع حساب الأرصدة
-    private function getTransactions($accountId, $startDate, $endDate, $tenantId, $statusAny = false, array $includeTypes = [], array $excludeTypes = [], $limit = null, $offset = null, $costCenterId = null)
+    private function getTransactions($accountId, $startDate, $endDate, $tenantId, $statusAny = false, array $includeTypes = [], array $excludeTypes = [], $limit = null, $offset = null, $costCenterId = null, ?int $branchId = null, ?int $branchCostCenterId = null)
     {
         $sql = "
             SELECT
@@ -357,7 +437,15 @@ class AccountStatementHandler extends BaseHandler
                 je.reference_type as reference_type,
                 je.reference_id as reference_id,
                 je.status as status_code,
-                CONCAT(COALESCE(je.reference_type, ''), '#', COALESCE(je.reference_id, '')) AS reference,
+                CASE
+                    WHEN linked_sale.id IS NOT NULL THEN CONCAT('sale#', linked_sale.id)
+                    ELSE CONCAT(COALESCE(je.reference_type, ''), '#', COALESCE(je.reference_id, ''))
+                END AS reference,
+                linked_sale.id AS sale_id,
+                linked_sale.invoice_number AS invoice_number,
+                payment_reference.reference_number AS payment_reference_number,
+                payment_reference.type AS payment_type,
+                payment_reference.sale_id AS payment_sale_id,
                 jel.description,
                 jel.debit_amount as debit,
                 jel.credit_amount as credit,
@@ -371,8 +459,11 @@ class AccountStatementHandler extends BaseHandler
                     -- Sale settlement line (credit > 0 = payment received from customer)
                     -- Using 0 instead of 0.01 to catch even small payments
                     WHEN je.reference_type = 'sale' AND jel.credit_amount > 0 THEN 'receipt'
+                    WHEN je.reference_type IN ('customer_payment', 'customer_payment_reclassification')
+                         AND jel.credit_amount > 0 THEN 'receipt'
                     -- Purchase settlement line (debit > 0 = payment made to supplier)
                     WHEN je.reference_type = 'purchase' AND jel.debit_amount > 0 THEN 'payment'
+                    WHEN je.reference_type = 'supplier_payment' AND jel.debit_amount > 0 THEN 'payment'
                     -- For receipt/payment/refund types, keep as-is
                     WHEN je.reference_type IN ('receipt', 'payment', 'refund', 'cash_voucher') THEN je.reference_type
                     -- Default: return null so it falls back to reference_type
@@ -382,6 +473,13 @@ class AccountStatementHandler extends BaseHandler
                 journal_entry_lines AS jel
             JOIN
                 journal_entries AS je ON jel.journal_entry_id = je.id
+            LEFT JOIN payments AS payment_reference
+                ON je.reference_type IN ('customer_payment', 'customer_payment_reclassification')
+                AND payment_reference.id = je.reference_id
+                AND payment_reference.tenant_id = je.tenant_id
+            LEFT JOIN sales AS linked_sale
+                ON linked_sale.id = payment_reference.sale_id
+                AND linked_sale.tenant_id = payment_reference.tenant_id
             WHERE
                 jel.account_id = :account_id
                 AND je.tenant_id = :tenant_id
@@ -389,9 +487,8 @@ class AccountStatementHandler extends BaseHandler
                 AND je.entry_date < :end_date_plus_one
         ";
         if (!$statusAny) {
-            $sql .= " AND (je.status IS NULL OR je.status = 'posted')";
+            $sql .= " AND (je.status IS NULL OR je.status IN ('posted', 'reversed'))";
         }
-        // include/exclude reference_type filters
         $params = [
             ':account_id' => $accountId,
             ':tenant_id' => $tenantId,
@@ -402,6 +499,7 @@ class AccountStatementHandler extends BaseHandler
             $sql .= " AND je.cost_center_id = :cost_center_id";
             $params[':cost_center_id'] = $costCenterId;
         }
+        $sql .= $this->buildBranchScopeSql($branchId, $branchCostCenterId);
         if (!empty($includeTypes)) {
             $inPlaceholders = [];
             foreach ($includeTypes as $i => $t) {
@@ -441,39 +539,42 @@ class AccountStatementHandler extends BaseHandler
             $stmt->execute();
             $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         } catch (\PDOException $e) {
-            // في حال حدوث خطأ في الاستعلام نرجع هيكل فارغ آمن مع تسجيل الخطأ
-            $this->logger->error('Error fetching account statement transactions', ['message' => $e->getMessage()]);
-            return [
-                'transactions' => [],
-                'daily_balances' => [],
-                'total_debit' => 0.0,
-                'total_credit' => 0.0,
-                'transaction_count' => 0,
-            ];
+            $this->logger->error('Error fetching account statement transactions', [
+                'message' => $e->getMessage(),
+                'tenant_id' => $tenantId,
+                'account_id' => $accountId,
+                'branch_id' => $branchId,
+            ]);
+            throw $e;
         }
 
-        // حساب الرصيد الجاري والملخص اليومي + اضافة transaction_type
-        $runningBalance = $this->calculateOpeningBalance($accountId, $startDate, $tenantId, $statusAny, $includeTypes, $excludeTypes, $costCenterId);
+        $runningBalance = $this->calculateOpeningBalance(
+            $accountId,
+            $startDate,
+            $tenantId,
+            $statusAny,
+            $includeTypes,
+            $excludeTypes,
+            $costCenterId,
+            $branchId,
+            $branchCostCenterId
+        );
         $dailyBalances = [];
         $currentDay = null;
         $dayTransactions = [];
         $dayStartBalance = $runningBalance;
 
         foreach ($transactions as &$transaction) {
-            // Determine transaction type: prefer actual_payment_type if available
-            // This fixes the issue where receipts/refunds show as 'sale' type
             $actualPaymentType = $transaction['actual_payment_type'] ?? null;
 
-            // If SQL didn't return actual_payment_type, calculate it here
             if (!$actualPaymentType) {
                 $refType = strtolower((string)($transaction['reference_type'] ?? ''));
                 $credit = (float)($transaction['credit'] ?? 0);
                 $debit = (float)($transaction['debit'] ?? 0);
 
-                // Apply the same logic as SQL CASE
                 if ($refType === 'sale' && $credit > 0) {
                     $actualPaymentType = 'receipt';
-                } elseif ($refType === 'purchase' && $debit > 0) {
+                } elseif (in_array($refType, ['purchase', 'supplier_payment'], true) && $debit > 0) {
                     $actualPaymentType = 'payment';
                 } elseif (in_array($refType, ['receipt', 'payment', 'refund', 'cash_voucher'])) {
                     $actualPaymentType = $refType;
@@ -485,10 +586,8 @@ class AccountStatementHandler extends BaseHandler
 
             $transactionDate = $transaction['date'];
 
-            // بداية يوم جديد
             if ($currentDay !== $transactionDate) {
                 if ($currentDay !== null) {
-                    // حفظ ملخص اليوم السابق
                     $dailyBalances[] = [
                         'date' => $currentDay,
                         'opening_balance' => $dayStartBalance,
@@ -503,10 +602,8 @@ class AccountStatementHandler extends BaseHandler
                 $dayTransactions = [];
             }
 
-            // حساب الرصيد الجاري
             $transaction['balance'] = $runningBalance + $transaction['debit'] - $transaction['credit'];
 
-            // Determine balance nature (debit/credit)
             $balance = $transaction['balance'];
             if (abs($balance) < 0.01) {
                 $transaction['balance_nature'] = 'zero';
@@ -520,7 +617,6 @@ class AccountStatementHandler extends BaseHandler
             $dayTransactions[] = $transaction;
         }
 
-        // إضافة ملخص آخر يوم
         if ($currentDay !== null) {
             $dailyBalances[] = [
                 'date' => $currentDay,
@@ -542,8 +638,9 @@ class AccountStatementHandler extends BaseHandler
     }
 
     // قسم مرجعي: فواتير العميل خلال الفترة دون تأثير على الأرصدة
-    private function getCustomerSalesOnly($customerId, $startDate, $endDate, $tenantId)
+    private function getCustomerSalesOnly($customerId, $startDate, $endDate, $tenantId, ?int $branchId = null)
     {
+        $branchFilterSql = $branchId !== null ? ' AND s.branch_id = :branch_id' : '';
         $sql = "
             SELECT 
                 s.id,
@@ -558,14 +655,7 @@ class AccountStatementHandler extends BaseHandler
                 s.branch_id,
                 s.user_id,
                 s.journal_entry_id,
-                -- ── AUDIT FIX (ownership review) ──────────────────────────────────
-                -- Was excluding refund rows (return_id IS NOT NULL) entirely instead
-                -- of netting them — diverged from SalesHandler's list/detail views and
-                -- from AccountingService::recalculateSaleStatus (the value now actually
-                -- persisted to sales.paid_amount). Aligned to the same netting
-                -- convention used everywhere else, via BalanceCalculationService's
-                -- shared subquery pattern (see salePaidAmountSubquery() for the full
-                -- rationale — same fix applied there in this same pass).
+                -- Net completed refunds against payments and include allocated customer payments.
                 COALESCE((
                     SELECT COALESCE(SUM(
                         CASE WHEN p.type = 'return_payment' THEN -p.amount ELSE p.amount END
@@ -575,6 +665,13 @@ class AccountStatementHandler extends BaseHandler
                       AND p.tenant_id = s.tenant_id
                       AND p.is_draft = 0
                       AND p.status = 'completed'
+                ), 0)
+                + COALESCE((
+                    SELECT SUM(cpa.allocated_amount)
+                    FROM customer_payment_allocations cpa
+                    JOIN payments ap ON ap.id = cpa.payment_id AND ap.tenant_id = cpa.tenant_id
+                    WHERE cpa.sale_id = s.id AND cpa.tenant_id = s.tenant_id
+                      AND ap.is_draft = 0 AND ap.status = 'completed'
                 ), 0) AS calculated_paid_amount,
                 -- Due date calculation (default to +30 days from creation)
                 DATE_ADD(s.created_at, INTERVAL 30 DAY) AS due_date,
@@ -598,64 +695,42 @@ class AccountStatementHandler extends BaseHandler
             WHERE s.tenant_id = :tenant_id 
               AND s.customer_id = :customer_id
               AND s.created_at >= :start_date AND s.created_at <= :end_date_full
+              AND LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')
+              {$branchFilterSql}
             GROUP BY s.id
             ORDER BY s.created_at ASC, s.id ASC
         ";
 
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([
+        $queryParams = [
             ':tenant_id' => $tenantId,
             ':customer_id' => $customerId,
             ':start_date' => $startDate,
             ':end_date_full' => $endDate . ' 23:59:59',
-        ]);
+        ];
+        if ($branchId !== null) {
+            $queryParams[':branch_id'] = $branchId;
+        }
+        $stmt->execute($queryParams);
 
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        // 🎯 توحيد فعلي: نجلب "المبلغ المستحق" الرسمي لكل الفواتير دفعة واحدة من
-        // BalanceCalculationService (استعلام واحد إضافي بغض النظر عن عدد الصفوف) بدل
-        // إعادة حساب نفس الصيغة محلياً هنا. الصيغتان كانتا متطابقتين فعلياً بعد إصلاحات
-        // هذه الجلسة، لكن الآن مصدر واحد حقيقي بدل نسختين متوازيتين قد تنجرفان لاحقاً.
         $saleIds = array_column($rows, 'id');
         $amountDueMap = !empty($saleIds)
             ? $this->balanceCalcService->getAmountDueBatch('sale', (int) $tenantId, array_map('intval', $saleIds))
             : [];
 
-        // طباعة مرجعية واضحة ولاحقة الربط مع القيود إن وجدت
         $items = array_map(function ($r) use ($amountDueMap) {
             $net = isset($r['net_total_amount']) ? (float)$r['net_total_amount'] : 0.0;
-            // Use calculated_paid_amount from query (sum of payments)
-            // instead of s.paid_amount which might not be updated
-            // (تُستخدم هنا للعرض فقط الآن — نفس شرط الاستعلام الفرعي المستخدم داخل
-            // BalanceCalculationService::salePaidAmountSubquery حرفياً، فلا يمكن أن تختلف)
             $paid = isset($r['calculated_paid_amount']) ? (float)$r['calculated_paid_amount'] : (isset($r['paid_amount']) ? (float)$r['paid_amount'] : 0.0);
             $returnCredits = isset($r['return_credits_applied']) ? (float)$r['return_credits_applied'] : 0.0;
 
             $grand_total = $net + ((float)($r['tax_amount'] ?? 0));
-            // المصدر الوحيد الآن للمبلغ المستحق الرسمي — لا يُعاد حسابه هنا محلياً.
             $outstanding = $amountDueMap[(int) $r['id']] ?? max(0.0, $grand_total - $paid - $returnCredits);
 
-            /**
-             * STATUS NORMALIZATION LOGIC:
-             *
-             * Case 1: Has returns + all credits applied + no actual payment
-             *   → closed_by_return (settled by return credit allocations)
-             *   → paid_amount stays 0 (no money exchanged)
-             *   → outstanding = 0 (debt fully offset by returns)
-             *
-             * Case 2: Outstanding cleared + actual payment received
-             *   → paid (customer paid money)
-             *
-             * Case 3: Outstanding exceeds 0 + some return credits
-             *   → partial (partial settlement)
-             *
-             * Case 4: Normal state
-             *   → Use database status as-is
-             */
             $status = $r['status'];
             $hasReturns = !empty($r['return_ids']);
 
-            // Use the unified normalization function
             $status = $this->normalizeInvoiceStatus(
                 $status,
                 $paid,
@@ -664,7 +739,6 @@ class AccountStatementHandler extends BaseHandler
                 $hasReturns
             );
 
-            // Parse return_ids for return_group_id (use first return if multiple)
             $returnGroupId = null;
             if ($hasReturns) {
                 $returnIds = explode(',', $r['return_ids']);
@@ -706,20 +780,11 @@ class AccountStatementHandler extends BaseHandler
     }
 
     // مرجع موحد: فواتير مبيعات + مرتجعات مبيعات + إيصالات القبض للعميل خلال الفترة
-    private function getCustomerReferences($customerId, $startDate, $endDate, $tenantId, $costCenterId = null)
+    private function getCustomerReferences($customerId, $startDate, $endDate, $tenantId, $costCenterId = null, ?int $branchId = null)
     {
-        // 1) فواتير المبيعات — مع جلب البيانات المطلوبة لتطبيع الـ status
-        //
-        // ⚠️ إصلاح تناسق: كانت هذه الدالة تثق بعمود s.paid_amount المخزَّن مباشرة، بينما
-        // الدالة الشقيقة getCustomerSalesOnly في نفس الملف تحسبه من مجموع payments فعلياً
-        // (مع تعليق صريح يوضح أن s.paid_amount قد لا يكون محدَّثاً بدقة). تم توحيدهما على
-        // نفس المصدر (SUM من payments).
-        //
-        // 🔴 إصلاح خطأ حرج ثانٍ: كان فلتر cost_center_id يُضاف (.=) بعد GROUP BY وORDER BY
-        // مباشرة (".. ORDER BY s.id ASC" ثم "AND s.cost_center_id = ?" بعدها) — وهذا SQL
-        // غير صالح نحوياً (syntax error) في كل مرة يُستخدم فيها فلتر مركز التكلفة. تم نقل
-        // الفلتر ليُبنى ضمن WHERE قبل GROUP BY كما يجب.
+        // Calculate paid amounts from completed payments and exclude canceled invoices.
         $costCenterFilterSql = $costCenterId !== null ? " AND s.cost_center_id = :cost_center_id" : '';
+        $branchFilterSql = $branchId !== null ? ' AND s.branch_id = :branch_id' : '';
         $sqlSales = "
             SELECT 
                 s.id,
@@ -731,8 +796,7 @@ class AccountStatementHandler extends BaseHandler
                 s.tax_amount,
                 s.journal_entry_id,
                 s.cost_center_id,
-                -- ── AUDIT FIX (ownership review): same netting-convention alignment
-                -- as calculated_paid_amount above and salePaidAmountSubquery().
+                -- Net completed refunds against payments and include allocated customer payments.
                 COALESCE((
                     SELECT COALESCE(SUM(
                         CASE WHEN p2.type = 'return_payment' THEN -p2.amount ELSE p2.amount END
@@ -742,6 +806,13 @@ class AccountStatementHandler extends BaseHandler
                       AND p2.tenant_id = s.tenant_id
                       AND p2.is_draft = 0
                       AND p2.status = 'completed'
+                ), 0)
+                + COALESCE((
+                    SELECT SUM(cpa.allocated_amount)
+                    FROM customer_payment_allocations cpa
+                    JOIN payments ap ON ap.id = cpa.payment_id AND ap.tenant_id = cpa.tenant_id
+                    WHERE cpa.sale_id = s.id AND cpa.tenant_id = s.tenant_id
+                      AND ap.is_draft = 0 AND ap.status = 'completed'
                 ), 0) AS paid_amount,
                 (
                     SELECT COUNT(*) 
@@ -757,7 +828,9 @@ class AccountStatementHandler extends BaseHandler
             WHERE s.tenant_id = :tenant_id 
               AND s.customer_id = :customer_id
               AND s.created_at >= :start_date AND s.created_at <= :end_date_full
+              AND LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')
               {$costCenterFilterSql}
+              {$branchFilterSql}
             GROUP BY s.id
             ORDER BY s.created_at ASC, s.id ASC
         ";
@@ -770,6 +843,9 @@ class AccountStatementHandler extends BaseHandler
         ];
         if ($costCenterId !== null) {
             $salesParams[':cost_center_id'] = $costCenterId;
+        }
+        if ($branchId !== null) {
+            $salesParams[':branch_id'] = $branchId;
         }
         $stmtSales->execute($salesParams);
         $sales = array_map(function ($r) {
@@ -806,6 +882,7 @@ class AccountStatementHandler extends BaseHandler
         }, ($stmtSales->fetchAll(PDO::FETCH_ASSOC) ?: []));
 
         // 2) مرتجعات المبيعات
+        $returnBranchFilterSql = $branchId !== null ? ' AND r.branch_id = :branch_id' : '';
         $sqlReturns = "
             SELECT 
                 r.id,
@@ -827,22 +904,21 @@ class AccountStatementHandler extends BaseHandler
               AND r.return_type = 'sale'
               AND r.customer_id = :customer_id
               AND r.created_at >= :start_date AND r.created_at <= :end_date_full
+              {$returnBranchFilterSql}
         ";
         $stmtReturns = $this->db->prepare($sqlReturns);
-        $stmtReturns->execute([
+        $returnParams = [
             ':tenant_id' => $tenantId,
             ':customer_id' => $customerId,
             ':start_date' => $startDate,
             ':end_date_full' => $endDate . ' 23:59:59',
-        ]);
+        ];
+        if ($branchId !== null) {
+            $returnParams[':branch_id'] = $branchId;
+        }
+        $stmtReturns->execute($returnParams);
         $returns = array_map(function ($r) {
-            /**
-             * TRANSACTION SUBTYPE LOGIC (Dynamic v3 - Optimized)
-             *
-             * Check if there's an actual refund payment issued for this return:
-             * - sales_return_only: Return issued, no refund payment yet (has_refund = 0)
-             * - sales_return_refund: Return + refund payment issued (has_refund = 1)
-             */
+            // Distinguish a return with an actual refund payment.
             $subtype = 'sales_return_only';
             $hasRefund = isset($r['has_refund']) ? (int)$r['has_refund'] : 0;
 
@@ -850,7 +926,6 @@ class AccountStatementHandler extends BaseHandler
                 $subtype = 'sales_return_refund';
             }
 
-            // Map subtype to human-readable label
             $typeLabel = 'مرتجع بيع';
             if ($subtype === 'sales_return_refund') {
                 $typeLabel = 'استرداد مرتجع';
@@ -875,6 +950,9 @@ class AccountStatementHandler extends BaseHandler
         }, ($stmtReturns->fetchAll(PDO::FETCH_ASSOC) ?: []));
 
         // 3) إيصالات القبض والصرف (payments) - differentiate between receipts and refunds
+        $paymentBranchFilterSql = $branchId !== null
+            ? ' AND (p.branch_id = :payment_branch_id OR s.branch_id = :sale_branch_id OR r.branch_id = :return_branch_id)'
+            : '';
         $sqlReceipts = "
             SELECT 
                 p.id,
@@ -884,14 +962,24 @@ class AccountStatementHandler extends BaseHandler
                 p.journal_entry_id,
                 p.sale_id,
                 p.return_id,
+                p.type AS source_payment_type,
                 CASE 
-                    WHEN p.return_id IS NOT NULL THEN 'refund'
-                    WHEN p.sale_id IS NOT NULL THEN 'receipt'
-                    ELSE 'payment'
+                    WHEN p.return_id IS NOT NULL OR p.type IN ('return_payment', 'refund') THEN 'refund'
+                    ELSE 'receipt'
                 END AS payment_type,
                 r.refund_amount,
                 r.refund_method,
-                s.invoice_number AS related_sale_invoice_number
+                s.invoice_number AS related_sale_invoice_number,
+                (
+                    SELECT GROUP_CONCAT(DISTINCT allocated_sale.invoice_number
+                        ORDER BY allocated_sale.invoice_number SEPARATOR ', ')
+                    FROM customer_payment_allocations cpa
+                    JOIN sales allocated_sale
+                      ON allocated_sale.id = cpa.sale_id
+                     AND allocated_sale.tenant_id = cpa.tenant_id
+                    WHERE cpa.payment_id = p.id
+                      AND cpa.tenant_id = p.tenant_id
+                ) AS allocated_invoice_numbers
             FROM payments p
             LEFT JOIN returns r ON p.return_id = r.id AND p.tenant_id = r.tenant_id
             LEFT JOIN sales s ON p.sale_id = s.id AND p.tenant_id = s.tenant_id
@@ -900,32 +988,32 @@ class AccountStatementHandler extends BaseHandler
               AND p.created_at >= :start_date AND p.created_at <= :end_date_full
               AND p.is_draft = 0
               AND p.status = 'completed'
+              {$paymentBranchFilterSql}
         ";
         $stmtReceipts = $this->db->prepare($sqlReceipts);
-        $stmtReceipts->execute([
+        $receiptParams = [
             ':tenant_id' => $tenantId,
             ':customer_id' => $customerId,
             ':start_date' => $startDate,
             ':end_date_full' => $endDate . ' 23:59:59',
-        ]);
+        ];
+        if ($branchId !== null) {
+            $receiptParams[':payment_branch_id'] = $branchId;
+            $receiptParams[':sale_branch_id'] = $branchId;
+            $receiptParams[':return_branch_id'] = $branchId;
+        }
+        $stmtReceipts->execute($receiptParams);
         $receipts = array_map(function ($r) {
             $amount = isset($r['amount']) ? (float)$r['amount'] : 0.0;
             $paymentType = $r['payment_type'] ?? 'receipt';
+            $sourcePaymentType = (string) ($r['source_payment_type'] ?? '');
             $referencePrefix = $paymentType === 'refund' ? 'refund' : 'receipt';
 
-            // Only create refund record if amount > 0
             if ($paymentType === 'refund' && $amount < 0.01) {
-                return null; // Skip empty refunds
+                return null;
             }
 
-            /**
-             * CRITICAL FIX: Determine transaction_subtype based on return's refund_amount and refund_method
-             *
-             * NOT all refunds are sales_return_refund!
-             * - If return.refund_amount < 0.01 → sales_return_only (no actual refund issued)
-             * - If return.refund_amount >= 0.01 + refund_method = 'cash' → sales_return_refund
-             * - If return.refund_amount >= 0.01 + refund_method = 'bank_transfer' → sales_return_bank_refund
-             */
+            // Distinguish a return with an actual cash/bank refund from a non-cash return.
             $transactionSubtype = null;
             if ($paymentType === 'refund') {
                 $refundAmount = isset($r['refund_amount']) ? (float)$r['refund_amount'] : 0;
@@ -938,27 +1026,32 @@ class AccountStatementHandler extends BaseHandler
                         $transactionSubtype = 'sales_return_bank_refund';
                     }
                 }
-                // If refundAmount < 0.01, $transactionSubtype stays null (sales_return_only)
             }
 
-            // Map payment type and subtype to human-readable labels
             $paymentTypeLabel = $paymentType === 'refund' ? 'سند صرف' : 'سند قبض';
             if ($paymentType === 'refund' && $transactionSubtype === 'sales_return_refund') {
                 $paymentTypeLabel = 'استرجاع نقدي للعميل';
             }
 
-            // Use related_sale_invoice_number if available (for receipts linked to sales)
-            // Otherwise use reference_number (payment reference), or null if neither available
-            $invoiceNumber = !empty($r['related_sale_invoice_number'])
-                ? $r['related_sale_invoice_number']
-                : ($r['reference_number'] ?? null);
+            $invoiceNumber = $r['related_sale_invoice_number'] ?? null;
+            $sourceLabel = $paymentType === 'refund'
+                ? 'استرداد مرتجع'
+                : match ($sourcePaymentType) {
+                    'sale' => 'تحصيل مرتبط بفاتورة',
+                    'customer', 'debt_payment' => 'تحصيل من حساب العميل',
+                    'voucher' => 'سند قبض',
+                    default => 'تحصيل',
+                };
 
             return [
                 'id' => (int)$r['id'],
                 'date' => $r['date'],
                 'type' => $paymentType,
                 'type_label' => $paymentTypeLabel,
+                'source_label' => $sourceLabel,
+                'payment_reference_number' => $r['reference_number'] ?? null,
                 'invoice_number' => $invoiceNumber,
+                'allocated_invoice_numbers' => $r['allocated_invoice_numbers'] ?? null,
                 'reference' => $referencePrefix . '#' . $r['id'],
                 'status' => null,
                 'total_amount' => $amount,
@@ -971,10 +1064,8 @@ class AccountStatementHandler extends BaseHandler
             ];
         }, ($stmtReceipts->fetchAll(PDO::FETCH_ASSOC) ?: []));
 
-        // Filter out null entries (empty refunds)
         $receipts = array_filter($receipts, fn ($item) => $item !== null);
 
-        // دمج وفرز حسب التاريخ
         $all = array_merge($sales, $returns, $receipts);
         usort($all, function ($a, $b) {
             if ($a['date'] === $b['date']) {
@@ -990,28 +1081,10 @@ class AccountStatementHandler extends BaseHandler
     }
 
     // مرجع موحد للمورد: فواتير مشتريات + مرتجعات مشتريات + مدفوعات المورد خلال الفترة
-    private function getSupplierReferences($supplierId, $startDate, $endDate, $tenantId)
+    private function getSupplierReferences($supplierId, $startDate, $endDate, $tenantId, ?int $branchId = null)
     {
-        // 1) فواتير المشتريات — مع جلب البيانات المطلوبة لتطبيع الـ status
-        //
-        // 🔴 إصلاح خطأ حرج: كان هذا الاستعلام يعمل LEFT JOIN على
-        // return_credit_allocations.purchase_id — وهذا العمود غير موجود إطلاقاً في الجدول
-        // (تم التأكد من الـ schema: الجدول يحتوي فقط على return_id وsale_id، ولا يدعم
-        // مرتجعات المشتريات إطلاقاً بتصميمه الحالي). كان هذا يتسبب في فشل استعلام SQL
-        // بالكامل (Unknown column 'rca.purchase_id') في كل مرة يُستدعى فيها كشف حساب مورد.
-        // تم حذف الـ JOIN، وrca.return_credits_applied لم يعد له مصدر بيانات حقيقي على
-        // جانب المشتريات (النظام يتتبع مرتجعات المشتريات فقط عبر returns.paid_amount
-        // كرد نقدي فعلي من المورد — راجع ReturnService — وليس عبر آلية تخصيص/ائتمان مشابهة
-        // لجانب المبيعات)، لذا يُمرَّر 0 صراحةً بدل قيمة وهمية.
-        //
-        // ── AUDIT FIX (new) ────────────────────────────────────────────────────
-        // الملاحظة أعلاه صحيحة (لا يوجد return_credit_allocations لجانب المشتريات)،
-        // لكن هذا لا يعني أن قيمة المرتجع يجب تجاهلها بالكامل: تم استبدال
-        // `has_returns` (Boolean فقط) بـ `returned_amount` (المجموع الفعلي)، ويُمرَّر
-        // الآن لـ normalizeInvoiceStatus بدل الصفر الثابت — يطابق الآن نفس المعالجة
-        // المطبَّقة في PurchaseService::determinePurchaseStatus() (بعد إصلاحها)،
-        // فيعطي طبقة دفاع مزدوجة صحيحة حتى لو انحرف purchases.status لسبب آخر غير
-        // مكتشف بعد.
+        // Purchase returns are summed from returns; return-credit allocations are sales-only.
+        $purchaseBranchFilterSql = $branchId !== null ? ' AND p.branch_id = :branch_id' : '';
         $sqlPurchases = "
             SELECT 
                 p.id,
@@ -1019,10 +1092,18 @@ class AccountStatementHandler extends BaseHandler
                 p.invoice_number,
                 p.status,
                 p.total_amount,
-                p.net_total_amount,
                 p.tax_amount,
                 p.discount_value,
-                p.paid_amount,
+                (
+                    SELECT COALESCE(SUM(
+                        CASE WHEN pay.type = 'payment_for_return' THEN -pay.amount ELSE pay.amount END
+                    ), 0)
+                    FROM payments pay
+                    WHERE pay.purchase_id = p.id
+                      AND pay.tenant_id = p.tenant_id
+                      AND pay.is_draft = 0
+                      AND pay.status = 'completed'
+                ) AS actual_paid_amount,
                 p.journal_entry_id,
                 (
                     SELECT COALESCE(SUM(r.grand_total), 0)
@@ -1035,28 +1116,28 @@ class AccountStatementHandler extends BaseHandler
             WHERE p.tenant_id = :tenant_id
               AND p.supplier_id = :supplier_id
               AND p.invoice_date >= :start_date AND p.invoice_date <= :end_date_full
+              {$purchaseBranchFilterSql}
         ";
         $stmtPurchases = $this->db->prepare($sqlPurchases);
-        $stmtPurchases->execute([
+        $purchaseParams = [
             ':tenant_id' => $tenantId,
             ':supplier_id' => $supplierId,
             ':start_date' => $startDate,
             ':end_date_full' => $endDate . ' 23:59:59',
-        ]);
+        ];
+        if ($branchId !== null) {
+            $purchaseParams[':branch_id'] = $branchId;
+        }
+        $stmtPurchases->execute($purchaseParams);
         $purchases = array_map(function ($r) {
-            // Normalize status using unified logic
-            $net = isset($r['net_total_amount']) ? (float)$r['net_total_amount'] : 0.0;
-            $paid = isset($r['paid_amount']) ? (float)$r['paid_amount'] : 0.0;
+            $totalAmount = (float) ($r['total_amount'] ?? 0);
             $tax = isset($r['tax_amount']) ? (float)$r['tax_amount'] : 0.0;
-            $grandTotal = $net + $tax;
+            $net = max(0.0, round($totalAmount - $tax, 2));
+            $paid = isset($r['actual_paid_amount']) ? (float)$r['actual_paid_amount'] : 0.0;
             $returnedAmount = isset($r['returned_amount']) ? (float)$r['returned_amount'] : 0.0;
             $hasReturns = $returnedAmount > 0.009;
+            $grandTotal = $totalAmount;
 
-            // ── AUDIT FIX (new): returnCredits لا يزال 0 (لا يوجد credit-note على
-            // جانب المشتريات)، لكن $hasReturns الآن مبني على المبلغ الفعلي وليس
-            // مجرد وجود صف مرتجع — ويُستخدم outstanding الصحيح (net - paid -
-            // returnedAmount) عبر تمرير returnedAmount كمعامل خامس جديد بدل
-            // الاعتماد فقط على has_returns كـ boolean في normalizeInvoiceStatus.
             $returnCredits = 0.0;
 
             $normalizedStatus = $this->normalizeInvoiceStatus(
@@ -1074,10 +1155,12 @@ class AccountStatementHandler extends BaseHandler
                 'type' => 'purchase',
                 'invoice_number' => $r['invoice_number'],
                 'reference' => 'purchase#' . $r['id'],
-                'status' => $normalizedStatus,  // ← استخدام الـ status المطبع
-                'total_amount' => isset($r['total_amount']) ? (float)$r['total_amount'] : null,
+                'status' => $normalizedStatus,
+                'total_amount' => $totalAmount,
                 'net_total_amount' => $net,
-                'paid_amount' => isset($r['paid_amount']) ? (float)$r['paid_amount'] : null,
+                'tax_amount' => $tax,
+                'paid_amount' => $paid,
+                'outstanding' => max(0.0, round($grandTotal - $paid - $returnedAmount, 2)),
                 'returned_amount' => $returnedAmount,
                 'has_journal' => !empty($r['journal_entry_id']),
                 'journal_entry_id' => isset($r['journal_entry_id']) && $r['journal_entry_id'] ? (int)$r['journal_entry_id'] : null,
@@ -1085,6 +1168,7 @@ class AccountStatementHandler extends BaseHandler
         }, ($stmtPurchases->fetchAll(PDO::FETCH_ASSOC) ?: []));
 
         // 2) مرتجعات المشتريات
+        $purchaseReturnBranchFilterSql = $branchId !== null ? ' AND r.branch_id = :branch_id' : '';
         $sqlPurchaseReturns = "
             SELECT 
                 r.id,
@@ -1101,23 +1185,21 @@ class AccountStatementHandler extends BaseHandler
               AND r.return_type = 'purchase'
               AND r.supplier_id = :supplier_id
               AND r.created_at >= :start_date AND r.created_at <= :end_date_full
+              {$purchaseReturnBranchFilterSql}
         ";
         $stmtPR = $this->db->prepare($sqlPurchaseReturns);
-        $stmtPR->execute([
+        $purchaseReturnParams = [
             ':tenant_id' => $tenantId,
             ':supplier_id' => $supplierId,
             ':start_date' => $startDate,
             ':end_date_full' => $endDate . ' 23:59:59',
-        ]);
+        ];
+        if ($branchId !== null) {
+            $purchaseReturnParams[':branch_id'] = $branchId;
+        }
+        $stmtPR->execute($purchaseReturnParams);
         $purchaseReturns = array_map(function ($r) {
-            /**
-             * PURCHASE RETURN SUBTYPE LOGIC (Dynamic v2)
-             *
-             * Using refund_amount and refund_method columns to determine:
-             * - purchase_return_only: Return issued, no payment yet
-             * - purchase_return_refund: Return + cash payment (to supplier)
-             * - purchase_return_bank_refund: Return + bank transfer payment
-             */
+            // Distinguish a return with an actual cash or bank refund.
             $subtype = 'purchase_return_only';
 
             $refundAmount = isset($r['refund_amount']) ? (float)$r['refund_amount'] : 0;
@@ -1149,6 +1231,9 @@ class AccountStatementHandler extends BaseHandler
         }, ($stmtPR->fetchAll(PDO::FETCH_ASSOC) ?: []));
 
         // 3) مدفوعات المورد: استخدم supplier_id مباشرة من جدول payments - differentiate between payments and refunds
+        $supplierPaymentBranchFilterSql = $branchId !== null
+            ? ' AND (pay.branch_id = :payment_branch_id OR EXISTS (SELECT 1 FROM purchases bp WHERE bp.id = pay.purchase_id AND bp.tenant_id = pay.tenant_id AND bp.branch_id = :purchase_branch_id) OR EXISTS (SELECT 1 FROM returns br WHERE br.id = pay.return_id AND br.tenant_id = pay.tenant_id AND br.branch_id = :return_branch_id))'
+            : '';
         $sqlSupplierPayments = "
             SELECT 
                 pay.id,
@@ -1169,22 +1254,28 @@ class AccountStatementHandler extends BaseHandler
               AND pay.created_at >= :start_date AND pay.created_at <= :end_date_full
               AND pay.is_draft = 0
               AND pay.status = 'completed'
+              {$supplierPaymentBranchFilterSql}
         ";
         $stmtSPay = $this->db->prepare($sqlSupplierPayments);
-        $stmtSPay->execute([
+        $supplierPaymentParams = [
             ':tenant_id' => $tenantId,
             ':supplier_id' => $supplierId,
             ':start_date' => $startDate,
             ':end_date_full' => $endDate . ' 23:59:59',
-        ]);
+        ];
+        if ($branchId !== null) {
+            $supplierPaymentParams[':payment_branch_id'] = $branchId;
+            $supplierPaymentParams[':purchase_branch_id'] = $branchId;
+            $supplierPaymentParams[':return_branch_id'] = $branchId;
+        }
+        $stmtSPay->execute($supplierPaymentParams);
         $supplierPayments = array_map(function ($r) {
             $amount = isset($r['amount']) ? (float)$r['amount'] : 0.0;
             $paymentType = $r['payment_type'] ?? 'payment';
             $referencePrefix = $paymentType === 'refund' ? 'refund' : 'payment';
 
-            // Only create refund record if amount > 0
             if ($paymentType === 'refund' && $amount < 0.01) {
-                return null; // Skip empty refunds
+                return null;
             }
 
             return [
@@ -1204,10 +1295,8 @@ class AccountStatementHandler extends BaseHandler
             ];
         }, ($stmtSPay->fetchAll(PDO::FETCH_ASSOC) ?: []));
 
-        // Filter out null entries (empty refunds)
         $supplierPayments = array_filter($supplierPayments, fn ($item) => $item !== null);
 
-        // دمج وفرز
         $all = array_merge($purchases, $purchaseReturns, $supplierPayments);
         usort($all, function ($a, $b) {
             if ($a['date'] === $b['date']) {
@@ -1222,7 +1311,7 @@ class AccountStatementHandler extends BaseHandler
         ];
     }
 
-    // جلب جميع الحسابات النشطة للـ tenant الحالي
+    /** Return active accounts belonging to the current tenant. */
     public function getAccounts(Request $request, Response $response, array $args = []): Response
     {
         try {
@@ -1231,7 +1320,6 @@ class AccountStatementHandler extends BaseHandler
                 return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
             }
 
-            // التعديل هنا: استخدام دالة SUBSTRING لجلب أول رقمين من عمود 'code'
             $stmt = $this->db->prepare("
                     SELECT 
                         id, 
@@ -1256,7 +1344,6 @@ class AccountStatementHandler extends BaseHandler
         }
     }
 
-    // Helpers for enterprise usage
     private function parseTypes($csv)
     {
         if (is_array($csv)) {
@@ -1281,7 +1368,6 @@ class AccountStatementHandler extends BaseHandler
 
     private function fillDailyGaps(array $dailyBalances, $startDate, $endDate)
     {
-        // Map existing by date for O(1) lookup
         $byDate = [];
         foreach ($dailyBalances as $row) {
             if (isset($row['date'])) {
@@ -1293,7 +1379,6 @@ class AccountStatementHandler extends BaseHandler
         $current = new \DateTime($startDate);
         $end = new \DateTime($endDate);
 
-        // Determine initial opening when no rows exist
         $initialOpening = 0.0;
         if (!empty($dailyBalances)) {
             $initialOpening = isset($dailyBalances[0]['opening_balance']) ? (float)$dailyBalances[0]['opening_balance'] : 0.0;
@@ -1320,7 +1405,6 @@ class AccountStatementHandler extends BaseHandler
         return $result;
     }
 
-    // --- Localization helpers -------------------------------------------------
     private function referenceLabel(?string $type, string $locale = 'ar'): string
     {
         return LabelService::refLabel($type, $locale);
@@ -1331,7 +1415,7 @@ class AccountStatementHandler extends BaseHandler
         return LabelService::statusLabel($code, $locale);
     }
 
-    // GET: grouped accounts (tenant vs global)
+    /** Return tenant-owned and global accounts in separate collections. */
     public function getGroupedAccounts(Request $request, Response $response): Response
     {
         try {
@@ -1340,7 +1424,6 @@ class AccountStatementHandler extends BaseHandler
                 return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID)', 403);
             }
 
-            // Get tenant-specific accounts
             $tenantStmt = $this->db->prepare(
                 "SELECT id, code, name, type FROM accounts 
                  WHERE tenant_id = ? ORDER BY COALESCE(code, name) ASC"
@@ -1348,7 +1431,6 @@ class AccountStatementHandler extends BaseHandler
             $tenantStmt->execute([$tenantId]);
             $tenantAccounts = $tenantStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            // Get global accounts
             $globalStmt = $this->db->prepare(
                 "SELECT id, code, name, type FROM accounts 
                  WHERE tenant_id IS NULL ORDER BY COALESCE(code, name) ASC"

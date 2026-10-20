@@ -9,6 +9,30 @@
 - Opening balance may reuse an existing, explicitly configured branch mapping, but it never creates or activates a mapping. Without a mapping, journal and stock references remain valid with a NULL mapping reference; migration `005` is required for the cost snapshot FK to permit this.
 - `ProductBranchHandler::activateProductInBranch()` is the explicit operational activation path that may create/update a mapping. Ordinary stock posting and opening-balance posting must not invoke it implicitly.
 
+## Reversing an opening balance
+
+The inventory-management screen can reverse an active opening balance using
+`POST /product-branch/opening-balance/reverse`. When the opening balance has a
+posted journal entry, the server creates a mirror entry and an outbound
+inventory transaction. If accounting was explicitly skipped (or the opening
+has zero value) and no journal entry exists, it reverses stock only; a non-zero
+mapped GL balance blocks that path. Both paths retain the original opening
+balance and product history and leave the product in the system.
+
+The operation is allowed only when the selected branch has no other inventory
+movements for that product, the current quantity and inventory value still
+match the opening balance, no unrelated stock movements remain, and the
+accounting state is consistent. Previously reversed opening and reversal
+movements are ignored when evaluating a later opening-balance cycle.
+Requests that fail any check are rejected without changing stock or accounting.
+Users need both `inventory.adjust` and `accounting.je.reverse`.
+
+Migration `027_track_opening_balance_reversals` adds the reversal audit fields
+and the link to the original inventory transaction. Apply it before deploying
+the reversal endpoint and frontend control. Reversed opening-balance records
+remain in `opening_balances` for audit and do not block a later, new opening
+balance for the same product and branch.
+
 ## Closing an accounting period
 
 `AccountingPeriodsHandler::close()` requires the ordinary `accounting.period.manage` permission through route middleware. A request with `override=true` additionally requires `accounting.period.close.override` and a non-empty `override_reason`.

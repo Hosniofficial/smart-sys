@@ -11,6 +11,16 @@ use App\Services\MonologHandler;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Message\ResponseInterface as Response;
 
+/**
+ * Persists and retrieves typed, tenant-scoped settings.
+ *
+ * Settings are stored in the settings table, cached per handler instance, and
+ * audited on writes. Prefix and domain helpers expose grouped settings, defaults,
+ * and static currency metadata. AdminSettingsHandler uses this class for API
+ * persistence; StrictSubscriptionHandler also reads settings internally.
+ * Authorization for settings endpoints is handled by AdminSettingsHandler and
+ * app/routes/settings.php.
+ */
 class SettingsHandler extends BaseHandler
 {
     private array $cache = [];
@@ -21,9 +31,6 @@ class SettingsHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('settings');
     }
 
-    /**
-     * تحديد tenant ID
-     */
     private function resolveTenantId(?int $tenantIdParam = null): ?int
     {
         if (!empty($tenantIdParam)) {
@@ -33,9 +40,7 @@ class SettingsHandler extends BaseHandler
         return null;
     }
 
-    /**
-     * الحصول على قيمة إعداد
-     */
+    /** Read a typed setting from the instance cache or tenant-scoped database row. */
     public function get($key, $default = null, $tenantId = null)
     {
         $resolvedTenantId = null;
@@ -99,9 +104,7 @@ class SettingsHandler extends BaseHandler
         }
     }
 
-    /**
-     * تحديث قيمة إعداد
-     */
+    /** Serialize, persist, cache, and audit one tenant setting. */
     public function set($key, $value, $type = null, $tenantId = null, $userId = null): bool
     {
         $resolvedTenantId = null;
@@ -178,9 +181,7 @@ class SettingsHandler extends BaseHandler
         }
     }
 
-    /**
-     * حذف إعداد
-     */
+    /** Delete a tenant setting, evict its cache entry, and audit the change. */
     public function delete($key, $tenantId = null, $userId = null): bool
     {
         $resolvedTenantId = null;
@@ -236,9 +237,7 @@ class SettingsHandler extends BaseHandler
         }
     }
 
-    /**
-     * الحصول على مجموعة من الإعدادات
-     */
+    /** Load and cache all settings whose keys share the supplied prefix. */
     public function getGroup($prefix, $tenantId = null): array
     {
         $resolvedTenantId = $this->resolveTenantId($tenantId);
@@ -272,9 +271,7 @@ class SettingsHandler extends BaseHandler
         return $settings;
     }
 
-    /**
-     * تحديث مجموعة من الإعدادات
-     */
+    /** Persist a settings map, reusing an active database transaction. */
     public function setGroup($settings, $tenantId = null, $userId = null): bool
     {
         $resolvedTenantId = $this->resolveTenantId($tenantId);
@@ -283,7 +280,7 @@ class SettingsHandler extends BaseHandler
             throw new Exception('مطلوب معرف المستأجر (Tenant ID).');
         }
 
-        // ✅ Check if already in transaction to avoid nested transactions
+        // Reuse an active transaction instead of opening a nested transaction.
         $inTransaction = $this->db->inTransaction();
         if (!$inTransaction) {
             $this->db->beginTransaction();
@@ -307,25 +304,16 @@ class SettingsHandler extends BaseHandler
         }
     }
 
-    /**
-     * الحصول على إعدادات الشركة
-     */
     public function getCompanySettings($tenantId = null): array
     {
         return $this->getGroup('company.', $tenantId);
     }
 
-    /**
-     * الحصول على إعدادات الفواتير
-     */
     public function getInvoiceSettings($tenantId = null): array
     {
         return $this->getGroup('invoice.', $tenantId);
     }
 
-    /**
-     * تحديث إعدادات الفواتير
-     */
     public function updateInvoiceSettings($settings, $tenantId = null, $userId = null): bool
     {
         $validSettings = [
@@ -347,17 +335,11 @@ class SettingsHandler extends BaseHandler
         return $this->setGroup($filteredSettings, $tenantId, $userId);
     }
 
-    /**
-     * الحصول على إعدادات الأمان
-     */
     public function getSecuritySettings($tenantId = null): array
     {
         return $this->getGroup('security.', $tenantId);
     }
 
-    /**
-     * تحديث إعدادات الأمان
-     */
     public function updateSecuritySettings($settings, $tenantId = null, $userId = null): bool
     {
         $validSettings = [
@@ -378,17 +360,11 @@ class SettingsHandler extends BaseHandler
         return $this->setGroup($filteredSettings, $tenantId, $userId);
     }
 
-    /**
-     * الحصول على إعدادات الإشعارات
-     */
     public function getNotificationSettings($tenantId = null): array
     {
         return $this->getGroup('notification.', $tenantId);
     }
 
-    /**
-     * تحديث إعدادات الإشعارات
-     */
     public function updateNotificationSettings($settings, $tenantId = null, $userId = null): bool
     {
         $validSettings = [
@@ -407,17 +383,11 @@ class SettingsHandler extends BaseHandler
         return $this->setGroup($filteredSettings, $tenantId, $userId);
     }
 
-    /**
-     * الحصول على إعدادات المخزون
-     */
     public function getInventorySettings($tenantId = null): array
     {
         return $this->getGroup('inventory.', $tenantId);
     }
 
-    /**
-     * تحديث إعدادات المخزون
-     */
     public function updateInventorySettings($settings, $tenantId = null, $userId = null): bool
     {
         $validSettings = [
@@ -436,17 +406,11 @@ class SettingsHandler extends BaseHandler
         return $this->setGroup($filteredSettings, $tenantId, $userId);
     }
 
-    /**
-     * تحديث الإعدادات
-     */
     public function updateSettings($settings, $tenantId = null, $userId = null): bool
     {
         return $this->setGroup($settings, $tenantId, $userId);
     }
 
-    /**
-     * تحويل القيمة إلى النوع المناسب
-     */
     private function castValue($value, $type)
     {
         switch ($type) {
@@ -470,9 +434,6 @@ class SettingsHandler extends BaseHandler
         }
     }
 
-    /**
-     * تحويل القيمة إلى نص
-     */
     private function serializeValue($value): string
     {
         if (is_array($value) || is_object($value)) {
@@ -486,9 +447,6 @@ class SettingsHandler extends BaseHandler
         return (string) $value;
     }
 
-    /**
-     * اكتشاف نوع القيمة
-     */
     private function detectValueType($value): string
     {
         switch (true) {
@@ -512,9 +470,7 @@ class SettingsHandler extends BaseHandler
         }
     }
 
-    /**
-     * الحصول على جميع الإعدادات
-     */
+    /** Load tenant settings, falling back to built-in defaults when unavailable. */
     public function getSettings($tenantId = null): array
     {
         $resolvedTenantId = $this->resolveTenantId($tenantId);
@@ -558,9 +514,6 @@ class SettingsHandler extends BaseHandler
         }
     }
 
-    /**
-     * الحصول على الإعدادات الافتراضية
-     */
     private function getDefaultSettings(): array
     {
         return [
@@ -573,9 +526,12 @@ class SettingsHandler extends BaseHandler
             'company.registration_number' => '',
             'company.logo' => '',
             'company.currency' => 'EGP',
-            'company.timezone' => 'Africa/Cairo',
-            'company.date_format' => 'Y-m-d',
-            'company.time_format' => 'H:i:s',
+            // app.* is the canonical namespace for locale/format settings (used by frontend).
+            // company.timezone / company.date_format / company.time_format are kept as aliases
+            // only for backward compatibility with any legacy DB rows.
+            'app.timezone'    => 'Africa/Cairo',
+            'app.date_format' => 'DD/MM/YYYY',
+            'app.time_format' => '12',
             'system.language' => 'ar',
             'system.theme' => 'light',
             'inventory.low_stock_alert' => 10,
@@ -587,81 +543,7 @@ class SettingsHandler extends BaseHandler
         ];
     }
 
-    /**
-     * الحصول على قائمة العملات المدعومة
-     */
-    public function getSupportedCurrencies(): array
-    {
-        return [
-            'EGP' => [
-                'code' => 'EGP',
-                'name' => 'جنيه مصري',
-                'nameEn' => 'Egyptian Pound',
-                'symbol' => 'ج.م',
-                'country' => 'Egypt'
-            ],
-            'USD' => [
-                'code' => 'USD',
-                'name' => 'دولار أمريكي',
-                'nameEn' => 'US Dollar',
-                'symbol' => '$',
-                'country' => 'United States'
-            ],
-            'EUR' => [
-                'code' => 'EUR',
-                'name' => 'يورو',
-                'nameEn' => 'Euro',
-                'symbol' => '€',
-                'country' => 'Europe'
-            ],
-            'SAR' => [
-                'code' => 'SAR',
-                'name' => 'ريال سعودي',
-                'nameEn' => 'Saudi Riyal',
-                'symbol' => 'ر.س',
-                'country' => 'Saudi Arabia'
-            ],
-            'AED' => [
-                'code' => 'AED',
-                'name' => 'درهم إماراتي',
-                'nameEn' => 'UAE Dirham',
-                'symbol' => 'د.إ',
-                'country' => 'United Arab Emirates'
-            ],
-            'KWD' => [
-                'code' => 'KWD',
-                'name' => 'دينار كويتي',
-                'nameEn' => 'Kuwaiti Dinar',
-                'symbol' => 'د.ك',
-                'country' => 'Kuwait'
-            ],
-            'QAR' => [
-                'code' => 'QAR',
-                'name' => 'ريال قطري',
-                'nameEn' => 'Qatari Riyal',
-                'symbol' => 'ر.ق',
-                'country' => 'Qatar'
-            ],
-            'BHD' => [
-                'code' => 'BHD',
-                'name' => 'دينار بحريني',
-                'nameEn' => 'Bahraini Dinar',
-                'symbol' => 'د.ب',
-                'country' => 'Bahrain'
-            ],
-            'OMR' => [
-                'code' => 'OMR',
-                'name' => 'ريال عماني',
-                'nameEn' => 'Omani Rial',
-                'symbol' => 'ر.ع',
-                'country' => 'Oman'
-            ]
-        ];
-    }
-
-    /**
-     * تسجيل تغيير الإعدادات
-     */
+    /** Audit a setting change without failing the persistence operation on audit errors. */
     private function logSettingChange($key, $value, $action = 'update', $tenantId = null, $userId = null): void
     {
         try {

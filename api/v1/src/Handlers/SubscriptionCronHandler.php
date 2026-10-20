@@ -10,6 +10,14 @@ use Psr\Http\Message\ResponseInterface as Response;
 use App\Services\Mailer;
 use App\Services\MonologHandler;
 
+/**
+ * Processes subscription-expiry reminders and expiration transitions.
+ *
+ * The cron endpoint authenticates with the X-Cron-Token header against
+ * CRON_SECRET. Reminder and expiration queries use PDO; Mailer sends notices
+ * to tenant administrators, and subscription_events records processing results.
+ * The endpoint is registered at /api/v1/admin/subscriptions/cron in config/routes.php.
+ */
 class SubscriptionCronHandler extends BaseHandler
 {
     public function __construct(PDO $db)
@@ -18,10 +26,7 @@ class SubscriptionCronHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('subscription_cron');
     }
 
-    /**
-     * Process subscription reminders and expirations (daily cron)
-     * Security: Requires X-Cron-Token header
-     */
+    /** Authenticate the scheduled request and run reminder and expiration passes. */
     public function processCron(Request $request, Response $response): Response
     {
         try {
@@ -54,9 +59,7 @@ class SubscriptionCronHandler extends BaseHandler
         }
     }
 
-    /**
-     * Process reminders for subscriptions expiring in 3 days
-     */
+    /** Send at most one recorded reminder event per subscription per calendar day. */
     private function processReminders(Mailer $mailer): int
     {
         $count = 0;
@@ -122,9 +125,7 @@ class SubscriptionCronHandler extends BaseHandler
         return $count;
     }
 
-    /**
-     * Process expired subscriptions and notify admins
-     */
+    /** Mark overdue subscriptions expired and send a post-commit notice. */
     private function processExpirations(Mailer $mailer): int
     {
         $count = 0;
@@ -201,9 +202,7 @@ class SubscriptionCronHandler extends BaseHandler
         return $count;
     }
 
-    /**
-     * Get admin emails for a tenant (helper)
-     */
+    /** Return unique non-empty administrator email addresses for one tenant. */
     private function getTenantAdminEmails(int $tenantId): array
     {
         try {

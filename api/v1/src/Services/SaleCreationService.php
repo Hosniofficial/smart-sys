@@ -14,6 +14,7 @@ use App\Services\CostingService;
 use App\Services\MonologHandler;
 use App\Repositories\SettingsRepository;
 use App\Security\Permissions;
+use App\Security\PermissionResolver;
 use App\Security\SaleDiscountPolicy;
 
 /**
@@ -154,42 +155,87 @@ class SaleCreationService
         }
 
         $userStmt = $this->pdo->prepare(
-            'SELECT role_id FROM users WHERE id = ? AND (tenant_id = ? OR role_id = 1) LIMIT 1'
+            'SELECT 1 FROM users WHERE id = ? AND tenant_id = ? LIMIT 1'
         );
         $userStmt->execute([$this->userId, $tenantId]);
-        $roleId = $userStmt->fetchColumn();
-        if ($roleId === false) {
+        if (!$userStmt->fetchColumn()) {
             return false;
         }
-        if ((int) $roleId === 1) {
+
+        $roleNames = $this->getUserRoleNames($tenantId);
+        if ($this->hasPrivilegedSaleRole($roleNames)) {
             return true;
         }
+        if (in_array('cashier', $roleNames, true)) {
+            return false;
+        }
 
-        $permissionStmt = $this->pdo->prepare(
-            "SELECT 1
-             FROM role_permissions rp
-             JOIN permissions p ON p.id = rp.permission_id
-             JOIN roles r ON r.id = rp.role_id
-             WHERE p.name = ?
-               AND (r.tenant_id = ? OR (r.tenant_id IS NULL AND r.is_system_role = 1))
-               AND (
-                   r.id = (SELECT u.role_id FROM users u WHERE u.id = ? AND u.tenant_id = ?)
-                   OR r.id IN (
-                       SELECT ur.role_id FROM users_role ur
-                       WHERE ur.user_id = ? AND (ur.tenant_id = ? OR ur.tenant_id IS NULL)
-                   )
-               )
-             LIMIT 1"
+        return PermissionResolver::hasPermission(
+            $this->pdo,
+            $this->userId,
+            Permissions::SALE_DISCOUNT
         );
-        $permissionStmt->execute([
-            Permissions::SALE_DISCOUNT,
-            $tenantId,
-            $this->userId,
-            $tenantId,
-            $this->userId,
-            $tenantId,
-        ]);
-        return (bool) $permissionStmt->fetchColumn();
+    }
+
+    private function userCanApproveBelowCost(int $tenantId): bool
+    {
+        $userStmt = $this->pdo->prepare(
+            'SELECT is_owner FROM users WHERE id = ? AND tenant_id = ? LIMIT 1'
+        );
+        $userStmt->execute([$this->userId, $tenantId]);
+        $isOwner = $userStmt->fetchColumn();
+        if ($isOwner === false) {
+            return false;
+        }
+
+        return (int) $isOwner === 1
+            || $this->hasPrivilegedSaleRole($this->getUserRoleNames($tenantId));
+    }
+
+    /**
+     * @return string[]
+     */
+    private function getUserRoleNames(int $tenantId): array
+    {
+        $assignment = $this->pdo->prepare(
+            'SELECT 1 FROM users_role WHERE user_id = ? LIMIT 1'
+        );
+        $assignment->execute([$this->userId]);
+        $hasExplicitRoles = $assignment->fetchColumn() !== false;
+
+        if ($hasExplicitRoles) {
+            $stmt = $this->pdo->prepare(
+                'SELECT DISTINCT LOWER(r.name)
+                 FROM users_role ur
+                 JOIN roles r ON r.id = ur.role_id
+                 WHERE ur.user_id = ?
+                   AND (ur.tenant_id IS NULL OR ur.tenant_id = ?)
+                   AND (r.tenant_id IS NULL OR r.tenant_id = ?)'
+            );
+            $stmt->execute([$this->userId, $tenantId, $tenantId]);
+        } else {
+            $stmt = $this->pdo->prepare(
+                'SELECT LOWER(r.name)
+                 FROM users u
+                 JOIN roles r ON r.id = u.role_id
+                 WHERE u.id = ?
+                   AND (r.tenant_id IS NULL OR r.tenant_id = ?)'
+            );
+            $stmt->execute([$this->userId, $tenantId]);
+        }
+
+        return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+    }
+
+    /**
+     * @param string[] $roleNames
+     */
+    private function hasPrivilegedSaleRole(array $roleNames): bool
+    {
+        return (bool) array_intersect(
+            $roleNames,
+            ['admin', 'administrator', 'manager', 'branch_manager', 'supervisor', 'branch_supervisor', 'super_admin']
+        );
     }
 
     private function generateInvoiceNumber(int $tenantId): string
@@ -209,15 +255,19 @@ class SaleCreationService
 
     private function resolvePaymentMethodId(array $data, float $paidAmount, int $tenantId): int
     {
-        if (!empty($data['payment_method_id'])) {
+        if (array_key_exists('payment_method_id', $data)
+            && $data['payment_method_id'] !== null
+            && $data['payment_method_id'] !== '') {
+            if (!is_numeric($data['payment_method_id']) || (int) $data['payment_method_id'] <= 0) {
+                throw new \DomainException('طريقة الدفع المحددة غير صالحة.');
+            }
             $pmId = (int)$data['payment_method_id'];
-            // Verify the payment method exists for this tenant
             $stmt = $this->pdo->prepare("SELECT id FROM payment_methods WHERE id = ? AND tenant_id = ? LIMIT 1");
             $stmt->execute([$pmId, $tenantId]);
             if ($stmt->fetchColumn()) {
                 return $pmId;
             }
-            // If specified payment method doesn't exist, fall through to auto-resolve
+            throw new \DomainException('طريقة الدفع المحددة غير صالحة لهذا المستأجر.');
         }
         $kind = $paidAmount > 0 ? 'cash' : 'credit';
         $stmt = $this->pdo->prepare("SELECT id FROM payment_methods WHERE kind = ? AND tenant_id = ? ORDER BY is_default DESC, id ASC LIMIT 1");
@@ -292,7 +342,7 @@ class SaleCreationService
                 $tenantId, $this->userId,
             ]);
 
-            if ($applyStock) {
+            if ($applyStock && !empty($item['tracks_stock'])) {
                 $baseQuantity = $quantity * $conversionFactor;
                 $unitCost     = $purchasePrice;
                 $totalCost    = $baseQuantity * $unitCost;
@@ -306,7 +356,7 @@ class SaleCreationService
 
                 if ($availableQty < $baseQuantity) {
                     throw new \App\Exceptions\InsufficientStockException(
-                        "الكمية المتوفرة للمنتج {$productId} ({$availableQty}) أقل من الكمية المطلوبة ({$baseQuantity}).",
+                        "الكمية المتاحة للمنتج {$productId} ({$availableQty}) أقل من الكمية المطلوبة ({$baseQuantity}).",
                         $productId,
                         $availableQty,
                         $baseQuantity
@@ -422,27 +472,80 @@ class SaleCreationService
 
             // ── حساب الإجماليات ──────────────────────────────────────────────
             $totalAmount    = 0;
+            $enteredSubtotal = 0;
+            $manualPriceDiscountTotal = 0;
             $totalProfit    = 0;
             $saleItemsForDb = [];
 
             foreach ($data['items'] as &$item) {
-                if (!isset($item['unit_id']) || is_null($item['unit_id'])) {
-                    throw new Exception("وحدة القياس (unit_id) مفقودة للمنتج برقم {$item['product_id']}");
+                $productId = (int) ($item['product_id'] ?? 0);
+                $unitId = (int) ($item['unit_id'] ?? 0);
+                $quantity = $item['quantity'] ?? null;
+                $salePrice = $item['sale_price'] ?? null;
+                if ($productId <= 0 || $unitId <= 0) {
+                    throw new \DomainException('المنتج ووحدة القياس مطلوبان لكل بند.');
+                }
+                if (!is_numeric($quantity) || !is_finite((float) $quantity) || (float) $quantity <= 0) {
+                    throw new \DomainException('كمية الصنف يجب أن تكون أكبر من صفر.');
+                }
+                if (!is_numeric($salePrice) || !is_finite((float) $salePrice) || (float) $salePrice < 0) {
+                    throw new \DomainException('سعر بيع الصنف غير صالح.');
                 }
                 $stmt = $this->pdo->prepare(
-                    "SELECT sale_price, purchase_price, min_sale_price, fixed_discount_percentage
+                    "SELECT sale_price, purchase_price, min_sale_price, fixed_discount_percentage, product_type
                      FROM products WHERE id = ? AND tenant_id = ?"
                 );
-                $stmt->execute([$item['product_id'], $tenantId]);
+                $stmt->execute([$productId, $tenantId]);
                 $product = $stmt->fetch(PDO::FETCH_ASSOC);
                 if (!$product) {
-                    throw new Exception("المنتج برقم {$item['product_id']} غير موجود.");
+                    throw new Exception("المنتج برقم {$productId} غير موجود.");
                 }
-                $item['purchase_price'] = (float) $product['purchase_price'];
+                $unitStmt = $this->pdo->prepare(
+                    'SELECT conversion_factor FROM product_units
+                     WHERE product_id = ? AND unit_id = ? AND tenant_id = ? LIMIT 1'
+                );
+                $unitStmt->execute([$productId, $unitId, $tenantId]);
+                $conversionFactor = $unitStmt->fetchColumn();
+                if ($conversionFactor === false
+                    || !is_numeric($conversionFactor)
+                    || !is_finite((float) $conversionFactor)
+                    || (float) $conversionFactor <= 0) {
+                    throw new \DomainException('وحدة القياس المحددة غير مرتبطة بالمنتج.');
+                }
+                $tracksStock = ProductBranchActivationGuard::assertSellableInBranch(
+                    $this->pdo,
+                    $tenantId,
+                    $branchId,
+                    $productId
+                );
+                $item['conversion_factor'] = (float) $conversionFactor;
+                $item['product_type'] = strtolower((string) ($product['product_type'] ?? 'stock'));
+                $item['tracks_stock'] = $tracksStock;
+                $item['purchase_price'] = $tracksStock ? (float) $product['purchase_price'] : 0.0;
                 $item['catalog_sale_price'] = (float) $product['sale_price'];
                 $item['min_sale_price'] = (float) ($product['min_sale_price'] ?? 0);
                 $item['fixed_discount_percentage'] = (float) ($product['fixed_discount_percentage'] ?? 0);
-                $totalAmount += (float)$item['quantity'] * (float)$item['sale_price'];
+                $item['manual_price_override'] = filter_var(
+                    $item['manual_price_override'] ?? false,
+                    FILTER_VALIDATE_BOOLEAN
+                );
+                $item['below_cost_confirmed'] = filter_var(
+                    $item['below_cost_confirmed'] ?? false,
+                    FILTER_VALIDATE_BOOLEAN
+                );
+                $item['below_minimum_price_confirmed'] = filter_var(
+                    $item['below_minimum_price_confirmed'] ?? false,
+                    FILTER_VALIDATE_BOOLEAN
+                );
+                $enteredLineTotal = (float) $item['quantity'] * (float) $item['sale_price'];
+                $referenceUnitPrice = max(
+                    (float) $item['sale_price'],
+                    (float) $item['catalog_sale_price'] * (float) $item['conversion_factor']
+                );
+                $referenceLineTotal = (float) $item['quantity'] * $referenceUnitPrice;
+                $enteredSubtotal += $enteredLineTotal;
+                $totalAmount += $referenceLineTotal;
+                $manualPriceDiscountTotal += max(0.0, $referenceLineTotal - $enteredLineTotal);
             }
             unset($item);
 
@@ -451,23 +554,44 @@ class SaleCreationService
             // بنفس FinancialCalculationService المستخدمة الآن في المشتريات، والتي تُعامل أي
             // نسبة > 100% كمبلغ ثابت محدود بالإجمالي (لا يمكن أن يتجاوز الخصم قيمة الفاتورة).
             $totalDiscountAmount = $this->financialCalcService->calculateDiscount(
-                $totalAmount,
+                $enteredSubtotal,
                 (float) $discountValue,
                 (string) $discountType
             );
-            SaleDiscountPolicy::assertAllowed(
+            $belowCostReasonValue = $data['below_cost_reason'] ?? '';
+            if (!is_string($belowCostReasonValue)) {
+                throw new \DomainException('سبب البيع بأقل من التكلفة غير صالح.');
+            }
+            $belowCostReason = trim($belowCostReasonValue);
+            if (strlen($belowCostReason) > 500) {
+                throw new \DomainException('سبب البيع بأقل من التكلفة يتجاوز الحد الأقصى المسموح.');
+            }
+            $canDiscount = $this->userCanDiscount($tenantId);
+            $canApproveBelowCost = $this->userCanApproveBelowCost($tenantId);
+            $hasBelowCostItems = SaleDiscountPolicy::assertAllowed(
                 $data['items'],
                 $totalDiscountAmount,
-                $totalAmount,
-                $this->userCanDiscount($tenantId)
+                $enteredSubtotal,
+                $canDiscount,
+                $canApproveBelowCost,
+                $belowCostReason
             );
 
             foreach ($data['items'] as $item) {
                 $quantity      = (float)$item['quantity'];
                 $salePrice     = (float)$item['sale_price'];
                 $purchasePrice = (float)$item['purchase_price'];
-                $itemTotal     = $quantity * $salePrice;
-                $itemDiscount  = ($totalAmount > 0) ? ($itemTotal / $totalAmount) * $totalDiscountAmount : 0;
+                $referenceUnitPrice = max(
+                    $salePrice,
+                    (float) $item['catalog_sale_price'] * (float) $item['conversion_factor']
+                );
+                $itemTotal = $quantity * $referenceUnitPrice;
+                $enteredLineTotal = $quantity * $salePrice;
+                $manualPriceDiscount = max(0.0, $itemTotal - $enteredLineTotal);
+                $allocatedInvoiceDiscount = $enteredSubtotal > 0
+                    ? ($enteredLineTotal / $enteredSubtotal) * $totalDiscountAmount
+                    : 0.0;
+                $itemDiscount  = $manualPriceDiscount + $allocatedInvoiceDiscount;
                 $itemNetTotal  = $itemTotal - $itemDiscount;
                 $itemNetPrice  = ($quantity > 0) ? $itemNetTotal / $quantity : 0;
                 $itemProfit    = $itemNetTotal - ($purchasePrice * $quantity);
@@ -475,22 +599,26 @@ class SaleCreationService
 
                 $saleItemsForDb[] = [
                     'product_id'    => $item['product_id'],
+                    'product_type'  => $item['product_type'],
+                    'tracks_stock'  => $item['tracks_stock'],
                     'unit_id'       => $item['unit_id'] ?? null,
+                    'conversion_factor' => (float) $item['conversion_factor'],
                     'quantity'      => $quantity,
-                    'sale_price'    => $salePrice,
+                    'sale_price'    => $referenceUnitPrice,
                     'purchase_price' => $purchasePrice,
                     'discount_value' => $itemDiscount,
                     'net_price'     => $itemNetPrice,
                     'total'         => $itemTotal,
                     'net_total'     => $itemNetTotal,
                     'profit'        => $itemProfit,
-                    'batch_number'  => $item['batch_number'] ?? null,
-                    'expiry_date'   => $item['expiry_date']  ?? null,
-                    'serial'        => $item['serial']       ?? null,
+                    'batch_number'  => $item['tracks_stock'] ? ($item['batch_number'] ?? null) : null,
+                    'expiry_date'   => $item['tracks_stock'] ? ($item['expiry_date'] ?? null) : null,
+                    'serial'        => $item['tracks_stock'] ? ($item['serial'] ?? null) : null,
                 ];
             }
 
-            $netTotalAmount      = $totalAmount - $totalDiscountAmount;
+            $netTotalAmount      = $totalAmount - $manualPriceDiscountTotal - $totalDiscountAmount;
+            $recordedDiscountAmount = $manualPriceDiscountTotal + $totalDiscountAmount;
             $taxRate             = $data['tax_rate'] ?? 0;
             $taxAmount           = ($taxRate / 100) * $netTotalAmount;
             $paidAmount          = (float)($data['paid_amount'] ?? 0);
@@ -529,9 +657,11 @@ class SaleCreationService
             }
 
             // ── Session for cash ──────────────────────────────────────────────
-            $sessionIdForSale = null;
+            $sessionIdForSale = !empty($data['session_id']) ? (int) $data['session_id'] : null;
             $isCash = $this->accounting->isCashMethod($paymentMethodId, $tenantId);
-            if ($isCash) {
+            $sessionRequired = $this->settingsRepo->getBool($tenantId, 'pos.sessions.enabled', false)
+                && empty($data['cashier_session_exempt']);
+            if ($isCash && $paidAmount > 0 && $sessionIdForSale === null) {
                 $sessionIdForSale = $this->findOpenCashierSession($tenantId, $branchId, $this->userId, $deviceId);
                 if (!$sessionIdForSale) {
                     $roleId   = $this->getCurrentUserRoleId();
@@ -539,6 +669,9 @@ class SaleCreationService
                     if (!$enforced) {
                         $sessionIdForSale = $this->findOpenGlobalCashierSession($tenantId, $this->userId);
                     }
+                }
+                if (!$sessionIdForSale && $sessionRequired) {
+                    throw new Exception('لا توجد جلسة كاشير مفتوحة لهذا الفرع. افتح جلسة قبل تسجيل البيع النقدي.');
                 }
             }
 
@@ -569,10 +702,16 @@ class SaleCreationService
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
+            $notes = trim((string) ($data['notes'] ?? ''));
+            if ($hasBelowCostItems) {
+                $belowCostNote = 'سبب اعتماد البيع بأقل من التكلفة: ' . $belowCostReason;
+                $notes = $notes === '' ? $belowCostNote : $notes . "\n" . $belowCostNote;
+            }
+
             $params = [
                 $tenantId, $data['customer_id'] ?? null, $data['sale_date'] ?? date('Y-m-d H:i:s'),
-                $totalAmount, $netTotalAmount, $paidAmount, $discountType, $discountValue,
-                $status, $this->userId, $data['notes'] ?? null, count($data['items']),
+                $totalAmount, $netTotalAmount, $paidAmount, 'fixed', $recordedDiscountAmount,
+                $status, $this->userId, $notes !== '' ? $notes : null, count($data['items']),
                 $totalProfit, $branchId, $invoiceNumber, $paymentMethodId,
                 $taxRate, $taxAmount, $sessionIdForSale, $resolvedCostCenter,
             ];
@@ -649,30 +788,7 @@ class SaleCreationService
             // ── Payment + cash transaction ────────────────────────────────────
             if (!$approvalRequired && $paidAmount > 0) {
                 $isCash   = $this->accounting->isCashMethod($paymentMethodId, $tenantId);
-                $sessionId = null;
-                if ($isCash) {
-                    $sessionId = $this->findOpenCashierSession($tenantId, $branchId, $this->userId, $deviceId);
-                    if (!$sessionId) {
-                        $roleId   = $this->getCurrentUserRoleId();
-                        $enforced = $this->isRoleEnforced($tenantId, $roleId);
-                        if (!$enforced) {
-                            $sessionId = $this->findOpenGlobalCashierSession($tenantId, $this->userId);
-                        }
-                    }
-                    if (!$sessionId) {
-                        $roleId   = $this->getCurrentUserRoleId();
-                        $enforced = $this->isRoleEnforced($tenantId, $roleId);
-                        if ($enforced) {
-                            throw new Exception('لا توجد جلسة كاشير مفتوحة لهذا المخزن. افتح جلسة قبل تسجيل الدفع النقدي.');
-                        }
-                        $this->pdo->prepare("
-                            INSERT INTO cashier_sessions
-                            (tenant_id, branch_id, cashier_id, session_type, start_time, end_time, status, created_by, created_at, updated_at)
-                            VALUES (?, ?, ?, 'admin', NOW(), NOW(), 'closed', ?, NOW(), NOW())
-                        ")->execute([$tenantId, $branchId, $this->userId, $this->userId]);
-                        $sessionId = (int)$this->pdo->lastInsertId();
-                    }
-                }
+                $sessionId = $isCash ? $sessionIdForSale : null;
 
                 $resolvedCc2 = $this->accounting->resolveCostCenterForService($tenantId, $this->userId, $data['cost_center_id'] ?? null, $branchId);
                 $currency    = $this->getCompanyCurrency($tenantId);

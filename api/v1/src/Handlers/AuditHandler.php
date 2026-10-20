@@ -10,6 +10,12 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
 
+/**
+ * Writes and queries tenant-scoped audit records.
+ *
+ * Uses PDO for audit-log persistence and retrieval; the API listing route is
+ * protected by report.financial permission in app/routes/audit.php.
+ */
 class AuditHandler extends BaseHandler
 {
     public ?array $currentUser = null;  // Public so BaseHandler.getAudit() can sync the user context
@@ -20,9 +26,7 @@ class AuditHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('audit');
     }
 
-    /**
-     * تسجيل نشاط
-     */
+    /** Persist an audit event, using the handler's tenant and user context when omitted. */
     public function logAction(
         string $action,
         string $module,
@@ -37,8 +41,6 @@ class AuditHandler extends BaseHandler
             throw new Exception('مطلوب معرف المستأجر (Tenant ID).');
         }
 
-        // If userId is not provided, try to get it from the current user context
-        // This ensures user_id is captured even if not explicitly passed
         if ($userId === null && isset($this->currentUser) && is_array($this->currentUser)) {
             $userId = $this->currentUser['id'] ?? null;
         }
@@ -73,9 +75,7 @@ class AuditHandler extends BaseHandler
         ]);
     }
 
-    /**
-     * جلب سجلات التدقيق داخليًا
-     */
+    /** Return a paginated tenant log filtered by user, module, action, date, or IP. */
     public function getLogs(array $filters = [], int $page = 1, int $perPage = 20): array
     {
         $tenantId = isset($filters['tenant_id']) ? (int) $filters['tenant_id'] : null;
@@ -143,9 +143,7 @@ class AuditHandler extends BaseHandler
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
-    /**
-     * جلب إحصائيات التدقيق
-     */
+    /** Aggregate audit activity by module, action, user, and IP for a tenant and date range. */
     public function getStats(array $filters = []): array
     {
         $tenantId = isset($filters['tenant_id']) ? (int) $filters['tenant_id'] : null;
@@ -232,9 +230,7 @@ class AuditHandler extends BaseHandler
         ];
     }
 
-    /**
-     * جلب تفاصيل نشاط
-     */
+    /** Fetch one audit record and user details, constrained by log and tenant IDs. */
     public function getLogDetails(int $logId, int $tenantId): array|false
     {
         $stmt = $this->db->prepare("
@@ -251,36 +247,28 @@ class AuditHandler extends BaseHandler
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    /**
-     * جلب نشاطات مستخدم
-     */
+    /** Return a user's paginated activity using the shared audit-log filters. */
     public function getUserActivity(int $userId, array $filters = [], int $page = 1, int $perPage = 20): array
     {
         $filters['user_id'] = $userId;
         return $this->getLogs($filters, $page, $perPage);
     }
 
-    /**
-     * جلب نشاطات وحدة
-     */
+    /** Return a module's paginated activity using the shared audit-log filters. */
     public function getModuleActivity(string $module, array $filters = [], int $page = 1, int $perPage = 20): array
     {
         $filters['module'] = $module;
         return $this->getLogs($filters, $page, $perPage);
     }
 
-    /**
-     * جلب نشاطات عنوان IP
-     */
+    /** Return an IP address's paginated activity using the shared audit-log filters. */
     public function getIpActivity(string $ipAddress, array $filters = [], int $page = 1, int $perPage = 20): array
     {
         $filters['ip_address'] = $ipAddress;
         return $this->getLogs($filters, $page, $perPage);
     }
 
-    /**
-     * جلب تنبيهات الأمان
-     */
+    /** List paginated auth/security audit events, optionally filtered by severity and date. */
     public function getSecurityAlerts(array $filters = [], int $page = 1, int $perPage = 20): array
     {
         $tenantId = isset($filters['tenant_id']) ? (int) $filters['tenant_id'] : null;
@@ -332,9 +320,7 @@ class AuditHandler extends BaseHandler
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
-    /**
-     * حذف سجلات قديمة
-     */
+    /** Delete this tenant's audit records older than the supplied retention period. */
     public function cleanOldLogs(int $days = 90, ?int $tenantId = null): bool
     {
         if (!$tenantId) {
@@ -350,9 +336,7 @@ class AuditHandler extends BaseHandler
         return $stmt->execute([$tenantId, $days]);
     }
 
-    /**
-     * تصدير سجلات التدقيق
-     */
+    /** Return all matching tenant audit records for export without pagination. */
     public function exportLogs(array $filters = []): array
     {
         $tenantId = isset($filters['tenant_id']) ? (int) $filters['tenant_id'] : null;
@@ -410,6 +394,7 @@ class AuditHandler extends BaseHandler
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
+    /** Serve the paginated audit-log endpoint, including optional entity-based branch filtering. */
     public function getAuditLogs(Request $request, Response $response): Response
     {
         try {
@@ -419,6 +404,19 @@ class AuditHandler extends BaseHandler
             }
 
             $params = $request->getQueryParams();
+            $branchId = null;
+            if (isset($params['branch_id']) && $params['branch_id'] !== '') {
+                $branchId = filter_var($params['branch_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                if ($branchId === false) {
+                    return $this->errorResponse($response, 'معرف الفرع غير صالح.', 400);
+                }
+                $branchStmt = $this->db->prepare('SELECT id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1');
+                $branchStmt->execute([$branchId, $tenantId]);
+                if (!$branchStmt->fetchColumn()) {
+                    return $this->errorResponse($response, 'الفرع غير موجود.', 404);
+                }
+                $branchId = (int) $branchId;
+            }
             $page = isset($params['page']) ? max((int) $params['page'], 1) : 1;
             $perPage = isset($params['per_page']) ? max(min((int) $params['per_page'], 100), 10) : 20;
             $offset = ($page - 1) * $perPage;
@@ -445,6 +443,49 @@ class AuditHandler extends BaseHandler
             if (!empty($params['user_id']) && $params['user_id'] !== 'all') {
                 $where[] = 'a.user_id = :user_id';
                 $bind[':user_id'] = (int) $params['user_id'];
+            }
+            if ($branchId !== null) {
+                $where[] = "(
+                    (a.entity IN ('sale', 'sales') AND EXISTS (
+                        SELECT 1 FROM sales s
+                        WHERE s.id = a.entity_id AND s.tenant_id = a.tenant_id AND s.branch_id = {$branchId}
+                    ))
+                    OR (a.entity IN ('purchase', 'purchases') AND EXISTS (
+                        SELECT 1 FROM purchases p
+                        WHERE p.id = a.entity_id AND p.tenant_id = a.tenant_id AND p.branch_id = {$branchId}
+                    ))
+                    OR (a.entity IN ('return', 'returns') AND EXISTS (
+                        SELECT 1 FROM returns r
+                        WHERE r.id = a.entity_id AND r.tenant_id = a.tenant_id AND r.branch_id = {$branchId}
+                    ))
+                    OR (a.entity IN ('cash_voucher', 'cash_vouchers', 'voucher') AND EXISTS (
+                        SELECT 1 FROM cash_vouchers cv
+                        WHERE cv.id = a.entity_id AND cv.tenant_id = a.tenant_id AND cv.branch_id = {$branchId}
+                    ))
+                    OR (a.entity IN ('cash_transaction', 'cash_transactions') AND EXISTS (
+                        SELECT 1 FROM cash_transactions ct
+                        WHERE ct.id = a.entity_id AND ct.tenant_id = a.tenant_id AND ct.branch_id = {$branchId}
+                    ))
+                    OR (a.entity IN ('customer', 'customers') AND EXISTS (
+                        SELECT 1 FROM customers c
+                        WHERE c.id = a.entity_id AND c.tenant_id = a.tenant_id AND c.branch_id = {$branchId}
+                    ))
+                    OR (a.entity IN ('supplier', 'suppliers') AND EXISTS (
+                        SELECT 1 FROM suppliers su
+                        WHERE su.id = a.entity_id AND su.tenant_id = a.tenant_id AND su.branch_id = {$branchId}
+                    ))
+                    OR (a.entity IN ('product', 'products', 'inventory') AND EXISTS (
+                        SELECT 1 FROM branch_products bp
+                        WHERE bp.product_id = a.entity_id AND bp.tenant_id = a.tenant_id AND bp.branch_id = {$branchId}
+                    ))
+                    OR (a.entity IN ('branch', 'branches') AND a.entity_id = {$branchId})
+                    OR (CASE
+                        WHEN JSON_VALID(a.details) THEN
+                            CAST(JSON_UNQUOTE(JSON_EXTRACT(a.details, '$.branch_id')) AS UNSIGNED) = {$branchId}
+                            OR CAST(JSON_UNQUOTE(JSON_EXTRACT(a.details, '$.branchId')) AS UNSIGNED) = {$branchId}
+                        ELSE 0
+                    END)
+                )";
             }
 
             $whereSql = 'WHERE ' . implode(' AND ', $where);

@@ -12,6 +12,16 @@ use App\Utils\PaginationHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
+/**
+ * Creates and serves tenant notifications, user preferences, and delivery
+ * statistics.
+ *
+ * Persistent notification delivery is coordinated with
+ * NotificationAggregatorService; configured Pusher credentials enable realtime
+ * events for notifications created directly by this handler.
+ * app/routes/notifications.php exposes the user-facing listing, read, preference,
+ * and statistics endpoints.
+ */
 class NotificationHandler extends BaseHandler
 {
     private ?Pusher $pusher = null;
@@ -25,6 +35,23 @@ class NotificationHandler extends BaseHandler
         $this->initializePusher();
     }
 
+    /**
+     * Initialize Pusher configuration for real-time notification delivery.
+     *
+     * Reads Pusher credentials from environment variables and establishes
+     * connection for real-time push notifications to connected clients.
+     * If credentials are missing or connection fails, notifications are queued
+     * for batch delivery only.
+     *
+     * Called from:
+     * - NotificationHandler::__construct() [initialization]
+     *
+     * @internal Initialization helper - called once on construct
+     *
+     * @return void
+     *
+     * @see createNotification() Uses Pusher for real-time delivery
+     */
     private function initializePusher(): void
     {
         $key    = getenv('PUSHER_APP_KEY');
@@ -54,6 +81,34 @@ class NotificationHandler extends BaseHandler
         }
     }
 
+    /**
+     * Create and persist a notification, then broadcast via Pusher if configured.
+     *
+     * This internal helper:
+     * 1. Saves notification to database (persistent storage)
+     * 2. Broadcasts via Pusher channel for real-time delivery
+     * 3. Handles failures gracefully (logs warnings, doesn't block)
+     *
+     * Called from:
+     * - sendLowStockAlert() [Line 132]
+     * - sendExpiryAlert() [Line 184]
+     * - sendNewOrderNotification() [Line 234]
+     * - sendOrderStatusNotification() [Line 281]
+     *
+     * @internal Used internally for notification creation and delivery
+     *
+     * @param int $userId User who will receive the notification
+     * @param int $tenantId Tenant owner of the notification
+     * @param string $type Notification type (low_stock_alert, product_expiry, etc)
+     * @param string $title Display title shown to user
+     * @param array $data Additional context data (product name, amounts, etc)
+     *
+     * @return int|null The created notification ID, or null if creation failed
+     *
+     * @see sendLowStockAlert() Creates low stock notifications
+     * @see sendExpiryAlert() Creates expiry warnings
+     * @see sendNewOrderNotification() Creates new order alerts
+     */
     private function createNotification(
         int $userId,
         int $tenantId,
@@ -116,6 +171,36 @@ class NotificationHandler extends BaseHandler
         }
     }
 
+    /**
+     * Send low-stock alert to inventory managers and admins.
+     *
+     * Triggered automatically when product stock falls below minimum threshold.
+     * This is an event-driven method called from inventory adjustment listeners.
+     *
+     * Event Trigger:
+     * - Dispatched from: InventoryService::adjustStock()
+     * - Event name: inventory.stock_low
+     * - Trigger point: Stock < minimum_stock
+     *
+     * Behavior:
+     * 1. Query product and current stock level
+     * 2. Find all admins and inventory managers in tenant
+     * 3. Queue high-priority notification for each
+     * 4. Notifications sent via NotificationAggregatorService
+     *
+     * @internal Event-driven - called automatically from inventory changes, not directly
+     *
+     * @param int $productId Product ID that has low stock
+     *
+     * @return void
+     *
+     * @fired-by InventoryAdjusted event (inventory.stock_low)
+     * @called-from InventoryService::adjustStock()
+     *
+     * @see createNotification() Lower-level notification creation
+     * @see sendExpiryAlert() Related product alert
+     * @see sendNewOrderNotification() Other notification types
+     */
     public function sendLowStockAlert(int $productId): void
     {
         try {
@@ -144,8 +229,6 @@ class NotificationHandler extends BaseHandler
                 $product = $results[0];
 
                 foreach ($results as $row) {
-                    // Low stock is important - use aggregator with instant mode
-                    // (user preference will determine actual delivery)
                     $this->aggregator->queueNotification(
                         (int) $row['user_id'],
                         (int) $product['tenant_id'],
@@ -169,9 +252,46 @@ class NotificationHandler extends BaseHandler
         }
     }
 
-    public function sendExpiryAlert(int $productId): void
+    /**
+     * Send product expiry alert to inventory managers and admins.
+     *
+     * Triggered when products approach or reach expiration date.
+     * This is a scheduled event-driven method for time-sensitive inventory management.
+     *
+     * Event Trigger:
+     * - Dispatched from: InventoryService::checkExpiringBatches()
+     * - Event name: inventory.expiry_alert
+     * - Trigger: Daily cron check or manual inventory audit
+     *
+     * Alert Criteria:
+     * - Product batch has expiry_date <= today + threshold days
+     * - Threshold is configurable per tenant via settings (default: 30 days)
+     * - Targets admins and inventory managers only
+     * - Sent as direct notifications (not queued)
+     *
+     * @internal Event-driven - called from scheduled tasks, not from direct API
+     *
+     * @param int $productId Product ID with expiring stock
+     * @param int|null $thresholdDays Days until expiry to trigger alert (default: from settings, fallback: 30)
+     *
+     * @return void
+     *
+     * @fired-by InventoryService::checkExpiringBatches()
+     * @called-from Cron job or manual batch check
+     *
+     * @see sendLowStockAlert() Related stock alert
+     * @see createNotification() Lower-level notification creation
+     */
+    public function sendExpiryAlert(int $productId, ?int $thresholdDays = null): void
     {
         try {
+            // Determine threshold from settings or use default
+            if ($thresholdDays === null) {
+                $thresholdDays = $this->getExpiryAlertThreshold($productId);
+            }
+
+            $thresholdDays = max(1, min(365, $thresholdDays)); // Clamp between 1 and 365 days
+
             $stmt = $this->db->prepare("
                 SELECT
                     p.tenant_id,
@@ -185,10 +305,10 @@ class NotificationHandler extends BaseHandler
                 JOIN roles r ON r.id = u.role_id
                 WHERE p.id = ?
                   AND (r.name = 'admin' OR r.name = 'inventory_manager')
-                  AND b.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+                  AND b.expiry_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
             ");
 
-            $stmt->execute([$productId]);
+            $stmt->execute([$productId, $thresholdDays]);
             $results = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             if (!empty($results)) {
@@ -219,10 +339,76 @@ class NotificationHandler extends BaseHandler
     }
 
     /**
-     * Send new order notification using smart aggregation
-     * 
-     * @param int $orderId
+     * Get configured expiry alert threshold from tenant settings or use default.
+     *
+     * @internal Helper for sendExpiryAlert() to fetch configurable threshold
+     *
+     * @param int $productId Product ID to determine tenant
+     *
+     * @return int Number of days until expiry to trigger alert (1-365)
+     */
+    private function getExpiryAlertThreshold(int $productId): int
+    {
+        try {
+            // Get tenant from product
+            $stmt = $this->db->prepare("
+                SELECT tenant_id FROM products WHERE id = ? LIMIT 1
+            ");
+            $stmt->execute([$productId]);
+            $tenantId = (int) ($stmt->fetchColumn() ?? 0);
+
+            if (!$tenantId) {
+                return 30; // Default fallback
+            }
+
+            // Try to get from settings
+            $stmt = $this->db->prepare("
+                SELECT value FROM settings
+                WHERE tenant_id = ?
+                  AND key_name = 'inventory.expiry_alert_threshold_days'
+                LIMIT 1
+            ");
+            $stmt->execute([$tenantId]);
+            $setting = (int) ($stmt->fetchColumn() ?? 0);
+
+            return $setting > 0 ? $setting : 30; // Default to 30 if not set or invalid
+        } catch (\Throwable $e) {
+            $this->logger->warning('Failed to get expiry alert threshold, using default', [
+                'product_id' => $productId,
+                'error' => $e->getMessage()
+            ]);
+            return 30;
+        }
+    }
+
+    /**
+     * Send new order confirmation notification to sales managers and admins.
+     *
+     * Triggered when a new sales order is created in the system.
+     * Notifies management-level users about incoming orders for oversight.
+     *
+     * Event Trigger:
+     * - Dispatched from: SalesHandler::create()
+     * - Event name: order.created
+     * - Trigger point: After successful order insertion
+     *
+     * Notification Details:
+     * - Priority: NORMAL (not urgent)
+     * - Recipients: admins and sales managers
+     * - Queued: Sent via NotificationAggregatorService for batch processing
+     * - Contains: Order ID, customer name, total amount
+     *
+     * @internal Event-driven - called from order creation event
+     *
+     * @param int $orderId Sales order ID
+     *
      * @return void
+     *
+     * @fired-by SalesHandler::create() after order insertion
+     * @called-from OrderCreatedListener
+     *
+     * @see sendOrderStatusNotification() Related status change notification
+     * @see sendLowStockAlert() Other event notifications
      */
     public function sendNewOrderNotification(int $orderId): void
     {
@@ -249,7 +435,6 @@ class NotificationHandler extends BaseHandler
                 $order = $results[0];
 
                 foreach ($results as $row) {
-                    // Use smart aggregation instead of direct notification
                     $this->aggregator->queueNotification(
                         (int) $row['user_id'],
                         (int) $order['tenant_id'],
@@ -271,6 +456,36 @@ class NotificationHandler extends BaseHandler
         }
     }
 
+    /**
+     * Send order status change notification to sales managers and admins.
+     *
+     * Triggered when an order transitions between statuses (processing → shipped → delivered, etc).
+     * Keeps management informed of order progress for customer service coordination.
+     *
+     * Event Trigger:
+     * - Dispatched from: SalesHandler::updateStatus()
+     * - Event name: order.status_changed
+     * - Trigger point: After status update in database
+     *
+     * Supported Status Transitions:
+     * - processing → جاري المعالجة
+     * - shipped → تم الشحن
+     * - delivered → تم التسليم
+     * - cancelled → تم الإلغاء
+     * - paid → تم الدفع
+     *
+     * @internal Event-driven - called from status change events
+     *
+     * @param int $orderId Sales order ID being updated
+     * @param string $status New order status (processing, shipped, delivered, etc)
+     *
+     * @return void
+     *
+     * @fired-by SalesHandler::updateStatus() after status update
+     * @called-from OrderStatusListener
+     *
+     * @see sendNewOrderNotification() Related order notifications
+     */
     public function sendOrderStatusNotification(int $orderId, string $status): void
     {
         try {
@@ -329,6 +544,7 @@ class NotificationHandler extends BaseHandler
         }
     }
 
+    /** Return the authenticated user's paginated notifications, excluding new-order entries. */
     public function getNotifications(Request $request, Response $response, array $args = []): Response
     {
         try {
@@ -348,7 +564,7 @@ class NotificationHandler extends BaseHandler
             $countStmt = $this->db->prepare("
                 SELECT COUNT(*) AS total
                 FROM notifications
-                WHERE user_id = ? AND tenant_id = ?
+                WHERE user_id = ? AND tenant_id = ? AND type <> 'new_order'
             ");
             $countStmt->execute([(int) $userId, (int) $tenantId]);
             $total = (int) (($countStmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0));
@@ -357,7 +573,7 @@ class NotificationHandler extends BaseHandler
                 SELECT id, type, title, message, data, is_read, created_at, read_at,
                        aggregated_count, priority
                 FROM notifications
-                WHERE user_id = ? AND tenant_id = ?
+                WHERE user_id = ? AND tenant_id = ? AND type <> 'new_order'
                 ORDER BY created_at DESC
                 LIMIT ? OFFSET ?
             ");
@@ -387,6 +603,7 @@ class NotificationHandler extends BaseHandler
         }
     }
 
+    /** Mark one notification read when it belongs to the authenticated user and tenant. */
     public function markAsRead(Request $request, Response $response, array $args = []): Response
     {
         try {
@@ -429,6 +646,7 @@ class NotificationHandler extends BaseHandler
         }
     }
 
+    /** Mark every unread notification for a user and tenant as read. */
     public function markAllAsReadInternal(int $userId, int $tenantId): bool
     {
         try {
@@ -450,13 +668,14 @@ class NotificationHandler extends BaseHandler
         }
     }
 
+    /** Count unread notifications for a user, excluding new-order entries. */
     public function getUnreadCount(int $userId, int $tenantId): int
     {
         try {
             $stmt = $this->db->prepare("
                 SELECT COUNT(*) AS unread_count
                 FROM notifications
-                WHERE user_id = ? AND tenant_id = ? AND is_read = 0
+                WHERE user_id = ? AND tenant_id = ? AND is_read = 0 AND type <> 'new_order'
             ");
             $stmt->execute([$userId, $tenantId]);
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -473,6 +692,7 @@ class NotificationHandler extends BaseHandler
         }
     }
 
+    /** Delete read tenant notifications older than the retention interval. */
     public function deleteOldNotifications(int $tenantId, int $daysToKeep = 30): bool
     {
         try {
@@ -495,13 +715,7 @@ class NotificationHandler extends BaseHandler
         }
     }
 
-    /**
-     * Get user notification preferences
-     * 
-     * @param Request $request
-     * @param Response $response
-     * @return Response
-     */
+    /** Return notification delivery preferences for the authenticated user. */
     public function getPreferences(Request $request, Response $response): Response
     {
         try {
@@ -546,14 +760,7 @@ class NotificationHandler extends BaseHandler
         }
     }
 
-    /**
-     * Update user notification preferences
-     * 
-     * @param Request $request
-     * @param Response $response
-     * @param array $args
-     * @return Response
-     */
+    /** Insert or update the authenticated user's preference for one notification type. */
     public function updatePreferences(Request $request, Response $response, array $args = []): Response
     {
         try {
@@ -572,13 +779,11 @@ class NotificationHandler extends BaseHandler
                 'delivery_mode'
             ]);
 
-            // Validate delivery mode
             $validModes = ['instant', 'batched', 'digest', 'disabled'];
             if (!in_array($data['delivery_mode'], $validModes)) {
                 return $this->errorResponse($response, 'Invalid delivery mode', 400);
             }
 
-            // Check if preference exists
             $checkStmt = $this->db->prepare("
                 SELECT id FROM notification_preferences
                 WHERE user_id = ? AND tenant_id = ? AND notification_type = ?
@@ -587,7 +792,6 @@ class NotificationHandler extends BaseHandler
             $exists = $checkStmt->fetch(PDO::FETCH_ASSOC);
 
             if ($exists) {
-                // Update existing preference
                 $stmt = $this->db->prepare("
                     UPDATE notification_preferences
                     SET delivery_mode = ?,
@@ -614,7 +818,6 @@ class NotificationHandler extends BaseHandler
                     $data['notification_type']
                 ]);
             } else {
-                // Insert new preference
                 $stmt = $this->db->prepare("
                     INSERT INTO notification_preferences (
                         tenant_id,
@@ -660,13 +863,7 @@ class NotificationHandler extends BaseHandler
         }
     }
 
-    /**
-     * Get notification statistics
-     * 
-     * @param Request $request
-     * @param Response $response
-     * @return Response
-     */
+    /** Return per-type counts, unread totals, and aggregation metrics for the user. */
     public function getStatistics(Request $request, Response $response): Response
     {
         try {
@@ -680,7 +877,6 @@ class NotificationHandler extends BaseHandler
                 return $this->errorResponse($response, 'User ID is required', 400);
             }
 
-            // Get count by type
             $typeStmt = $this->db->prepare("
                 SELECT 
                     type,
@@ -693,7 +889,6 @@ class NotificationHandler extends BaseHandler
             $typeStmt->execute([$userId, $tenantId]);
             $byType = $typeStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            // Get total unread
             $unreadStmt = $this->db->prepare("
                 SELECT COUNT(*) as total_unread
                 FROM notifications
@@ -702,7 +897,6 @@ class NotificationHandler extends BaseHandler
             $unreadStmt->execute([$userId, $tenantId]);
             $unread = $unreadStmt->fetch(PDO::FETCH_ASSOC);
 
-            // Get aggregation stats
             $aggStmt = $this->db->prepare("
                 SELECT 
                     COUNT(*) as aggregated_notifications,
@@ -736,13 +930,7 @@ class NotificationHandler extends BaseHandler
         }
     }
 
-    /**
-     * Calculate notification reduction percentage
-     * 
-     * @param int $notifications
-     * @param int $events
-     * @return float
-     */
+    /** Calculate the percentage of source events consolidated into fewer notifications. */
     private function calculateReductionPercentage(int $notifications, int $events): float
     {
         if ($events === 0) {

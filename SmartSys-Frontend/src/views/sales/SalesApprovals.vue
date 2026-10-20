@@ -252,30 +252,27 @@
       </div>
     </transition>
 
-    <!-- Details View: Using established report style -->
-    <transition name="fade">
-      <div v-if="showDetails && details" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md" @click.self="showDetails = false">
-        <div class="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh] animate-modalIn">
-          <div class="px-8 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <h3 class="text-sm font-bold text-slate-900 uppercase">مراجعة أصناف الطلب</h3>
-            <button @click="showDetails = false" class="text-slate-400 hover:text-slate-900 transition-colors"><i class="fas fa-times text-xl"></i></button>
-          </div>
-
-          <div class="p-8 overflow-y-auto custom-scroll space-y-8">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+    <HistoryDetailsModal
+      :show="showDetails && !!details"
+      @close="showDetails = false"
+      :title="`مراجعة أصناف الفاتورة ${details?.sale?.invoice_number || details?.invoice_number || '#' + (details?.sale?.id || details?.id || '')}`"
+      icon="fas fa-clipboard-check"
+    >
+          <div class="space-y-6">
+            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
               <div v-for="info in [
                 { l: 'العميل', v: details?.sale?.customer_name ?? details?.customer_name ?? 'عميل نقدي' },
                 { l: 'التاريخ', v: formatDateTime(details?.sale?.created_at ?? details?.created_at) },
                 { l: 'طريقة الدفع', v: details?.sale?.payment_method_name ?? details?.payment_method_name ?? '-' },
                 { l: 'إجمالي الفاتورة', v: formatPrice(details?.sale?.net_total_amount ?? details?.net_total_amount), c: 'text-blue-600 font-bold' }
-              ]" :key="info.l" class="space-y-1">
-                <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{{ info.l }}</p>
-                <p :class="[info.c || 'text-slate-800', 'text-xs font-bold']">{{ info.v }}</p>
+              ]" :key="info.l" class="min-w-0 space-y-1 rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-2">
+                <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">{{ info.l }}</p>
+                <p :class="[info.c || 'text-slate-800', 'break-words text-[11px] font-bold leading-4']">{{ info.v }}</p>
               </div>
             </div>
 
-            <div class="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
-              <table class="w-full text-right text-xs">
+            <div class="overflow-x-auto rounded-xl border border-slate-100 shadow-sm">
+              <table class="w-full min-w-[560px] text-right text-xs">
                 <thead><tr class="bg-slate-50 border-b border-slate-100 font-bold text-slate-400 uppercase tracking-tighter"><th class="px-4 py-3">الصنف</th><th class="px-4 py-3 text-center">الكمية</th><th class="px-4 py-3 text-center">سعر الوحدة</th><th class="px-4 py-3 text-left">الإجمالي</th></tr></thead>
                 <tbody class="divide-y divide-slate-100 font-medium">
                   <tr v-for="it in (details?.items || details?.sale?.items || [])" :key="it.id">
@@ -284,39 +281,45 @@
                     <td class="px-4 py-3 text-center font-mono text-slate-700">{{ formatPrice(itemPrice(it)) }}</td>
                     <td class="px-4 py-3 text-left font-bold font-mono text-slate-900">{{ formatPrice(itemTotal(it)) }}</td>
                   </tr>
+                  <tr v-if="!(details?.items || details?.sale?.items || []).length">
+                    <td colspan="4" class="px-4 py-8 text-center text-xs text-slate-400">لا توجد أصناف لعرضها.</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
 
             <div class="flex justify-end">
-              <div class="w-full md:w-72 bg-slate-900 p-6 rounded-xl text-white flex flex-col justify-center space-y-4">
+              <div class="w-full rounded-xl bg-slate-900 p-6 text-white flex flex-col justify-center space-y-4 md:w-72">
                 <div class="flex justify-between text-[11px] font-medium text-white/50 uppercase"><span>الإجمالي الصافي</span><span class="text-white font-mono">{{ formatPrice(details?.sale?.net_total_amount ?? details?.net_total_amount) }}</span></div>
               </div>
             </div>
           </div>
-
-          <div class="px-8 py-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center shrink-0">
-             <span class="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded uppercase tracking-tighter">بانتظار القرار</span>
-             <button @click="showDetails = false" class="px-8 h-9 bg-slate-900 text-white rounded-md text-xs font-bold transition-all hover:bg-black">إغلاق المعاينة</button>
-          </div>
-        </div>
-      </div>
-    </transition>
+      <template #footer>
+            <div class="flex w-full items-center">
+              <span class="rounded border border-amber-100 bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase tracking-tighter text-amber-600">بانتظار القرار</span>
+              <div dir="rtl" class="mr-auto flex flex-row-reverse flex-wrap items-center gap-3">
+                <button @click="showDetails = false" class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md bg-slate-900 px-6 text-xs font-bold text-white transition-all hover:bg-black">إغلاق المعاينة</button>
+              </div>
+            </div>
+          </template>
+    </HistoryDetailsModal>
 
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue'
 import { useApprovalsStore } from '@/stores/approvals/approvalsStore'
 import { useToast } from '@/composables/useToast'
 import { useLoader } from '@/composables/useLoader'
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency'
 import { useBreadcrumb } from '@/composables/useBreadcrumb'
-import { useBranchStore } from '@/stores/branch'
+import { useBranchStore } from '@/stores/branch/branchStore'
 import { useSalesStore } from '@/stores/sales/salesStore'
 import { usePaymentStore } from '@/stores/payment/paymentStore'
 import { useProductStore } from '@/stores/product/productStore'
+import { useBranchIsolation } from '@/composables/useBranchIsolation'
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
@@ -327,6 +330,7 @@ const { showLoader, hideLoader } = useLoader()
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency()
 const { breadcrumb } = useBreadcrumb()
 const branchStore = useBranchStore()
+const branchIsolation = useBranchIsolation()
 const salesStore = useSalesStore()
 const paymentStore = usePaymentStore()
 const productStore = useProductStore()
@@ -334,7 +338,6 @@ const paymentMethods = computed(() => paymentStore.paymentMethods || [])
 const branches = computed(() => branchStore.branches);
 const selectedBranch = computed(() => branchStore.selectedBranchId);
 
-// ✅ يتتبع الاختيار اليدوي للفرع (النمط A — متطابق مع SalesHistory/PurchaseHistory/ReturnsHistory)
 const userChoseBranch = ref(
   localStorage.getItem('selectedBranchId') !== null
   && localStorage.getItem('selectedBranchId') !== 'all'
@@ -342,10 +345,11 @@ const userChoseBranch = ref(
 const hasExplicitBranchSelection = computed(() => userChoseBranch.value && branchStore.selectedBranchId !== null);
 
 const onBranchChange = (newBranchId) => {
+  if (!branchIsolation.isExempt.value) return;
   branchStore.setSelectedBranch(newBranchId);
   userChoseBranch.value = (newBranchId !== null && newBranchId !== '' && newBranchId !== 'all');
   page.value = 1;
-  manualRefresh(true);  // ✅ force=true
+  manualRefresh(true);
 };
 
 const rows = ref([])
@@ -428,7 +432,11 @@ const fetchPending = async ({ silent = false } = {}) => {
     const approvalsStore = useApprovalsStore();
     approvalsStore.clearCache()
     const params = { page: page.value, limit: limit.value };
-    if (selectedBranch.value) params.branch_id = selectedBranch.value;
+    if (branchIsolation.isExempt.value) {
+      if (selectedBranch.value) params.branch_id = String(selectedBranch.value);
+    } else {
+      params.branch_id = branchIsolation.getRequiredBranchId();
+    }
     const res = await approvalsStore.listPending(params)
     const newRows = res.data || []
     const newTotal = Number(res.pagination?.total || newRows.length)
@@ -448,6 +456,9 @@ const fetchPending = async ({ silent = false } = {}) => {
     total.value = newTotal
     lastUpdatedAt.value = new Date()
   } catch (e) {
+    rows.value = [];
+    total.value = 0;
+    knownIds.clear();
     if (e.name !== 'CanceledError' && !silent)
       showToast(e?.response?.data?.message || 'فشل تحميل القائمة', 'error')
   } finally {
@@ -538,7 +549,6 @@ const submitAction = async () => {
       const change = (actionModal.value.paidAmount || 0) - invoiceTotal
       closeAction()
       await fetchPending()
-      // ✅ تحديث cache المنتجات في POS لأن الاعتماد يخصم من المخزون
       productStore.invalidateCache()
       printModal.value = { open: true, saleId, invoiceTotal, change: Math.max(0, change) }
     } else {
@@ -575,14 +585,13 @@ const viewDetails = async (id) => {
 let isMounting = true;
 
 onMounted(async () => {
-  // ✅ FIX: تهيئة branch context قبل أول API call (النمط A)
   const hadPriorBranchChoice = localStorage.getItem('selectedBranchId') !== null
                                 && localStorage.getItem('selectedBranchId') !== 'all';
   branchStore.loadFromStorage();
   if (!branchStore.branches || branchStore.branches.length === 0) {
     await branchStore.fetchBranches().catch(() => {})
   }
-  // بعد fetchBranches: أعد تعيين الـ flag بما كان موجوداً قبل الكتابة
+
   userChoseBranch.value = hadPriorBranchChoice;
 
   fetchSettings()
@@ -600,8 +609,6 @@ onUnmounted(() => {
 })
 watch(page, () => fetchPending())
 watch(limit, () => { page.value = 1; fetchPending() })
-// selectedBranch مُزال من watch — تغيير الفرع يُعالج عبر onBranchChange() مباشرة
-// إبقاؤه يُسبب race condition: fetchBranches() تُغيّر selectedBranchId أثناء onMounted فيُطلق watch مبكراً
 </script>
 
 <style scoped>

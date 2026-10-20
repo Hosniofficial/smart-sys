@@ -6,20 +6,21 @@ namespace App\Security;
 
 use PDO;
 
-// Restricts user-role assignments to roles available to the user's tenant.
-// Tenant-owned roles are assignable only within their owning tenant. Global
-// system-role templates are assignable to tenant users, except super_admin,
-// which must never be granted through tenant user administration. Unscoped
-// non-system roles are treated as orphaned configuration and are not assignable.
+/** Validates role IDs against tenant-owned and supported shared roles. */
 final class TenantRoleAssignmentPolicy
 {
+    /** Return whether a role name is reserved for platform administration. */
     public static function isReservedRoleName(string $roleName): bool
     {
-        return in_array(strtolower(trim($roleName)), ['super_admin', 'admin'], true);
+        return in_array(strtolower(trim($roleName)), ['super_admin', 'admin', 'administrator'], true);
     }
 
-    // Returns normalized role IDs, or null when any ID is invalid/unassignable.
-    public static function validate(PDO $db, array $roleIds, int $tenantId, bool $allowSuperAdmin = false): ?array
+    /**
+     * Return unique, normalized assignable role IDs, or null if any are invalid.
+     *
+     * @return int[]|null
+     */
+    public static function validate(PDO $db, array $roleIds, int $tenantId): ?array
     {
         if ($tenantId <= 0) {
             return null;
@@ -44,20 +45,23 @@ final class TenantRoleAssignmentPolicy
         }
 
         $placeholders = implode(',', array_fill(0, count($normalized), '?'));
-        $reservedNameCondition = $allowSuperAdmin
-            ? "(LOWER(name) <> 'admin' AND (LOWER(name) <> 'super_admin' OR (tenant_id IS NULL AND is_system_role = 1)))"
-            : "LOWER(name) NOT IN ('admin', 'super_admin')";
-        $globalRoleCondition = $allowSuperAdmin
-            ? "(LOWER(name) NOT IN ('admin', 'manager', 'branch_manager', 'finance_officer', 'super_admin')\n                   OR (LOWER(name) = 'super_admin' AND tenant_id IS NULL AND is_system_role = 1))"
-            : "LOWER(name) NOT IN ('admin', 'manager', 'branch_manager', 'finance_officer', 'super_admin')";
         $stmt = $db->prepare(
             "SELECT id FROM roles
              WHERE id IN ({$placeholders})
-               AND {$reservedNameCondition}
+               AND LOWER(name) NOT IN ('admin', 'super_admin', 'administrator')
                AND (
                    tenant_id = ?
-                   OR (tenant_id IS NULL AND is_system_role = 1 AND {$globalRoleCondition})
-               )"
+                   OR (
+                       tenant_id IS NULL
+                         AND (
+                             (
+                                 is_system_role = 1
+                                 AND LOWER(name) NOT IN ('admin', 'manager', 'branch_manager', 'finance_officer', 'super_admin')
+                             )
+                             OR LOWER(name) IN ('manager', 'cashier', 'finance_officer', 'inventory_clerk')
+                         )
+                     )
+                 )"
         );
         $stmt->execute([...$normalized, $tenantId]);
         $assignableIds = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));

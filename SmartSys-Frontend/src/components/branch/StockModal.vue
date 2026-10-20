@@ -78,7 +78,7 @@
 
         <!-- Quantity Field -->
         <div class="space-y-2">
-          <label for="quantity" class="form-label-modern">الكمية الحالية <span class="text-rose-500">*</span></label>
+          <label for="quantity" class="form-label-modern">الكمية الحالية بالمخزون <span class="text-rose-500">*</span></label>
           <div class="relative group">
             <input 
               type="number" 

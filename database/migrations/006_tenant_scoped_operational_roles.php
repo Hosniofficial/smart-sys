@@ -54,7 +54,7 @@ final class TenantScopedOperationalRoles
 
             foreach ($tenantIds as $tenantId) {
                 $tenantId = (int) $tenantId;
-                $roles = TenantRoleBootstrapper::ensureDefaults($this->pdo, $tenantId);
+                $roles = TenantRoleBootstrapper::ensureDefaultsForMigration006($this->pdo, $tenantId);
                 $this->migrateAssignments($tenantId, $roles, $legacyRoleIds);
             }
 

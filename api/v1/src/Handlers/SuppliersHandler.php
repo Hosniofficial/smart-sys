@@ -8,32 +8,25 @@ use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
-use App\Services\BalanceCalculationService;
-use App\Services\CostCenter\CostCenterService;
 use App\Services\AccountManagementService;
-use App\Services\CurrencyService;
 use App\Handlers\AuditHandler;
-use App\Repositories\PurchaseRepository;
-use App\Repositories\PaymentRepository;
 
+/**
+ * Handles supplier records and ledger statements.
+ *
+ * BaseContactHandler supplies shared account maintenance. PDO reads and writes
+ * are coordinated with account and accounting services; statements are
+ * delegated to AccountStatementHandler.
+ */
 class SuppliersHandler extends BaseContactHandler
 {
     protected string $contactType = 'supplier';
-    private $costCenterService;
-    private $balanceCalcService;
 
     public function __construct(PDO $db)
     {
         parent::__construct($db);
         $this->logger = MonologHandler::getInstance('suppliers');
-        $this->costCenterService = new CostCenterService($db);
-        $this->balanceCalcService = new BalanceCalculationService($db);
     }
-
-    /**
-     * Note: listMissingAccounts() and ensureAccount() inherited from BaseContactHandler
-     * ملاحظة: الدوال listMissingAccounts() و ensureAccount() موروثة من BaseContactHandler
-     */
 
     /**
      * Returns detailed account statement for a supplier by delegating to AccountStatementHandler.
@@ -97,11 +90,6 @@ class SuppliersHandler extends BaseContactHandler
         }
     }
 
-    private function getCompanyCurrency(int $tenantId): string
-    {
-        return (new CurrencyService($this->db))->getCompanyCurrency($tenantId);
-    }
-
     /**
      * Retrieves all active suppliers for a specific tenant, with their correct balance.
      * The balance is calculated from the journal entries linked to the supplier's specific account.
@@ -126,6 +114,7 @@ class SuppliersHandler extends BaseContactHandler
                 s.name,
                 s.phone,
                 s.email,
+                s.tax_number,
                 s.address,
                 s.active,
                 s.discount_percentage,
@@ -147,7 +136,7 @@ class SuppliersHandler extends BaseContactHandler
         $bindings = [':tenant_id' => $tenantId];
 
         if ($branchId !== null) {
-            $sql .= ' AND s.branch_id = :branch_id';
+            $sql .= ' AND (s.branch_id = :branch_id OR s.branch_id IS NULL)';
             $bindings[':branch_id'] = $branchId;
         }
 
@@ -160,6 +149,108 @@ class SuppliersHandler extends BaseContactHandler
             'message' => '',
             'data' => $suppliers
         ], 200);
+    }
+
+    /**
+     * Gets or creates the tenant-wide supplier used for cash purchases.
+     */
+    public function ensureCashSupplier(Request $request, Response $response): Response
+    {
+        $tenantId = $this->extractTenantId($request);
+        if (!$tenantId) {
+            return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
+        }
+
+        try {
+            $this->db->beginTransaction();
+
+            $tenantStmt = $this->db->prepare('SELECT id FROM tenants WHERE id = ? FOR UPDATE');
+            $tenantStmt->execute([$tenantId]);
+            if (!$tenantStmt->fetchColumn()) {
+                throw new \RuntimeException('Tenant not found');
+            }
+
+            $supplierStmt = $this->db->prepare("
+                SELECT id, tenant_id, branch_id, name, phone, email, address, active,
+                       discount_percentage, credit_limit, account_id
+                FROM suppliers
+                WHERE tenant_id = ? AND name = ? AND branch_id IS NULL AND active = 1
+                ORDER BY id ASC
+                LIMIT 1
+                FOR UPDATE
+            ");
+            $supplierStmt->execute([$tenantId, 'مورد نقدي']);
+            $supplier = $supplierStmt->fetch(PDO::FETCH_ASSOC);
+            $created = false;
+
+            if (!$supplier) {
+                $supplier = [
+                    'tenant_id' => $tenantId,
+                    'branch_id' => null,
+                    'name' => 'مورد نقدي',
+                    'phone' => null,
+                    'email' => '',
+                    'address' => '',
+                    'active' => 1,
+                    'discount_percentage' => 0,
+                    'credit_limit' => 0,
+                    'account_id' => null,
+                ];
+            }
+
+            if (empty($supplier['account_id'])) {
+                $accountMgmt = new AccountManagementService($this->db);
+                $accountId = $accountMgmt->createPartyAccount('supplier', 'مورد نقدي', $tenantId);
+                if (!$accountId) {
+                    throw new \RuntimeException('Failed to create the cash supplier account');
+                }
+
+                $supplier['account_id'] = $accountId;
+            }
+
+            if (empty($supplier['id'])) {
+                $insert = $this->db->prepare("
+                    INSERT INTO suppliers (
+                        tenant_id, branch_id, name, phone, email, address,
+                        active, discount_percentage, credit_limit, account_id
+                    ) VALUES (?, NULL, ?, NULL, '', '', 1, 0, 0, ?)
+                ");
+                $insert->execute([$tenantId, 'مورد نقدي', $supplier['account_id']]);
+                $supplier['id'] = (int) $this->db->lastInsertId();
+                $created = true;
+            } else {
+                $update = $this->db->prepare('UPDATE suppliers SET account_id = ? WHERE id = ? AND tenant_id = ?');
+                $update->execute([$supplier['account_id'], $supplier['id'], $tenantId]);
+            }
+
+            $this->db->commit();
+
+            if ($created) {
+                $this->logAction('create_cash_supplier', [
+                    'tenant_id' => $tenantId,
+                    'user_id' => $this->extractUserId($request),
+                    'supplier_id' => (int) $supplier['id'],
+                    'name' => 'مورد نقدي',
+                ]);
+            }
+
+            return $this->jsonResponse($response, [
+                'status' => 'success',
+                'message' => '',
+                'data' => $supplier,
+            ], $created ? 201 : 200);
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+
+            $this->logger->error('Failed to ensure cash supplier', [
+                'tenant_id' => $tenantId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return $this->errorResponse($response, 'تعذر تجهيز المورد النقدي.', 500);
+        }
     }
 
     /**
@@ -177,6 +268,19 @@ class SuppliersHandler extends BaseContactHandler
             $data = [];
         }
 
+        $branchId = isset($data['branch_id']) && $data['branch_id'] !== '' && $data['branch_id'] !== null
+            ? (int) $data['branch_id']
+            : null;
+        if ($branchId !== null) {
+            $branchStmt = $this->db->prepare(
+                'SELECT id FROM branches WHERE id = ? AND tenant_id = ? AND (active = 1 OR active IS NULL) LIMIT 1'
+            );
+            $branchStmt->execute([$branchId, $tenantId]);
+            if (!$branchStmt->fetchColumn()) {
+                return $this->errorResponse($response, 'الفرع المحدد غير موجود أو غير نشط ضمن هذا المستأجر.', 400);
+            }
+        }
+
         try {
             $this->db->beginTransaction();
 
@@ -187,16 +291,12 @@ class SuppliersHandler extends BaseContactHandler
                 throw new \Exception('Failed to create a sub-account for the supplier.');
             }
 
-            $branchId = isset($data['branch_id']) && $data['branch_id'] !== '' && $data['branch_id'] !== null
-                ? (int) $data['branch_id']
-                : null;
-
             $sql = "
                 INSERT INTO suppliers (
-                    tenant_id, branch_id, name, phone, email, address,
+                    tenant_id, branch_id, name, phone, email, tax_number, address,
                     active, discount_percentage, credit_limit, account_id
                 ) VALUES (
-                    :tenant_id, :branch_id, :name, :phone, :email, :address,
+                    :tenant_id, :branch_id, :name, :phone, :email, :tax_number, :address,
                     :active, :discount_percentage, :credit_limit, :account_id
                 )
             ";
@@ -207,6 +307,7 @@ class SuppliersHandler extends BaseContactHandler
                 ':name' => $data['name'] ?? null,
                 ':phone' => $data['phone'] ?? null,
                 ':email' => $data['email'] ?? null,
+                ':tax_number' => $data['tax_number'] ?? null,
                 ':address' => $data['address'] ?? null,
                 ':active' => $data['active'] ?? 1,
                 ':discount_percentage' => $data['discount_percentage'] ?? 0,
@@ -267,6 +368,7 @@ class SuppliersHandler extends BaseContactHandler
                     name = :name,
                     phone = :phone,
                     email = :email,
+                    tax_number = :tax_number,
                     address = :address,
                     active = :active,
                     discount_percentage = :discount_percentage,
@@ -281,6 +383,7 @@ class SuppliersHandler extends BaseContactHandler
                 ':name' => $data['name'] ?? null,
                 ':phone' => $data['phone'] ?? null,
                 ':email' => $data['email'] ?? null,
+                ':tax_number' => $data['tax_number'] ?? null,
                 ':address' => $data['address'] ?? null,
                 ':active' => $data['active'] ?? 1,
                 ':discount_percentage' => $data['discount_percentage'] ?? 0,
@@ -391,7 +494,11 @@ class SuppliersHandler extends BaseContactHandler
                 if ($this->db->inTransaction()) {
                     $this->db->rollBack();
                 }
-                return $this->errorResponse($response, 'لا يمكن حذف المورد لوجود معاملات نشطة مرتبطة به', 400);
+                return $this->errorResponse(
+                    $response,
+                    'لا يمكن حذف المورد لوجود حركات محاسبية مرتبطة به. سدّد المبلغ المستحق للمورد إن وُجد، ثم عطّل حسابه بدلًا من حذفه للحفاظ على السجل المالي.',
+                    409
+                );
             }
 
             $stmt = $this->db->prepare(
@@ -460,389 +567,5 @@ class SuppliersHandler extends BaseContactHandler
         }
     }
 
-    /**
-     * Retrieves all transactions for a specific supplier based on their sub-account.
-     */
-    public function getTransactions(Request $request, Response $response, $args)
-    {
-        $id = $args['id'];
-        $tenantId = $this->extractTenantId($request);
-        if (!$tenantId) {
-            return $this->errorResponse($response, 'لم يتم تحديد المستأجر', 403);
-        }
 
-        try {
-            $stmt = $this->db->prepare(
-                "SELECT account_id
-                 FROM suppliers
-                 WHERE id = :id AND tenant_id = :tenant_id"
-            );
-            $stmt->execute([
-                ':id' => $id,
-                ':tenant_id' => $tenantId
-            ]);
-            $supplierAccountId = $stmt->fetchColumn();
-
-            if (!$supplierAccountId) {
-                return $this->errorResponse($response, 'لم يتم العثور على حساب المورد', 403);
-            }
-
-            // Use unified service for transaction history with running balance
-            $transactionRows = $this->balanceCalcService->getTransactionHistoryWithRunningBalance(
-                $supplierAccountId,
-                $tenantId,
-                'supplier'
-            );
-
-            if (empty($transactionRows)) {
-                return $this->successResponse($response, [], 200);
-            }
-
-            // Get additional transaction details (reference numbers, etc.)
-            $transactionIds = array_column($transactionRows, 'journal_entry_id');
-            $placeholders = implode(',', array_fill(0, count($transactionIds), '?'));
-
-            $sql = "
-                SELECT
-                    je.id,
-                    je.reference_type,
-                    je.reference_id,
-                    COALESCE(p.invoice_number, cv.reference, r.return_number) AS reference_number,
-                    je.description
-                FROM journal_entries je
-                LEFT JOIN purchases p ON je.reference_type = 'purchase' AND je.reference_id = p.id AND p.tenant_id = ?
-                LEFT JOIN cash_vouchers cv ON je.reference_type = 'cash_voucher' AND je.reference_id = cv.id AND cv.tenant_id = ?
-                LEFT JOIN returns r ON je.reference_type IN ('return', 'sale_return', 'purchase_return')
-                    AND je.reference_id = r.id
-                    AND r.tenant_id = ?
-                    AND (
-                        je.reference_type = 'return'
-                        OR (je.reference_type = 'sale_return'     AND r.return_type = 'sale')
-                        OR (je.reference_type = 'purchase_return' AND r.return_type = 'purchase')
-                    )
-                WHERE je.id IN ({$placeholders})
-            ";
-
-            $params = array_merge([$tenantId, $tenantId, $tenantId], $transactionIds);
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
-            $referenceData = $stmt->fetchAll(PDO::FETCH_KEY_PAIR | PDO::FETCH_UNIQUE);
-
-            $processedTransactions = [];
-
-            foreach ($transactionRows as $row) {
-                $type = $row['reference_type'] ?? 'unknown';
-                $referenceId = $row['reference_id'] ?? 0;
-                $referenceNumber = $referenceData[$row['journal_entry_id']]['reference_number'] ?? null;
-                $description = $referenceData[$row['journal_entry_id']]['description'] ?? $row['description'];
-
-                switch ($type) {
-                    case 'purchase':
-                        $type = 'فاتورة مشتريات';
-                        $description = 'استحقاق للمورد لفاتورة رقم #' . ($referenceNumber ?: $referenceId);
-                        break;
-
-                    case 'cash_voucher':
-                        $stmtVoucher = $this->db->prepare(
-                            "SELECT type, notes
-                             FROM cash_vouchers
-                             WHERE id = ? AND tenant_id = ?
-                             LIMIT 1"
-                        );
-                        $stmtVoucher->execute([$referenceId, $tenantId]);
-                        $voucherData = $stmtVoucher->fetch(PDO::FETCH_ASSOC);
-
-                        if ($voucherData) {
-                            $type = ($voucherData['type'] == 'receipt') ? 'سند قبض' : 'سند صرف';
-                            $description = $voucherData['notes'] ?: ($type . ' رقم ' . ($referenceNumber ?: $referenceId));
-                        } else {
-                            $type = 'سند (غير معروف)';
-                            $description = 'سند رقم ' . ($referenceNumber ?: $referenceId);
-                        }
-                        break;
-
-                    case 'return':
-                        $stmtReturn = $this->db->prepare(
-                            "SELECT return_type, return_number, notes
-                             FROM returns
-                             WHERE id = ? AND tenant_id = ?
-                             LIMIT 1"
-                        );
-                        $stmtReturn->execute([$referenceId, $tenantId]);
-                        $returnData = $stmtReturn->fetch(PDO::FETCH_ASSOC);
-
-                        if ($returnData && $returnData['return_type'] === 'purchase') {
-                            $type = 'مرتجع مشتريات';
-                            $description = $returnData['notes'] ?: 'مرتجع مشتريات رقم ' . ($returnData['return_number'] ?: $referenceId);
-                        } else {
-                            $type = 'مرتجع (غير معروف)';
-                            $description = 'مرتجع رقم ' . ($referenceNumber ?: $referenceId);
-                        }
-                        break;
-
-                    case 'reversal':
-                        $type = 'عكس قيد';
-                        $description = 'عكس قيد السند رقم ' . $referenceId;
-                        break;
-
-                    default:
-                        $type = $type ?: 'أخرى';
-                        $description = $description ?? 'بدون وصف';
-                        break;
-                }
-
-                $processedTransactions[] = [
-                    'id' => $row['id'],
-                    'date' => $row['created_at'],
-                    'type' => $type,
-                    'debit_amount' => $row['debit_amount'],
-                    'credit_amount' => $row['credit_amount'],
-                    'description' => $description,
-                    'reference' => $referenceNumber ?: $referenceId,
-                    'balance' => $row['running_balance']
-                ];
-            }
-
-            return $this->successResponse($response, $processedTransactions, 200);
-        } catch (\PDOException $e) {
-            $this->logger->error('Supplier Transaction Fetch Error', [
-                'message' => $e->getMessage()
-            ]);
-
-            return $this->errorResponse(
-                $response,
-                'فشل في جلب معاملات المورد: ' . $e->getMessage(),
-                400
-            );
-        }
-    }
-
-    /**
-     * Add payment to supplier (without requiring a specific purchase)
-     */
-    public function addPayment(Request $request, Response $response, array $args = []): Response
-    {
-        $this->validateAuth();
-
-        $tenantId = $this->extractTenantId($request);
-        if (!$tenantId) {
-            return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-        }
-
-        $this->tenantId = $tenantId;
-        $tenantId = (int) $tenantId;
-
-        $supplierId = $args['id'] ?? null;
-        if (!$supplierId) {
-            return $this->errorResponse($response, 'مطلوب رقم المورد', 400);
-        }
-
-        $data = $request->getParsedBody();
-        if (!is_array($data)) {
-            $data = [];
-        }
-
-        $required = ['amount', 'payment_method_id'];
-        foreach ($required as $field) {
-            if (!isset($data[$field]) || $data[$field] === '') {
-                return $this->errorResponse($response, "حقل مطلوب: {$field}", 400);
-            }
-        }
-
-        $stmt = $this->db->prepare(
-            "SELECT s.*, s.account_id AS supplier_account_id
-             FROM suppliers s
-             WHERE s.id = ? AND s.tenant_id = ?"
-        );
-        $stmt->execute([$supplierId, $tenantId]);
-        $supplier = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$supplier) {
-            return $this->errorResponse($response, 'لم يتم العثور على المورد', 403);
-        }
-
-        $amount = (float) $data['amount'];
-        if ($amount <= 0) {
-            return $this->errorResponse($response, 'قيمة الدفعة يجب أن تكون أكبر من صفر', 400);
-        }
-
-        $paymentDate = $data['payment_date'] ?? date('Y-m-d');
-        $paymentMethodId = (int) $data['payment_method_id'];
-        $referenceNumber = $data['reference_number'] ?? ('SP-' . date('ymdHis'));
-        $userId = $this->extractUserId($request);
-        $branchId = $data['branch_id'] ?? null;
-        $purchaseId = !empty($data['purchase_id']) ? (int) $data['purchase_id'] : null;
-
-        if ($purchaseId !== null) {
-            $stmtP = $this->db->prepare(
-                "SELECT id FROM purchases WHERE id = ? AND supplier_id = ? AND tenant_id = ? LIMIT 1"
-            );
-            $stmtP->execute([$purchaseId, $supplierId, $tenantId]);
-            if (!$stmtP->fetchColumn()) {
-                return $this->errorResponse($response, 'فاتورة الشراء المحددة غير موجودة أو لا تنتمي لهذا المورد.', 400);
-            }
-        }
-
-        try {
-            $this->db->beginTransaction();
-
-            $isSessionsEnabled = $this->isSessionsEnabled($tenantId);
-            $isExempt = $this->isCashierSessionExempt($request);
-            $isCash = $this->isCashMethod($paymentMethodId, $tenantId);
-            $sessionId = null;
-
-            if ($isSessionsEnabled && $isCash && $amount > 0 && !$isExempt) {
-                if (!$branchId) {
-                    $this->db->rollBack();
-                    return $this->errorResponse($response, 'يجب تحديد المخزن لإتمام الدفعة النقدية للكاشير.', 400);
-                }
-
-                $sessionId = $this->requireOpenCashierSession(
-                    $tenantId,
-                    (int) $branchId,
-                    $userId ? (int) $userId : null
-                );
-            } elseif (($isExempt || !$isSessionsEnabled) && $branchId) {
-                $sessionId = $this->findOpenCashierSession($tenantId, (int) $branchId, null);
-            }
-
-            try {
-                $costCenterId = $this->costCenterService->resolve(
-                    $tenantId,
-                    $userId ? (int) $userId : null,
-                    isset($data['cost_center_id']) ? (int) $data['cost_center_id'] : null
-                );
-            } catch (\Exception $e) {
-                return $this->errorResponse(
-                    $response,
-                    'لا توجد مراكز تكلفة. يرجى إنشاء مركز تكلفة واحد على الأقل.',
-                    400
-                );
-            }
-
-            $currency = $this->getCompanyCurrency((int)$this->tenantId);
-            $stmt = $this->db->prepare(
-                "INSERT INTO payments (
-                    tenant_id, supplier_id, amount, payment_date,
-                    payment_method_id, reference_number, created_by,
-                    is_draft, status, type, created_at, cost_center_id, purchase_id, currency
-                ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, 0, 'completed', 'supplier', NOW(), ?, ?, ?
-                )"
-            );
-            $stmt->execute([
-                $this->tenantId,
-                $supplierId,
-                $amount,
-                $paymentDate,
-                $paymentMethodId,
-                $referenceNumber,
-                $userId,
-                $costCenterId,
-                $purchaseId,
-                $currency
-            ]);
-            $paymentId = $this->db->lastInsertId();
-
-            // Resolve the liquidity account for the payment method
-            $liquidityAccountId = $this->accounting->resolveLiquidityAccount($paymentMethodId, (int) $tenantId);
-
-            if ($liquidityAccountId === null) {
-                throw new \Exception('طريقة الدفع آجلة (credit) — لا سطر سيولة مطلوب لهذه الدفعة.');
-            }
-
-            // مدين: المورد (custom account)
-            $supplierAccountId = $supplier['supplier_account_id'] ?? null;
-            if (!$supplierAccountId) {
-                throw new \Exception('لم يتم العثور على حساب المورد.');
-            }
-
-            // ✅ Single Source of Truth: Use AccountingService::postPayment()
-            $jeId = $accSvc->postPayment(
-                (int) $tenantId,
-                $paymentId,
-                $amount,
-                'supplier_payment',
-                null,                          // saleId
-                $purchaseId,                   // purchaseId
-                null,                          // returnId
-                $userId,
-                $costCenterId,
-                $supplierAccountId,            // debitAccountId (supplier account - AP)
-                $liquidityAccountId,           // creditAccountId (cash/bank)
-                "دفعة مورد - " . $supplier['name']
-            );
-
-            if (!$jeId) {
-                throw new \Exception('فشل في تسجيل القيد المحاسبي للدفعة.');
-            }
-
-            if ($sessionId) {
-                $stmt = $this->db->prepare(
-                    "UPDATE payments
-                     SET session_id = ?
-                     WHERE id = ? AND tenant_id = ?"
-                );
-                $stmt->execute([$sessionId, $paymentId, $tenantId]);
-            }
-
-            $this->db->commit();
-
-            if ($purchaseId !== null) {
-                $purchaseRepo = new PurchaseRepository($this->db);
-                $payRepo      = new PaymentRepository($this->db);
-                $totalPaid    = $payRepo->getTotalPaidForPurchase($purchaseId, $tenantId);
-                $totalAmount  = $purchaseRepo->getTotalAmount($purchaseId, $tenantId);
-                $newStatus    = $totalAmount <= 0 ? 'paid'
-                    : ($totalPaid <= 0 ? 'due'
-                    : ($totalPaid >= $totalAmount ? 'paid' : 'partial'));
-                $purchaseRepo->updateBalance($purchaseId, $tenantId, $totalPaid, $newStatus);
-            }
-
-            try {
-                $audit = $this->audit;
-                $audit->logAction(
-                    'supplier_payment_added',
-                    'suppliers',
-                    (int) $supplierId,
-                    [
-                        'tenant_id' => (int) $this->tenantId,
-                        'user_id' => $userId ?? null,
-                        'branch_id' => $branchId ?? null,
-                        'session_id' => $sessionId ?? null,
-                        'supplier_id' => (int) $supplierId,
-                        'payment_id' => (int) $paymentId,
-                        'amount' => (float) $amount,
-                        'payment_method_id' => (int) $paymentMethodId,
-                        'payment_date' => $paymentDate
-                    ],
-                    (int) $this->tenantId,
-                    $userId
-                );
-            } catch (\Throwable $e) {
-                // ignore audit errors
-            }
-
-            return $this->jsonResponse($response, [
-                'status' => 'success',
-                'message' => 'تم تسجيل الدفعة بنجاح',
-                'data' => [
-                    'payment_id' => $paymentId,
-                    'journal_entry_id' => $jeId,
-                    'supplier_id' => $supplierId,
-                    'amount' => $amount
-                ]
-            ], 201);
-        } catch (\Exception $e) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
-            }
-
-            return $this->errorResponse(
-                $response,
-                'فشل تسجيل الدفعة: ' . $e->getMessage(),
-                400
-            );
-        }
-    }
 }

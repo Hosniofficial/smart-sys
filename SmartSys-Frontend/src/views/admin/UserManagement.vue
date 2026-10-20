@@ -12,7 +12,7 @@
       <PageHeader
         :breadcrumb="breadcrumb"
         title="إدارة الموظفين والصلاحيات"
-        description="تعيين الأدوار وإدارة حسابات الفريق وصلاحيات الوصول للنظام"
+        description="أدر حسابات الموظفين، وحدّد أدوارهم وصلاحيات الوصول إلى وظائف النظام المختلفة."
         :branches="[]"
         :selectedBranch="null"
       >
@@ -74,6 +74,7 @@
               <tr class="bg-slate-50/50 border-b border-slate-200">
                 <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">الموظف / الهوية</th>
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">البريد الإلكتروني</th>
+                <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الفرع</th>
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الدور الوظيفي</th>
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الحالة</th>
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">آخر ظهور</th>
@@ -83,11 +84,11 @@
             <tbody class="divide-y divide-slate-100 font-medium text-xs">
               <template v-if="isLoading">
                 <tr v-for="n in 5" :key="n" class="animate-pulse">
-                  <td v-for="m in 6" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
+                  <td v-for="m in 7" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                 </tr>
               </template>
               <tr v-else-if="!filtered.length">
-                <td colspan="6" class="py-24 text-center text-slate-300">
+                <td colspan="7" class="py-24 text-center text-slate-300">
                    <i class="fas fa-users-slash text-3xl mb-4 opacity-20"></i>
                    <p class="text-xs font-bold uppercase tracking-widest">لا يوجد موظفون متاحون حالياً</p>
                 </td>
@@ -104,18 +105,20 @@
                     </div>
                   </div>
                 </td>
-                <td class="px-4 py-4 text-slate-500 font-medium">{{ u.email || '—' }}</td>
+                <td class="px-4 py-4 text-slate-500 font-medium">{{ u.email || '—' }}                </td>
+                <td class="px-4 py-4 text-center text-[10px] font-bold text-slate-500">
+                  {{ u.branch_name || 'بدون فرع' }}
+                </td>
                 <td class="px-4 py-4 text-center">
-                  <div class="relative w-fit mx-auto">
-                    <select
-                      :value="primaryRoleId(u)"
-                      @change="changeRole(u, $event.target.value)"
-                      :disabled="savingId === u.id"
-                      class="h-7 px-3 pr-8 rounded-md border border-slate-200 text-[10px] font-bold text-slate-700 bg-white hover:border-blue-400 transition-all appearance-none outline-none focus:ring-4 focus:ring-blue-500/5"
+                  <div class="flex flex-wrap justify-center gap-1">
+                    <span
+                      v-for="role in assignedRoles(u)"
+                      :key="role.id"
+                      class="px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-[9px] font-bold text-slate-600"
                     >
-                      <option v-for="r in roles" :key="r.id" :value="r.id">{{ roleAr(r.name) }}</option>
-                    </select>
-                    <i class="fas fa-chevron-down absolute right-2.5 top-1/2 -translate-y-1/2 text-[8px] text-slate-400 pointer-events-none"></i>
+                      {{ roleAr(role.name) }}
+                    </span>
+                    <span v-if="!assignedRoles(u).length" class="text-[9px] text-rose-500">بدون دور</span>
                   </div>
                 </td>
                 <td class="px-4 py-4 text-center">
@@ -145,77 +148,135 @@
       </div>
     </div>
 
-    <!-- User Form Modal: Investigation Style Form -->
-    <transition name="fade">
-      <div v-if="modal.open" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-        <div class="bg-white w-full max-w-lg rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn flex flex-col max-h-[90vh]">
-          <div class="px-8 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <div class="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white"><i :class="[modal.mode === 'create' ? 'fas fa-user-plus' : 'fas fa-user-edit', 'text-xs']"></i></div>
-              <h3 class="text-sm font-bold text-slate-900 uppercase tracking-tight">{{ modal.mode === 'create' ? 'تسجيل موظف جديد' : 'تحديث ملف الموظف' }}</h3>
-            </div>
-            <button @click="modal.open = false" class="text-slate-400 hover:text-slate-900 transition-colors"><i class="fas fa-times text-lg"></i></button>
+    <BaseModal
+      :show="modal.open"
+      @close="modal.open = false"
+      max-width="lg"
+      align="start"
+      :close-on-click-outside="false"
+    >
+      <template #header>
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white">
+            <i :class="[modal.mode === 'create' ? 'fas fa-user-plus' : 'fas fa-user-edit', 'text-xs']"></i>
           </div>
+          <h3 class="text-sm font-bold text-slate-900 uppercase tracking-tight">
+            {{ modal.mode === 'create' ? 'تسجيل موظف جديد' : 'تحديث ملف الموظف' }}
+          </h3>
+        </div>
+      </template>
 
-          <div class="p-8 space-y-6 overflow-y-auto custom-scroll">
-            <div v-if="modal.mode === 'create'" class="space-y-6">
-              <div class="space-y-1.5 group">
-                <label class="metadata-label">الاسم الكامل <span class="text-rose-500">*</span></label>
-                <input v-model="form.name" type="text" class="filter-input-v2 h-10 font-bold" placeholder="أدخل الاسم الرسمي..." />
-              </div>
-              <div class="grid grid-cols-2 gap-4">
-                <div class="space-y-1.5"><label class="metadata-label">اسم المستخدم</label><input v-model="form.username" type="text" class="filter-input-v2 h-10 font-mono" placeholder="username" /></div>
-                <div class="space-y-1.5"><label class="metadata-label">البريد الإلكتروني</label><input v-model="form.email" type="email" class="filter-input-v2 h-10" placeholder="mail@example.com" /></div>
-              </div>
-              <div class="space-y-1.5"><label class="metadata-label">كلمة المرور</label><input v-model="form.password" type="password" class="filter-input-v2 h-10 font-mono tracking-widest" placeholder="••••••••" /></div>
-            </div>
+      <div class="space-y-6" dir="rtl">
+        <div
+          v-if="modal.error"
+          role="alert"
+          aria-live="polite"
+          class="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-bold flex items-start gap-2"
+        >
+          <i class="fas fa-exclamation-circle mt-0.5"></i>
+          <span>{{ modal.error }}</span>
+        </div>
 
-            <div class="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50">
-              <div class="space-y-1.5"><label class="metadata-label">الدور الوظيفي</label><select v-model="form.role_id" class="filter-input-v2 h-10 appearance-none font-bold"><option v-for="r in roles" :key="r.id" :value="r.id">{{ roleAr(r.name) }}</option></select></div>
-              <div class="space-y-1.5"><label class="metadata-label">حالة الحساب</label><select v-model="form.status" class="filter-input-v2 h-10 appearance-none font-bold"><option value="active">نشط / مفعل</option><option value="inactive">موقوف مؤقتاً</option></select></div>
-            </div>
-
-            <div v-if="modal.mode === 'edit'" class="space-y-1.5 pt-4 border-t border-slate-50">
-              <label class="metadata-label text-blue-600">تغيير كلمة المرور (اختياري)</label>
-              <input v-model="form.password" type="password" class="filter-input-v2 h-10 font-mono tracking-widest" placeholder="اتركها فارغة للإبقاء على الحالية" />
-            </div>
-
-            <transition name="slide-down">
-              <div v-if="modal.error" class="p-3 rounded-lg bg-rose-50 border border-rose-100 text-rose-600 text-[11px] font-bold flex items-center gap-2">
-                <i class="fas fa-exclamation-circle"></i> {{ modal.error }}
-              </div>
-            </transition>
+        <div class="space-y-6">
+          <div class="space-y-1.5 group">
+            <label class="metadata-label">الاسم الكامل <span class="text-rose-500">*</span></label>
+            <input v-model="form.name" type="text" class="filter-input-v2 h-10 font-bold" placeholder="أدخل الاسم الرسمي..." />
           </div>
-
-          <div class="px-8 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 shrink-0">
-            <button @click="modal.open = false" class="px-6 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">إلغاء</button>
-            <button @click="saveUser" :disabled="modal.saving" class="px-10 h-10 bg-slate-900 text-white rounded-md text-[11px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200 hover:bg-black transition-all flex items-center justify-center gap-3 disabled:opacity-50">
-              <BaseSpinner v-if="modal.saving" size="14" color="#fff" />
-              <span>{{ modal.mode === 'create' ? 'إضافة الموظف' : 'حفظ التعديلات' }}</span>
-            </button>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              <label class="metadata-label">اسم المستخدم</label>
+              <input v-model="form.username" type="text" class="filter-input-v2 h-10 font-mono" placeholder="username" @input="modal.error = ''" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="metadata-label">البريد الإلكتروني</label>
+              <input v-model="form.email" type="email" class="filter-input-v2 h-10" placeholder="mail@example.com" @input="modal.error = ''" />
+            </div>
+          </div>
+          <div v-if="modal.mode === 'create'" class="space-y-1.5">
+            <label class="metadata-label">كلمة المرور</label>
+            <input v-model="form.password" type="password" class="filter-input-v2 h-10 font-mono tracking-widest" placeholder="••••••••" />
           </div>
         </div>
+
+        <div class="space-y-1.5 pt-4 border-t border-slate-50">
+          <label class="metadata-label">الفرع</label>
+          <select v-model="form.branch_id" class="filter-input-v2 h-10 appearance-none font-bold">
+            <option :value="null">بدون فرع محدد</option>
+            <option v-for="branch in branches" :key="branch.id" :value="branch.id">{{ branch.name }}</option>
+          </select>
+        </div>
+
+        <div class="space-y-3 pt-4 border-t border-slate-50">
+          <label class="metadata-label">الأدوار والصلاحيات</label>
+          <div class="grid grid-cols-2 gap-3">
+            <label
+              v-for="role in roles"
+              :key="role.id"
+              class="flex items-center gap-2 p-3 rounded-lg bg-slate-50 border border-slate-100 cursor-pointer hover:bg-white has-[:checked]:border-blue-500"
+            >
+              <input v-model="form.roles" type="checkbox" :value="role.id" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-0" />
+              <span class="text-[11px] font-bold text-slate-700">{{ roleAr(role.name) }}</span>
+            </label>
+          </div>
+          <p v-if="!form.roles.length" class="text-[10px] font-bold text-rose-600">يجب اختيار دور واحد على الأقل.</p>
+        </div>
+
+        <div class="pt-4 border-t border-slate-50">
+          <div class="space-y-1.5">
+            <label class="metadata-label">حالة الحساب</label>
+            <select v-model="form.status" class="filter-input-v2 h-10 appearance-none font-bold">
+              <option value="active">نشط / مفعل</option>
+              <option value="inactive">موقوف مؤقتاً</option>
+            </select>
+          </div>
+        </div>
+
+        <div v-if="modal.mode === 'edit'" class="space-y-1.5 pt-4 border-t border-slate-50">
+          <label class="metadata-label text-blue-600">تغيير كلمة المرور (اختياري)</label>
+          <input v-model="form.password" type="password" class="filter-input-v2 h-10 font-mono tracking-widest" placeholder="اتركها فارغة للإبقاء على الحالية" />
+        </div>
       </div>
-    </transition>
+
+      <template #footer>
+        <button @click="modal.open = false" class="px-6 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">
+          إلغاء
+        </button>
+        <button @click="saveUser" :disabled="modal.saving" class="px-10 h-10 bg-slate-900 text-white rounded-md text-[11px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200 hover:bg-black transition-all flex items-center justify-center gap-3 disabled:opacity-50">
+          <BaseSpinner v-if="modal.saving" size="14" color="#fff" />
+          <span>{{ modal.mode === 'create' ? 'إضافة الموظف' : 'حفظ التعديلات' }}</span>
+        </button>
+      </template>
+    </BaseModal>
 
     <!-- Delete Confirmation Modal -->
-    <transition name="fade">
-      <div v-if="deleteModal.open" class="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-        <div class="bg-white w-full max-w-sm rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn p-8 text-center space-y-6">
-           <div class="w-16 h-16 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mx-auto shadow-inner border border-rose-100">
-             <i class="fas fa-trash-alt text-2xl"></i>
-           </div>
-           <div>
-             <h3 class="text-base font-bold text-slate-900 uppercase">تأكيد حذف الموظف</h3>
-             <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">أنت على وشك حذف حساب <strong class="text-slate-700">{{ deleteModal.user?.name }}</strong> نهائياً. لا يمكن التراجع عن هذا الإجراء.</p>
-           </div>
-           <div class="flex gap-3">
-              <button @click="deleteModal.open = false" class="flex-1 h-10 text-xs font-bold text-slate-500">إلغاء</button>
-              <button @click="deleteUser" :disabled="deleteModal.saving" class="flex-[2] h-10 bg-rose-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-rose-900/20 active:scale-95 transition-all">تأكيد الحذف</button>
-           </div>
+    <BaseModal
+      :show="deleteModal.open"
+      @close="deleteModal.open = false"
+      max-width="sm"
+      align="center"
+      :close-on-click-outside="false"
+      :show-close-button="false"
+      :z-index="130"
+    >
+      <div class="text-center space-y-6" dir="rtl">
+        <div class="w-16 h-16 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mx-auto shadow-inner border border-rose-100">
+          <i class="fas fa-trash-alt text-2xl"></i>
+        </div>
+        <div>
+          <h3 class="text-base font-bold text-slate-900 uppercase">تأكيد حذف الموظف</h3>
+          <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">
+            أنت على وشك حذف حساب <strong class="text-slate-700">{{ deleteModal.user?.name }}</strong> نهائياً. لا يمكن التراجع عن هذا الإجراء.
+          </p>
         </div>
       </div>
-    </transition>
+
+      <template #footer>
+        <button @click="deleteModal.open = false" class="flex-1 h-10 text-xs font-bold text-slate-500">إلغاء</button>
+        <button @click="deleteUser" :disabled="deleteModal.saving" class="flex-[2] h-10 bg-rose-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-rose-900/20 active:scale-95 transition-all disabled:opacity-50">
+          تأكيد الحذف
+        </button>
+      </template>
+    </BaseModal>
 
     <!-- Global Toast Feed -->
     <transition name="slide-up">
@@ -233,13 +294,19 @@
 // [SCRIPT SECTION REMAINS 100% IDENTICAL AS PER THE CRITICAL BUSINESS LOGIC RULE]
 import { ref, computed, onMounted, reactive } from 'vue'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import BaseModal from '@/components/BaseModal.vue'
 import apiClient from '@/config/axios'
+import { useAuthStore } from '@/stores/auth/authStore'
+import { useBranchStore } from '@/stores/branch/branchStore'
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
 
 const { breadcrumb } = useBreadcrumb();
+const authStore = useAuthStore()
 const users    = ref([])
 const roles    = ref([])
+const branchStore = useBranchStore()
+const branches = computed(() => branchStore.branches)
 const isLoading = ref(false)
 const savingId  = ref(null)
 const search     = ref('')
@@ -247,7 +314,7 @@ const filterRole   = ref('')
 const filterStatus = ref('')
 
 const modal = reactive({ open: false, mode: 'create', saving: false, error: '', userId: null })
-const form  = reactive({ name: '', username: '', email: '', password: '', role_id: null, status: 'active' })
+const form  = reactive({ name: '', username: '', email: '', password: '', roles: [], branch_id: null, status: 'active' })
 
 const deleteModal = reactive({ open: false, saving: false, user: null })
 const toast = reactive({ show: false, type: 'success', message: '' })
@@ -265,9 +332,15 @@ const roleAr = (name) => roleLabels[name] || name
 const avatarColors = ['bg-blue-600','bg-violet-600','bg-emerald-600','bg-amber-600','bg-rose-600','bg-cyan-600','bg-indigo-600','bg-pink-600']
 const avatarColor  = (id) => avatarColors[id % avatarColors.length]
 
-const primaryRoleId = (u) => {
-  if (u.role_ids && typeof u.role_ids === 'string') return parseInt(u.role_ids.split(',')[0])
-  return u.role_id ?? ''
+const assignedRoleIds = (user) => {
+  if (typeof user.role_ids === 'string' && user.role_ids) {
+    return user.role_ids.split(',').map(Number).filter(Number.isInteger)
+  }
+  return user.role_id ? [Number(user.role_id)] : []
+}
+const assignedRoles = (user) => {
+  const roleIds = new Set(assignedRoleIds(user))
+  return roles.value.filter((role) => roleIds.has(Number(role.id)))
 }
 
 const formatDate = (dt) => {
@@ -284,7 +357,7 @@ const filtered = computed(() => {
   return users.value.filter(u => {
     const q = search.value.toLowerCase()
     const matchQ = !q || (u.name || '').toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)
-    const matchRole = !filterRole.value || String(primaryRoleId(u)) === String(filterRole.value)
+    const matchRole = !filterRole.value || assignedRoleIds(u).includes(Number(filterRole.value))
     const matchStatus = !filterStatus.value || u.status === filterStatus.value
     return matchQ && matchRole && matchStatus
   })
@@ -296,6 +369,7 @@ const fetchAll = async () => {
     const [uRes, rRes] = await Promise.all([
       apiClient.get('/rbac/users'),
       apiClient.get('/rbac/roles'),
+      branchStore.fetchBranches(),
     ])
     users.value = uRes.data?.data || uRes.data || []
     roles.value = (rRes.data?.data || rRes.data || []).filter(r => r.name !== 'super_admin')
@@ -303,21 +377,6 @@ const fetchAll = async () => {
     showToast('فشل تحميل البيانات', 'error')
   } finally {
     isLoading.value = false
-  }
-}
-
-const changeRole = async (user, roleId) => {
-  savingId.value = user.id
-  try {
-    await apiClient.put(`/rbac/users/${user.id}`, { roles: [parseInt(roleId)] })
-    user.role_id  = parseInt(roleId)
-    user.role_ids = String(roleId)
-    user.roles    = roles.value.find(r => r.id == roleId)?.name || ''
-    showToast('تم تغيير الدور بنجاح')
-  } catch (e) {
-    showToast(e?.response?.data?.message || 'فشل تغيير الدور', 'error')
-  } finally {
-    savingId.value = null
   }
 }
 
@@ -336,7 +395,7 @@ const toggleStatus = async (user) => {
 }
 
 const openCreate = () => {
-  Object.assign(form, { name: '', username: '', email: '', password: '', role_id: roles.value[0]?.id ?? null, status: 'active' })
+  Object.assign(form, { name: '', username: '', email: '', password: '', roles: roles.value[0] ? [roles.value[0].id] : [], branch_id: null, status: 'active' })
   Object.assign(modal, { open: true, mode: 'create', saving: false, error: '', userId: null })
 }
 
@@ -344,7 +403,7 @@ const openEdit = (user) => {
   Object.assign(form, {
     name: user.name || '', username: user.username || '',
     email: user.email || '', password: '',
-    role_id: primaryRoleId(user), status: user.status || 'active'
+    roles: assignedRoleIds(user), branch_id: user.branch_id ? Number(user.branch_id) : null, status: user.status || 'active'
   })
   Object.assign(modal, { open: true, mode: 'edit', saving: false, error: '', userId: user.id })
 }
@@ -355,23 +414,38 @@ const saveUser = async () => {
     if (!form.username || !form.email || !form.password)
       return (modal.error = 'اسم المستخدم والبريد وكلمة المرور مطلوبة')
   }
+  if (!form.roles.length) return (modal.error = 'يجب اختيار دور واحد على الأقل')
   modal.saving = true
   try {
+    const changingOwnPassword = modal.mode === 'edit' &&
+      !!form.password &&
+      Number(modal.userId) === Number(authStore.user?.id)
     if (modal.mode === 'create') {
       await apiClient.post('/rbac/users', {
         name: form.name, username: form.username, email: form.email,
-        password: form.password, roles: [form.role_id], status: form.status
+        password: form.password, roles: form.roles, branch_id: form.branch_id, status: form.status
       })
     } else {
-      const payload = { roles: [form.role_id], status: form.status }
+      const payload = {
+        name: form.name, username: form.username, email: form.email,
+        roles: form.roles, branch_id: form.branch_id, status: form.status
+      }
       if (form.password) payload.password = form.password
       await apiClient.put(`/rbac/users/${modal.userId}`, payload)
     }
     modal.open = false
+    if (changingOwnPassword) {
+      showToast('تم تغيير كلمة المرور. يرجى تسجيل الدخول مجددًا.')
+      setTimeout(() => {
+        authStore.clearAuthData()
+        window.location.replace('/')
+      }, 1200)
+      return
+    }
     await fetchAll()
     showToast(modal.mode === 'create' ? 'تم إضافة الموظف بنجاح' : 'تم تحديث البيانات')
   } catch (e) {
-    modal.error = e?.response?.data?.message || 'فشل الحفظ'
+    modal.error = e?.response?.data?.message || e?.response?.data?.error || 'فشل الحفظ'
   } finally {
     modal.saving = false
   }

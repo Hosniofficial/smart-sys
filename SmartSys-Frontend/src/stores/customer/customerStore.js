@@ -2,6 +2,8 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { listCustomers } from '@/services/customers';
 import apiClient from '@/config/axios';
+import { useStatementStore } from '@/stores/statement/statementStore';
+import { useSalesStore } from '@/stores/sales/salesStore';
 
 const nowMs = () => Date.now();
 
@@ -145,7 +147,7 @@ export const useCustomerStore = defineStore('customer', () => {
    *   const res = await customerStore.searchCustomers(query);
    *   results.value = res.data || [];
    */
-  const searchCustomers = async (query, { force = false } = {}) => {
+  const searchCustomers = async (query, { force = false, params = {} } = {}) => {
     try {
       if (!query || query.length < 2) {
         return {
@@ -155,7 +157,11 @@ export const useCustomerStore = defineStore('customer', () => {
         };
       }
 
-      const cacheKey = query.toLowerCase();
+      const cacheParams = Object.keys(params)
+        .sort()
+        .map(key => `${key}:${params[key]}`)
+        .join('|');
+      const cacheKey = `${cacheParams}_${query.toLowerCase()}`;
       const cachedAt = searchCacheFetchedAt.value[cacheKey] || 0;
 
       if (!force && isFresh(cachedAt, TTL.customers) && Array.isArray(searchCache.value[cacheKey])) {
@@ -166,7 +172,7 @@ export const useCustomerStore = defineStore('customer', () => {
         };
       }
 
-      const list    = await listCustomers({ search: query });
+      const list    = await listCustomers({ ...params, search: query });
       const results = Array.isArray(list) ? list : [];
 
       searchCache.value[cacheKey]          = results;
@@ -293,7 +299,7 @@ export const useCustomerStore = defineStore('customer', () => {
     }
   };
 
-  const recordCustomerPayment = async (customerId, payload) => {
+  const recordCustomerPayment = async (customerId, payload, idempotencyKey) => {
     try {
       if (!customerId) {
         return {
@@ -303,22 +309,33 @@ export const useCustomerStore = defineStore('customer', () => {
         };
       }
  
-      const response = await apiClient.post(`/customers/${customerId}/payments`, payload);
+      const response = await apiClient.post(`/customers/${customerId}/payments`, payload, {
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+      });
  
-      // غالباً الدفعة بتأثر على كشف الحساب / الرصيد، فالأفضل نحدّث القائمة عند الحاجة
-      customersFetchedAt.value = 0;
+      if (response?.data?.status === 'success') {
+        customersFetchedAt.value = 0;
+        useStatementStore().clearCustomerCache();
+        useSalesStore().clearSalesListCache();
+        useSalesStore().clearDetailsCache();
+        useSalesStore().clearSearchCache();
+      }
  
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
         data:   response?.data?.data || response?.data || {},
-        message: response?.data?.message || null
+        message: response?.data?.message || null,
+        outcomeUnknown: false,
+        httpStatus: Number(response?.status || 0),
       };
     } catch (err) {
       console.error('recordCustomerPayment failed:', err);
       return {
         status: 'error',
         data:   null,
-        message: err.response?.data?.message || err.message
+        message: err.response?.data?.message || err.message,
+        outcomeUnknown: !err.response || err.response.status >= 500,
+        httpStatus: Number(err.response?.status || 0),
       };
     }
   };

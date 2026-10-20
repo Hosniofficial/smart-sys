@@ -11,11 +11,12 @@
       <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
-        title="كتالوج المنتجات"
+        title="إدارة المنتجات"
         description="تنظيم قائمة الأصناف، الأسعار، وتصنيف المنتجات عبر الفروع."
         :branches="branches"
         :selectedBranch="selectedBranch"
-        @branch-changed="(val) => { branchStore.setSelectedBranch(val); handleBranchChange(); }"
+        branch-selection-mode="required"
+        @branch-changed="handleBranchChange"
       >
         <template #controls>
           <div class="flex items-center gap-2">
@@ -231,11 +232,14 @@ import BaseModal from '@/components/BaseModal.vue';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import { useToast } from '@/composables/useToast';
 import { useTableFilters } from '@/composables/useTableFilters';
-import getLocalDateISO from '@/utils/date';
+import { getLocalDateISO } from '@/utils';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
-import ProductForm from '../../components/ProductForm.vue';
+import ProductForm from '@/components/ProductForm.vue';
 import AlertService from '@/services/AlertService';
-import { useBranchStore } from '@/stores/branch';
+import { useBranchStore } from '@/stores/branch/branchStore';
+import { useBranchIsolation } from '@/composables/useBranchIsolation';
+import { useRequiredBranch } from '@/composables/useRequiredBranch';
+import { useAuthStore } from '@/stores/auth/authStore';
 import { useCatalogStore } from '@/stores/catalog/catalogStore';
 import { useProductStore } from '@/stores/product/productStore';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
@@ -245,13 +249,16 @@ const { showToast } = useToast();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const { breadcrumb } = useBreadcrumb();
 const branchStore = useBranchStore();
+const branchIsolation = useBranchIsolation();
+const authStore = useAuthStore();
+const { ensureBranchSelected, setRequiredBranch } = useRequiredBranch();
 const catalogStore = useCatalogStore();
 const productStore = useProductStore();
 
 const products = ref([]);
-// Guard: إذا كان branchId null (initial render قبل initialize)، أرجع array فارغ
+// Guard: categories and product operations are always scoped to one branch.
 const categories = computed(() => {
-  const branchId = branchStore.selectedBranchId;
+  const branchId = selectedBranch.value;
   if (!branchId) return [];
   return catalogStore.getCategoriesForBranch(branchId);
 });
@@ -259,11 +266,11 @@ const branches = computed(() => branchStore.branches);
 const showFormModal = ref(false);
 const selectedProduct = ref(null);
 const productFormRef = ref(null);
-const selectedBranch = computed({
-  get: () => branchStore.selectedBranchId,
-  set: (val) => branchStore.setSelectedBranch(val)
-});
+const selectedBranch = computed(() => branchIsolation.isExempt.value
+  ? branchStore.selectedBranchId
+  : authStore.user?.branch_id ?? null);
 const isLoading = ref(true);
+const branchContextReady = ref(false);
 const error = ref(null);
 const searchQuery = ref('');
 const selectedCategory = ref('');
@@ -271,16 +278,25 @@ const selectedCategory = ref('');
 // ─── Pagination (using useTableFilters composable)
 const filters = useTableFilters('products_filters');
 
-const handleBranchChange = () => { fetchAllData(true); };
+const handleBranchChange = (branchId) => {
+  if (!setRequiredBranch(branchId)) return;
+  filters.page.value = 1;
+};
 
 const fetchAllData = async (force = false) => {
   isLoading.value = true;
   error.value = null;
   try {
-    const branchId = selectedBranch.value ? String(selectedBranch.value) : null;
-    const calls = [productStore.fetchProducts({ branchId, force })];
-    if (branchId) calls.push(catalogStore.fetchCategories(branchId, { force }));
-    const [productsResponse] = await Promise.all(calls);
+    if (!selectedBranch.value) {
+      products.value = [];
+      error.value = 'يرجى تحديد فرع لعرض المنتجات.';
+      return;
+    }
+    const branchId = String(selectedBranch.value);
+    const [productsResponse] = await Promise.all([
+      productStore.fetchProducts({ branchId, force }),
+      catalogStore.fetchCategories(branchId, { force })
+    ]);
     if (productsResponse && productsResponse.status === 'success') {
       products.value = productsResponse.data || [];
     }
@@ -324,7 +340,14 @@ const paginatedProducts = computed(() => {
 });
 
 watch(selectedBranch, async (newId, oldId) => {
-  if (!newId || newId === oldId) return;
+  if (!branchContextReady.value) return;
+  if (newId === oldId) return;
+  if (!newId) {
+    products.value = [];
+    selectedCategory.value = '';
+    error.value = 'يرجى تحديد فرع لعرض المنتجات.';
+    return;
+  }
   isLoading.value = true;
   error.value = null;
   try {
@@ -334,7 +357,7 @@ watch(selectedBranch, async (newId, oldId) => {
     filters.page.value = 1;
   } catch { showToast('فشل تحميل البيانات', 'error'); }
   finally { isLoading.value = false; }
-});
+}, { flush: 'sync' });
 
 watch([searchQuery, selectedCategory], () => filters.page.value = 1);
 
@@ -401,7 +424,17 @@ const handleDelete = async (id) => {
   }
 };
 
-onMounted(async () => { await branchStore.initialize(); await Promise.all([fetchSettings(), fetchAllData()]); });
+onMounted(async () => {
+  await branchStore.initialize();
+  if (branchIsolation.isExempt.value) {
+    await ensureBranchSelected();
+  } else {
+    const assignedBranchId = authStore.user?.branch_id;
+    if (assignedBranchId) setRequiredBranch(assignedBranchId);
+  }
+  branchContextReady.value = true;
+  await Promise.all([fetchSettings(), fetchAllData()]);
+});
 </script>
 
 <style scoped>

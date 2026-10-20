@@ -24,9 +24,6 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->get('/movements', [$handler, 'getMovements'])
             ->add(PermissionMiddleware::require(Permissions::INVENTORY_VIEW, $db));
 
-        $group->get('/alerts', [$handler, 'getAlerts'])
-            ->add(PermissionMiddleware::require(Permissions::INVENTORY_VIEW, $db));
-
         $group->get('/summary', [$handler, 'getSummary'])
             ->add(PermissionMiddleware::require(Permissions::INVENTORY_VIEW, $db));
     });

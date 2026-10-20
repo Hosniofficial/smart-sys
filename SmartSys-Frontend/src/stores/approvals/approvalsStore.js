@@ -27,7 +27,7 @@ export const useApprovalsStore = defineStore('approvals', () => {
 
   // ─── List Pending Approvals ───────────────────────────────────────
   const listPending = async (params = {}) => {
-    const cacheKey = `pending_${params.page || 1}_${params.limit || 20}`;
+    const cacheKey = `pending_${params.page || 1}_${params.limit || 20}_${params.branch_id || 'all'}`;
     
     if (inFlightRequests.value[cacheKey]) {
       return inFlightRequests.value[cacheKey];

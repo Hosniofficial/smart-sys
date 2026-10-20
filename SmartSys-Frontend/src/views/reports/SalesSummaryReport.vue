@@ -13,8 +13,10 @@
         :breadcrumb="breadcrumb"
         title="أداء المبيعات والربحية"
         description="تحليل تدفقات النقدية، تكلفة البضاعة، وصافي أرباح نقاط البيع."
-        :branches="[]"
-        :selectedBranch="null"
+        :branches="branches"
+        :selectedBranch="selectedBranch === 'all' ? null : selectedBranch"
+        :hasExplicitSelection="true"
+        @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
           <button @click="viewYesterday" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all shadow-sm">عرض يوم أمس</button>
@@ -119,6 +121,21 @@
         </div>
       </section>
 
+      <section
+        v-if="salesSummary.kpis.returnsCostUnresolvedLineCount > 0"
+        class="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900"
+        role="alert"
+      >
+        <p class="font-bold">تكلفة بعض مرتجعات المبيعات غير محسومة</p>
+        <p class="mt-1">
+          {{ salesSummary.kpis.returnsCostUnresolvedLineCount }} بند مرتجع
+          <span v-if="salesSummary.kpis.returnsCostUnresolvedQuantity > 0">
+            بكمية {{ salesSummary.kpis.returnsCostUnresolvedQuantity }}
+          </span>
+          بلا تكلفة تاريخية موثوقة؛ قد لا يعكس الربح الإجمالي القيمة النهائية. راجع تكلفة حركة المرتجع أو تكلفة بند البيع الأصلي.
+        </p>
+      </section>
+
       <!-- KPI Grid: Metric Blocks -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <div v-for="card in summaryCards" :key="card.title" class="bg-white border border-slate-200 p-5 rounded-xl flex flex-col justify-between group hover:border-slate-300 transition-all shadow-sm border-r-4" :class="card.color.replace('text', 'border-r')">
@@ -166,7 +183,7 @@
         <!-- Recent Ledger (5/12) -->
         <div class="lg:col-span-5 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
           <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest">سجل آخر العمليات</h3>
+            <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest">سجل آخر الفواتير</h3>
             <span class="text-[9px] font-bold text-slate-400 font-mono">LIVE FEED</span>
           </div>
 
@@ -175,7 +192,7 @@
               <i class="fas fa-exclamation-triangle text-amber-500 mt-0.5"></i>
               <div class="flex-1">
                 <p class="text-[10px] font-bold text-amber-900 uppercase">تنبيه تكلفة المبيعات (COGS)</p>
-                <p class="text-[9px] text-amber-700 leading-relaxed italic">يظهر إجمالي التكلفة بصفر؛ يرجى التأكد من تعريف تكلفة الشراء أو الرصيد الافتتاحي للمنتجات المباعة.</p>
+                <p class="text-[9px] text-amber-700 leading-relaxed italic">يظهر إجمالي التكلفة بصفر؛ يرجى التأكد من تسجيل تكلفة الشراء أو تحديد تكلفة المخزون الافتتاحي للمنتجات المباعة.</p>
               </div>
               <button @click="hideCostWarning = true" class="text-slate-300 hover:text-slate-600"><i class="fas fa-times"></i></button>
             </div>
@@ -187,7 +204,7 @@
                 <tr class="bg-white border-b border-slate-100 text-slate-400 font-bold uppercase text-[9px] tracking-widest">
                   <th class="px-6 py-3">الوقت</th>
                   <th class="px-4 py-3">المبلغ</th>
-                  <th class="px-4 py-3">الربح</th>
+                  <th class="px-4 py-3">ربح الفاتورة</th>
                   <th class="px-4 py-3">الوسيلة</th>
                 </tr>
               </thead>
@@ -228,13 +245,21 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { Bar as BarChart, Doughnut as DoughnutChart } from 'vue-chartjs';
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement } from 'chart.js';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
-import { useReportsStore } from '@/stores/reports';
-import { getLocalDateISO } from '@/utils/date';
+import { useReportsStore } from '@/stores/reports/reportsStore';
+import { getLocalDateISO } from '@/utils';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import PageHeader from '@/components/PageHeader.vue';
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement);
+
+const branchStore = useBranchStore();
+const branches = computed(() => branchStore.branches);
+const selectedBranch = computed({
+  get: () => branchStore.selectedBranchId || 'all',
+  set: (val) => branchStore.setSelectedBranch(val === 'all' ? null : val)
+});
 
 const vClickOutside = {
   mounted(el, binding) {
@@ -263,7 +288,16 @@ const posDropdownOpen = ref(false);
 const hideCostWarning = ref(false);
 
 const salesSummary = ref({
-  kpis: { totalSales: 0, totalReturns: 0, netSales: 0, orderCount: 0, cogsTotal: 0, grossProfit: 0 },
+  kpis: {
+    totalSales: 0,
+    totalReturns: 0,
+    netSales: 0,
+    orderCount: 0,
+    cogsTotal: 0,
+    grossProfit: 0,
+    returnsCostUnresolvedLineCount: 0,
+    returnsCostUnresolvedQuantity: 0,
+  },
   salesByPos: [],
   salesByPayment: [],
   recentTransactions: []
@@ -276,7 +310,7 @@ const summaryCards = computed(() => {
     { title: 'إجمالي المرتجعات', value: k.totalReturns, format: 'currency', icon: 'fas fa-undo', color: 'text-rose-600', bg: 'bg-rose-50' },
     { title: 'صافي المبيعات', value: k.netSales, format: 'currency', icon: 'fas fa-sack-dollar', color: 'text-blue-600', bg: 'bg-blue-50' },
     { title: 'عدد الفواتير', value: k.orderCount || 0, format: 'number', icon: 'fas fa-receipt', color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { title: 'تكلفة المبيعات', value: k.cogsTotal, format: 'currency', icon: 'fas fa-box', color: 'text-amber-600', bg: 'bg-amber-50' },
+    { title: 'صافي تكلفة المبيعات', value: k.cogsTotal, format: 'currency', icon: 'fas fa-box', color: 'text-amber-600', bg: 'bg-amber-50' },
     { title: 'الربح الإجمالي', value: k.grossProfit, format: 'currency', icon: 'fas fa-chart-line', color: 'text-emerald-600', bg: 'bg-emerald-50' },
   ]
 })
@@ -317,7 +351,7 @@ const togglePos = (id) => { const index = posIds.value.indexOf(id); if (index > 
 
 const loadPosOptions = async () => {
   try {
-    const result = await reportsStore.fetchPosAnalytics(selectedDate.value, selectedDate.value);
+    const result = await reportsStore.fetchPosAnalytics(selectedDate.value, selectedDate.value, { branchId: selectedBranch.value === 'all' ? null : selectedBranch.value });
     const data = result.status === 'success' ? result.data : [];
     posOptions.value = (Array.isArray(data) ? data : (data?.data || [])).map(r => ({ id: r.pos_id, label: r.pos_name || `POS #${r.pos_id}` }));
   } catch { posOptions.value = []; }
@@ -326,17 +360,35 @@ const loadPosOptions = async () => {
 const fetchSalesSummary = async () => {
     isLoading.value = true; error.value = null;
     try {
-        const result = await reportsStore.fetchSalesSummary(selectedDate.value);
+        const result = await reportsStore.fetchSalesSummary(selectedDate.value, {
+          branchId: selectedBranch.value === 'all' ? null : selectedBranch.value,
+          payment_kind: paymentKind.value || undefined,
+          category_id: categoryId.value || undefined,
+          product_id: productId.value || undefined,
+          pos_ids: posIds.value.length ? posIds.value : undefined
+        });
         if (result.status === 'success') {
             const apiData = result.data || {};
             const totalSales = Number(apiData.total_sales_amount ?? 0);
             const totalReturns = Number(apiData.total_returns_amount ?? 0);
-            const cogsTotal = Number(apiData.cogs_total ?? 0);
+            const cogsTotal = Number(
+                apiData.net_cogs
+                ?? (Number(apiData.cogs_total ?? 0) - Number(apiData.returns_cogs ?? 0))
+            );
             const orderCount = Number(apiData.order_count ?? 0);
             const netSales = totalSales - totalReturns;
-            const grossProfit = netSales - cogsTotal;
+            const grossProfit = Number(apiData.gross_profit ?? (netSales - cogsTotal));
             salesSummary.value = {
-                kpis: { totalSales, totalReturns, netSales, orderCount, cogsTotal, grossProfit },
+                kpis: {
+                    totalSales,
+                    totalReturns,
+                    netSales,
+                    orderCount,
+                    cogsTotal,
+                    grossProfit,
+                    returnsCostUnresolvedLineCount: Number(apiData.returns_cost_unresolved_line_count ?? 0),
+                    returnsCostUnresolvedQuantity: Number(apiData.returns_cost_unresolved_quantity ?? 0),
+                },
                 salesByPos: (apiData.salesByPos || []).map(p => ({ name: p.name || `POS #${p.pos_id}`, totalSales: Number(p.totalSales || 0) })),
                 salesByPayment: (apiData.salesByPayment || []).map(p => ({ name: p.name || '-', totalSales: Number(p.totalSales || 0) })),
                 recentTransactions: (apiData.recentTransactions || []).map(t => ({ id: t.id, time: t.time || t.created_at, posName: t.posName || '-', amount: Number(t.amount || 0), cogs: Number(t.cogs || 0), profit: Number(t.profit || 0), paymentMethod: t.paymentMethod || '-' }))
@@ -348,8 +400,8 @@ const fetchSalesSummary = async () => {
 const viewYesterday = () => { const y = new Date(selectedDate.value); y.setDate(y.getDate() - 1); selectedDate.value = getLocalDateISO(y); };
 const shouldShowCostWarning = computed(() => !hideCostWarning.value && Number(salesSummary.value.kpis.totalSales) > 0 && Number(salesSummary.value.kpis.cogsTotal) === 0);
 
-watch(selectedDate, () => { loadPosOptions(); fetchSalesSummary(); });
-onMounted(async () => { await Promise.all([fetchSettings(), loadPosOptions(), fetchSalesSummary()]); });
+watch([selectedDate, selectedBranch], () => { posIds.value = []; loadPosOptions(); fetchSalesSummary(); });
+onMounted(async () => { await Promise.all([fetchSettings(), branchStore.fetchBranches().catch(() => {}), loadPosOptions(), fetchSalesSummary()]); });
 </script>
 
 <style scoped>

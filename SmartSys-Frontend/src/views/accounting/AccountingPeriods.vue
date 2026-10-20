@@ -14,10 +14,10 @@
           <div class="flex items-center gap-2 text-slate-500 text-xs font-medium uppercase tracking-wider">
             <span>المالية</span>
             <i class="fas fa-chevron-left text-[8px]"></i>
-            <span class="text-slate-900">الدورات المحاسبية</span>
+            <span class="text-slate-900">الفترات المحاسبية</span>
           </div>
-          <h1 class="text-2xl font-bold tracking-tight text-slate-900">الدورات والفترات المالية</h1>
-          <p class="text-sm text-slate-500 font-medium">إغلاق وفتح الفترات المحاسبية للتحكم في صلاحية تسجيل القيود والعمليات.</p>
+          <h1 class="text-2xl font-bold tracking-tight text-slate-900">إدارة الفترات المحاسبية</h1>
+          <p class="text-sm text-slate-500 font-medium">أدر الفترات المحاسبية، وتحكّم في فتحها وإغلاقها وتحديد إمكانية تسجيل القيود والعمليات المالية خلالها.</p>
         </div>
 
         <div class="flex items-center gap-3">
@@ -199,7 +199,7 @@
 // [SCRIPT SECTION REMAINS 100% IDENTICAL TO THE ORIGINAL AS PER BUSINESS LOGIC RULE]
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore } from '@/stores/auth/authStore'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue'
 
 const authStore = useAuthStore()

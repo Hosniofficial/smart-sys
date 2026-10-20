@@ -9,12 +9,14 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Message\ResponseInterface as Response;
 use App\Services\MonologHandler;
 use App\Services\CostingService;
+use App\Services\ReturnCostingService;
 
 /**
- * SalesAnalyticsHandler
+ * Provides tenant-scoped sales trends, summaries, and payment breakdowns.
  *
- * Handles sales-related analytics.
- * Real extraction from AnalyticsHandler — logic lives here, no delegation.
+ * Queries sales, returns, and completed payments directly; CostingService and
+ * ReturnCostingService provide inventory-cost figures. Routes and permissions
+ * are defined in analytics.php and reports.php.
  */
 class SalesAnalyticsHandler extends BaseHandler
 {
@@ -24,10 +26,7 @@ class SalesAnalyticsHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('analytics');
     }
 
-    // =========================================================
-    // GET /analytics/trends
-    // =========================================================
-
+    /** Aggregate monthly sales and product trends over the requested date range. */
     public function analyzeTrends(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -36,7 +35,7 @@ class SalesAnalyticsHandler extends BaseHandler
         }
 
         $filters = $request->getQueryParams();
-        $where   = ['s.tenant_id = ?'];
+        $where   = ['s.tenant_id = ?', "LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')"];
         $params  = [$tenantId];
 
         if (!empty($filters['start_date'])) {
@@ -54,7 +53,7 @@ class SalesAnalyticsHandler extends BaseHandler
             SELECT MONTH(s.date) as month, YEAR(s.date) as year,
                    COUNT(DISTINCT s.id) as total_orders,
                    SUM(si.quantity) as total_items,
-                   SUM(si.quantity * si.sale_price) as total_revenue
+                   SUM(COALESCE(si.net_total, si.quantity * si.sale_price)) as total_revenue
             FROM sales s
             JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id
             {$whereClause}
@@ -67,7 +66,7 @@ class SalesAnalyticsHandler extends BaseHandler
         $stmt = $this->db->prepare("
             SELECT p.id, p.name, DATE_FORMAT(s.date, '%Y-%m') as month,
                    SUM(si.quantity) as total_quantity,
-                   AVG(si.sale_price) as avg_price
+                   AVG(COALESCE(si.net_price, si.sale_price)) as avg_price
             FROM sales s
             JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id
             JOIN products p ON p.id = si.product_id AND p.tenant_id = si.tenant_id
@@ -84,10 +83,7 @@ class SalesAnalyticsHandler extends BaseHandler
         ], 200);
     }
 
-    // =========================================================
-    // GET /reports/sales/daily-summary
-    // =========================================================
-
+    /** Summarize daily sales, returns, costs, branches, payment methods, and recent invoices. */
     public function dailySalesSummary(Request $request, Response $response): Response
     {
         try {
@@ -102,13 +98,29 @@ class SalesAnalyticsHandler extends BaseHandler
                 return $this->errorResponse($response, 'date (YYYY-MM-DD) is required', 400);
             }
 
-            $ts = strtotime($date);
-            if ($ts === false) {
-                return $this->errorResponse($response, 'Invalid date format', 400);
+            [$dayStart, $dayEndExclusive] = $this->resolveTenantDateRange(
+                (int) $tenantId,
+                $date,
+                $date,
+                0
+            );
+            $branchId = null;
+            if (isset($params['branch_id']) && $params['branch_id'] !== '') {
+                $branchId = filter_var($params['branch_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                if ($branchId === false) {
+                    return $this->errorResponse($response, 'معرف الفرع غير صالح.', 400);
+                }
+                $branchStmt = $this->db->prepare('SELECT id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1');
+                $branchStmt->execute([$branchId, $tenantId]);
+                if (!$branchStmt->fetchColumn()) {
+                    return $this->errorResponse($response, 'الفرع غير موجود.', 404);
+                }
+                $branchId = (int) $branchId;
             }
+            $branchClause = $branchId !== null ? " AND s.branch_id = {$branchId}" : '';
+            $returnBranchClause = $branchId !== null ? " AND r.branch_id = {$branchId}" : '';
 
-            $dayStart   = date('Y-m-d 00:00:00', $ts);
-            $dayEnd     = date('Y-m-d 23:59:59', $ts);
+            $summaryDate = substr($dayStart, 0, 10);
             $posIds     = [];
             $paymentKind = null;
             $productId  = null;
@@ -131,9 +143,8 @@ class SalesAnalyticsHandler extends BaseHandler
                 $categoryId = (int) $params['category_id'];
             }
 
-            // Total sales
-            $whereSales  = ['s.tenant_id = ?', 's.created_at BETWEEN ? AND ?'];
-            $salesParams = [$tenantId, $dayStart, $dayEnd];
+            $whereSales  = ['s.tenant_id = ?', "LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')", 's.created_at >= ? AND s.created_at < ?'];
+            $salesParams = [$tenantId, $dayStart, $dayEndExclusive];
             $joins       = ['JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id'];
 
             if ($productId) {
@@ -151,30 +162,31 @@ class SalesAnalyticsHandler extends BaseHandler
                     $salesParams[] = $pid;
                 }
             }
+            if ($branchId !== null) {
+                $whereSales[] = 's.branch_id = ?';
+                $salesParams[] = $branchId;
+            }
             if ($paymentKind) {
                 $whereSales[] = "EXISTS (SELECT 1 FROM payments pmt LEFT JOIN payment_methods pm ON pm.id = pmt.payment_method_id AND pm.tenant_id = s.tenant_id WHERE pmt.sale_id = s.id AND pmt.is_draft = 0 AND pmt.status = 'completed' AND LOWER(pm.kind) = ?)";
                 $salesParams[] = $paymentKind;
             }
 
-            // Total sales + order count
-            $sqlSales = 'SELECT COALESCE(SUM(si.quantity * si.sale_price), 0) AS total_sales_amount, COUNT(DISTINCT s.id) AS order_count FROM sales s ' . implode(' ', $joins) . ' WHERE ' . implode(' AND ', $whereSales);
+            $sqlSales = 'SELECT COALESCE(SUM(COALESCE(si.net_total, si.quantity * si.sale_price)), 0) AS total_sales_amount, COUNT(DISTINCT s.id) AS order_count FROM sales s ' . implode(' ', $joins) . ' WHERE ' . implode(' AND ', $whereSales);
             $stmt = $this->db->prepare($sqlSales);
             $stmt->execute($salesParams);
             $salesRow = $stmt->fetch(PDO::FETCH_ASSOC);
             $totalSalesAmount = (float) ($salesRow['total_sales_amount'] ?? 0);
             $orderCount = (int) ($salesRow['order_count'] ?? 0);
 
-            // Total returns
-            $stmt = $this->db->prepare("SELECT COALESCE(SUM(ri.quantity * ri.unit_price), 0) AS total_returns_amount FROM returns r JOIN return_items ri ON ri.return_id = r.id WHERE r.tenant_id = ? AND r.return_type = 'sale' AND r.created_at BETWEEN ? AND ?");
-            $stmt->execute([$tenantId, $dayStart, $dayEnd]);
+            $stmt = $this->db->prepare("SELECT COALESCE(SUM(ri.quantity * ri.unit_price), 0) AS total_returns_amount FROM returns r JOIN return_items ri ON ri.return_id = r.id AND ri.tenant_id = r.tenant_id WHERE r.tenant_id = ? AND r.return_type = 'sale' AND LOWER(COALESCE(r.status, '')) NOT IN ('canceled', 'cancelled', 'rejected') AND r.created_at >= ? AND r.created_at < ? {$returnBranchClause}");
+            $stmt->execute([$tenantId, $dayStart, $dayEndExclusive]);
             $totalReturnsAmount = (float) ($stmt->fetch(PDO::FETCH_ASSOC)['total_returns_amount'] ?? 0);
 
-            // COGS via WAC
             $cogsTotal = 0.0;
             try {
                 $costing    = new CostingService($this->db);
-                $whereIds   = ['s.tenant_id = ?', 's.created_at BETWEEN ? AND ?'];
-                $idParams   = [$tenantId, $dayStart, $dayEnd];
+                $whereIds   = ['s.tenant_id = ?', "LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')", 's.created_at >= ? AND s.created_at < ?'];
+                $idParams   = [$tenantId, $dayStart, $dayEndExclusive];
                 $idJoins    = [];
 
                 if ($productId) {
@@ -196,6 +208,10 @@ class SalesAnalyticsHandler extends BaseHandler
                         $idParams[] = $pid;
                     }
                 }
+                if ($branchId !== null) {
+                    $whereIds[] = 's.branch_id = ?';
+                    $idParams[] = $branchId;
+                }
                 if ($paymentKind) {
                     $whereIds[] = "EXISTS (SELECT 1 FROM payments pmt LEFT JOIN payment_methods pm ON pm.id = pmt.payment_method_id AND pm.tenant_id = s.tenant_id WHERE pmt.sale_id = s.id AND pmt.is_draft = 0 AND pmt.status = 'completed' AND LOWER(pm.kind) = ?)";
                     $idParams[] = $paymentKind;
@@ -215,18 +231,60 @@ class SalesAnalyticsHandler extends BaseHandler
                 $cogsTotal = 0.0;
             }
 
-            // Sales by POS (Branch)
+            $returnsCOGS = 0.0;
+            $whereReturnIds = [
+                'r.tenant_id = ?',
+                "r.return_type = 'sale'",
+                "LOWER(COALESCE(r.status, '')) NOT IN ('canceled', 'cancelled', 'rejected')",
+                'r.created_at >= ? AND r.created_at < ?',
+            ];
+            $returnIdParams = [$tenantId, $dayStart, $dayEndExclusive];
+            $returnJoins = [
+                'JOIN return_items ri ON ri.return_id = r.id AND ri.tenant_id = r.tenant_id',
+            ];
+
+            if ($productId) {
+                $whereReturnIds[] = 'ri.product_id = ?';
+                $returnIdParams[] = $productId;
+            }
+            if ($categoryId) {
+                $returnJoins[] = 'JOIN products rp ON rp.id = ri.product_id AND rp.tenant_id = ri.tenant_id';
+                $whereReturnIds[] = 'rp.category_id = ?';
+                $returnIdParams[] = $categoryId;
+            }
+            if (!empty($posIds)) {
+                $whereReturnIds[] = 'r.branch_id IN (' . implode(',', array_fill(0, count($posIds), '?')) . ')';
+                array_push($returnIdParams, ...$posIds);
+            }
+            if ($branchId !== null) {
+                $whereReturnIds[] = 'r.branch_id = ?';
+                $returnIdParams[] = $branchId;
+            }
+
+            $stmt = $this->db->prepare(
+                'SELECT DISTINCT r.id FROM returns r ' . implode(' ', $returnJoins)
+                . ' WHERE ' . implode(' AND ', $whereReturnIds)
+            );
+            $stmt->execute($returnIdParams);
+            $returnsCostDetails = (new ReturnCostingService($this->db))->calculateDetailsForReturns(
+                (int) $tenantId,
+                array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [])
+            );
+            $returnsCOGS = $returnsCostDetails['cost_amount'];
+
+            $netCOGS = round($cogsTotal - $returnsCOGS, 2);
+
             $salesByPos = [];
             $sqlByPos = "SELECT s.branch_id, b.name as branch_name, 
-                         COALESCE(SUM(si.quantity * si.sale_price), 0) AS total_sales,
+                         COALESCE(SUM(COALESCE(si.net_total, si.quantity * si.sale_price)), 0) AS total_sales,
                          COUNT(DISTINCT s.id) AS order_count
                          FROM sales s 
                          JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id
                          LEFT JOIN branches b ON b.id = s.branch_id AND b.tenant_id = s.tenant_id
-                         WHERE s.tenant_id = ? AND s.created_at BETWEEN ? AND ?
+                         WHERE s.tenant_id = ? AND LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled') AND s.created_at >= ? AND s.created_at < ? {$branchClause}
                          GROUP BY s.branch_id, b.name";
             $stmt = $this->db->prepare($sqlByPos);
-            $stmt->execute([$tenantId, $dayStart, $dayEnd]);
+            $stmt->execute([$tenantId, $dayStart, $dayEndExclusive]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
                 $salesByPos[] = [
                     'pos_id' => (int) $row['branch_id'],
@@ -236,20 +294,20 @@ class SalesAnalyticsHandler extends BaseHandler
                 ];
             }
 
-            // Sales by Payment Method
             $salesByPayment = [];
             $sqlByPayment = "SELECT pm.name, pm.kind,
                              COALESCE(SUM(pmt.amount), 0) AS total_amount
                              FROM payments pmt
                              LEFT JOIN payment_methods pm ON pm.id = pmt.payment_method_id AND pm.tenant_id = pmt.tenant_id
                              JOIN sales s ON s.id = pmt.sale_id AND s.tenant_id = pmt.tenant_id
-                             WHERE pmt.tenant_id = ? 
+                             WHERE pmt.tenant_id = ?
                              AND pmt.is_draft = 0 
                              AND pmt.status = 'completed'
-                             AND s.created_at BETWEEN ? AND ?
+                             AND LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')
+                             AND s.created_at >= ? AND s.created_at < ? {$branchClause}
                              GROUP BY pm.id, pm.name, pm.kind";
             $stmt = $this->db->prepare($sqlByPayment);
-            $stmt->execute([$tenantId, $dayStart, $dayEnd]);
+            $stmt->execute([$tenantId, $dayStart, $dayEndExclusive]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
                 $salesByPayment[] = [
                     'name' => $row['name'] ?: ($row['kind'] ?: 'غير محدد'),
@@ -257,25 +315,23 @@ class SalesAnalyticsHandler extends BaseHandler
                 ];
             }
 
-            // Recent Transactions (Last 20)
             $recentTransactions = [];
-            $sqlRecent = "SELECT s.id, s.created_at, s.total_amount, b.name as pos_name,
-                          pm.name as payment_method
+            $sqlRecent = "SELECT s.id, s.created_at, COALESCE(s.net_total_amount, s.total_amount) AS net_total_amount, b.name as pos_name,
+                          COALESCE(pm.name, pm.kind, 'غير محدد') as payment_method,
+                          s.payment_method_id
                           FROM sales s
                           LEFT JOIN branches b ON b.id = s.branch_id AND b.tenant_id = s.tenant_id
-                          LEFT JOIN payments pmt ON pmt.sale_id = s.id AND pmt.tenant_id = s.tenant_id AND pmt.is_draft = 0
-                          LEFT JOIN payment_methods pm ON pm.id = pmt.payment_method_id AND pm.tenant_id = pmt.tenant_id
-                          WHERE s.tenant_id = ? AND s.created_at BETWEEN ? AND ?
+                          LEFT JOIN payment_methods pm ON pm.id = s.payment_method_id AND pm.tenant_id = s.tenant_id
+                          WHERE s.tenant_id = ? AND LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled') AND s.created_at >= ? AND s.created_at < ? {$branchClause}
                           ORDER BY s.created_at DESC
                           LIMIT 20";
             $stmt = $this->db->prepare($sqlRecent);
-            $stmt->execute([$tenantId, $dayStart, $dayEnd]);
+            $stmt->execute([$tenantId, $dayStart, $dayEndExclusive]);
 
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
                 $saleId = (int) $row['id'];
                 $saleDate = $row['created_at'];
 
-                // Calculate COGS for this sale
                 $saleCogs = 0.0;
                 try {
                     $costing = new CostingService($this->db);
@@ -288,7 +344,7 @@ class SalesAnalyticsHandler extends BaseHandler
                     $saleCogs = 0.0;
                 }
 
-                $amount = (float) $row['total_amount'];
+                $amount = (float) $row['net_total_amount'];
                 $profit = $amount - $saleCogs;
 
                 $recentTransactions[] = [
@@ -298,31 +354,35 @@ class SalesAnalyticsHandler extends BaseHandler
                     'amount' => $amount,
                     'cogs' => round($saleCogs, 2),
                     'profit' => round($profit, 2),
-                    'paymentMethod' => $row['payment_method'] ?: 'غير محدد'
+                    'paymentMethod' => $row['payment_method']
                 ];
             }
 
             return $this->successResponse($response, [
-                'date'                 => date('Y-m-d', $ts),
+                'date'                 => $summaryDate,
                 'total_sales_amount'   => $totalSalesAmount,
                 'total_returns_amount' => $totalReturnsAmount,
                 'cogs_total'           => $cogsTotal,
-                'gross_profit'         => round(($totalSalesAmount - $totalReturnsAmount) - $cogsTotal, 2),
+                'returns_cogs'         => $returnsCOGS,
+                'returns_cost_unresolved_line_count' => $returnsCostDetails['unresolved_line_count'],
+                'returns_cost_unresolved_quantity' => $returnsCostDetails['unresolved_quantity'],
+                'returns_cost_complete' => $returnsCostDetails['unresolved_line_count'] === 0,
+                'net_cogs'             => $netCOGS,
+                'gross_profit'         => round(($totalSalesAmount - $totalReturnsAmount) - $netCOGS, 2),
                 'order_count'          => $orderCount,
                 'salesByPos'           => $salesByPos,
                 'salesByPayment'       => $salesByPayment,
                 'recentTransactions'   => $recentTransactions,
             ], 200);
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($response, $e->getMessage(), 400);
         } catch (\Throwable $e) {
             $this->logger->error('dailySalesSummary error', ['message' => $e->getMessage()]);
             return $this->errorResponse($response, 'فشل في حساب الملخص اليومي', 500);
         }
     }
 
-    // =========================================================
-    // GET /analytics/sales-payments-breakdown
-    // =========================================================
-
+    /** Aggregate completed payments, refunds, credit balances, and returns by type. */
     public function breakdownSalesPayments(Request $request, Response $response): Response
     {
         try {
@@ -332,116 +392,170 @@ class SalesAnalyticsHandler extends BaseHandler
             }
 
             $params      = $request->getQueryParams();
-            $where       = ['s.tenant_id = ?'];
+            $where       = ['s.tenant_id = ?', "LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')"];
             $queryParams = [$tenantId];
 
-            if (!empty($params['start_date'])) {
-                $where[] = 'DATE(s.created_at) >= ?';
-                $queryParams[] = $params['start_date'];
-            }
-            if (!empty($params['end_date'])) {
-                $where[] = 'DATE(s.created_at) <= ?';
-                $queryParams[] = $params['end_date'];
+            $hasStartDate = !empty($params['start_date']);
+            $hasEndDate = !empty($params['end_date']);
+            if ($hasStartDate || $hasEndDate) {
+                [$from, $toExclusive] = $this->resolveTenantDateRange(
+                    (int) $tenantId,
+                    $hasStartDate ? (string) $params['start_date'] : null,
+                    $hasEndDate ? (string) $params['end_date'] : null
+                );
+                if ($hasStartDate) {
+                    $where[] = 's.created_at >= ?';
+                    $queryParams[] = $from;
+                }
+                if ($hasEndDate) {
+                    $where[] = 's.created_at < ?';
+                    $queryParams[] = $toExclusive;
+                }
             }
             if (!empty($params['session_id'])) {
                 $where[] = 's.session_id = ?';
                 $queryParams[] = $params['session_id'];
             }
-
+            if (!empty($params['branch_id'])) {
+                $where[] = 's.branch_id = ?';
+                $queryParams[] = $params['branch_id'];
+            }
             $whereSql = 'WHERE ' . implode(' AND ', $where);
 
-            // Payment method kind map
-            $stmt = $this->db->prepare("SELECT id, kind FROM payment_methods WHERE tenant_id = ? ORDER BY id ASC");
-            $stmt->execute([$tenantId]);
-            $methodKindMap = [];
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $m) {
-                $methodKindMap[$m['id']] = strtolower((string) ($m['kind'] ?? 'other'));
+            $invoiceOutstandingSql = \App\Services\SalesOutstandingBalance::sqlExpression();
+            $stmt = $this->db->prepare("
+                SELECT {$invoiceOutstandingSql} AS remaining
+                FROM sales s
+                {$whereSql}
+                  AND LOWER(COALESCE(s.status, '')) NOT IN (
+                      'draft', 'pending', 'pending_approval', 'awaiting_approval',
+                      'rejected', 'canceled', 'cancelled', 'returned'
+                  )
+            ");
+            $stmt->execute($queryParams);
+            $creditSales = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+            // Return totals use the return's date and branch, matching sales analytics.
+            $returnsWhere = [
+                'r.tenant_id = ?',
+                "r.return_type = 'sale'",
+                "LOWER(COALESCE(r.status, '')) NOT IN ('canceled', 'cancelled', 'rejected')",
+            ];
+            $returnsParams = [$tenantId];
+            if ($hasStartDate) {
+                $returnsWhere[] = 'r.created_at >= ?';
+                $returnsParams[] = $from;
             }
-
-            // Completed sales
-            $stmt = $this->db->prepare("SELECT s.id as sale_id, s.payment_method_id, (s.total_amount + COALESCE(s.tax_amount,0)) as total FROM sales s {$whereSql} AND s.status != 'cancelled'");
-            $stmt->execute($queryParams);
-            $completedSalesRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            // Credit sales (remaining balance)
-            $creditSql = "SELECT s.id as sale_id, s.payment_method_id,
-                                 (s.total_amount + COALESCE(s.tax_amount,0)) as total_with_tax,
-                                 COALESCE((SELECT SUM(amount) FROM payments WHERE sale_id = s.id AND is_draft = 0 AND status = 'completed'), 0) as paid_amount,
-                                 ((s.total_amount + COALESCE(s.tax_amount,0)) - COALESCE((SELECT SUM(amount) FROM payments WHERE sale_id = s.id AND is_draft = 0 AND status = 'completed'), 0)) as remaining
-                          FROM sales s
-                          LEFT JOIN payment_methods pm ON pm.id = s.payment_method_id AND pm.tenant_id = ?
-                          {$whereSql} AND LOWER(COALESCE(pm.kind,'credit')) = 'credit'
-                          HAVING remaining > 0";
-            $stmt = $this->db->prepare($creditSql);
-            $stmt->execute(array_merge([$tenantId], $queryParams));
-            $creditSales = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            // Returns
-            $stmt = $this->db->prepare("SELECT r.sale_id, s.payment_method_id, SUM(r.total_amount + COALESCE(r.tax_amount,0)) as total FROM returns r LEFT JOIN sales s ON s.id = r.sale_id {$whereSql} AND r.return_type = 'sale' AND r.status = 'completed' GROUP BY r.sale_id, s.payment_method_id");
-            $stmt->execute($queryParams);
+            if ($hasEndDate) {
+                $returnsWhere[] = 'r.created_at < ?';
+                $returnsParams[] = $toExclusive;
+            }
+            if (!empty($params['session_id'])) {
+                $returnsWhere[] = 'EXISTS (
+                    SELECT 1 FROM sales return_sale
+                    WHERE return_sale.id = r.sale_id
+                      AND return_sale.tenant_id = r.tenant_id
+                      AND return_sale.session_id = ?
+                )';
+                $returnsParams[] = $params['session_id'];
+            }
+            if (!empty($params['branch_id'])) {
+                $returnsWhere[] = 'r.branch_id = ?';
+                $returnsParams[] = $params['branch_id'];
+            }
+            $stmt = $this->db->prepare("
+                SELECT COALESCE(SUM(r.total_amount + COALESCE(r.tax_amount, 0)), 0) AS total
+                FROM returns r
+                WHERE " . implode(' AND ', $returnsWhere)
+            );
+            $stmt->execute($returnsParams);
             $returnRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $cashTotal = $cardTotal = $walletTotal = $creditTotal = $returnsTotal = 0;
-            $returnsBySale = [];
-
+            $cashTotal = $bankTotal = $cardTotal = $walletTotal = $creditTotal = $returnsTotal = 0;
             foreach ($returnRows as $row) {
                 $returnsTotal += (float) $row['total'];
-                $returnsBySale[$row['sale_id']] = ($returnsBySale[$row['sale_id']] ?? 0) + (float) $row['total'];
             }
 
-            foreach ($completedSalesRows as $row) {
-                $kind = $methodKindMap[$row['payment_method_id']] ?? 'other';
-                if ($kind === 'credit') {
-                    continue;
+            $paymentWhere = [
+                'p.tenant_id = ?',
+                "p.status = 'completed'",
+                'COALESCE(p.is_draft, 0) = 0',
+                "(p.sale_id IS NOT NULL OR p.type IN ('debt_payment', 'customer', 'return_payment'))",
+                "(p.sale_id IS NULL OR LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled'))",
+            ];
+            $paymentParams = [$tenantId];
+            if ($hasStartDate || $hasEndDate) {
+                [$from, $toExclusive] = $this->resolveTenantDateRange(
+                    (int) $tenantId,
+                    $hasStartDate ? (string) $params['start_date'] : null,
+                    $hasEndDate ? (string) $params['end_date'] : null
+                );
+                if ($hasStartDate) {
+                    $paymentWhere[] = 'p.created_at >= ?';
+                    $paymentParams[] = $from;
                 }
-                $total        = (float) $row['total'];
-                $returnAmount = $returnsBySale[$row['sale_id']] ?? 0;
-                switch ($kind) {
-                    case 'cash':   $cashTotal   += $total - $returnAmount;
+                if ($hasEndDate) {
+                    $paymentWhere[] = 'p.created_at < ?';
+                    $paymentParams[] = $toExclusive;
+                }
+            }
+            if (!empty($params['session_id'])) {
+                $paymentWhere[] = 'COALESCE(p.session_id, s.session_id) = ?';
+                $paymentParams[] = $params['session_id'];
+            }
+            if (!empty($params['branch_id'])) {
+                $paymentWhere[] = '(p.branch_id = ? OR s.branch_id = ? OR EXISTS (
+                    SELECT 1 FROM customer_payment_allocations cpa
+                    JOIN sales allocated_sale
+                      ON allocated_sale.id = cpa.sale_id AND allocated_sale.tenant_id = cpa.tenant_id
+                    WHERE cpa.tenant_id = p.tenant_id AND cpa.payment_id = p.id
+                      AND allocated_sale.branch_id = ?
+                ))';
+                array_push($paymentParams, $params['branch_id'], $params['branch_id'], $params['branch_id']);
+            }
+            $stmt = $this->db->prepare("
+                SELECT LOWER(COALESCE(pm.kind, 'other')) AS kind,
+                       COALESCE(SUM(CASE WHEN p.type = 'return_payment' THEN -p.amount ELSE p.amount END), 0) AS total
+                FROM payments p
+                LEFT JOIN sales s ON s.id = p.sale_id AND s.tenant_id = p.tenant_id
+                LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id AND pm.tenant_id = p.tenant_id
+                WHERE " . implode(' AND ', $paymentWhere) . "
+                GROUP BY LOWER(COALESCE(pm.kind, 'other'))
+            ");
+            $stmt->execute($paymentParams);
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $amount = (float) $row['total'];
+                switch ((string) $row['kind']) {
+                    case 'cash':
+                        $cashTotal += $amount;
+                        break;
+                    case 'bank':
+                    case 'bank_transfer':
+                        $bankTotal += $amount;
                         break;
                     case 'card':
-                    case 'bank_card': $cardTotal += $total - $returnAmount;
+                    case 'bank_card':
+                        $cardTotal += $amount;
                         break;
                     case 'wallet':
-                    case 'bank_wallet': $walletTotal += $total - $returnAmount;
+                    case 'bank_wallet':
+                        $walletTotal += $amount;
                         break;
                 }
-                unset($returnsBySale[$row['sale_id']]);
             }
 
             foreach ($creditSales as $sale) {
-                $returnAmount  = $returnsBySale[$sale['sale_id']] ?? 0;
-                $creditTotal  += (float) $sale['remaining'] - $returnAmount;
-                unset($returnsBySale[$sale['sale_id']]);
-            }
-
-            // Remaining unmatched returns
-            foreach ($returnsBySale as $saleId => $amount) {
-                $stmt = $this->db->prepare("SELECT payment_method_id FROM sales WHERE id = ? AND tenant_id = ?");
-                $stmt->execute([$saleId, $tenantId]);
-                $pmId = $stmt->fetchColumn();
-                $kind = $methodKindMap[$pmId] ?? 'other';
-                switch ($kind) {
-                    case 'cash':   $cashTotal   -= $amount;
-                        break;
-                    case 'credit': $creditTotal -= $amount;
-                        break;
-                    case 'card':
-                    case 'bank_card': $cardTotal -= $amount;
-                        break;
-                    case 'wallet':
-                    case 'bank_wallet': $walletTotal -= $amount;
-                        break;
-                }
+                $creditTotal += max(0.0, (float) $sale);
             }
 
             return $this->successResponse($response, [
                 'cash'         => round($cashTotal, 2),
+                'bank'         => round($bankTotal, 2),
                 'card'         => round($cardTotal, 2),
                 'wallet'       => round($walletTotal, 2),
                 'credit'       => round($creditTotal, 2),
                 'returns'      => round($returnsTotal, 2),
-                'cash_drawer'  => round($cashTotal + $walletTotal, 2),
+                'cash_drawer'  => round($cashTotal, 2),
             ], 200);
         } catch (\Throwable $e) {
             $this->logger->error('breakdownSalesPayments error', ['message' => $e->getMessage()]);
@@ -449,10 +563,15 @@ class SalesAnalyticsHandler extends BaseHandler
         }
     }
 
-    // =========================================================
-    // GET /analytics/sales
-    // =========================================================
-
+    /**
+     * Build the sales report, including return-adjusted costs and payment summaries.
+     *
+     * Accessible via: GET /api/v1/analytics/sales
+     *
+     * Note: The duplicate route GET /reports/sales/summary previously pointed here
+     * but was removed on 2024-10-18 — no Frontend consumer was found for that path.
+     * Use /analytics/sales for all new integrations.
+     */
     public function analyzeSales(Request $request, Response $response): Response
     {
         try {
@@ -481,19 +600,32 @@ class SalesAnalyticsHandler extends BaseHandler
                 $filters['category_id'] = $params['category_id'];
             }
 
-            $whereSales   = [];
-            $whereReturns = [];
+            $whereSales   = ["LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')"];
+            $whereReturns = [
+                "r.return_type = 'sale'",
+                "LOWER(COALESCE(r.status, '')) NOT IN ('canceled', 'cancelled', 'rejected')",
+            ];
             $queryParams  = [];
+            $hasStartDate = !empty($filters['start_date']);
+            $hasEndDate = !empty($filters['end_date']);
+            $from = $toExclusive = null;
 
-            if (!empty($filters['start_date'])) {
-                $whereSales[] = 'DATE(s.created_at) >= ?';
-                $whereReturns[] = 'DATE(r.created_at) >= ?';
-                $queryParams[] = $filters['start_date'];
-            }
-            if (!empty($filters['end_date'])) {
-                $whereSales[] = 'DATE(s.created_at) <= ?';
-                $whereReturns[] = 'DATE(r.created_at) <= ?';
-                $queryParams[] = $filters['end_date'];
+            if ($hasStartDate || $hasEndDate) {
+                [$from, $toExclusive] = $this->resolveTenantDateRange(
+                    (int) $tenantId,
+                    $hasStartDate ? (string) $filters['start_date'] : null,
+                    $hasEndDate ? (string) $filters['end_date'] : null
+                );
+                if ($hasStartDate) {
+                    $whereSales[] = 's.created_at >= ?';
+                    $whereReturns[] = 'r.created_at >= ?';
+                    $queryParams[] = $from;
+                }
+                if ($hasEndDate) {
+                    $whereSales[] = 's.created_at < ?';
+                    $whereReturns[] = 'r.created_at < ?';
+                    $queryParams[] = $toExclusive;
+                }
             }
             if (!empty($filters['product_id'])) {
                 $whereSales[] = 'si.product_id = ?';
@@ -504,9 +636,10 @@ class SalesAnalyticsHandler extends BaseHandler
                 $queryParams[] = $filters['category_id'];
             }
 
-            // POS filter
             $posIds = [];
-            if (isset($params['pos_id'])) {
+            if (isset($params['branch_id'])) {
+                $posIds = [$params['branch_id']];
+            } elseif (isset($params['pos_id'])) {
                 $posIds = is_array($params['pos_id']) ? $params['pos_id'] : [$params['pos_id']];
             } elseif (isset($params['pos_ids'])) {
                 $posIds = is_array($params['pos_ids']) ? $params['pos_ids'] : [$params['pos_ids']];
@@ -514,12 +647,12 @@ class SalesAnalyticsHandler extends BaseHandler
             $posIds = array_values(array_filter(array_map('intval', $posIds), fn ($v) => $v > 0));
             if (!empty($posIds)) {
                 $whereSales[] = 's.branch_id IN (' . implode(',', array_fill(0, count($posIds), '?')) . ')';
+                $whereReturns[] = 'r.branch_id IN (' . implode(',', array_fill(0, count($posIds), '?')) . ')';
                 foreach ($posIds as $pid) {
                     $queryParams[] = $pid;
                 }
             }
 
-            // Payment kind filter
             $paymentKind = !empty($params['payment_kind']) ? strtolower(trim((string) $params['payment_kind'])) : null;
             if ($paymentKind) {
                 $whereSales[] = "EXISTS (SELECT 1 FROM payments p LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id AND pm.tenant_id = s.tenant_id WHERE p.sale_id = s.id AND p.is_draft = 0 AND p.status = 'completed' AND LOWER(pm.kind) = ?)";
@@ -531,13 +664,12 @@ class SalesAnalyticsHandler extends BaseHandler
             $clauseSales   = 'WHERE ' . implode(' AND ', $whereSales);
             $clauseReturns = 'WHERE ' . implode(' AND ', $whereReturns);
 
-            // Build per-query params
             $paramsSales = [];
-            if (!empty($filters['start_date'])) {
-                $paramsSales[] = $filters['start_date'];
+            if ($hasStartDate) {
+                $paramsSales[] = $from;
             }
-            if (!empty($filters['end_date'])) {
-                $paramsSales[] = $filters['end_date'] . ' 23:59:59';
+            if ($hasEndDate) {
+                $paramsSales[] = $toExclusive;
             }
             if (!empty($filters['product_id'])) {
                 $paramsSales[] = $filters['product_id'];
@@ -556,64 +688,68 @@ class SalesAnalyticsHandler extends BaseHandler
             $paramsSales[] = $tenantId;
 
             $paramsReturns = [];
-            if (!empty($filters['start_date'])) {
-                $paramsReturns[] = $filters['start_date'];
+            if ($hasStartDate) {
+                $paramsReturns[] = $from;
             }
-            if (!empty($filters['end_date'])) {
-                $paramsReturns[] = $filters['end_date'] . ' 23:59:59';
+            if ($hasEndDate) {
+                $paramsReturns[] = $toExclusive;
+            }
+            if (!empty($posIds)) {
+                foreach ($posIds as $pid) {
+                    $paramsReturns[] = $pid;
+                }
             }
             $paramsReturns[] = $tenantId;
 
-            // Total sales count
             $stmt = $this->db->prepare("SELECT COUNT(*) as total_sales FROM sales s {$clauseSales}");
             $stmt->execute($paramsSales);
             $totalSales = $stmt->fetch(PDO::FETCH_ASSOC)['total_sales'] ?? 0;
 
-            // Cash in drawer via breakdownSalesPayments (now lives in this class)
-            $breakdownReq  = $request->withQueryParams(['start_date' => $filters['start_date'] ?? null, 'end_date' => $filters['end_date'] ?? null]);
-            $breakdownResp = $this->breakdownSalesPayments($breakdownReq, $response);
+            $breakdownParams = [
+                'start_date' => $filters['start_date'] ?? null,
+                'end_date' => $filters['end_date'] ?? null,
+            ];
+            if (isset($params['branch_id'])) {
+                $breakdownParams['branch_id'] = $params['branch_id'];
+            } elseif (count($posIds) === 1) {
+                $breakdownParams['branch_id'] = $posIds[0];
+            }
+            if (isset($params['session_id'])) {
+                $breakdownParams['session_id'] = $params['session_id'];
+            }
+            $breakdownReq = $request->withQueryParams($breakdownParams);
+            // This is an internal calculation; don't write its JSON body into the API response.
+            $breakdownResp = $this->breakdownSalesPayments($breakdownReq, new \Slim\Psr7\Response());
             $breakdownData = json_decode($breakdownResp->getBody()->__toString(), true)['data'] ?? [];
             $cashInDrawer  = (float) ($breakdownData['cash_drawer'] ?? 0);
 
-            // Daily sales
-            $stmt = $this->db->prepare("SELECT DATE(s.created_at) as date, COUNT(DISTINCT s.id) as total_orders, SUM(si.quantity) as total_items, SUM(si.quantity * si.sale_price) as total_revenue FROM sales s JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id JOIN products p ON p.id = si.product_id AND p.tenant_id = si.tenant_id {$clauseSales} GROUP BY DATE(s.created_at) ORDER BY s.created_at DESC");
+            $stmt = $this->db->prepare("SELECT DATE(s.created_at) as date, COUNT(DISTINCT s.id) as total_orders, SUM(si.quantity) as total_items, SUM(COALESCE(si.net_total, si.quantity * si.sale_price)) as total_revenue FROM sales s JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id JOIN products p ON p.id = si.product_id AND p.tenant_id = s.tenant_id {$clauseSales} GROUP BY DATE(s.created_at) ORDER BY s.created_at DESC");
             $stmt->execute($paramsSales);
             $dailySales = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $selectedDate    = !empty($params['date']) ? $params['date'] : null;
-            $todayOrders     = 0;
-            $todayRevenue = 0.0;
-            $todayAvgInvoice = 0.0;
-            if ($selectedDate) {
-                foreach ($dailySales as $row) {
-                    if ($row['date'] === $selectedDate) {
-                        $todayOrders     = (int)   $row['total_orders'];
-                        $todayRevenue    = (float)  $row['total_revenue'];
-                        $todayAvgInvoice = $todayOrders > 0 ? $todayRevenue / $todayOrders : 0.0;
-                        break;
-                    }
-                }
+            $periodOrders = 0;
+            $periodRevenue = 0.0;
+            foreach ($dailySales as $row) {
+                $periodOrders += (int) $row['total_orders'];
+                $periodRevenue += (float) $row['total_revenue'];
             }
+            $periodAvgInvoice = $periodOrders > 0 ? $periodRevenue / $periodOrders : 0.0;
 
-            // Top products
-            $stmt = $this->db->prepare("SELECT p.id, p.name, p.product_code, COUNT(DISTINCT s.id) as order_count, SUM(si.quantity) as total_quantity, SUM(si.quantity * si.sale_price) as total_revenue FROM sales s JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id JOIN products p ON p.id = si.product_id AND p.tenant_id = si.tenant_id {$clauseSales} GROUP BY p.id, p.name, p.product_code ORDER BY total_quantity DESC LIMIT 10");
+            $stmt = $this->db->prepare("SELECT p.id, p.name, p.product_code, COUNT(DISTINCT s.id) as order_count, SUM(si.quantity) as total_quantity, SUM(COALESCE(si.net_total, si.quantity * si.sale_price)) as total_revenue FROM sales s JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id JOIN products p ON p.id = si.product_id AND p.tenant_id = si.tenant_id {$clauseSales} GROUP BY p.id, p.name, p.product_code ORDER BY total_quantity DESC LIMIT 10");
             $stmt->execute($paramsSales);
             $topProducts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // Top categories
-            $stmt = $this->db->prepare("SELECT c.id, c.name, COUNT(DISTINCT s.id) as order_count, SUM(si.quantity) as total_quantity, SUM(si.quantity * si.sale_price) as total_revenue FROM sales s JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id JOIN products p ON p.id = si.product_id AND p.tenant_id = si.tenant_id JOIN categories c ON c.id = p.category_id {$clauseSales} GROUP BY c.id, c.name ORDER BY total_quantity DESC");
+            $stmt = $this->db->prepare("SELECT c.id, c.name, COUNT(DISTINCT s.id) as order_count, SUM(si.quantity) as total_quantity, SUM(COALESCE(si.net_total, si.quantity * si.sale_price)) as total_revenue FROM sales s JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id JOIN products p ON p.id = si.product_id AND p.tenant_id = si.tenant_id JOIN categories c ON c.id = p.category_id {$clauseSales} GROUP BY c.id, c.name ORDER BY total_quantity DESC");
             $stmt->execute($paramsSales);
             $topCategories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // Sales totals
-            $stmt = $this->db->prepare("SELECT COALESCE(SUM(s.total_amount),0) AS total_sales_amount, COALESCE(SUM(s.tax_amount),0) AS total_tax_amount, COALESCE(SUM(s.total_amount + s.tax_amount),0) AS grand_total FROM sales s {$clauseSales}");
+            $stmt = $this->db->prepare("SELECT COALESCE(SUM(COALESCE(s.net_total_amount, s.total_amount)),0) AS total_sales_amount, COALESCE(SUM(s.tax_amount),0) AS total_tax_amount, COALESCE(SUM(COALESCE(s.net_total_amount, s.total_amount) + s.tax_amount),0) AS grand_total FROM sales s {$clauseSales}");
             $stmt->execute($paramsSales);
             $salesTotals       = $stmt->fetch(PDO::FETCH_ASSOC);
             $totalSalesAmount  = (float) $salesTotals['total_sales_amount'];
             $totalTaxAmount    = (float) $salesTotals['total_tax_amount'];
             $grandTotal        = (float) $salesTotals['grand_total'];
 
-            // Returns totals
             $stmt = $this->db->prepare("SELECT COALESCE(SUM(r.total_amount),0) AS total_returns_amount, COALESCE(SUM(r.tax_amount),0) AS total_returns_tax, COALESCE(SUM(r.total_amount + r.tax_amount),0) AS returns_grand_total FROM returns r {$clauseReturns}");
             $stmt->execute($paramsReturns);
             $returnsTotals      = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -624,10 +760,9 @@ class SalesAnalyticsHandler extends BaseHandler
             $netSales      = $totalSalesAmount - $totalReturnsAmount;
             $netGrandTotal = $grandTotal - $returnsGrandTotal;
 
-            // by_payment from breakdownData
             $byPayment = [];
             $bestPaymentMethod = 'N/A';
-            $pmAmounts = ['cash' => $breakdownData['cash'] ?? 0, 'card' => $breakdownData['card'] ?? 0, 'wallet' => $breakdownData['wallet'] ?? 0, 'credit' => $breakdownData['credit'] ?? 0];
+            $pmAmounts = ['cash' => $breakdownData['cash'] ?? 0, 'bank' => $breakdownData['bank'] ?? 0, 'card' => $breakdownData['card'] ?? 0, 'wallet' => $breakdownData['wallet'] ?? 0, 'credit' => $breakdownData['credit'] ?? 0];
             $max = -1;
             foreach ($pmAmounts as $method => $amount) {
                 if ($amount > 0) {
@@ -639,21 +774,24 @@ class SalesAnalyticsHandler extends BaseHandler
                 }
             }
 
-            // by_pos
             $byPos = [];
             try {
-                $posWhere = ['s.tenant_id = ?'];
+                $posWhere = ['s.tenant_id = ?', "LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')"];
                 $posParams = [$tenantId];
-                if (!empty($filters['start_date'])) {
-                    $posWhere[] = 'DATE(s.created_at) >= ?';
-                    $posParams[] = $filters['start_date'];
+                if ($hasStartDate) {
+                    $posWhere[] = 's.created_at >= ?';
+                    $posParams[] = $from;
                 }
-                if (!empty($filters['end_date'])) {
-                    $posWhere[] = 'DATE(s.created_at) <= ?';
-                    $posParams[] = $filters['end_date'];
+                if ($hasEndDate) {
+                    $posWhere[] = 's.created_at < ?';
+                    $posParams[] = $toExclusive;
+                }
+                if (!empty($posIds)) {
+                    $posWhere[] = 's.branch_id IN (' . implode(',', array_fill(0, count($posIds), '?')) . ')';
+                    array_push($posParams, ...$posIds);
                 }
                 $pkFilter = $paymentKind ? " AND EXISTS (SELECT 1 FROM payments p LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id AND pm.tenant_id = s.tenant_id WHERE p.sale_id = s.id AND p.is_draft = 0 AND p.status = 'completed' AND LOWER(pm.kind) = ?)" : '';
-                $stmt = $this->db->prepare("SELECT s.branch_id as pos_id, b.name as pos_name, SUM(si.quantity * si.sale_price) as amount FROM sales s LEFT JOIN branches b ON b.id = s.branch_id AND (b.tenant_id = s.tenant_id OR b.tenant_id IS NULL) JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id WHERE " . implode(' AND ', $posWhere) . $pkFilter . " GROUP BY s.branch_id, b.name");
+                $stmt = $this->db->prepare("SELECT s.branch_id as pos_id, b.name as pos_name, SUM(COALESCE(si.net_total, si.quantity * si.sale_price)) as amount FROM sales s LEFT JOIN branches b ON b.id = s.branch_id AND (b.tenant_id = s.tenant_id OR b.tenant_id IS NULL) JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id WHERE " . implode(' AND ', $posWhere) . $pkFilter . " GROUP BY s.branch_id, b.name");
                 $stmt->execute($paymentKind ? array_merge($posParams, [$paymentKind]) : $posParams);
                 $byPos = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
             } catch (\Throwable $e) {
@@ -663,38 +801,32 @@ class SalesAnalyticsHandler extends BaseHandler
                 $byPos = [];
             }
 
-            // Latest transactions
             $latestTx = [];
             try {
-                $ltWhere = ['s.tenant_id = ?'];
+                $ltWhere = ['s.tenant_id = ?', "LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')"];
                 $ltParams = [$tenantId];
-                if (!empty($filters['start_date'])) {
-                    $ltWhere[] = 'DATE(s.created_at) >= ?';
-                    $ltParams[] = $filters['start_date'];
+                if ($hasStartDate) {
+                    $ltWhere[] = 's.created_at >= ?';
+                    $ltParams[] = $from;
                 }
-                if (!empty($filters['end_date'])) {
-                    $ltWhere[] = 'DATE(s.created_at) <= ?';
-                    $ltParams[] = $filters['end_date'];
+                if ($hasEndDate) {
+                    $ltWhere[] = 's.created_at < ?';
+                    $ltParams[] = $toExclusive;
+                }
+                if (!empty($posIds)) {
+                    $ltWhere[] = 's.branch_id IN (' . implode(',', array_fill(0, count($posIds), '?')) . ')';
+                    array_push($ltParams, ...$posIds);
                 }
                 $pkExist = $paymentKind ? " AND EXISTS (SELECT 1 FROM payments p LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id AND pm.tenant_id = s.tenant_id WHERE p.sale_id = s.id AND p.is_draft = 0 AND p.status = 'completed' AND LOWER(pm.kind) = ?)" : '';
-                $stmt = $this->db->prepare("SELECT s.id as sale_id, s.created_at as time, s.branch_id as pos_id, (SELECT pm.name FROM payments p LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id AND pm.tenant_id = s.tenant_id WHERE p.sale_id = s.id AND p.is_draft = 0 AND p.status = 'completed' ORDER BY p.amount DESC LIMIT 1) as payment_method, (SELECT SUM(si2.quantity * si2.sale_price) FROM sales_items si2 WHERE si2.sale_id = s.id) as amount FROM sales s WHERE " . implode(' AND ', $ltWhere) . $pkExist . " ORDER BY s.created_at DESC LIMIT 10");
+                $stmt = $this->db->prepare("SELECT s.id as sale_id, s.created_at as time, s.branch_id as pos_id, (SELECT pm.name FROM payments p LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id AND pm.tenant_id = s.tenant_id WHERE p.sale_id = s.id AND p.is_draft = 0 AND p.status = 'completed' ORDER BY p.amount DESC LIMIT 1) as payment_method, COALESCE(s.net_total_amount, s.total_amount) as amount FROM sales s WHERE " . implode(' AND ', $ltWhere) . $pkExist . " ORDER BY s.created_at DESC LIMIT 10");
                 $stmt->execute($paymentKind ? array_merge($ltParams, [$paymentKind]) : $ltParams);
                 $latestTx = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-                // COGS per transaction
                 $costing = new CostingService($this->db);
                 foreach ($latestTx as &$tx) {
                     $sid = (int) ($tx['sale_id'] ?? 0);
                     if ($sid > 0) {
                         $c = (float) $costing->computeCOGSForSale((int) $tenantId, $sid, $tx['time'] ?? null);
-                        if ($c <= 0.0000001) {
-                            $fb = $this->db->prepare("SELECT COALESCE(SUM(si.quantity * si.purchase_price),0) FROM sales_items si WHERE si.sale_id = ? AND si.tenant_id = ?");
-                            $fb->execute([$sid, (int) $tenantId]);
-                            $pp = (float) $fb->fetchColumn();
-                            if ($pp > 0) {
-                                $c = $pp;
-                            }
-                        }
                         $tx['cogs']   = round($c, 2);
                         $tx['profit'] = round((float) ($tx['amount'] ?? 0) - $c, 2);
                     } else {
@@ -710,7 +842,6 @@ class SalesAnalyticsHandler extends BaseHandler
                 $latestTx = [];
             }
 
-            // Period COGS
             $cogsTotal = 0.0;
             try {
                 $costing  = new CostingService($this->db);
@@ -720,36 +851,9 @@ class SalesAnalyticsHandler extends BaseHandler
                 $stmt->execute($paramsSales);
                 $salesRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-                // ✅ Batch-fetch fallback COGS (purchase_price) for all sales in one query
-                // to avoid N+1 when CostingService returns zero.
-                $saleIds = array_column($salesRows, 'id');
-                $fallbackCogs = []; // [sale_id => float]
-                if (!empty($saleIds)) {
-                    $placeholders = implode(',', array_fill(0, count($saleIds), '?'));
-                    $fbBatch = $this->db->prepare(
-                        "SELECT si.sale_id,
-                                COALESCE(SUM(si.quantity * si.purchase_price), 0) AS cogs
-                         FROM   sales_items si
-                         WHERE  si.tenant_id = ?
-                           AND  si.sale_id IN ($placeholders)
-                         GROUP BY si.sale_id"
-                    );
-                    $fbBatch->execute(array_merge([(int) $tenantId], $saleIds));
-                    foreach ($fbBatch->fetchAll(PDO::FETCH_ASSOC) as $fbRow) {
-                        $fallbackCogs[(int) $fbRow['sale_id']] = (float) $fbRow['cogs'];
-                    }
-                }
-
                 foreach ($salesRows as $row) {
                     $sid = (int) $row['id'];
                     $c   = (float) $costing->computeCOGSForSale((int) $tenantId, $sid, $row['created_at'] ?? null);
-                    if ($c <= 0.0000001) {
-                        // Use pre-fetched fallback — no extra DB round-trip per sale
-                        $pp = $fallbackCogs[$sid] ?? 0.0;
-                        if ($pp > 0) {
-                            $c = $pp;
-                        }
-                    }
                     $cogsTotal += $c;
                 }
                 $cogsTotal = round($cogsTotal, 2);
@@ -760,51 +864,15 @@ class SalesAnalyticsHandler extends BaseHandler
                 $cogsTotal = 0.0;
             }
 
-            // Returns COGS calculation
-            // Use single batch query instead of one query per return (N+1 fix)
-            $returnsCOGS = 0.0;
-            try {
-                $stmt = $this->db->prepare("SELECT r.id, r.sale_id FROM returns r {$clauseReturns}");
-                $stmt->execute($paramsReturns);
-                $returnsRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-                if (!empty($returnsRows)) {
-                    $returnIds = array_column($returnsRows, 'id');
-                    $saleMap   = array_column($returnsRows, 'sale_id', 'id'); // [return_id => sale_id]
-
-                    $placeholders = implode(',', array_fill(0, count($returnIds), '?'));
-
-                    // One query: fetch all return_items with their cost_price for the whole result set
-                    $chkBatch = $this->db->prepare(
-                        "SELECT
-                             ri.return_id,
-                             ri.quantity,
-                             COALESCE(si.purchase_price, p.purchase_price, 0) AS cost_price
-                         FROM   return_items ri
-                         -- join to sales_items using the sale linked to this return
-                         LEFT JOIN sales_items si
-                             ON  si.sale_id    = ri.sale_id
-                             AND si.product_id = ri.product_id
-                             AND si.tenant_id  = ri.tenant_id
-                         LEFT JOIN products p
-                             ON  p.id         = ri.product_id
-                             AND p.tenant_id  = ri.tenant_id
-                         WHERE  ri.return_id IN ($placeholders)
-                           AND  ri.tenant_id = ?"
-                    );
-                    $chkBatch->execute(array_merge($returnIds, [(int) $tenantId]));
-
-                    foreach ($chkBatch->fetchAll(PDO::FETCH_ASSOC) as $item) {
-                        $returnsCOGS += (float) $item['quantity'] * (float) $item['cost_price'];
-                    }
-                }
-                $returnsCOGS = round($returnsCOGS, 2);
-            } catch (\Throwable $e) {
-                $this->logger->warning('Error computing returns COGS in analyzeSales', [
-                    'message' => $e->getMessage()
-                ]);
-                $returnsCOGS = 0.0;
-            }
+            // Batch return IDs so costing does not need one query per return.
+            $stmt = $this->db->prepare("SELECT r.id, r.sale_id FROM returns r {$clauseReturns}");
+            $stmt->execute($paramsReturns);
+            $returnsRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $returnsCostDetails = (new ReturnCostingService($this->db))->calculateDetailsForReturns(
+                (int) $tenantId,
+                array_map('intval', array_column($returnsRows, 'id'))
+            );
+            $returnsCOGS = $returnsCostDetails['cost_amount'];
 
             $netCOGS = $cogsTotal - $returnsCOGS;
 
@@ -820,20 +888,24 @@ class SalesAnalyticsHandler extends BaseHandler
                 'cash_in_drawer'       => $cashInDrawer,
                 'cogs_total'           => $cogsTotal,
                 'returns_cogs'         => $returnsCOGS,
+                'returns_cost_unresolved_line_count' => $returnsCostDetails['unresolved_line_count'],
+                'returns_cost_unresolved_quantity' => $returnsCostDetails['unresolved_quantity'],
+                'returns_cost_complete' => $returnsCostDetails['unresolved_line_count'] === 0,
                 'net_cogs'             => $netCOGS,
                 'gross_profit'         => round(($totalSalesAmount - $totalReturnsAmount) - $netCOGS, 2),
                 'daily_sales'          => $dailySales,
                 'top_products'         => $topProducts,
                 'top_categories'       => $topCategories,
-                'total_sales'          => $todayRevenue,
-                'invoices_count'       => $todayOrders,
-                'avg_invoice'          => $todayAvgInvoice,
+                'total_sales'          => $periodRevenue,
+                'invoices_count'       => $periodOrders,
+                'avg_invoice'          => $periodAvgInvoice,
                 'best_payment_method'  => $bestPaymentMethod,
                 'by_pos'               => $byPos,
                 'by_payment'           => $byPayment,
                 'latest'               => $latestTx,
                 'payment_breakdown'    => [
                     'cash'         => round($breakdownData['cash']         ?? 0, 2),
+                    'bank'         => round($breakdownData['bank']         ?? 0, 2),
                     'card'         => round($breakdownData['card']         ?? 0, 2),
                     'wallet'       => round($breakdownData['wallet']       ?? 0, 2),
                     'credit'       => round($breakdownData['credit']       ?? 0, 2),
@@ -846,4 +918,5 @@ class SalesAnalyticsHandler extends BaseHandler
             return $this->errorResponse($response, 'حدث خطأ أثناء تحليل المبيعات', 400);
         }
     }
+
 }

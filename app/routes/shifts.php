@@ -9,8 +9,5 @@ return function (RouteCollectorProxy $group, Container $container): void {
         
         $group->group('/shifts', function (RouteCollectorProxy $group) use ($handler) {
             $group->get('/current', [$handler, 'current']);
-            $group->post('/open', [$handler, 'open']);
-            $group->post('/close', [$handler, 'close']);
-            $group->get('/{id}/sessions', [$handler, 'sessions']);
         });
 };

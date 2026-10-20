@@ -11,16 +11,10 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
 
 /**
- * BranchInventoryReportHandler
+ * Serves tenant-scoped branch inventory reports and movement exports.
  *
- * Read-only inventory reporting for branches, extracted from BranchHandler:
- *   - branchesAccountCoverage()    — branches missing account_id
- *   - inventoryMovementsReport()   — movement history with balance
- *   - inventoryMovementsExport()   — CSV export of movements
- *   - getLowStockItems()           — items at or below min_quantity
- *   - inventoryValueReport()       — value by product across all branches
- *   - inventoryValueBybranch()     — value per branch
- *   - getBranchStock()             — stock list for a single branch
+ * Uses PDO for inventory/account queries; routes and report permissions are
+ * registered in app/routes/branches.php.
  */
 class BranchInventoryReportHandler extends BaseHandler
 {
@@ -30,12 +24,12 @@ class BranchInventoryReportHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('branch');
     }
 
-    // =========================================================================
-    // Private Helpers
-    // =========================================================================
-
+    /** Normalize movement labels for report and export output. */
     private function normalizeMovementType(string $referenceType, string $movementType): string
     {
+        if (strtolower($movementType) === 'sale_cancel') {
+            return 'sale_cancel';
+        }
         $ref = strtolower($referenceType);
         if (in_array($ref, ['purchase', 'sale', 'return'], true)) {
             return $ref;
@@ -46,10 +40,7 @@ class BranchInventoryReportHandler extends BaseHandler
         return $ref ?: $movementType;
     }
 
-    /**
-     * Single Source of Truth لاستعلام حركات المخزون.
-     * يُستخدم من inventoryMovementsReport و inventoryMovementsExport.
-     */
+    /** Build filtered movements, running balances, opening balances, and stock valuation. */
     private function getInventoryMovementsData(int $tenantId, array $queryParams): array
     {
         $start     = $queryParams['start_date']  ?? date('Y-m-d', strtotime('-7 days'));
@@ -73,9 +64,15 @@ class BranchInventoryReportHandler extends BaseHandler
         if ($type && $type !== 'all') {
             if ($type === 'adjustment') {
                 $where[] = "(it.reference_type = 'adjustment' OR it.movement_type LIKE 'adjustment_%')";
+            } elseif ($type === 'sale_cancel') {
+                $where[] = "it.movement_type = 'sale_cancel'";
             } elseif (in_array($type, ['purchase', 'sale', 'return'], true)) {
-                $where[]  = 'it.reference_type = ?';
-                $params[] = $type;
+                $where[]  = $type === 'sale'
+                    ? "it.reference_type = 'sale' AND it.movement_type <> 'sale_cancel'"
+                    : 'it.reference_type = ?';
+                if ($type !== 'sale') {
+                    $params[] = $type;
+                }
             }
         }
 
@@ -95,8 +92,7 @@ class BranchInventoryReportHandler extends BaseHandler
         $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        // الرصيد الافتتاحي: صافي حركة كل صنف قبل بداية الفترة.
-        // يُحسب أيضاً عند عرض جميع الأصناف، مع احترام فلتر الفرع.
+        // Opening balances include each product's net movements before the selected period.
         $openingWhere = ['it.tenant_id = ?', 'it.movement_date < ?'];
         $openingParams = [$tenantId, $start];
         if ($productId) {
@@ -110,7 +106,8 @@ class BranchInventoryReportHandler extends BaseHandler
         }
 
         $obSql = "SELECT it.product_id,
-                         COALESCE(SUM(CASE
+                                                 COALESCE(SUM(CASE
+                                                     WHEN it.movement_type = 'sale_cancel' THEN it.quantity
                            WHEN it.movement_type LIKE '%in%'  THEN it.quantity
                            WHEN it.movement_type LIKE '%out%' THEN -it.quantity
                            ELSE 0 END), 0) AS opening_balance
@@ -132,7 +129,8 @@ class BranchInventoryReportHandler extends BaseHandler
         $totalOut     = 0.0;
 
         foreach ($rows as $r) {
-            $isIn  = strpos((string) $r['movement_type'], 'in')  !== false;
+            $isIn  = (string) $r['movement_type'] === 'sale_cancel'
+                || strpos((string) $r['movement_type'], 'in') !== false;
             $isOut = strpos((string) $r['movement_type'], 'out') !== false;
             $inQty  = $isIn ? (float) $r['quantity'] : 0.0;
             $outQty = $isOut ? (float) $r['quantity'] : 0.0;
@@ -192,13 +190,7 @@ class BranchInventoryReportHandler extends BaseHandler
         ];
     }
 
-    // =========================================================================
-    // Public Endpoints
-    // =========================================================================
-
-    /**
-     * تقرير تغطية الحسابات — المخازن التي تفتقر إلى account_id
-     */
+    /** Report tenant branches missing linked ledger accounts, optionally for one branch. */
     public function branchesAccountCoverage(Request $request, Response $response, array $args): Response
     {
         try {
@@ -206,29 +198,43 @@ class BranchInventoryReportHandler extends BaseHandler
             if (!$tenantId) {
                 return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
             }
+            $params = $request->getQueryParams();
+            $branchId = null;
+            if (isset($params['branch_id']) && $params['branch_id'] !== '') {
+                $branchId = filter_var($params['branch_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                if ($branchId === false) {
+                    return $this->errorResponse($response, 'معرف الفرع غير صالح.', 400);
+                }
+                $branchCheck = $this->db->prepare('SELECT id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1');
+                $branchCheck->execute([$branchId, $tenantId]);
+                if (!$branchCheck->fetchColumn()) {
+                    return $this->errorResponse($response, 'الفرع غير موجود.', 404);
+                }
+                $branchId = (int) $branchId;
+            }
 
-            // جلب كل الفروع أولاً — تصفية PHP للتوافق مع منطق الأصل
+            // Filter in PHP to preserve the existing response semantics.
+            $whereBranch = $branchId !== null ? ' AND id = ?' : '';
             $stmtAll = $this->db->prepare(
                 "SELECT id, name, location, phone, email, description,
                         COALESCE(account_id, 0) AS account_id,
                         cost_center_id, active, created_at
                  FROM branches
-                 WHERE tenant_id = ?
+                 WHERE tenant_id = ?{$whereBranch}
                  ORDER BY name ASC"
             );
-            $stmtAll->execute([$tenantId]);
+            $branchId === null
+                ? $stmtAll->execute([$tenantId])
+                : $stmtAll->execute([$tenantId, $branchId]);
             $all           = $stmtAll->fetchAll(PDO::FETCH_ASSOC) ?: [];
             $totalBranches = count($all);
 
-            // فلترة الفروع التي تفتقر لـ account_id (كما في الأصل)
             $missingBranches = array_values(array_filter($all, fn ($b) => empty($b['account_id']) || (int)$b['account_id'] === 0));
             $missingCount    = count($missingBranches);
 
             return $this->successResponse($response, [
-                // مفاتيح متوافقة مع الأصل
                 'missing_branches' => $missingBranches,
                 'missing_count'    => $missingCount,
-                // مفاتيح إضافية للواجهات الجديدة
                 'branches_without_account' => $missingBranches,
                 'count'          => $missingCount,
                 'total_branches' => $totalBranches,
@@ -242,9 +248,7 @@ class BranchInventoryReportHandler extends BaseHandler
         }
     }
 
-    /**
-     * تقرير حركة المخزون خلال فترة محددة
-     */
+    /** Return filtered stock movements with opening and running balances. */
     public function inventoryMovementsReport(Request $request, Response $response, array $args): Response
     {
         try {
@@ -260,91 +264,39 @@ class BranchInventoryReportHandler extends BaseHandler
         }
     }
 
-    /**
-     * تصدير حركات المخزون CSV
-     */
-    public function inventoryMovementsExport(Request $request, Response $response, array $args): Response
-    {
-        try {
-            $tenantId = $this->extractTenantId($request);
-            if (!$tenantId) {
-                return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-            }
-
-            $data  = $this->getInventoryMovementsData($tenantId, $request->getQueryParams());
-            $items = $data['items'] ?? [];
-
-            $fh = fopen('php://temp', 'w+');
-            fprintf($fh, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM
-            fputcsv($fh, ['date', 'reference', 'product', 'type', 'in', 'out', 'balance', 'notes', 'cost', 'movement_value']);
-            foreach ($items as $it) {
-                $movementValue = ((float) ($it['in'] ?? 0) - (float) ($it['out'] ?? 0)) * (float) ($it['cost'] ?? 0);
-                fputcsv($fh, [
-                    $it['date'] ?? '', $it['reference'] ?? '', $it['product'] ?? '',
-                    $it['type'] ?? '', $it['in'] ?? 0, $it['out'] ?? 0,
-                    $it['balance'] ?? 0, $it['notes'] ?? '', $it['cost'] ?? 0, $movementValue,
-                ]);
-            }
-            rewind($fh);
-            $csv = stream_get_contents($fh);
-            fclose($fh);
-
-            $filename = 'inventory_movements_' . date('Ymd_His') . '.csv';
-            $response = $response
-                ->withHeader('Content-Type', 'text/csv; charset=UTF-8')
-                ->withHeader('Content-Disposition', 'attachment; filename="' . $filename . '"');
-            $response->getBody()->write($csv);
-            return $response;
-        } catch (\Throwable $e) {
-            $this->logger->error('خطأ في تصدير حركات المخزون: ' . $e->getMessage());
-            return $this->errorResponse($response, 'فشل في تصدير حركات المخزون', 500);
-        }
-    }
-
-    /**
-     * المنتجات التي وصلت أو تجاوزت حد الحد الأدنى للمخزون
-     */
-    public function getLowStockItems(Request $request, Response $response, array $args): Response
-    {
-        try {
-            $tenantId = $this->extractTenantId($request);
-            $branchId = (int) ($args['id'] ?? 0);
-
-            $stmt = $this->db->prepare("
-                SELECT wp.product_id, p.name, p.barcode,
-                       p.product_code AS sku, wp.quantity,
-                       p.min_quantity, p.maximum_quantity AS max_quantity
-                FROM branch_products wp
-                JOIN products p ON p.id = wp.product_id AND p.tenant_id = wp.tenant_id
-                WHERE wp.tenant_id = ? AND wp.branch_id = ?
-                  AND p.min_quantity IS NOT NULL
-                  AND wp.quantity <= p.min_quantity
-                  AND p.active = 1
-                ORDER BY (p.min_quantity - wp.quantity) ASC, p.name ASC
-            ");
-            $stmt->execute([$tenantId, $branchId]);
-            return $this->successResponse($response, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [], 200);
-        } catch (\Throwable $e) {
-            $this->logger->error('خطأ في جلب عناصر المخزون المنخفض: ' . $e->getMessage());
-            return $this->errorResponse($response, 'فشل في جلب عناصر المخزون المنخفض', 400);
-        }
-    }
-
-    /**
-     * تقرير قيمة المخزون على مستوى المنتج (مجمّع عبر جميع المستودعات)
-     */
+    /** Aggregate active product stock and value, optionally filtered by branch/category/search. */
     public function inventoryValueReport(Request $request, Response $response, array $args): Response
     {
         try {
             $tenantId   = $this->extractTenantId($request);
             $qp         = $request->getQueryParams();
+            $branchId   = null;
+            if (isset($qp['branch_id']) && $qp['branch_id'] !== '') {
+                $branchId = filter_var($qp['branch_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                if ($branchId === false) {
+                    return $this->errorResponse($response, 'معرف الفرع غير صالح.', 400);
+                }
+                $branchStmt = $this->db->prepare('SELECT id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1');
+                $branchStmt->execute([$branchId, $tenantId]);
+                if (!$branchStmt->fetchColumn()) {
+                    return $this->errorResponse($response, 'الفرع غير موجود.', 404);
+                }
+                $branchId = (int) $branchId;
+            }
             $useCost    = strtolower((string) ($qp['valuation'] ?? 'sale')) === 'cost';
             $categoryId = isset($qp['category_id']) ? (int) $qp['category_id'] : null;
             $search     = isset($qp['search']) ? trim((string) $qp['search']) : '';
             $label      = $useCost ? 'purchase_price' : 'sale_price';
 
             $where  = ['p.tenant_id = ?', 'p.active = 1'];
-            $params = [$tenantId];
+            $branchJoin = '';
+            $params = [];
+            if ($branchId !== null) {
+                $branchJoin = ' AND wp.branch_id = ?';
+                $params[] = $branchId;
+                $where[] = 'wp.product_id IS NOT NULL';
+            }
+            $params[] = $tenantId;
 
             if ($categoryId) {
                 $where[]  = 'p.category_id = ?';
@@ -368,7 +320,7 @@ class BranchInventoryReportHandler extends BaseHandler
                        COALESCE(SUM(COALESCE(wp.quantity_cost, wp.quantity * COALESCE(p.purchase_price, 0))), 0) AS total_cost_value
                 FROM products p
                 LEFT JOIN categories c       ON c.id = p.category_id AND c.tenant_id = p.tenant_id
-                LEFT JOIN branch_products wp ON wp.product_id = p.id AND wp.tenant_id = p.tenant_id
+                LEFT JOIN branch_products wp ON wp.product_id = p.id AND wp.tenant_id = p.tenant_id{$branchJoin}
                 WHERE " . implode(' AND ', $where) . "
                 GROUP BY p.id, p.name, p.barcode, p.product_code, p.category_id,
                          c.name, p.purchase_price, p.sale_price, p.min_quantity
@@ -385,10 +337,7 @@ class BranchInventoryReportHandler extends BaseHandler
                 $qty   = (float) ($it['quantity']   ?? 0);
                 $cost  = (float) ($it['cost_price'] ?? 0);
                 $sale  = (float) ($it['sale_price'] ?? 0);
-                // ⚠️ إصلاح: كانت قيمة التكلفة تُحسب دائماً كـ qty × purchase_price اللحظي
-                // (سعر واحد ثابت لكل الفروع)، بينما quantity_cost يحمل التكلفة الفعلية
-                // المُرحَّلة فعلياً لكل فرع (قد تختلف بين فرع وآخر). نفس نمط
-                // getInventoryMovementsData في هذا الملف بالضبط — تم توحيدهما الآن.
+                // Prefer persisted branch cost, with product purchase price as a legacy fallback.
                 $costValue = (float) ($it['total_cost_value'] ?? ($qty * $cost));
                 $value = $useCost ? $costValue : ($qty * $sale);
                 $minQ  = (float) ($it['min_quantity'] ?? 0);
@@ -433,9 +382,7 @@ class BranchInventoryReportHandler extends BaseHandler
         }
     }
 
-    /**
-     * تقرير قيمة المخزون مُجمَّع حسب المستودع
-     */
+    /** Aggregate stock quantity and valuation by branch for the tenant. */
     public function inventoryValueBybranch(Request $request, Response $response, array $args): Response
     {
         try {
@@ -490,9 +437,7 @@ class BranchInventoryReportHandler extends BaseHandler
         }
     }
 
-    /**
-     * مخزون فرع معين (مع بحث وإحصاءات)
-     */
+    /** Return a branch's stock rows and unfiltered aggregate counts, with optional row search. */
     public function getBranchStock(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -510,7 +455,7 @@ class BranchInventoryReportHandler extends BaseHandler
             $qp     = $request->getQueryParams();
             $search = isset($qp['search']) ? trim((string) $qp['search']) : '';
 
-            // ── الإحصاءات الإجمالية: بدون فلتر البحث (كما في الأصل) ──────
+            // Aggregate totals remain independent of the row search filter.
             $statsStmt = $this->db->prepare("
                 SELECT
                     COUNT(*)                                                          AS total_products,
@@ -535,7 +480,6 @@ class BranchInventoryReportHandler extends BaseHandler
                 'out_of_stock_count' => (int)   ($statsRow['out_of_stock_count'] ?? 0),
             ];
 
-            // ── الصفوف: مع فلتر البحث ─────────────────────────────────────
             $where  = ['wp.tenant_id = ?', 'wp.branch_id = ?'];
             $params = [$tenantId, $branchId];
 
@@ -567,7 +511,7 @@ class BranchInventoryReportHandler extends BaseHandler
             $stmt->execute($params);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            // تطبيع min/max_quantity — صفر يُعامَل كـ null (كما في الأصل)
+            // Treat zero minimum/maximum thresholds as unset.
             foreach ($rows as &$r) {
                 $r['min_quantity'] = (!empty($r['min_quantity']) && (float)$r['min_quantity'] > 0)
                     ? (float) $r['min_quantity'] : null;
@@ -586,7 +530,6 @@ class BranchInventoryReportHandler extends BaseHandler
                 'total_value'   => $stats['total_value'],
             ]);
 
-            // مفتاحا الـ response متوافقان مع الأصل (rows/stats) + الجديد (items/totals)
             return $this->successResponse($response, [
                 'rows'   => $rows,
                 'items'  => $rows,

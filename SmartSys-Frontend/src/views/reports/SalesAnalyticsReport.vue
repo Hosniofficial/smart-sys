@@ -13,8 +13,10 @@
         :breadcrumb="{ parent: { label: 'التقارير', path: '/reports' }, current: { label: 'تحليلات المبيعات', path: '/reports/sales-analytics' } }"
         title="مركز تحليلات المبيعات"
         description="ذكاء الأعمال • تحليل الإيرادات والربحية"
-        :branches="[]"
-        :selectedBranch="null"
+        :branches="branches"
+        :selectedBranch="selectedBranch === 'all' ? null : selectedBranch"
+        :hasExplicitSelection="true"
+        @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
           <button @click="fetchAnalytics" :disabled="isLoading" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
@@ -59,6 +61,21 @@
              <span class="text-[10px] font-bold text-blue-700 uppercase tracking-[0.2em]">Live Data Analytics</span>
           </div>
         </div>
+      </section>
+
+      <section
+        v-if="analyticsData.summary.returnsCostUnresolvedLineCount > 0"
+        class="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900"
+        role="alert"
+      >
+        <p class="font-bold">تكلفة بعض مرتجعات المبيعات غير محسومة</p>
+        <p class="mt-1">
+          {{ analyticsData.summary.returnsCostUnresolvedLineCount }} بند مرتجع
+          <span v-if="analyticsData.summary.returnsCostUnresolvedQuantity > 0">
+            بكمية {{ analyticsData.summary.returnsCostUnresolvedQuantity }}
+          </span>
+          بلا تكلفة تاريخية موثوقة؛ قد لا يعكس الربح الصافي القيمة النهائية. راجع تكلفة حركة المرتجع أو تكلفة بند البيع الأصلي.
+        </p>
       </section>
 
       <!-- KPI Performance Grid -->
@@ -161,19 +178,26 @@
 <script setup>
 // [بقاء المنطق البرمجي كما هو بنسبة 100%]
 import { ref, computed, onMounted, watch } from 'vue';
-import { useReportsStore } from '../../stores/reports';
-import { useAnalyticsStore } from '../../stores/analytics';
+import { useReportsStore } from '@/stores/reports/reportsStore';
+import { useAnalyticsStore } from '@/stores/analytics/analyticsStore';
 import { Line as LineChart, Bar as BarChart, Doughnut as DoughnutChart } from 'vue-chartjs';
 import { Chart as ChartJS, Title, Tooltip, Legend, LineElement, BarElement, CategoryScale, LinearScale, PointElement, ArcElement, Filler } from 'chart.js';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
-import { getLocalDateISO } from '@/utils/date';
+import { getLocalDateISO } from '@/utils';
 
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import PageHeader from '@/components/PageHeader.vue';
 
 ChartJS.register(Title, Tooltip, Legend, LineElement, BarElement, CategoryScale, LinearScale, PointElement, ArcElement, Filler);
 
 const reportsStore = useReportsStore();
+const branchStore = useBranchStore();
+const branches = computed(() => branchStore.branches);
+const selectedBranch = computed({
+  get: () => branchStore.selectedBranchId || 'all',
+  set: (val) => branchStore.setSelectedBranch(val === 'all' ? null : val)
+});
 const { breadcrumb } = useBreadcrumb();
 const analyticsStore = useAnalyticsStore();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
@@ -187,7 +211,16 @@ const endDateRef = ref(null);
 let debounceTimer = null;
 
 const analyticsData = ref({
-  summary: { totalSales: 0, totalReturns: 0, totalRevenue: 0, totalTax: 0, grandTotal: 0, netProfit: 0 },
+  summary: {
+    totalSales: 0,
+    totalReturns: 0,
+    totalRevenue: 0,
+    totalTax: 0,
+    grandTotal: 0,
+    netProfit: 0,
+    returnsCostUnresolvedLineCount: 0,
+    returnsCostUnresolvedQuantity: 0,
+  },
   salesOverTime: [],
   topProducts: [],
   salesByCategory: []
@@ -276,7 +309,7 @@ const toNumber = (value) => Number(value) || 0;
 const fetchAnalytics = async () => {
     isLoading.value = true; error.value = null;
     try {
-        const result = await analyticsStore.fetchSalesAnalytics({ startDate: startDate.value, endDate: endDate.value });
+        const result = await analyticsStore.fetchSalesAnalytics({ startDate: startDate.value, endDate: endDate.value, branchId: selectedBranch.value === 'all' ? null : selectedBranch.value });
         if (result?.status === 'error') throw new Error(result.message || 'فشل تحميل تحليلات المبيعات');
 
         // The store normally returns { status, data }, while a direct Axios
@@ -295,7 +328,17 @@ const fetchAnalytics = async () => {
         const netProfit = toNumber(summary.net_profit ?? apiData.net_profit ?? grossProfit);
 
         analyticsData.value = {
-            summary: { totalSales, totalReturns, totalRevenue, totalTax: netTax, grandTotal, netProfit, grossProfit },
+            summary: {
+                totalSales,
+                totalReturns,
+                totalRevenue,
+                totalTax: netTax,
+                grandTotal,
+                netProfit,
+                grossProfit,
+                returnsCostUnresolvedLineCount: toNumber(apiData.returns_cost_unresolved_line_count),
+                returnsCostUnresolvedQuantity: toNumber(apiData.returns_cost_unresolved_quantity),
+            },
             salesOverTime: (apiData.daily_sales || apiData.salesOverTime || []).map(day => ({ date: day.date, total: toNumber(day.total_revenue ?? day.total) })),
             topProducts: (apiData.top_products || apiData.topProducts || []).map(p => ({ id: p.id, name: p.name, totalSales: toNumber(p.total_revenue ?? p.totalSales), quantity: toNumber(p.total_quantity ?? p.quantity) })),
             salesByCategory: (apiData.top_categories || apiData.salesByCategory || []).map(c => ({ id: c.id, name: c.name, totalSales: toNumber(c.total_revenue ?? c.totalSales) }))
@@ -310,8 +353,8 @@ const setDateRange = (range) => {
     endDate.value = getLocalDateISO(end); startDate.value = getLocalDateISO(start);
 };
 
-watch([startDate, endDate], () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(fetchAnalytics, 700); });
-onMounted(async () => { await Promise.all([fetchSettings(), fetchAnalytics()]); });
+watch([startDate, endDate, selectedBranch], () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(fetchAnalytics, 700); });
+onMounted(async () => { await Promise.all([fetchSettings(), branchStore.fetchBranches().catch(() => {}), fetchAnalytics()]); });
 </script>
 
 <style scoped>

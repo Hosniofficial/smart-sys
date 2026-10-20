@@ -12,6 +12,16 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
 use App\Utils\RequestHelper;
 
+/**
+ * Handles trial registration.
+ *
+ * Trial registration validates signup data and fraud signals, then creates the
+ * tenant, owner, trial subscription, accounting defaults, and verification
+ * workflow. PDO and BaseHandler provide persistence and request context; RequestHelper resolves
+ * client IPs, EmailVerificationService sends verification mail, and
+ * SettingsHandler stores tenant defaults. POST /register is registered in
+ * app/routes/auth.php and wrapped by StrictSubscriptionMiddleware.
+ */
 class StrictSubscriptionHandler extends BaseHandler
 {
     private array $config;
@@ -58,6 +68,7 @@ class StrictSubscriptionHandler extends BaseHandler
         ];
     }
 
+    /** Create a tenant trial and its initial user and accounting data. */
     public function createSecureTrial(Request $request, Response $response): Response
     {
         $ip = $this->getClientIp($request);
@@ -122,7 +133,6 @@ class StrictSubscriptionHandler extends BaseHandler
             }
 
             $tenantId = $this->createSecureTenant($data, $ip, $fingerprint);
-            \App\Services\TenantRoleBootstrapper::ensureDefaults($this->db, $tenantId);
 
             $userData = $this->createSecureUser($tenantId, $data, $ip, $fingerprint);
             $userId = (int) $userData['user_id'];
@@ -198,114 +208,7 @@ class StrictSubscriptionHandler extends BaseHandler
         }
     }
 
-    public function upgradeSubscription(Request $request, Response $response): Response
-    {
-        $ip = $this->getClientIp($request);
-        $user = $request->getAttribute('user');
-
-        $tenantId = is_array($user) ? ($user['tenant_id'] ?? null) : null;
-        $userId = is_array($user) ? ($user['id'] ?? null) : null;
-        $userEmail = is_array($user) ? ($user['email'] ?? null) : null;
-        $planCode = '';
-
-        try {
-            if (!$tenantId || !$userId) {
-                return $this->errorResponse($response, 'Unauthorized', 403);
-            }
-
-            $data = $request->getParsedBody();
-            if (!is_array($data)) {
-                $data = [];
-            }
-
-            $planCode = isset($data['plan']) ? trim((string) $data['plan']) : '';
-            if ($planCode === '') {
-                return $this->errorResponse($response, 'Plan is required', 400);
-            }
-
-            $this->db->beginTransaction();
-
-            $plan = $this->validateAndGetPlan($planCode);
-            if (!$plan) {
-                if ($this->db->inTransaction()) {
-                    $this->db->rollBack();
-                }
-                return $this->errorResponse($response, 'Invalid or inactive plan', 400);
-            }
-
-            $currentSubscription = $this->getCurrentSubscription($tenantId);
-            if (!$currentSubscription) {
-                if ($this->db->inTransaction()) {
-                    $this->db->rollBack();
-                }
-                return $this->errorResponse($response, 'No active subscription found', 400);
-            }
-
-            $upgradeValidation = $this->validateUpgradeRules($currentSubscription, $plan);
-            if (!$upgradeValidation['valid']) {
-                if ($this->db->inTransaction()) {
-                    $this->db->rollBack();
-                }
-                return $this->errorResponse($response, $upgradeValidation['message'], 400);
-            }
-
-            $paymentResult = $this->processSecurePayment($tenantId, $userId, $plan, $ip, $data);
-            if (!$paymentResult['success']) {
-                if ($this->db->inTransaction()) {
-                    $this->db->rollBack();
-                }
-                return $this->errorResponse(
-                    $response,
-                    $paymentResult['message'] ?? 'Payment processing failed',
-                    400
-                );
-            }
-
-            $this->updateSubscription(
-                (int) $currentSubscription['id'],
-                $plan,
-                (string) $paymentResult['transaction_id']
-            );
-
-            $this->recordSubscriptionAttempt($ip, $userEmail ?? 'unknown', 'plan_upgrade', 'success', [
-                'tenant_id' => $tenantId,
-                'plan_from' => $currentSubscription['plan_code'] ?? null,
-                'plan_to' => $planCode,
-                'transaction_id' => $paymentResult['transaction_id']
-            ]);
-
-            $this->db->commit();
-
-            return $this->successResponse($response, [
-                'message' => 'Subscription upgraded successfully',
-                'plan' => $plan['code'],
-                'next_billing_date' => $this->calculateNextBillingDate($plan),
-                'transaction_id' => $paymentResult['transaction_id']
-            ], 200);
-        } catch (Exception $e) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
-            }
-
-            $this->logger->error('Subscription upgrade failed', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'ip' => $ip,
-                'tenant_id' => $tenantId ?? 'unknown',
-                'user_id' => $userId ?? 'unknown',
-                'plan_code' => $planCode ?: 'unknown'
-            ]);
-
-            $this->logSecurityEvent('upgrade_failed', 'medium', 'Subscription upgrade failed', [
-                'ip' => $ip,
-                'tenant_id' => $tenantId ?? 'unknown',
-                'error' => 'Upgrade failed'
-            ]);
-
-            return $this->errorResponse($response, 'فشل ترقية الاشتراك. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.', 500);
-        }
-    }
-
+    /** Normalize and validate the required tenant-owner registration fields. */
     protected function extractAndValidateRequestData(Request $request, array $requiredFields = []): array
     {
         $data = $request->getParsedBody();
@@ -344,6 +247,7 @@ class StrictSubscriptionHandler extends BaseHandler
         ];
     }
 
+    /** Apply email, duplicate-account, IP, and device checks before trial creation. */
     private function performEnhancedValidation(array $data, string $ip, string $fingerprint): array
     {
         $domain = substr(strrchr($data['email'], '@'), 1);
@@ -396,6 +300,7 @@ class StrictSubscriptionHandler extends BaseHandler
         return ['valid' => true, 'message' => ''];
     }
 
+    /** Score recent signup activity and the request's device fingerprint. */
     private function calculateFraudScore(array $data, string $ip, string $fingerprint): int
     {
         $score = 0;
@@ -453,6 +358,7 @@ class StrictSubscriptionHandler extends BaseHandler
         return $score;
     }
 
+    /** Create the trial tenant and record its signup context. */
     private function createSecureTenant(array $data, string $ip, string $fingerprint): int
     {
         $trialPlan = $this->getTrialPlan();
@@ -481,6 +387,7 @@ class StrictSubscriptionHandler extends BaseHandler
         return $tenantId;
     }
 
+    /** Create the tenant owner, verification state, and role assignment. */
     private function createSecureUser(int $tenantId, array $data, string $ip, string $fingerprint): array
     {
         $hashedPassword = password_hash($data['password'], PASSWORD_BCRYPT);
@@ -516,7 +423,7 @@ class StrictSubscriptionHandler extends BaseHandler
 
         $userId = (int) $this->db->lastInsertId();
 
-        // ربط المستخدم بالـ role في users_role (مطلوب لـ PermissionMiddleware)
+        // The role mapping is required by PermissionMiddleware.
         $this->db->prepare(
             "INSERT IGNORE INTO users_role (user_id, role_id, tenant_id, created_by)
              VALUES (?, 2, ?, ?)"
@@ -538,6 +445,7 @@ class StrictSubscriptionHandler extends BaseHandler
         ];
     }
 
+    /** Create the trial subscription with its risk score and verification flag. */
     private function createSecureTrialSubscription(int $tenantId, array $data, string $ip, string $fingerprint, int $fraudScore): int
     {
         $trialPlan = $this->getTrialPlan();
@@ -566,6 +474,7 @@ class StrictSubscriptionHandler extends BaseHandler
         return (int) $this->db->lastInsertId();
     }
 
+    /** Load the active trial plan or fail registration. */
     private function getTrialPlan(): array
     {
         $stmt = $this->db->prepare(
@@ -584,6 +493,7 @@ class StrictSubscriptionHandler extends BaseHandler
         return $plan;
     }
 
+    /** Initialize the accounting period, default accounts, settings, and payment methods. */
     private function initializeSecureAccounting(int $tenantId, int $userId): void
     {
         $check = $this->db->prepare(
@@ -607,7 +517,6 @@ class StrictSubscriptionHandler extends BaseHandler
         }
 
         try {
-            // إنشاء الفترة المحاسبية الأولى
             $stmt = $this->db->prepare(
                 "INSERT INTO accounting_periods (
                     tenant_id, period_name, start_date, end_date, status, created_by, created_at
@@ -617,13 +526,10 @@ class StrictSubscriptionHandler extends BaseHandler
             );
             $stmt->execute([$tenantId, $userId]);
 
-            // إنشاء الحسابات الافتراضية
             $createdIds = $this->createDefaultAccounts($tenantId);
 
-            // إنشاء الإعدادات الافتراضية
             $this->createDefaultSettings($tenantId, $createdIds);
 
-            // إنشاء طرق الدفع الافتراضية
             $this->createDefaultPaymentMethods($tenantId, $createdIds);
 
             if (!$inTransaction) {
@@ -650,6 +556,7 @@ class StrictSubscriptionHandler extends BaseHandler
         }
     }
 
+    /** Create or reuse the tenant's default chart-of-accounts entries. */
     private function createDefaultAccounts(int $tenantId): array
     {
         $accounts = [
@@ -716,6 +623,7 @@ class StrictSubscriptionHandler extends BaseHandler
         return $createdIds;
     }
 
+    /** Store account mappings, POS policies, and company defaults for the tenant. */
     private function createDefaultSettings(int $tenantId, array $createdIds): void
     {
         $getAccountIdByCode = function (string $code) use ($tenantId): ?int {
@@ -750,13 +658,12 @@ class StrictSubscriptionHandler extends BaseHandler
         $settings->set('vat.input_account_id', $vatInputId, 'integer', $tenantId);
         $settings->set('vat.output_account_id', $vatOutputId, 'integer', $tenantId);
 
-        // vat_payable يشير إلى الحساب الرئيسي للضريبة (2102) وليس حساب المخرجات
+        // VAT payable uses parent account 2102, distinct from output tax account 2202.
         $vatPayableId = (int) ($createdIds['2102'] ?? 0);
         if ($vatPayableId === 0) {
             $vatPayableId = (int) ($getAccountIdByCode('2102') ?? 0);
         }
 
-        // حساب 2102 يجب أن يكون موجوداً دائماً - لو مش موجود نسجل خطأ
         if ($vatPayableId === 0) {
             $this->logger->error('VAT payable account (2102) not found during tenant setup', [
                 'tenant_id' => $tenantId,
@@ -770,8 +677,28 @@ class StrictSubscriptionHandler extends BaseHandler
         $settings->set('inventory_adjustment_account_id', (int) ($createdIds['5104'] ?? 0), 'integer', $tenantId);
         $settings->set('cogs_account_id', (int) ($createdIds['5103'] ?? 0), 'integer', $tenantId);
         $settings->set('ar_account', (int) ($createdIds['1101'] ?? 0), 'integer', $tenantId);
+
+        // Cash may go negative intraday only when explicitly enabled by the tenant.
+        $settings->set('pos.cash_session.allow_negative_intraday', '0', 'boolean', $tenantId);
+
+        // Cashier sessions are opt-in for each tenant.
+        $settings->set('pos.sessions.enabled', '0', 'boolean', $tenantId);
+        $settings->set('pos.sessions.mode', 'manual', 'string', $tenantId);
+        $settings->set('pos.sessions.period_cutoff', '15:00', 'string', $tenantId);
+        // Keep manager override disabled explicitly; service defaults differ.
+        $settings->set('pos.sessions.allow_manager_override', '0', 'boolean', $tenantId);
+        $settings->set('pos.sessions.enforce_for_roles', '', 'string', $tenantId);
+
+        // Seed a currency until the owner completes company setup.
+        $settings->set('company.currency', 'EGP', 'string', $tenantId);
+
+        // app.* is the canonical frontend namespace for locale preferences.
+        $settings->set('app.timezone',    'Africa/Cairo', 'string', $tenantId);
+        $settings->set('app.date_format', 'DD/MM/YYYY',   'string', $tenantId);
+        $settings->set('app.time_format', '12',           'string', $tenantId);
     }
 
+    /** Idempotently add the default cash, bank, card, wallet, and credit methods. */
     private function createDefaultPaymentMethods(int $tenantId, array $createdIds): void
     {
         $cashAccountId   = (int) ($createdIds['1001'] ?? 0);
@@ -779,38 +706,41 @@ class StrictSubscriptionHandler extends BaseHandler
         $walletAccountId = (int) ($createdIds['1003'] ?? 0);
 
         $paymentMethods = [
-            ['name' => 'نقدي',                'kind' => 'cash',   'account_id' => $cashAccountId ?: null],
-            ['name' => 'تحويل بنكي',          'kind' => 'bank',   'account_id' => $bankAccountId ?: null],
-            ['name' => 'بطاقة ائتمان',        'kind' => 'card',   'account_id' => $bankAccountId ?: null],
-            ['name' => 'محفظة إلكترونية',     'kind' => 'wallet', 'account_id' => $walletAccountId ?: null],
-            ['name' => 'آجل / ذمم',           'kind' => 'credit', 'account_id' => null],
+            ['name' => 'نقدي',                'kind' => 'cash',   'account_type' => 'cash',    'account_id' => $cashAccountId ?: null],
+            ['name' => 'تحويل بنكي',          'kind' => 'bank',   'account_type' => 'bank',    'account_id' => $bankAccountId ?: null],
+            ['name' => 'بطاقة ائتمان',        'kind' => 'card',   'account_type' => 'card',    'account_id' => $bankAccountId ?: null],
+            ['name' => 'محفظة إلكترونية',     'kind' => 'wallet', 'account_type' => 'wallet',  'account_id' => $walletAccountId ?: null],
+            ['name' => 'آجل / ذمم',           'kind' => 'credit', 'account_type' => 'payable', 'account_id' => null],
         ];
 
         $pmInsert = $this->db->prepare(
-            "INSERT INTO payment_methods (tenant_id, name, kind, account_id, is_active, created_at)
-             VALUES (?, ?, ?, ?, 1, NOW())"
+            "INSERT INTO payment_methods (tenant_id, name, kind, account_type, account_id, is_active, created_at)
+             VALUES (?, ?, ?, ?, ?, 1, NOW())"
         );
 
         $pmExists = $this->db->prepare(
-            "SELECT id FROM payment_methods WHERE tenant_id = ? AND kind = ? AND name = ? LIMIT 1"
+            "SELECT id FROM payment_methods WHERE tenant_id = ? AND kind = ? LIMIT 1"
         );
 
         foreach ($paymentMethods as $pm) {
-            $pmExists->execute([$tenantId, $pm['kind'], $pm['name']]);
+            $pmExists->execute([$tenantId, $pm['kind']]);
             if (!$pmExists->fetchColumn()) {
-                $pmInsert->execute([$tenantId, $pm['name'], $pm['kind'], $pm['account_id']]);
+                $pmInsert->execute([
+                    $tenantId,
+                    $pm['name'],
+                    $pm['kind'],
+                    $pm['account_type'],
+                    $pm['account_id'],
+                ]);
             }
         }
     }
 
+    /** Send the registration verification through EmailVerificationService. */
     private function sendVerificationEmail(string $email, int $userId, string $token, string $clientIp, Request $request): void
     {
         try {
-            // Use EmailVerificationService with proper method signature
             $verificationService = new \App\Services\EmailVerificationService($this->db);
-
-            // Call the correct method: sendVerification(email, purpose, request)
-            // Pass the real Request object which contains all necessary data
             $verificationService->sendVerification($email, 'registration', $request);
 
             $this->logger->info('Verification email sent successfully', [
@@ -838,112 +768,7 @@ class StrictSubscriptionHandler extends BaseHandler
         return $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
     }
 
-    private function validateAndGetPlan(string $planCode): ?array
-    {
-        $stmt = $this->db->prepare(
-            "SELECT id, code, name, price, currency, billing_cycle_days
-             FROM plans
-             WHERE code = ? AND is_active = 1
-             LIMIT 1"
-        );
-        $stmt->execute([$planCode]);
-
-        $plan = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $plan ?: null;
-    }
-
-    private function getCurrentSubscription(int $tenantId): ?array
-    {
-        $stmt = $this->db->prepare(
-            "SELECT s.*, p.code AS plan_code, p.name AS plan_name
-             FROM subscriptions s
-             JOIN plans p ON p.id = s.plan_id
-             WHERE s.tenant_id = ?
-               AND s.status IN ('trial', 'active')
-             ORDER BY s.created_at DESC
-             LIMIT 1"
-        );
-        $stmt->execute([$tenantId]);
-
-        $subscription = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $subscription ?: null;
-    }
-
-    private function validateUpgradeRules(array $currentSubscription, array $plan): array
-    {
-        if (($currentSubscription['status'] ?? null) === 'trial') {
-            return ['valid' => true, 'message' => ''];
-        }
-
-        if ((int) ($currentSubscription['plan_id'] ?? 0) === (int) ($plan['id'] ?? 0)) {
-            return ['valid' => false, 'message' => 'You are already on this plan'];
-        }
-
-        return ['valid' => true, 'message' => ''];
-    }
-
-    private function processSecurePayment(int $tenantId, int $userId, array $plan, string $ip, array $data): array
-    {
-        $transactionId = 'txn_' . uniqid('', true);
-
-        $stmt = $this->db->prepare(
-            "INSERT INTO payment_transactions (
-                transaction_id, tenant_id, user_id, amount, currency,
-                payment_method, payment_gateway, status, ip_address, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, NOW())"
-        );
-        $stmt->execute([
-            $transactionId,
-            $tenantId,
-            $userId,
-            $plan['price'] ?? 0,
-            $plan['currency'] ?? 'USD',
-            $data['payment_method'] ?? 'card',
-            $data['payment_gateway'] ?? 'stripe',
-            $ip
-        ]);
-
-        return [
-            'success' => true,
-            'transaction_id' => $transactionId
-        ];
-    }
-
-    private function updateSubscription(int $subscriptionId, array $plan, string $transactionId): void
-    {
-        $days = (int) ($plan['billing_cycle_days'] ?? 30);
-        $nextEndDate = date('Y-m-d H:i:s', strtotime('+' . $days . ' days'));
-
-        $stmt = $this->db->prepare(
-            "UPDATE subscriptions
-             SET plan_id = ?,
-                 status = 'active',
-                 payment_status = 'paid',
-                 start_date = NOW(),
-                 end_date = ?,
-                 updated_at = NOW()
-             WHERE id = ?"
-        );
-        $stmt->execute([
-            (int) $plan['id'],
-            $nextEndDate,
-            $subscriptionId
-        ]);
-
-        $this->logSecurityEvent('subscription_updated', 'low', 'Subscription updated after payment', [
-            'subscription_id' => $subscriptionId,
-            'plan_id' => (int) $plan['id'],
-            'transaction_id' => $transactionId,
-            'end_date' => $nextEndDate
-        ]);
-    }
-
-    private function calculateNextBillingDate(array $plan): string
-    {
-        $interval = (int) ($plan['billing_cycle_days'] ?? 30);
-        return date('Y-m-d H:i:s', strtotime('+' . $interval . ' days'));
-    }
-
+    /** Temporarily block an IP and mark its device fingerprint suspicious. */
     private function blockSuspiciousActivity(string $ip, string $fingerprint, string $reason): void
     {
         $stmt = $this->db->prepare(
@@ -967,6 +792,7 @@ class StrictSubscriptionHandler extends BaseHandler
         }
     }
 
+    /** Persist an outcome and context for a subscription-related attempt. */
     private function recordSubscriptionAttempt(string $ip, string $email, string $type, string $status, array $details): void
     {
         $deviceFingerprint = $details['device_fingerprint'] ?? null;
@@ -994,6 +820,7 @@ class StrictSubscriptionHandler extends BaseHandler
         return RequestHelper::getClientIp($request);
     }
 
+    /** Record a security event without allowing audit-storage failure to mask the request result. */
     protected function logSecurityEvent(
         string $eventType,
         string $riskLevel,

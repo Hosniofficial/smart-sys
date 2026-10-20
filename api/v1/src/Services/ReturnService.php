@@ -9,7 +9,6 @@ use Throwable;
 use PDOException;
 use App\Services\AccountingService;
 use App\Services\CostingService;
-use App\Services\LabelService;
 use App\Services\MonologHandler;
 use App\Repositories\SettingsRepository;
 
@@ -67,6 +66,71 @@ class ReturnService
         return $this->settingsRepo->get($this->tenantId, 'company.currency', 'EGP') ?: 'EGP';
     }
 
+    private function getSaleActualPaidAmount(int $saleId, int $tenantId): float
+    {
+        $stmt = $this->db->prepare("
+            SELECT
+                COALESCE((
+                    SELECT SUM(CASE WHEN p.type = 'return_payment' THEN -p.amount ELSE p.amount END)
+                    FROM payments p
+                    WHERE p.sale_id = ? AND p.tenant_id = ?
+                      AND COALESCE(p.is_draft, 0) = 0 AND p.status = 'completed'
+                ), 0)
+                + COALESCE((
+                    SELECT SUM(cpa.allocated_amount)
+                    FROM customer_payment_allocations cpa
+                    INNER JOIN payments ap ON ap.id = cpa.payment_id AND ap.tenant_id = cpa.tenant_id
+                    WHERE cpa.sale_id = ? AND cpa.tenant_id = ?
+                      AND COALESCE(ap.is_draft, 0) = 0 AND ap.status = 'completed'
+                ), 0)
+        ");
+        $stmt->execute([$saleId, $tenantId, $saleId, $tenantId]);
+
+        return (float) $stmt->fetchColumn();
+    }
+
+    /**
+     * Return the supplier's outstanding payable balance for auto-settlement.
+     * Locking the supplier account serializes concurrent return settlements.
+     */
+    private function getSupplierPayableBalance(int $supplierId, int $tenantId): float
+    {
+        if ($supplierId <= 0) {
+            return 0.0;
+        }
+
+        $forUpdate = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+        $stmt = $this->db->prepare(
+            "SELECT a.id AS account_id, a.debit_balance, a.credit_balance
+             FROM suppliers s
+             INNER JOIN accounts a ON a.id = s.account_id AND a.tenant_id = s.tenant_id
+             WHERE s.id = ? AND s.tenant_id = ?
+             {$forUpdate}"
+        );
+        $stmt->execute([$supplierId, $tenantId]);
+        $account = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$account) {
+            return 0.0;
+        }
+
+        $ledgerBalanceStmt = $this->db->prepare(
+            "SELECT COUNT(je.id), COALESCE(SUM(jel.credit_amount - jel.debit_amount), 0)
+             FROM journal_entry_lines jel
+             INNER JOIN journal_entries je ON je.id = jel.journal_entry_id AND je.tenant_id = jel.tenant_id
+             WHERE jel.account_id = ? AND jel.tenant_id = ?
+               AND (je.status IS NULL OR je.status IN ('posted', 'reversed'))
+             {$forUpdate}"
+        );
+        $ledgerBalanceStmt->execute([(int) $account['account_id'], $tenantId]);
+        [$journalEntryCount, $journalBalance] = $ledgerBalanceStmt->fetch(PDO::FETCH_NUM);
+        if ((int) $journalEntryCount > 0) {
+            return max(0.0, round((float) $journalBalance, 2));
+        }
+
+        return max(0.0, round((float) $account['credit_balance'] - (float) $account['debit_balance'], 2));
+    }
+
     /**
      * Adjust stock for a return item.
      *
@@ -86,6 +150,24 @@ class ReturnService
         ?string $expiryDate = null,
         ?string $serial = null
     ): void {
+        $typeStmt = $this->db->prepare(
+            "SELECT COALESCE(product_type, 'stock')
+             FROM products WHERE id = ? AND tenant_id = ?"
+        );
+        $typeStmt->execute([$productId, $this->tenantId]);
+        $productType = $typeStmt->fetchColumn();
+        if ($productType === false) {
+            throw new \DomainException('المنتج غير موجود في المنشأة.');
+        }
+        if (strtolower((string) $productType) === 'service') {
+            return;
+        }
+        $serialStmt = $this->db->prepare(
+            'SELECT COALESCE(has_serial_number, 0) FROM products WHERE id = ? AND tenant_id = ?'
+        );
+        $serialStmt->execute([$productId, $this->tenantId]);
+        $tracksSerial = (int) $serialStmt->fetchColumn() === 1;
+
         $quantity = round($quantity, 4);
         $userId   = $this->userId ?? 1;
 
@@ -123,19 +205,85 @@ class ReturnService
         }
 
         // Calculate WAC cost
-        $unitCost  = 0.0;
+        $unitCost = 0.0;
         $totalCost = 0.0;
-        try {
-            $costing        = new CostingService($this->db);
-            $wacPerBaseUnit = $costing->getWeightedAverageCost($this->tenantId, $productId, date('Y-m-d H:i:s'));
-            if ($wacPerBaseUnit !== null && (float) $wacPerBaseUnit > 0) {
-                $unitCost  = round((float) $wacPerBaseUnit * $conversionFactor, 4);
-                $totalCost = round($unitCost * $quantity, 4);
+        $costingBasisDate = date('Y-m-d H:i:s');
+        if ($returnType === 'sale') {
+            $saleDateStmt = $this->db->prepare(
+                'SELECT s.sale_date
+                 FROM returns r
+                 INNER JOIN sales s ON s.id = r.sale_id AND s.tenant_id = r.tenant_id
+                 WHERE r.id = ? AND r.tenant_id = ?
+                 LIMIT 1'
+            );
+            $saleDateStmt->execute([$returnId, $this->tenantId]);
+            $originalSaleDate = $saleDateStmt->fetchColumn();
+            if ($originalSaleDate !== false && $originalSaleDate !== null) {
+                $costingBasisDate = (string) $originalSaleDate;
             }
-        } catch (Throwable $e) {
+        }
+        $costing = new CostingService($this->db);
+        $wacPerBaseUnit = $costing->getWeightedAverageCost(
+            $this->tenantId,
+            $productId,
+            $costingBasisDate
+        );
+        if ($wacPerBaseUnit !== null && (float) $wacPerBaseUnit > 0) {
+            $unitCost = round((float) $wacPerBaseUnit * $conversionFactor, 4);
+            $totalCost = round($unitCost * $quantity, 4);
         }
 
         $costAdjustment = $totalCost * ($returnType === 'sale' ? 1 : -1);
+
+        \App\Services\ProductBranchActivationGuard::assertActiveForStock(
+            $this->db,
+            $this->tenantId,
+            $branchId,
+            $productId
+        );
+
+        $expectedSerialStatus = $returnType === 'sale' ? 'sold' : 'in_stock';
+        if ($tracksSerial) {
+            if ($serial === null || trim($serial) === '') {
+                throw new \DomainException('الرقم المسلسل مطلوب لإرجاع هذا المنتج.');
+            }
+            $serialStmt = $this->db->prepare(
+                "SELECT id FROM product_serials
+                 WHERE product_id = ? AND branch_id = ? AND serial_number = ?
+                   AND tenant_id = ? AND status = ? FOR UPDATE"
+            );
+            $serialStmt->execute([
+                $productId,
+                $branchId,
+                $serial,
+                $this->tenantId,
+                $expectedSerialStatus,
+            ]);
+            if (!$serialStmt->fetchColumn()) {
+                throw new \DomainException(
+                    $returnType === 'sale'
+                        ? 'الرقم المسلسل المرتجع غير مسجل كمباع في هذا الفرع.'
+                        : 'الرقم المسلسل غير متوفر في مخزون هذا الفرع لإرجاعه للمورد.'
+                );
+            }
+        }
+
+        if ($returnType === 'purchase') {
+            $stockStmt = $this->db->prepare(
+                'SELECT quantity FROM branch_products
+                 WHERE tenant_id = ? AND branch_id = ? AND product_id = ? FOR UPDATE'
+            );
+            $stockStmt->execute([$this->tenantId, $branchId, $productId]);
+            $availableQuantity = $stockStmt->fetchColumn();
+            if ($availableQuantity === false || (float) $availableQuantity + 0.0001 < $baseQuantity) {
+                throw new \App\Exceptions\InsufficientStockException(
+                    "الكمية المتاحة للمنتج {$productId} غير كافية لإرجاع الكمية المطلوبة للمورد.",
+                    $productId,
+                    $availableQuantity === false ? 0.0 : (float) $availableQuantity,
+                    $baseQuantity
+                );
+            }
+        }
 
         // Update branch_products
         $this->db->prepare(
@@ -182,35 +330,24 @@ class ReturnService
             }
         }
 
-        // Handle serial tracking for sale returns
-        if ($returnType === 'sale' && !empty($serial)) {
-            $chk = $this->db->prepare(
-                "SELECT has_serial_number FROM products WHERE id = ? AND tenant_id = ?"
+        if ($tracksSerial) {
+            $serialUpdate = $this->db->prepare(
+                'UPDATE product_serials
+                 SET status = ?, transaction_id = ?
+                 WHERE product_id = ? AND branch_id = ? AND serial_number = ?
+                   AND tenant_id = ? AND status = ?'
             );
-            $chk->execute([$productId, $this->tenantId]);
-            if ((int) $chk->fetchColumn()) {
-                $this->db->prepare(
-                    "UPDATE product_serials
-                     SET status = 'instock', transaction_id = NULL
-                     WHERE product_id = ? AND branch_id = ? AND serial_number = ?
-                       AND tenant_id = ? AND status = 'sold'"
-                )->execute([$productId, $branchId, $serial, $this->tenantId]);
-            }
-        }
-
-        // Handle serial tracking for purchase returns
-        if ($returnType === 'purchase' && !empty($serial)) {
-            $chk = $this->db->prepare(
-                "SELECT has_serial_number FROM products WHERE id = ? AND tenant_id = ?"
-            );
-            $chk->execute([$productId, $this->tenantId]);
-            if ((int) $chk->fetchColumn()) {
-                $this->db->prepare(
-                    "UPDATE product_serials
-                     SET status = 'damaged', transaction_id = ?
-                     WHERE product_id = ? AND branch_id = ? AND serial_number = ?
-                       AND tenant_id = ?"
-                )->execute([$inventoryTransactionId, $productId, $branchId, $serial, $this->tenantId]);
+            $serialUpdate->execute([
+                $returnType === 'sale' ? 'in_stock' : 'damaged',
+                $returnType === 'sale' ? null : $inventoryTransactionId,
+                $productId,
+                $branchId,
+                $serial,
+                $this->tenantId,
+                $expectedSerialStatus,
+            ]);
+            if ($serialUpdate->rowCount() !== 1) {
+                throw new \DomainException('تعذر تحديث حالة الرقم المسلسل؛ تم إلغاء حركة المرتجع.');
             }
         }
     }
@@ -234,6 +371,7 @@ class ReturnService
      * @param int|null   $originalSaleId        الفاتورة الأصلية للمرتجع (أولوية عليا)
      * @param int|null   $paymentId             معرف الدفعة المرتبطة (لتسجيل payment_applications)
      * @param int|null   $createdBy             معرف المستخدم المنفّذ
+     * @param int|null   $returnId              معرف المرتجع لتسجيل إشعار الدائن
      */
     public function allocateCustomerBalance(
         int   $customerId,
@@ -249,7 +387,7 @@ class ReturnService
 
         $tenantId   = $this->tenantId;
         $toAllocate = $amountToAllocate;
-        $settledInvoiceIds = []; // Track invoices that became fully paid
+        $affectedSaleIds = [];
 
         try {
             /**
@@ -259,7 +397,7 @@ class ReturnService
              * not an actual payment. paid_amount should only increase when real money
              * is received (cash or bank transfer).
              *
-             * We only record payment_applications for audit trail purposes.
+             * Return-credit allocations are recorded separately from cash payment applications.
              */
 
             // 1. الفاتورة الأصلية أولاً
@@ -287,7 +425,8 @@ class ReturnService
                     $rcRow = $rcStmt->fetch(\PDO::FETCH_ASSOC);
                     $returnCredits = (float) ($rcRow['return_credits'] ?? 0.0);
 
-                    $outstanding = max(0, (float) $row['grand_total'] - (float) $row['paid_amount'] - $returnCredits);
+                    $actualPaid = $this->getSaleActualPaidAmount((int) $originalSaleId, $tenantId);
+                    $outstanding = max(0, (float) $row['grand_total'] - $actualPaid - $returnCredits);
 
                     // For returns (returnId !== null), allocate to the original invoice
                     // BUT: only allocate up to the outstanding amount
@@ -314,33 +453,23 @@ class ReturnService
                         }
 
                         $toAllocate -= $apply;
-
-                        // ✅ Track if invoice became fully paid
-                        // Use the calculated value directly - don't re-query payment_applications
-                        $newOutstanding = $outstanding - $apply;
-                        if ($newOutstanding <= 0.01) {
-                            $settledInvoiceIds[] = [
-                                'id' => $originalSaleId,
-                                'newOutstanding' => $newOutstanding
-                            ];
-                        }
+                        $affectedSaleIds[$originalSaleId] = true;
                     }
                 }
             }
 
             // 2. باقي الفواتير المفتوحة بالترتيب الزمني
             if ($toAllocate > 0) {
-                // ✅ FIXED: Query locks actual sales rows (not derived table)
-                // Removed subquery to ensure FOR UPDATE locks real rows
                 $stmt = $this->db->prepare("
                     SELECT s.id,
-                           s.net_total_amount + IFNULL(s.tax_amount, 0) AS grand_total,
-                           s.paid_amount,
-                           s.sale_date
+                           s.net_total_amount + IFNULL(s.tax_amount, 0) AS grand_total
                     FROM sales s
                     WHERE s.customer_id = ?
                       AND s.tenant_id = ?
-                      AND (s.net_total_amount + IFNULL(s.tax_amount, 0) - IFNULL(s.paid_amount, 0)) > 0
+                      AND LOWER(COALESCE(s.status, '')) NOT IN (
+                          'draft', 'pending', 'pending_approval', 'awaiting_approval',
+                          'rejected', 'canceled', 'cancelled'
+                      )
                     ORDER BY s.sale_date ASC, s.id ASC
                     FOR UPDATE
                 ");
@@ -357,7 +486,6 @@ class ReturnService
                         continue;
                     }
 
-                    // ✅ FIXED: Calculate return_credits for this invoice separately (single point of calculation)
                     $rcStmt = $this->db->prepare("
                         SELECT COALESCE(SUM(allocated_amount), 0) AS return_credits
                         FROM return_credit_allocations
@@ -366,8 +494,8 @@ class ReturnService
                     $rcStmt->execute([$r['id'], $tenantId]);
                     $rcRow = $rcStmt->fetch(\PDO::FETCH_ASSOC);
                     $returnCredits = (float) ($rcRow['return_credits'] ?? 0.0);
-
-                    $outstanding = max(0, (float) $r['grand_total'] - (float) $r['paid_amount'] - $returnCredits);
+                    $actualPaid = $this->getSaleActualPaidAmount((int) $r['id'], $tenantId);
+                    $outstanding = max(0, (float) $r['grand_total'] - $actualPaid - $returnCredits);
                     if ($outstanding <= 0) {
                         continue;
                     }
@@ -389,97 +517,28 @@ class ReturnService
                     }
 
                     $toAllocate -= $apply;
-
-                    // ✅ Track if invoice became fully paid
-                    // Use the calculated value directly - don't re-query payment_applications
-                    $newOutstanding = $outstanding - $apply;
-                    if ($newOutstanding <= 0.01) {
-                        $settledInvoiceIds[] = [
-                            'id' => (int) $r['id'],
-                            'newOutstanding' => $newOutstanding
-                        ];
-                    }
+                    $affectedSaleIds[(int) $r['id']] = true;
                 }
             }
 
-            // ✅ Update status for fully settled invoices
-            // Use the calculated outstanding values - DO NOT re-query payment_applications
-            // Payment applications may not exist if $paymentId is null (audit-only)
-            if (!empty($settledInvoiceIds)) {
-                try {
-                    // 🔑 CRITICAL: Determine settlement type
-                    // - If paymentId is null OR payment is a refund → 'closed_by_return' (settled by credit note)
-                    // - If paymentId is actual payment (type='payment') → 'paid' (actual cash received)
-                    $settlementType = 'closed_by_return'; // Default: settled by return credit
-
-                    if ($paymentId !== null) {
-                        $stmt = $this->db->prepare(
-                            "SELECT payment_type FROM payments WHERE id = ? AND tenant_id = ?"
-                        );
-                        $stmt->execute([$paymentId, $tenantId]);
-                        $paymentType = $stmt->fetchColumn();
-
-                        // Only mark as 'paid' if this is an actual cash/bank payment
-                        if ($paymentType === 'payment') {
-                            $settlementType = 'paid';
-                        }
-                        // If payment_type='refund', stay with 'closed_by_return'
-                    }
-
-                    foreach ($settledInvoiceIds as $invoiceData) {
-                        $invoiceId = $invoiceData['id'];
-                        $newOutstanding = $invoiceData['newOutstanding'];
-
-                        if ($newOutstanding <= 0.01) {
-                            // Get invoice grand total for UPDATE
-                            $stmt = $this->db->prepare(
-                                "SELECT net_total_amount, tax_amount FROM sales WHERE id = ? AND tenant_id = ?"
-                            );
-                            $stmt->execute([$invoiceId, $tenantId]);
-                            $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
-
-                            if ($invoice) {
-                                // ✅ CRITICAL ACCOUNTING RULE:
-                                // Only update STATUS, NEVER update paid_amount
-                                //
-                                // paid_amount = actual cash/bank received only
-                                // return_credit_allocations = credit notes (separate tracking)
-                                //
-                                // Settlement is determined by:
-                                //   outstanding = grand_total - paid_amount - return_credits <= 0
-                                //
-                                // NOT by updating paid_amount to grandTotal
-                                // That would incorrectly claim all money was paid in cash
-
-                                $this->db->prepare(
-                                    "UPDATE sales SET status = ? WHERE id = ? AND tenant_id = ?"
-                                )->execute([$settlementType, $invoiceId, $tenantId]);
-                            }
-
-                            (MonologHandler::getInstance('returns'))->info('Invoice settled', [
-                                'tenant_id' => $tenantId,
-                                'sale_id' => $invoiceId,
-                                'customer_id' => $customerId,
-                                'settlement_type' => $settlementType,
-                                'new_outstanding' => $newOutstanding,
-                            ]);
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    (MonologHandler::getInstance('returns'))->warning('Failed to update invoice status after allocation', [
-                        'tenant_id' => $tenantId,
-                        'message' => $e->getMessage(),
-                    ]);
-                }
+            foreach (array_keys($affectedSaleIds) as $saleId) {
+                $status = $this->accounting->recalculateSaleStatus($tenantId, (int) $saleId);
+                (MonologHandler::getInstance('returns'))->info('Invoice recalculated after return credit allocation', [
+                    'tenant_id' => $tenantId,
+                    'sale_id' => (int) $saleId,
+                    'customer_id' => $customerId,
+                    'status' => $status['status'],
+                    'outstanding' => $status['outstanding'],
+                ]);
             }
         } catch (\Throwable $e) {
-            // نُسجّل الخطأ دون إيقاف العملية الرئيسية
-            (MonologHandler::getInstance('returns'))->warning('allocateCustomerBalance: failed', [
+            (MonologHandler::getInstance('returns'))->error('allocateCustomerBalance failed; return transaction must roll back', [
                 'tenant_id'   => $tenantId,
                 'customer_id' => $customerId,
                 'payment_id'  => $paymentId,
                 'message'     => $e->getMessage(),
             ]);
+            throw $e;
         }
     }
 
@@ -526,288 +585,17 @@ class ReturnService
         float  $allocatedAmount,
         ?int   $createdBy
     ): void {
-        try {
-            $this->db->prepare("
-                INSERT INTO return_credit_allocations
-                    (tenant_id, return_id, sale_id, allocated_amount, created_by, created_at)
-                VALUES (?, ?, ?, ?, ?, NOW())
-                ON DUPLICATE KEY UPDATE
-                    allocated_amount = VALUES(allocated_amount),
-                    created_at = NOW()
-            ")->execute([$this->tenantId, $returnId, $saleId, $allocatedAmount, $createdBy ?? 1]);
-        } catch (\Throwable $e) {
-            (MonologHandler::getInstance('returns'))->warning('insertReturnCreditAllocation: failed', [
-                'return_id' => $returnId,
-                'sale_id'   => $saleId,
-                'message'   => $e->getMessage(),
-            ]);
-        }
+        $this->db->prepare("
+            INSERT INTO return_credit_allocations
+                (tenant_id, return_id, sale_id, allocated_amount, created_by, created_at)
+            VALUES (?, ?, ?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE
+                allocated_amount = VALUES(allocated_amount),
+                created_at = NOW()
+        ")->execute([$this->tenantId, $returnId, $saleId, $allocatedAmount, $createdBy ?? 1]);
     }
 
     // -------------------------------------------------------------------------
-    // getDetails — جلب تفاصيل المرتجع الكاملة (منقولة من ReturnsHandler::getReturnDetails)
-    // -------------------------------------------------------------------------
-
-    /**
-     * جلب تفاصيل مرتجع واحد كاملاً مع القيود المحاسبية والمدفوعات.
-     * يُصلح تلقائياً reference_type في journal_entries إذا كانت غير صحيحة.
-     *
-     * @return array|null  بيانات المرتجع أو null إذا لم يوجد
-     */
-    public function getDetails(int $returnId, string $locale = 'ar'): ?array
-    {
-        $stmt = $this->db->prepare(
-            "SELECT * FROM returns WHERE id = ? AND tenant_id = ?"
-        );
-        $stmt->execute([$returnId, $this->tenantId]);
-        $return = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-        if (!$return) {
-            return null;
-        }
-
-        // طريقة الدفع
-        if (!empty($return['payment_method_id'])) {
-            $s = $this->db->prepare(
-                "SELECT name FROM payment_methods WHERE id = ? AND tenant_id = ? LIMIT 1"
-            );
-            $s->execute([$return['payment_method_id'], $this->tenantId]);
-            $return['payment_method_name'] = $s->fetchColumn() ?: null;
-        } else {
-            $return['payment_method_name'] = null;
-        }
-
-        // اسم العميل
-        $return['customer_name'] = null;
-        if (!empty($return['customer_id'])) {
-            $s = $this->db->prepare(
-                "SELECT name FROM customers WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)
-                 ORDER BY (tenant_id IS NULL) ASC LIMIT 1"
-            );
-            $s->execute([$return['customer_id'], $this->tenantId]);
-            $return['customer_name'] = $s->fetchColumn() ?: null;
-        }
-
-        // اسم المورد
-        $return['supplier_name'] = null;
-        if (!empty($return['supplier_id'])) {
-            $s = $this->db->prepare(
-                "SELECT name FROM suppliers WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)
-                 ORDER BY (tenant_id IS NULL) ASC LIMIT 1"
-            );
-            $s->execute([$return['supplier_id'], $this->tenantId]);
-            $return['supplier_name'] = $s->fetchColumn() ?: null;
-        }
-
-        // اسم المنشئ
-        $return['created_by_name'] = null;
-        if (!empty($return['created_by'])) {
-            $s = $this->db->prepare(
-                "SELECT name FROM users WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)
-                 ORDER BY (tenant_id IS NULL) ASC LIMIT 1"
-            );
-            $s->execute([$return['created_by'], $this->tenantId]);
-            $return['created_by_name'] = $s->fetchColumn() ?: null;
-        }
-
-        // عناصر المرتجع
-        $s = $this->db->prepare(
-            "SELECT ri.*, p.name AS product_name, p.product_code
-             FROM return_items ri
-             JOIN products p ON ri.product_id = p.id AND p.tenant_id = ri.tenant_id
-             WHERE ri.return_id = ? AND ri.tenant_id = ?"
-        );
-        $s->execute([$returnId, $this->tenantId]);
-        $return['items'] = $s->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-
-        // المدفوعات (cash_transactions)
-        $s = $this->db->prepare(
-            "SELECT ct.id, ct.amount, ct.type, ct.payment_method_id,
-                    pm.name AS payment_method_name,
-                    ct.description, ct.created_at, ct.status, ct.journal_entry_id
-             FROM cash_transactions ct
-             LEFT JOIN payment_methods pm
-               ON pm.id = ct.payment_method_id
-              AND (pm.tenant_id = ct.tenant_id OR pm.tenant_id IS NULL)
-             WHERE ct.tenant_id = ? AND ct.return_id = ?
-               AND ct.type = 'return_payment'
-               AND (ct.status IS NULL OR ct.status IN ('completed', 'approved'))
-             ORDER BY ct.created_at ASC"
-        );
-        $s->execute([$this->tenantId, $returnId]);
-        $payments = $s->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-
-        foreach ($payments as &$pFmt) {
-            if (isset($pFmt['amount'])) {
-                $pFmt['amount'] = number_format((float) $pFmt['amount'], 2, '.', '');
-            }
-        }
-        unset($pFmt);
-
-        $paymentsTotal = 0.0;
-        foreach ($payments as $p) {
-            $paymentsTotal += (float) ($p['amount'] ?? 0);
-        }
-
-        $return['payments']       = $payments;
-        $return['payments_total'] = number_format($paymentsTotal, 2, '.', '');
-
-        $grandTotal = isset($return['grand_total'])
-            ? (float) $return['grand_total']
-            : ((float) ($return['total_amount'] ?? 0) + (float) ($return['tax_amount'] ?? 0));
-
-        $return['net_due'] = number_format($grandTotal - $paymentsTotal, 2, '.', '');
-
-        foreach (['total_amount', 'tax_amount', 'discount_amount', 'grand_total', 'paid_amount'] as $key) {
-            if (isset($return[$key])) {
-                $return[$key] = number_format((float) $return[$key], 2, '.', '');
-            }
-        }
-
-        // القيد المحاسبي
-        $this->attachJournalEntry($return, $returnId);
-
-        // labels للمدفوعات
-        if (!empty($return['payments'])) {
-            foreach ($return['payments'] as &$payment) {
-                $payment['reference_type']  = 'return_payment';
-                $payment['reference_id']    = $payment['id'] ?? null;
-                $payment['reference']       = 'return_payment#' . ($payment['id'] ?? '');
-                $payment['reference_label'] = LabelService::refLabel('return_payment', $locale);
-                $payment['status_label']    = LabelService::statusLabel($payment['status'] ?? 'completed', $locale);
-                $payment['journal_entry']               = null;
-                $payment['journal_reference_type']      = null;
-                $payment['journal_reference_id']        = null;
-
-                if (!empty($payment['journal_entry_id'])) {
-                    $pJe = $this->fetchJournalEntryWithLines((int) $payment['journal_entry_id']);
-                    if ($pJe) {
-                        $payment['journal_entry']          = $pJe;
-                        $payment['journal_reference_type'] = $pJe['reference_type'] ?? null;
-                        $payment['journal_reference_id']   = $pJe['reference_id']   ?? null;
-                    }
-                }
-            }
-            unset($payment);
-        }
-
-        return $return;
-    }
-
-    /**
-     * جلب قيد محاسبي مع سطوره — helper داخلي.
-     */
-    private function fetchJournalEntryWithLines(int $jeId): ?array
-    {
-        $s = $this->db->prepare(
-            "SELECT je.* FROM journal_entries je WHERE je.id = ? AND je.tenant_id = ?"
-        );
-        $s->execute([$jeId, $this->tenantId]);
-        $je = $s->fetch(\PDO::FETCH_ASSOC) ?: null;
-
-        if (!$je) {
-            return null;
-        }
-
-        $s = $this->db->prepare(
-            "SELECT jel.*, a.name AS account_name, a.code AS account_code
-             FROM journal_entry_lines jel
-             JOIN accounts a ON a.id = jel.account_id
-             WHERE jel.journal_entry_id = ?"
-        );
-        $s->execute([$je['id']]);
-        $je['lines'] = $s->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-        return $je;
-    }
-
-    /**
-     * يربط القيد المحاسبي بمصفوفة المرتجع — يُصلح reference_type إذا لزم.
-     */
-    private function attachJournalEntry(array &$return, int $returnId): void
-    {
-        if (!empty($return['journal_entry_id'])) {
-            $je = $this->fetchJournalEntryWithLines((int) $return['journal_entry_id']);
-            if ($je) {
-                $je['date'] = $je['entry_date'] ?? $return['return_date'] ?? null;
-            }
-            $return['journal_entry']          = $je;
-            $return['journal_reference_type'] = $je['reference_type'] ?? null;
-            $return['journal_reference_id']   = $je['reference_id']   ?? null;
-            return;
-        }
-
-        // بحث عن قيد مرتبط عبر reference_type الصحيح أو 'return'
-        $desiredRefType = match ($return['return_type'] ?? '') {
-            'sale'     => 'sale_return',
-            'purchase' => 'purchase_return',
-            default    => null,
-        };
-
-        $jeRef = null;
-        if ($desiredRefType) {
-            $s = $this->db->prepare(
-                "SELECT je.* FROM journal_entries je
-                 WHERE je.tenant_id = ? AND je.reference_type = ? AND je.reference_id = ?
-                 ORDER BY je.id DESC LIMIT 1"
-            );
-            $s->execute([$this->tenantId, $desiredRefType, $returnId]);
-            $jeRef = $s->fetch(\PDO::FETCH_ASSOC) ?: null;
-        }
-
-        if (!$jeRef) {
-            $s = $this->db->prepare(
-                "SELECT je.* FROM journal_entries je
-                 WHERE je.tenant_id = ? AND je.reference_type = 'return' AND je.reference_id = ?
-                 ORDER BY je.id DESC LIMIT 1"
-            );
-            $s->execute([$this->tenantId, $returnId]);
-            $jeRef = $s->fetch(\PDO::FETCH_ASSOC) ?: null;
-        }
-
-        if ($jeRef) {
-            $s = $this->db->prepare(
-                "SELECT jel.*, a.name AS account_name, a.code AS account_code
-                 FROM journal_entry_lines jel
-                 JOIN accounts a ON a.id = jel.account_id
-                 WHERE jel.journal_entry_id = ?"
-            );
-            $s->execute([$jeRef['id']]);
-            $jeRef['lines'] = $s->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-            $jeRef['date']  = $jeRef['entry_date'] ?? $return['return_date'] ?? null;
-
-            $return['journal_entry']          = $jeRef;
-            $return['journal_reference_type'] = $jeRef['reference_type'] ?? null;
-            $return['journal_reference_id']   = $jeRef['reference_id']   ?? null;
-            $return['journal_entry_id']       = $jeRef['id'];
-
-            // إصلاح journal_entry_id على المرتجع
-            try {
-                $this->db->prepare(
-                    "UPDATE returns SET journal_entry_id = ?
-                     WHERE id = ? AND tenant_id = ?
-                       AND (journal_entry_id IS NULL OR journal_entry_id = 0)"
-                )->execute([$jeRef['id'], $returnId, $this->tenantId]);
-            } catch (\Throwable $e) {
-            }
-
-            // إصلاح reference_type على القيد
-            if ($desiredRefType && ($jeRef['reference_type'] ?? null) !== $desiredRefType) {
-                try {
-                    $this->db->prepare(
-                        "UPDATE journal_entries SET reference_type = ? WHERE id = ? AND tenant_id = ?"
-                    )->execute([$desiredRefType, $jeRef['id'], $this->tenantId]);
-                    $return['journal_reference_type']              = $desiredRefType;
-                    $return['journal_entry']['reference_type']     = $desiredRefType;
-                } catch (\Throwable $e) {
-                }
-            }
-        } else {
-            $return['journal_entry']          = null;
-            $return['journal_reference_type'] = null;
-            $return['journal_reference_id']   = null;
-        }
-    }
-
     // =========================================================================
     // createReturn — full return creation flow extracted from ReturnsHandler
     // =========================================================================
@@ -824,15 +612,112 @@ class ReturnService
      */
     public function createReturn(array $data, int $tenantId, int $userId, ?int $sessionId = null): array
     {
-        // ── حساب الإجماليات ───────────────────────────────────────────────────
-        $grossTotal = 0.0;
-        $taxTotal   = 0.0;
-        foreach ($data['items'] as $item) {
-            $grossTotal += (float) ($item['subtotal'] ?? 0);
-            if (isset($item['tax_amount'])) {
-                $taxTotal += (float) $item['tax_amount'];
-            }
+        if (!$this->db->inTransaction()) {
+            throw new \LogicException('Return creation requires an active transaction.');
         }
+
+        if (empty($data['items']) || !is_array($data['items'])) {
+            throw new \DomainException('قائمة الأصناف المرتجعة غير صالحة.');
+        }
+
+        $returnType = (string) ($data['return_type'] ?? '');
+        $invoiceId = (int) ($data['invoice_id'] ?? 0);
+        if ($invoiceId <= 0 || !in_array($returnType, ['sale', 'purchase'], true)) {
+            throw new \DomainException('الفاتورة الأصلية أو نوع المرتجع غير صالح.');
+        }
+
+        if ($returnType === 'sale') {
+            $sourceStmt = $this->db->prepare(
+                "SELECT id, customer_id, status, tax_rate
+                 FROM sales WHERE id = ? AND tenant_id = ? FOR UPDATE"
+            );
+            $sourceStmt->execute([$invoiceId, $tenantId]);
+            $sourceInvoice = $sourceStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$sourceInvoice) {
+                throw new \DomainException('فاتورة المبيعات الأصلية غير موجودة.');
+            }
+            \App\Security\SaleWorkflowPolicy::assertReturnAllowed((string) $sourceInvoice['status']);
+            $data['party_id'] = !empty($sourceInvoice['customer_id']) ? (int) $sourceInvoice['customer_id'] : null;
+            $sourceItemsStmt = $this->db->prepare(
+                'SELECT id, product_id, unit_id, quantity, net_total, batch_number, expiry_date, serial
+                 FROM sales_items WHERE sale_id = ? AND tenant_id = ?'
+            );
+            $sourceItemsStmt->execute([$invoiceId, $tenantId]);
+            $sourceItems = $sourceItemsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $previousStmt = $this->db->prepare(
+                "SELECT ri.product_id, ri.unit_id, COALESCE(SUM(ri.quantity), 0) AS returned_quantity
+                 FROM return_items ri
+                 INNER JOIN returns r ON r.id = ri.return_id
+                 WHERE r.tenant_id = ? AND r.return_type = 'sale' AND r.sale_id = ?
+                 GROUP BY ri.product_id, ri.unit_id"
+            );
+            $previousStmt->execute([$tenantId, $invoiceId]);
+            $previousRows = $previousStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $previousQuantities = [];
+            foreach ($previousRows as $row) {
+                $previousQuantities[\App\Security\ReturnItemPolicy::groupKey(
+                    (int) $row['product_id'],
+                    (int) $row['unit_id']
+                )] = (float) $row['returned_quantity'];
+            }
+            $normalized = \App\Security\ReturnItemPolicy::normalize(
+                'sale',
+                $data['items'],
+                $sourceItems,
+                $previousQuantities,
+                (float) ($sourceInvoice['tax_rate'] ?? 0)
+            );
+        } else {
+            $sourceStmt = $this->db->prepare(
+                "SELECT id, supplier_id, status, tax_rate
+                 FROM purchases WHERE id = ? AND tenant_id = ? FOR UPDATE"
+            );
+            $sourceStmt->execute([$invoiceId, $tenantId]);
+            $sourceInvoice = $sourceStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$sourceInvoice) {
+                throw new \DomainException('فاتورة المشتريات الأصلية غير موجودة.');
+            }
+            if (in_array(strtolower((string) $sourceInvoice['status']), ['draft', 'rejected', 'canceled', 'cancelled'], true)) {
+                throw new \DomainException('لا يمكن إنشاء مرتجع لفاتورة مشتريات غير معتمدة أو ملغاة.');
+            }
+            $data['party_id'] = !empty($sourceInvoice['supplier_id']) ? (int) $sourceInvoice['supplier_id'] : null;
+            $sourceItemsStmt = $this->db->prepare(
+                'SELECT id, product_id, unit_id, quantity,
+                        COALESCE(subtotal, total - COALESCE(discount_amount, 0) + COALESCE(tax_amount, 0)) AS subtotal,
+                        tax_amount, batch_number, expiry_date, serial
+                 FROM purchase_items WHERE purchase_id = ? AND tenant_id = ?'
+            );
+            $sourceItemsStmt->execute([$invoiceId, $tenantId]);
+            $sourceItems = $sourceItemsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $previousStmt = $this->db->prepare(
+                "SELECT ri.product_id, ri.unit_id, COALESCE(SUM(ri.quantity), 0) AS returned_quantity
+                 FROM return_items ri
+                 INNER JOIN returns r ON r.id = ri.return_id
+                 WHERE r.tenant_id = ? AND r.return_type = 'purchase' AND r.purchase_id = ?
+                 GROUP BY ri.product_id, ri.unit_id"
+            );
+            $previousStmt->execute([$tenantId, $invoiceId]);
+            $previousRows = $previousStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $previousQuantities = [];
+            foreach ($previousRows as $row) {
+                $previousQuantities[\App\Security\ReturnItemPolicy::groupKey(
+                    (int) $row['product_id'],
+                    (int) $row['unit_id']
+                )] = (float) $row['returned_quantity'];
+            }
+            $normalized = \App\Security\ReturnItemPolicy::normalize(
+                'purchase',
+                $data['items'],
+                $sourceItems,
+                $previousQuantities
+            );
+        }
+        $data['items'] = $normalized['items'];
+        $data['discount_value'] = 0;
+
+        // ── حساب الإجماليات ───────────────────────────────────────────────────
+        $grossTotal = $normalized['subtotal'];
+        $taxTotal = $normalized['tax'];
 
         $totalAfterDiscount    = $grossTotal;
         $providedDiscountValue = isset($data['discount_value']) ? (float) $data['discount_value'] : null;
@@ -861,13 +746,24 @@ class ReturnService
         $datePart  = date('ymd', $timestamp);
         $prefix    = $data['return_type'] === 'sale' ? 'SR' : 'PR';
 
+        $tenantLock = $this->db->prepare('SELECT id FROM tenants WHERE id = ? FOR UPDATE');
+        $tenantLock->execute([$tenantId]);
+        if ($tenantLock->fetchColumn() === false) {
+            throw new \RuntimeException('Tenant row is unavailable while generating a return number.');
+        }
+
         $stmt = $this->db->prepare("
-            SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(return_number, '-', -1) AS UNSIGNED)), 0) + 1 AS next_number
+            SELECT CAST(SUBSTRING_INDEX(return_number, '-', -1) AS UNSIGNED) AS sequence_number
             FROM returns
             WHERE return_type = ? AND return_number LIKE ? AND tenant_id = ?
+            FOR UPDATE
         ");
         $stmt->execute([$data['return_type'], "{$prefix}-{$datePart}-%", $tenantId]);
-        $returnNumber = sprintf('%s-%s-%03d', $prefix, $datePart, $stmt->fetchColumn());
+        $maxSequence = 0;
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $sequenceNumber) {
+            $maxSequence = max($maxSequence, (int) $sequenceNumber);
+        }
+        $returnNumber = sprintf('%s-%s-%03d', $prefix, $datePart, $maxSequence + 1);
 
         // ── بيانات الفاتورة الأصلية ───────────────────────────────────────────
         $saleId      = null;
@@ -882,6 +778,7 @@ class ReturnService
         if ($data['return_type'] === 'sale') {
             $stmt = $this->db->prepare("
                 SELECT id, invoice_number, branch_id,
+                       customer_id,
                        total_amount AS original_total_amount,
                        discount_type AS original_discount_type,
                        discount_value AS original_discount_value,
@@ -895,24 +792,50 @@ class ReturnService
                 $saleId        = $sale['id'];
                 $invoiceNumber = $sale['invoice_number'];
                 $branchId      = $sale['branch_id'];
-
-                // تطبيق خصم الفاتورة الأصلية إذا لم يُمرَّر خصم صريح
-                if (($providedDiscountValue === null || $providedDiscountValue == 0) && !empty($sale['original_total_amount'])) {
-                    $origTotal     = (float) $sale['original_total_amount'];
-                    $origDiscType  = $sale['original_discount_type'] ?? 'fixed';
-                    $origDiscValue = (float) ($sale['original_discount_value'] ?? 0);
-                    $origDiscAmount = ($origDiscType === 'percentage')
-                        ? ($origTotal * ($origDiscValue / 100))
-                        : $origDiscValue;
-                    $saleNetTotal = (float) ($sale['net_total_amount'] ?? $origTotal);
-                    if ($origTotal > 0 && $origDiscAmount > 0 && abs($grossTotal - $saleNetTotal) > 0.01 && $grossTotal > $saleNetTotal) {
-                        $proRatedDisc       = ($grossTotal / $origTotal) * $origDiscAmount;
-                        $totalAfterDiscount = max(0, $grossTotal - $proRatedDisc);
-                    }
+                if (
+                    !empty($sale['customer_id'])
+                    && !empty($data['party_id'])
+                    && (int) $data['party_id'] !== (int) $sale['customer_id']
+                ) {
+                    throw new \DomainException('العميل المحدد لا يطابق العميل المسجل على الفاتورة.');
                 }
+                $data['party_id'] = $sale['customer_id'] ?: null;
 
-                $saleGrandTotal  = (float) $sale['net_total_amount'] + (float) ($sale['tax_amount'] ?? 0);
-                $saleOutstanding = max(0, $saleGrandTotal - (float) $sale['paid_amount']);
+                $saleGrandTotal = (float) $sale['net_total_amount'] + (float) ($sale['tax_amount'] ?? 0);
+                $salePaidAmount = $this->getSaleActualPaidAmount((int) $sale['id'], $tenantId);
+                $saleCreditsStmt = $this->db->prepare(
+                    'SELECT COALESCE(SUM(allocated_amount), 0)
+                     FROM return_credit_allocations WHERE sale_id = ? AND tenant_id = ?'
+                );
+                $saleCreditsStmt->execute([(int) $sale['id'], $tenantId]);
+                $saleReturnCredits = (float) $saleCreditsStmt->fetchColumn();
+                $saleOutstanding = max(0, $saleGrandTotal - $salePaidAmount - $saleReturnCredits);
+
+                if ($refundMode === 'refund_excess') {
+                    if (empty($data['party_id'])) {
+                        throw new \DomainException('لا يمكن صرف فائض المرتجع دون تحديد العميل.');
+                    }
+
+                    $paymentMethodStmt = $this->db->prepare(
+                        'SELECT kind FROM payment_methods WHERE id = ? AND tenant_id = ? LIMIT 1'
+                    );
+                    $paymentMethodStmt->execute([(int) $data['payment_method_id'], $tenantId]);
+                    $paymentMethodKind = strtolower((string) ($paymentMethodStmt->fetchColumn() ?: ''));
+                    if ($paymentMethodKind === '' || $paymentMethodKind === 'credit') {
+                        throw new \DomainException('اختر طريقة دفع غير آجلة لصرف فائض المرتجع.');
+                    }
+
+                    $customerBalance = $this->getCustomerAccountBalance((int) $data['party_id'], $tenantId);
+                    $customerSalesOutstanding = $this->getCustomerTotalOutstanding((int) $data['party_id'], $tenantId);
+                    $data['paid_amount'] = min(
+                        $grandTotal,
+                        max(0, $grandTotal - max(0, $customerBalance))
+                    );
+                    $deductFromCustomerBalance = min(
+                        $customerSalesOutstanding,
+                        max(0, $grandTotal - $data['paid_amount'])
+                    );
+                }
 
                 if ($saleOutstanding > 0) {
                     if ($refundMode === 'auto' || $refundMode === 'deduct_and_return') {
@@ -922,9 +845,12 @@ class ReturnService
                         $deductFromCustomerBalance  = $amountToDeductFromDebt;
                     } elseif ($refundMode === 'cash') {
                         throw new \Exception('لا يمكن رد نقدي لفاتورة آجلة أو غير مسددة بالكامل. سيتم خصم قيمة المرتجع من ذمة العميل.');
-                    } else {
+                    } elseif ($refundMode !== 'refund_excess') {
+                        $customerSalesOutstanding = !empty($data['party_id'])
+                            ? $this->getCustomerTotalOutstanding((int) $data['party_id'], $tenantId)
+                            : 0.0;
                         $data['paid_amount']       = 0;
-                        $deductFromCustomerBalance = min($saleOutstanding, $grandTotal);
+                        $deductFromCustomerBalance = min($customerSalesOutstanding, $grandTotal);
                     }
                 } else {
                     // الفاتورة الأصلية مسددة بالكامل - لا نعيّن paid_amount هنا، سيتم حسابه بناءً على customerTotalOutstanding
@@ -942,7 +868,7 @@ class ReturnService
                 $grandTotal = $totalAfterDiscount + $taxTotal;
 
                 // ── حساب paid_amount بناءً على الديون والـ refund_mode ────────────────────
-                if ($saleOutstanding === 0) {
+                if ($saleOutstanding === 0 && $refundMode !== 'refund_excess') {
                     // الفاتورة الأصلية مسددة بالكامل = العميل دفع نقداً = يجب رد المبلغ نقداً
                     // في mode=auto، يكون ذكياً: خصم من ديون فواتير أخرى أولاً، ثم رد الباقي نقداً
                     // لا فرق بين auto و deduct_and_return في المنطق - الفرق فقط في اسم الـ mode
@@ -975,9 +901,8 @@ class ReturnService
         } else {
             // مرتجع مشتريات
             $stmt = $this->db->prepare("
-                SELECT id, invoice_number, branch_id,
-                       (total_amount - discount_value + tax_amount) AS net_total_amount,
-                       paid_amount, tax_rate
+                SELECT id, invoice_number, supplier_id, branch_id,
+                       total_amount, tax_rate
                 FROM purchases WHERE id = ? AND tenant_id = ?
             ");
             $stmt->execute([$data['invoice_id'], $tenantId]);
@@ -987,14 +912,31 @@ class ReturnService
                 $purchaseId          = $purchase['id'];
                 $invoiceNumber       = $purchase['invoice_number'];
                 $branchId            = $purchase['branch_id'];
-                $purchaseOutstanding = max(0, (float) $purchase['net_total_amount'] - (float) $purchase['paid_amount']);
 
-                if ($purchaseOutstanding > 0) {
-                    if (($data['refund_mode'] ?? null) === 'cash') {
-                        throw new \Exception('لا يمكن استلام نقدي لمرتجع على فاتورة مشتريات آجلة أو غير مسددة بالكامل. سيتم خصم قيمة المرتجع من ذمة المورد.');
-                    }
-                    $data['paid_amount'] = 0;
-                }
+                $stmtPaid = $this->db->prepare("
+                    SELECT COALESCE(SUM(
+                        CASE WHEN type = 'payment_for_return' THEN -amount ELSE amount END
+                    ), 0)
+                    FROM payments
+                    WHERE purchase_id = ? AND tenant_id = ?
+                      AND status = 'completed' AND is_draft = 0
+                ");
+                $stmtPaid->execute([$purchaseId, $tenantId]);
+                $netPaid = (float) $stmtPaid->fetchColumn();
+
+                $stmtReturns = $this->db->prepare("
+                    SELECT COALESCE(SUM(grand_total), 0)
+                    FROM returns
+                    WHERE purchase_id = ? AND tenant_id = ? AND return_type = 'purchase'
+                ");
+                $stmtReturns->execute([$purchaseId, $tenantId]);
+                $previousReturns = (float) $stmtReturns->fetchColumn();
+
+                $purchaseOutstanding = PurchaseReturnSettlementPolicy::outstandingAmount(
+                    (float) $purchase['total_amount'],
+                    $netPaid,
+                    $previousReturns
+                );
 
                 if ($taxTotal <= 0) {
                     $effectiveTaxRate = isset($data['tax_rate']) ? (float) $data['tax_rate']
@@ -1005,112 +947,68 @@ class ReturnService
                 }
                 $grandTotal = $totalAfterDiscount + $taxTotal;
 
-                // معالجة paid_amount بناءً على حالة الفاتورة والـ refund_mode
-                if ($purchaseOutstanding === 0) {
-                    // الفاتورة مسددة - فحص الديون الأخرى للمورد
-                    $refundModePurchase = $data['refund_mode'] ?? 'auto';
-
-                    if ($refundModePurchase === 'auto') {
-                        // auto mode: خصم من ديون المورد إذا وجدت، وإلا فرد نقدي
-                        // للتبسيط، نعامل كـ cash (رد نقدي)
-                        $data['paid_amount'] = $grandTotal;
-                    } elseif ($refundModePurchase === 'cash') {
-                        // cash mode: رد نقدي بالكامل
-                        $data['paid_amount'] = $grandTotal;
-                    } elseif ($refundModePurchase === 'credit_note') {
-                        // credit_note: لا رد نقدي
-                        $data['paid_amount'] = 0;
-                    } else {
-                        // deduct_and_return أو آخر: رد نقدي
-                        $data['paid_amount'] = $grandTotal;
-                    }
-                } else {
-                    // الفاتورة بها ديون - تم تعيين paid_amount = 0 أعلاه
-                    // لا نعدّل هنا
+                $refundModePurchase = (string) ($data['refund_mode'] ?? 'auto');
+                $supplierIdForReturn = (int) ($data['party_id'] ?? $purchase['supplier_id'] ?? 0);
+                $supplierPayable = 0.0;
+                if ($purchaseOutstanding <= 0 && in_array($refundModePurchase, ['auto', 'deduct_and_return'], true)) {
+                    $supplierPayable = $this->getSupplierPayableBalance($supplierIdForReturn, $tenantId);
                 }
-                if ($data['paid_amount'] > $grandTotal) {
-                    $data['paid_amount'] = $grandTotal;
-                }
-            }
-        }
 
-        // ── التحقق من الكميات ─────────────────────────────────────────────────
-        // ── AUDIT FIX #6 (HIGH) ──────────────────────────────────────────────
-        // Previously, the SUM(quantity) checks below (original qty vs. already
-        // returned qty) ran with no row lock. Two concurrent return requests for
-        // the SAME sale/purchase could both read the same "remaining quantity"
-        // before either INSERTs its return_items row, and both pass validation —
-        // over-returning more than was actually sold/purchased, with two
-        // separate (individually balanced) journal entries compounding the
-        // error. `createReturn()` already runs inside a transaction opened by
-        // the caller (ReturnsHandler), so acquiring a `FOR UPDATE` lock on the
-        // original invoice row here serializes concurrent return requests for
-        // the same invoice: the second request blocks until the first commits,
-        // and — since InnoDB locking reads fetch the latest committed data, not
-        // the transaction's original snapshot — its subsequent SUM() queries
-        // below correctly see the first request's already-inserted return_items
-        // row. This mirrors the FOR UPDATE pattern already used elsewhere in
-        // this same file (e.g. the payment-allocation lock above).
-        if ($saleId) {
-            $this->db->prepare("SELECT id FROM sales WHERE id = ? AND tenant_id = ? FOR UPDATE")
-                ->execute([$saleId, $tenantId]);
-        } elseif ($purchaseId) {
-            $this->db->prepare("SELECT id FROM purchases WHERE id = ? AND tenant_id = ? FOR UPDATE")
-                ->execute([$purchaseId, $tenantId]);
-        }
-
-        if ($saleId || $purchaseId) {
-            foreach ($data['items'] as $index => $item) {
-                $productId    = (int) $item['product_id'];
-                $requestedQty = (float) $item['quantity'];
-
-                $stmtProd = $this->db->prepare("SELECT name FROM products WHERE id = ? AND tenant_id = ?");
-                $stmtProd->execute([$productId, $tenantId]);
-                $productName = $stmtProd->fetchColumn() ?: '#' . $productId;
-
-                if ($data['return_type'] === 'sale' && $saleId) {
-                    $stmtOrig = $this->db->prepare("SELECT COALESCE(SUM(quantity), 0) FROM sales_items WHERE sale_id = ? AND product_id = ? AND tenant_id = ?");
-                    $stmtOrig->execute([$saleId, $productId, $tenantId]);
-                    $originalQty = (float) $stmtOrig->fetchColumn();
-                    if ($originalQty <= 0) {
-                        throw new \Exception("الصنف {$productName} غير موجود في الفاتورة الأصلية، لا يمكن إرجاعه");
-                    }
-
-                    $stmtPrev = $this->db->prepare("SELECT COALESCE(SUM(ri.quantity), 0) FROM return_items ri JOIN returns r ON r.id = ri.return_id WHERE r.tenant_id = ? AND r.return_type = 'sale' AND r.sale_id = ? AND ri.product_id = ?");
-                    $stmtPrev->execute([$tenantId, $saleId, $productId]);
-                    $remainingQty = max(0.0, $originalQty - (float) $stmtPrev->fetchColumn());
-
-                    if (bccomp((string) $remainingQty, '0', 2) <= 0) {
-                        throw new \Exception("تم إرجاع كامل الكمية للصنف {$productName} سابقاً، لا يمكن إرجاع كمية إضافية");
-                    }
-                    if ($requestedQty > $remainingQty) {
-                        throw new \Exception("لا يمكن إرجاع كمية أكبر من الكمية المباعة للصنف {$productName}. الكمية المسموح بها حالياً: {$remainingQty}");
-                    }
-                } elseif ($data['return_type'] === 'purchase' && $purchaseId) {
-                    $stmtOrig = $this->db->prepare("SELECT COALESCE(SUM(quantity), 0) FROM purchase_items WHERE purchase_id = ? AND product_id = ? AND tenant_id = ?");
-                    $stmtOrig->execute([$purchaseId, $productId, $tenantId]);
-                    $originalQty = (float) $stmtOrig->fetchColumn();
-                    if ($originalQty <= 0) {
-                        throw new \Exception("الصنف {$productName} غير موجود في فاتورة المشتريات الأصلية، لا يمكن إرجاعه");
-                    }
-
-                    $stmtPrev = $this->db->prepare("SELECT COALESCE(SUM(ri.quantity), 0) FROM return_items ri JOIN returns r ON r.id = ri.return_id WHERE r.tenant_id = ? AND r.return_type = 'purchase' AND r.purchase_id = ? AND ri.product_id = ?");
-                    $stmtPrev->execute([$tenantId, $purchaseId, $productId]);
-                    $remainingQty = max(0.0, $originalQty - (float) $stmtPrev->fetchColumn());
-
-                    if (bccomp((string) $remainingQty, '0', 2) <= 0) {
-                        throw new \Exception("تم إرجاع كامل الكمية للصنف {$productName} سابقاً، لا يمكن إرجاع كمية إضافية");
-                    }
-                    if ($requestedQty > $remainingQty) {
-                        throw new \Exception("لا يمكن إرجاع كمية أكبر من الكمية المشتراة للصنف {$productName}. الكمية المسموح بها حالياً: {$remainingQty}");
-                    }
-                }
+                $data['paid_amount'] = PurchaseReturnSettlementPolicy::cashRefundAmount(
+                    $refundModePurchase,
+                    $grandTotal,
+                    $purchaseOutstanding,
+                    $supplierPayable
+                );
             }
         }
 
         // ── INSERT returns ────────────────────────────────────────────────────
         $methodIsCash = $this->isCashMethodInternal((int) $data['payment_method_id'], $tenantId);
         $isCash       = $methodIsCash && $data['paid_amount'] > 0;
+
+        // ── LIQUIDITY VALIDATION (Phase 5 — Sale Return Cash Refund) ──────────
+        // A sale return with paid_amount > 0 using a cash or bank method is an OUTFLOW:
+        //   Dr. Sales Returns  /  Cr. Cash|Bank  (money leaves the register)
+        // This path is NOT hit for credit-note-only returns (paid_amount = 0)
+        // or purchase returns that receive cash FROM the supplier (those are inflows).
+        if (
+            $data['return_type'] === 'sale' &&
+            (float) $data['paid_amount'] > 0
+        ) {
+            try {
+                $liquidityPolicy = new \App\Services\LiquidityPolicyService($this->db, $this->logger);
+                $validation = $liquidityPolicy->validateLiquidityBalance(
+                    tenantId: $tenantId,
+                    paymentMethodId: (int) $data['payment_method_id'],
+                    debitAmount: (float) $data['paid_amount'],
+                    cashierSessionId: $sessionId,
+                    branchId: $branchId !== null ? (int) $branchId : null
+                );
+
+                if (!$validation['allowed']) {
+                    throw new \App\Exceptions\InsufficientLiquidityException(
+                        $validation['reason'],
+                        402,
+                        $validation
+                    );
+                }
+            } catch (\App\Exceptions\InsufficientLiquidityException $e) {
+                throw $e; // re-throw — caller's transaction will rollback
+            } catch (\Throwable $e) {
+                $this->logger->error('Liquidity validation failed for sale return refund', [
+                    'return_type'       => $data['return_type'],
+                    'payment_method_id' => $data['payment_method_id'],
+                    'paid_amount'       => $data['paid_amount'],
+                    'error'             => $e->getMessage(),
+                ]);
+                throw new \RuntimeException(
+                    'تعذر التحقق من رصيد حساب الدفع؛ لم يتم اعتماد رد النقدية.',
+                    0,
+                    $e
+                );
+            }
+        }
 
         $costCenterId = $data['cost_center_id'] ?? null;
 
@@ -1250,15 +1148,6 @@ class ReturnService
         $this->db->prepare("UPDATE returns SET journal_entry_id = ? WHERE id = ? AND tenant_id = ?")
             ->execute([$journalEntryId, $returnId, $tenantId]);
 
-        // ── AUDIT FINDING FIX (new, discovered while tracing supplier statements) ──
-        // مرتجعات المشتريات لم تكن تُحدِّث purchases.paid_amount/status إطلاقًا —
-        // القيد المحاسبي (GL) كان يُخفِّض ذمة المورد بشكل صحيح، بينما فاتورة
-        // الشراء الفرعية تبقى وكأن المرتجع لم يحدث للأبد. راجع التعليق الكامل
-        // في PurchaseService::recalculateBalance()/determinePurchaseStatus().
-        if ($data['return_type'] === 'purchase' && $purchaseId) {
-            (new PurchaseService($this->db, $tenantId, $userId))->recalculateBalance((int) $purchaseId);
-        }
-
         // ── INSERT payments ───────────────────────────────────────────────────
         $paymentType  = $data['return_type'] === 'sale' ? 'return_payment' : 'payment_for_return';
         $paymentNotes = $data['notes'] ?? ('مرتجع ' . ($data['return_type'] === 'sale' ? 'مبيعات' : 'مشتريات') . ' #' . $returnNumber);
@@ -1289,6 +1178,10 @@ class ReturnService
         ]);
 
         $paymentId = (int) $this->db->lastInsertId();
+
+        if ($data['return_type'] === 'purchase' && $purchaseId) {
+            (new PurchaseService($this->db, $tenantId, $userId))->recalculateBalance((int) $purchaseId);
+        }
 
         // ── cash_transactions ─────────────────────────────────────────────────
         if ($isCash && $data['paid_amount'] > 0) {
@@ -1338,19 +1231,7 @@ class ReturnService
             );
         }
 
-        // ── Update original sale status if full return ────────────────────────
-        // ✅ REMOVED: Duplicate status update block (2026-06-15)
-        // allocateCustomerBalance() now handles all status updates with proper logic:
-        // - Compares grand_total against (paid_amount + return_credits)
-        // - Sets settlement_type='closed_by_return' OR 'paid' based on payment type
-        // - Ensures no conflicting status values from multiple sources
-        //
-        // Removing this block prevents:
-        // (1) Simple comparison (returnGrandTotal >= originalGrandTotal) ignoring prior payments
-        // (2) Duplicate status updates that conflict with allocateCustomerBalance()
-        // (3) Incorrect 'closed_by_return' when invoice had prior cash payments
-        //
-        // The status is now updated ONLY by allocateCustomerBalance() after all allocations are processed.
+        // allocateCustomerBalance() recalculates every invoice affected by the credit allocation.
 
         return [
             'return_id'     => $returnId,
@@ -1376,12 +1257,52 @@ class ReturnService
     private function getCustomerTotalOutstanding(int $customerId, int $tenantId): float
     {
         $stmt = $this->db->prepare("
-            SELECT COALESCE(SUM((net_total_amount + IFNULL(tax_amount,0)) - IFNULL(paid_amount,0)), 0)
-            FROM sales
-            WHERE customer_id = ? AND tenant_id = ? AND status NOT IN ('closed_by_return', 'cancelled')
-              AND ((net_total_amount + IFNULL(tax_amount,0)) - IFNULL(paid_amount,0)) > 0
+            SELECT COALESCE(SUM(GREATEST(
+                0,
+                (s.net_total_amount + IFNULL(s.tax_amount, 0))
+                - COALESCE((
+                    SELECT SUM(CASE WHEN p.type = 'return_payment' THEN -p.amount ELSE p.amount END)
+                    FROM payments p
+                    WHERE p.sale_id = s.id AND p.tenant_id = s.tenant_id
+                      AND p.is_draft = 0 AND p.status = 'completed'
+                ), 0)
+                - COALESCE((
+                    SELECT SUM(cpa.allocated_amount)
+                    FROM customer_payment_allocations cpa
+                    INNER JOIN payments ap ON ap.id = cpa.payment_id AND ap.tenant_id = cpa.tenant_id
+                    WHERE cpa.sale_id = s.id AND cpa.tenant_id = s.tenant_id
+                      AND ap.is_draft = 0 AND ap.status = 'completed'
+                ), 0)
+                - COALESCE((
+                    SELECT SUM(rca.allocated_amount)
+                    FROM return_credit_allocations rca
+                    WHERE rca.sale_id = s.id AND rca.tenant_id = s.tenant_id
+                ), 0)
+            )), 0)
+            FROM sales s
+            WHERE s.customer_id = ? AND s.tenant_id = ?
+              AND LOWER(COALESCE(s.status, '')) NOT IN ('cancelled', 'canceled')
         ");
         $stmt->execute([$customerId, $tenantId]);
-        return (float) $stmt->fetchColumn();
+        return max(0.0, (float) $stmt->fetchColumn());
+    }
+
+    private function getCustomerAccountBalance(int $customerId, int $tenantId): float
+    {
+        $stmt = $this->db->prepare("
+            SELECT c.account_id, COALESCE(SUM(jel.debit_amount - jel.credit_amount), 0) AS balance
+            FROM customers c
+            LEFT JOIN journal_entry_lines jel
+                ON jel.account_id = c.account_id
+               AND jel.tenant_id = c.tenant_id
+            WHERE c.id = ? AND c.tenant_id = ?
+            GROUP BY c.id, c.account_id
+        ");
+        $stmt->execute([$customerId, $tenantId]);
+        $customerAccount = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$customerAccount || empty($customerAccount['account_id'])) {
+            throw new \DomainException('لا يوجد حساب مالي مرتبط بالعميل لحساب صافي التسوية.');
+        }
+        return (float) $customerAccount['balance'];
     }
 }

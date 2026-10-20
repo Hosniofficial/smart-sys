@@ -4,19 +4,13 @@ import apiClient from '@/config/axios';
 // axios baseURL is '/api' and Vite proxy rewrites '/api' -> '/api/v1'.
 // Therefore, DO NOT prefix paths with '/v1' here.
 export const WarrantyService = {
-  async list({ status, priority, customer_id, assigned_to, page = 1, limit = 20 } = {}) {
-    const params = {};
-    if (status) params.status = status;
-    if (priority) params.priority = priority;
-    if (customer_id) params.customer_id = customer_id;
-    if (assigned_to) params.assigned_to = assigned_to;
-    params.page = page;
-    params.limit = limit;
+  async list(params = {}) {
     const res = await apiClient.get('/warranty/requests', { params });
-    return res.data?.data || { items: [], total: 0, page, limit, total_pages: 0 };
+    return res.data?.data || { items: [], total: 0 };
   },
 
   async create(payload) {
+    // invoice_id, when supplied, is the selected internal sales.id for this customer and tenant.
     // payload: { customer_id, invoice_id, product_serial, issue_description, purchase_date, priority, items: [{product_id, quantity, issue_notes}] }
     const res = await apiClient.post('/warranty/requests', payload);
     return res.data?.data || null;
@@ -28,19 +22,19 @@ export const WarrantyService = {
   },
 
   async update(id, updates) {
-    const res = await api.patch(`/warranty/requests/${id}`, updates);
+    const res = await apiClient.patch(`/warranty/requests/${id}`, updates);
     return res.data?.data || null;
   },
 
   async changeStatus(id, status, note = null) {
     const body = { status };
-    if (note) body.note = note;
+    if (note) body.reason = note;
     const res = await apiClient.post(`/warranty/requests/${id}/status`, body);
     return res.data?.data || null;
   },
 
   async addNote(id, { content, is_internal = false }) {
-    const res = await apiClient.post(`/warranty/requests/${id}/notes`, { content, is_internal });
+    const res = await apiClient.post(`/warranty/requests/${id}/notes`, { note: content, is_internal });
     return res.data?.data || null;
   },
 
@@ -54,7 +48,7 @@ export const WarrantyService = {
   },
 
   async deleteAttachment(attachmentId) {
-    const res = await api.delete(`/warranty/attachments/${attachmentId}`);
+    const res = await apiClient.delete(`/warranty/attachments/${attachmentId}`);
     return res.data?.data || { success: true };
   }
 };

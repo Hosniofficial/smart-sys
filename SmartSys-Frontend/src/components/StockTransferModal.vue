@@ -80,7 +80,7 @@
         <!-- Transfer Notice -->
         <div class="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-start gap-3">
           <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
-          <p class="text-[11px] text-blue-700 font-bold leading-relaxed">عند تأكيد النقل، سيتم خصم الكمية من الفرع الحالي وإضافتها فوراً للمستودع المختار في السجل المحاسبي.</p>
+          <p class="text-[11px] text-blue-700 font-bold leading-relaxed">عند تأكيد النقل، سيتم خصم الكمية من الفرع الحالي وإضافتها إلى المستودع المحدد، مع تسجيل حركة النقل في النظام.</p>
         </div>
 
       </form>
@@ -110,7 +110,7 @@ import { ref, onMounted, computed } from 'vue';
 import apiClient from '../config/axios';
 import { useToast } from '@/composables/useToast';
 import LoadingButton from '@/components/ui/LoadingButton.vue'
-import { useBranchStore } from '@/stores/branch';
+import { useBranchStore } from '@/stores/branch/branchStore';
 
 // --- Props & Emits (STRICTLY PRESERVED) ---
 const props = defineProps({

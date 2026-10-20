@@ -1,9 +1,10 @@
 // src/config/axios.js
 import axios from 'axios';
-import { useAuthStore, getRouter } from '@/stores/auth';
-import { useUiStore } from '@/stores/ui';
-import logger from '@/utils/logger';
-import deviceFingerprint from '@/utils/deviceFingerprint';
+import { useAuthStore, getRouter } from '@/stores/auth/authStore';
+import { useTenantContextStore } from '@/stores/tenantContext/tenantContextStore';
+import { useUiStore } from '@/stores/ui/uiStore';
+import { logger } from '@/utils/services';
+import { deviceFingerprint } from '@/utils/helpers';
 
 // Safe JSON parse for localStorage values
 const safeParseUser = (raw) => {
@@ -85,7 +86,12 @@ apiClient.interceptors.request.use(
     let tenantId = null;
     try {
       const authStore = useAuthStore();
-      if (authStore.user?.tenant_id) tenantId = authStore.user.tenant_id;
+      const tenantContextStore = useTenantContextStore();
+      if (authStore.isSuperAdmin && tenantContextStore.activeTenantId) {
+        tenantId = tenantContextStore.activeTenantId;
+      } else if (authStore.user?.tenant_id) {
+        tenantId = authStore.user.tenant_id;
+      }
     } catch (_) { /* ignore */ }
 
     if (!tenantId) {
@@ -250,6 +256,10 @@ apiClient.interceptors.response.use(
       if (!originalRequest?.meta || !originalRequest.meta.skipLoader) ui.hideLoader();
     } catch (_) { /* ignore */ }
 
+    if (axios.isCancel(error) || error.code === 'ERR_CANCELED') {
+      return Promise.reject(error);
+    }
+
     if (error.response) {
       const { status, data } = error.response;
 
@@ -299,27 +309,46 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      // 402 Subscription Required -> Set flag, let router guard handle redirect
-      if (status === 402) {
-        const msg = data?.message || 'يرجى الترقية لمتابعة استخدام النظام';
-        
-        // Update auth store to mark subscription as expired
+      if (status === 403 && data?.error_code === 'session_revoked') {
         try {
           const authStore = useAuthStore();
-          authStore.setSubscriptionExpired(msg);
+          authStore.clearAuthData();
         } catch (_) { /* ignore */ }
-        
-        // Show toast notification (silent on /upgrade page)
-        try {
-          const router = getRouter();
-          const currentPath = router?.currentRoute?.value?.path || window.location.pathname;
-          if (!currentPath.includes('/upgrade')) {
-            if (typeof window.showToast === 'function') window.showToast(msg, 'warning');
-          }
-        } catch (_) { /* ignore */ }
-        
-        // Return error — don't redirect here (router guard will handle it)
-        error.message = msg;
+        window.location.replace('/');
+        return Promise.reject(error);
+      }
+
+      // 402 — two distinct meanings:
+      //   a) Subscription expired  → no `error_code` field, treat as subscription gate
+      //   b) Insufficient liquidity (cash/bank balance) → `error_code: 'insufficient_liquidity'`
+      //      The caller (purchaseStore, salesStore, etc.) surfaces the specific message itself.
+      //      We must NOT hijack these as subscription errors.
+      if (status === 402) {
+        const isLiquidityError = data?.error_code === 'insufficient_liquidity' ||
+          originalRequest?.meta?.suppress402 === true;
+
+        if (!isLiquidityError) {
+          const msg = data?.message || 'يرجى الترقية لمتابعة استخدام النظام';
+
+          // Update auth store to mark subscription as expired
+          try {
+            const authStore = useAuthStore();
+            authStore.setSubscriptionExpired(msg);
+          } catch (_) { /* ignore */ }
+
+          // Show toast notification (silent on /upgrade page)
+          try {
+            const router = getRouter();
+            const currentPath = router?.currentRoute?.value?.path || window.location.pathname;
+            if (!currentPath.includes('/upgrade')) {
+              if (typeof window.showToast === 'function') window.showToast(msg, 'warning');
+            }
+          } catch (_) { /* ignore */ }
+
+          error.message = msg;
+        }
+
+        // Always reject — caller decides how to present the error
         return Promise.reject(error);
       }
 

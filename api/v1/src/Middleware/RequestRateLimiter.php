@@ -12,6 +12,12 @@ use PDO;
 use App\Utils\RequestHelper;
 use Slim\Psr7\Response as SlimResponse;
 
+/**
+ * Enforces per-client request windows configured for matching request paths.
+ *
+ * Counters are stored in the rate_limits table and keyed by client IP and path.
+ * Client IP resolution and optional proxy trust are delegated to RequestHelper.
+ */
 class RequestRateLimiter implements MiddlewareInterface
 {
     private PDO $db;
@@ -43,6 +49,7 @@ class RequestRateLimiter implements MiddlewareInterface
         }
     }
 
+    /** Apply a matching rate rule before dispatching the request. */
     public function process(Request $request, RequestHandler $handler): Response
     {
         $path = $request->getUri()->getPath();

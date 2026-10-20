@@ -5,66 +5,50 @@ declare(strict_types=1);
 namespace App\Resources;
 
 /**
- * ProductDetailResource - Complete product information for detail pages
- * Includes all fields: pricing, units, configuration, timestamps, etc.
+ * Shapes product and branch-inventory data for detailed API responses.
  */
 class ProductDetailResource
 {
     /**
-     * Transform database product record to detailed API response
-     *
-     * @param array $product Database product record
-     * @param array $branchProduct Branch-specific inventory data
-     * @param array $units Product units array from product_units table
-     * @param string|null $glActivationStatus GL mapping activation status (ACTIVE_IN_BRANCH, GL_POSTED, etc)
-     * @return array Formatted response for detail view
+     * Return product details, optionally including cost metrics.
+     * Branch-scoped GL status uses the branch mapping rather than the product flag.
      */
     public static function transform(
         array $product,
         array $branchProduct,
         array $units = [],
         ?string $glActivationStatus = null,
-        bool $includeCostData = false
+        bool $includeCostData = false,
+        bool $branchScoped = false
     ): array {
         $mainUnit = self::getMainUnit($units);
         $currentQty = (int) ($branchProduct['quantity'] ?? 0);
-        // Handle both branch_products.minimum_quantity and products.min_quantity
-        // branch_products override has priority
         $minQty = $branchProduct['minimum_quantity'] ?? $product['min_quantity'] ?? null;
-        $minQty = $minQty !== null ? (float) $minQty : 0;  // ← قيمة محددة: null → 0
+        $minQty = $minQty !== null ? (float) $minQty : 0;
 
-        // Get category name - need to fetch it separately if not in product array
         $categoryName = $product['category_name'] ?? null;
 
-        // Determine GL status based on three-state logic:
-        // 1. opening_balance_posted has highest priority → posted
-        // 2. GL mapping with GL_POSTED/RECONCILED → posted
-        // 3. GL mapping with ACTIVE_IN_BRANCH → active (intermediate state)
-        // 4. Otherwise → draft
+        // Opening-balance state is only authoritative outside branch-scoped results.
         $glStatus = 'draft';
 
-        if ((bool) ($product['opening_balance_posted'] ?? false)) {
-            // Highest priority: opening balance was posted
+        if (!$branchScoped && (bool) ($product['opening_balance_posted'] ?? false)) {
             $glStatus = 'posted';
         } elseif ($glActivationStatus === 'GL_POSTED' || $glActivationStatus === 'RECONCILED') {
-            // GL mapping exists and is posted
             $glStatus = 'posted';
         } elseif ($glActivationStatus === 'ACTIVE_IN_BRANCH') {
-            // GL mapping exists and is activated but not yet reconciled/posted
-            // This is the intermediate state after user clicks "تفعيل"
             $glStatus = 'active';
         }
 
         return [
             'id'                    => (int) $product['id'],
             'name'                  => $product['name'],
-            'product_code'          => $product['product_code'],  // ← توحيد: sku → product_code
-            'sku'                   => $product['product_code'],  // ← Alias for backward compatibility
-            'quantity'              => $currentQty,  // ← Alias for backward compatibility (points to inventory.current_quantity)
+            'product_code'          => $product['product_code'],
+            'sku'                   => $product['product_code'],
+            'quantity'              => $currentQty,
             'barcode'               => $product['barcode'],
             'description'           => $product['description'],
             'category_id'           => $product['category_id'] ? (int) $product['category_id'] : null,
-            'category_name'         => $categoryName,  // ← للوصول المباشر من frontend
+            'category_name'         => $categoryName,
 
             'category'              => [
                 'id'   => $product['category_id'] ? (int) $product['category_id'] : null,
@@ -88,10 +72,10 @@ class ProductDetailResource
 
             'inventory'             => [
                 'current_quantity'      => $currentQty,
-                'quantity'              => $currentQty,  // ← Alias for backward compatibility
+                'quantity'              => $currentQty,
                 'unit_id'               => $mainUnit['id'] ?? null,
                 'unit_name'             => $mainUnit['name'] ?? 'قطعة',
-                'min_quantity'          => $minQty,  // ← قيمة محددة دائماً (0 بدل null)
+                'min_quantity'          => $minQty,
                 'max_quantity'          => (int) ($product['maximum_quantity'] ?? 0),
                 'inventory_status'      => self::calculateInventoryStatus($currentQty, $minQty, $product['product_type'] ?? 'stock'),
                 'total_inventory_value' => $includeCostData
@@ -111,7 +95,7 @@ class ProductDetailResource
             ],
 
             'accounting'            => [
-                'gl_status'                     => $glStatus,  // ← Uses GL mapping status if available, falls back to opening_balance_posted
+                'gl_status'                     => $glStatus,
                 'opening_balance_posted'        => (bool) ($product['opening_balance_posted'] ?? false),
                 'profit_calculation_type'       => $product['profit_calculation_type'] ?? 'margin',
                 'default_category_gl_account_id' => $product['default_category_gl_account_id'] ? (int) $product['default_category_gl_account_id'] : null,
@@ -130,11 +114,7 @@ class ProductDetailResource
         ];
     }
 
-    /**
-     * Transform units array from product_units join
-     * @param array $units From product_units with JOINed units data
-     * @return array Formatted units list
-     */
+    /** Normalize product-unit rows for the detail response. */
     private static function transformUnits(array $units): array
     {
         return array_map(fn ($unit) => [
@@ -146,9 +126,7 @@ class ProductDetailResource
         ], $units);
     }
 
-    /**
-     * Get main unit from product_units array
-     */
+    /** Select the designated main unit, falling back to the first available unit. */
     private static function getMainUnit(array $units): ?array
     {
         foreach ($units as $unit) {
@@ -160,7 +138,6 @@ class ProductDetailResource
             }
         }
 
-        // Fallback to first unit
         return isset($units[0]) ? [
             'id'   => (int) ($units[0]['unit_id'] ?? 1),
             'name' => $units[0]['unit_name'] ?? $units[0]['name'] ?? 'قطعة',

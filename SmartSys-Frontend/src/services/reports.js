@@ -19,12 +19,12 @@ export const reportsService = {
   },
 
   // تحليلات المخزون (مع branch_id إجباري)
-  async getInventoryAnalytics(branchId) {
+  async getInventoryAnalytics(branchId, signal) {
     const params = {}
     if (branchId !== undefined && branchId !== null && branchId !== '') {
       params.branch_id = branchId
     }
-    return await apiClient.get('/analytics/inventory', { params })
+    return await apiClient.get('/analytics/inventory', { params, signal })
   },
 
   // سجلات النظام (مع branch_id اختياري)
@@ -70,25 +70,6 @@ export const reportsService = {
     return await apiClient.get('/branches/reports/inventory/movements', { params, timeout: REPORT_TIMEOUT })
   },
 
-  async exportInventoryMovements(startDate, endDate, productId, branchId, type) {
-    const params = {
-      start_date: startDate,
-      end_date: endDate,
-      product_id: productId
-    }
-    if (branchId !== undefined && branchId !== null && branchId !== '' && branchId !== 'all') {
-      params.branch_id = branchId
-    }
-    if (type && type !== 'all') {
-      params.type = type
-    }
-    return await apiClient.get('/branches/reports/inventory/movements/export', {
-      params,
-      responseType: 'blob',
-      timeout: REPORT_TIMEOUT
-    })
-  },
-
   // قيمة المخزون (مع branch_id اختياري)
   async getInventoryValue(branchId, params = {}) {
     const queryParams = { ...params }
@@ -101,15 +82,6 @@ export const reportsService = {
   // قيمة المخزون حسب الفرع
   async getInventoryValueByBranch(params = {}) {
     return await apiClient.get('/branches/reports/inventory-value/by-branch', { params, timeout: REPORT_TIMEOUT })
-  },
-
-  // ملخص المبيعات اليومي (مع branch_id إجباري)
-  async getSalesSummary(date, branchId) {
-    const params = { date }
-    if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
-    }
-    return await apiClient.get('/reports/sales/summary', { params })
   },
 
   // ملخص المبيعات اليومي (يتضمن COGS و Gross Profit عبر WAC)
@@ -163,7 +135,7 @@ export const reportsService = {
 
   async getBalanceSheet(asOfDate, branchId) {
     const params = {}
-    if (asOfDate) params.date = asOfDate
+    if (asOfDate) params.as_of_date = asOfDate
     if (branchId !== undefined && branchId !== null && branchId !== '') {
       params.branch_id = branchId
     }
@@ -179,7 +151,7 @@ export const reportsService = {
   },
 
   // أداء نقاط البيع (POS Performance)
-  async getPosPerformance(startDate, endDate, branchId, sessionId = null) {
+  async getPosPerformance(startDate, endDate, branchId, sessionId = null, signal = null) {
     const params = {
       start_date: startDate,
       end_date: endDate
@@ -190,12 +162,15 @@ export const reportsService = {
     if (sessionId) {
       params.session_id = sessionId
     }
-    return await apiClient.get('/analytics/pos-performance', { params })
+    return await apiClient.get('/analytics/pos-performance', { params, signal })
   },
 
-  async getArAging(asOf = null) {
+  async getArAging(asOf = null, branchId = null) {
     const params = {}
     if (asOf) params.as_of = asOf
+    if (branchId !== undefined && branchId !== null && branchId !== '') {
+      params.branch_id = branchId
+    }
     return await apiClient.get('/reports/accounting/ar-aging', { params })
   },
 
@@ -205,10 +180,13 @@ export const reportsService = {
     return await apiClient.post('/reports/accounting/ar-aging/post-provision', body)
   },
 
-  async getCashFlow(startDate, endDate) {
+  async getCashFlow(startDate, endDate, branchId) {
     const params = {}
     if (startDate) params.start_date = startDate
     if (endDate)   params.end_date   = endDate
+    if (branchId !== undefined && branchId !== null && branchId !== '') {
+      params.branch_id = branchId
+    }
     return await apiClient.get('/reports/accounting/cash-flow', { params })
   },
 

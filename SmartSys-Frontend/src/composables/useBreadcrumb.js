@@ -1,7 +1,7 @@
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { getBreadcrumbForPath, checkAccessForPath } from '@/config/menuConfig';
-import { useAuthStore } from '@/stores/auth';
+import { useAuthStore } from '@/stores/auth/authStore';
 
 /**
  * Composable for managing breadcrumb from menuConfig (Single Source of Truth)

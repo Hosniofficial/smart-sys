@@ -10,8 +10,15 @@ use Throwable;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
+use App\Services\CurrencyRateService;
 use App\Utils\SuperAdminHelper;
 
+/**
+ * Handles tenant settings, company-logo uploads, supported currencies, and exchange-rate endpoints.
+ *
+ * Delegates settings persistence to SettingsHandler, authorization checks to RBACHandler,
+ * and exchange-rate reads/refreshes to CurrencyRateService.
+ */
 class AdminSettingsHandler extends BaseHandler
 {
     private SettingsHandler $settingsHandler;
@@ -24,7 +31,10 @@ class AdminSettingsHandler extends BaseHandler
     }
 
     /**
-     * تحقق من صلاحيات الوصول للإعدادات
+     * Return user data when the requested settings permission is granted; otherwise return null.
+     *
+     * Tenant owners may read settings directly. Other requests use RBAC permissions,
+     * with a super-admin fallback.
      */
     private function checkSettingsAccess(Request $request, bool $requireManage = false): ?array
     {
@@ -45,7 +55,7 @@ class AdminSettingsHandler extends BaseHandler
             return null;
         }
 
-        // Owner (tenant creator) has full access without permission checks (especially during setup)
+        // Tenant ownership bypasses the read permission check, but not settings management.
         if ($isOwner && !$requireManage) {
             return $userData;
         }
@@ -62,7 +72,7 @@ class AdminSettingsHandler extends BaseHandler
             }
 
             if (!$hasPermission) {
-                $hasPermission = SuperAdminHelper::isAdminOrAbove(['role_id' => $roleId, 'role' => $role]);
+                $hasPermission = SuperAdminHelper::isAdminOrAbove($userData);
             }
 
             return $hasPermission ? $userData : null;
@@ -76,10 +86,7 @@ class AdminSettingsHandler extends BaseHandler
         }
     }
 
-    /**
-     * GET /settings
-     * الحصول على جميع الإعدادات
-     */
+    /** Return settings for the current tenant to users with view or manage access. */
     public function getSettings(Request $request, Response $response): Response
     {
         $userData = $this->checkSettingsAccess($request, false);
@@ -116,10 +123,7 @@ class AdminSettingsHandler extends BaseHandler
         }
     }
 
-    /**
-     * PUT /settings
-     * تحديث الإعدادات
-     */
+    /** Update the current tenant's settings for users with manage access. */
     public function updateSettings(Request $request, Response $response): Response
     {
         $userData = $this->checkSettingsAccess($request, true);
@@ -159,10 +163,7 @@ class AdminSettingsHandler extends BaseHandler
         }
     }
 
-    /**
-     * POST /settings/logo
-     * رفع شعار الشركة وتحديث الإعدادات
-     */
+    /** Apply submitted settings and optionally upload and persist a company logo. */
     public function uploadLogo(Request $request, Response $response): Response
     {
         $userData = $this->checkSettingsAccess($request, true);
@@ -266,28 +267,53 @@ class AdminSettingsHandler extends BaseHandler
         }
     }
 
-    /**
-     * Endpoint: GET /settings/currencies/supported
-     */
-    public function getSupportedCurrenciesAPI(Request $request, Response $response): Response
+    /** Return the tenant's configured exchange rates. */
+    public function getExchangeRatesAPI(Request $request, Response $response): Response
     {
-        $userData = $this->checkSettingsAccess($request, false);
-
-        if (!$userData) {
-            return $this->errorResponse($response, 'ليس لديك إذن للوصول إلى الإعدادات', 403);
+        if (!$this->checkSettingsAccess($request, false)) {
+            return $this->errorResponse($response, 'ليس لديك إذن للوصول إلى أسعار الصرف', 403);
         }
 
         try {
-            $currencies = $this->settingsHandler->getSupportedCurrencies();
-            $currenciesList = array_values($currencies);
+            $tenantId = $this->extractTenantId($request);
+            if (!$tenantId) {
+                return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
+            }
 
-            return $this->successResponse($response, $currenciesList, 200);
+            $rates = (new CurrencyRateService($this->db))->getRates((int) $tenantId);
+            return $this->successResponse($response, $rates, 200);
         } catch (Throwable $e) {
-            $this->logger->error('Failed to retrieve supported currencies', [
-                'message' => $e->getMessage()
+            $this->logger->error('Failed to retrieve currency exchange rates', [
+                'message' => $e->getMessage(),
+                'tenant_id' => $this->extractTenantId($request),
             ]);
+            return $this->errorResponse($response, 'تعذر تحديث أو جلب أسعار الصرف: ' . $e->getMessage(), 503);
+        }
+    }
 
-            return $this->errorResponse($response, 'فشل في جلب العملات المدعومة', 500);
+    /** Refresh exchange rates for the tenant; requires settings management access. */
+    public function refreshExchangeRatesAPI(Request $request, Response $response): Response
+    {
+        $userData = $this->checkSettingsAccess($request, true);
+        if (!$userData) {
+            return $this->errorResponse($response, 'ليس لديك إذن لإدارة أسعار الصرف', 403);
+        }
+
+        try {
+            $tenantId = $this->extractTenantId($request);
+            if (!$tenantId) {
+                return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
+            }
+
+            $result = (new CurrencyRateService($this->db))->refresh((int) $tenantId);
+            return $this->successResponse($response, $result, 200);
+        } catch (Throwable $e) {
+            $this->logger->error('Failed to refresh currency exchange rates', [
+                'message' => $e->getMessage(),
+                'tenant_id' => $this->extractTenantId($request),
+                'user_id' => $userData['id'] ?? null,
+            ]);
+            return $this->errorResponse($response, 'فشل تحديث أسعار الصرف: ' . $e->getMessage(), 503);
         }
     }
 }

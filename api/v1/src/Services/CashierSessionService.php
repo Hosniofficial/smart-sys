@@ -27,22 +27,9 @@ class SessionDeniedException extends \RuntimeException
 }
 
 /**
- * CashierSessionService
+ * Manages cashier-session lifecycle and summaries.
  *
- * Domain logic for cashier session lifecycle, extracted from SessionsHandler:
- *   - openSession()   — validation, locking, shift auto-create, INSERT
- *   - closeSession()  — UPDATE + audit snapshot
- *
- * Read helpers (buildSessionSummary, getSessionTransactions, getSessionTypeLabel,
- * resolveSessionType, checkAndCloseInactiveAdminSessions) are also provided here
- * so the handler stays thin.
- *
- * IMPORTANT — Source of truth for cash_in / cash_out is ALWAYS the
- * `cash_transactions` table. expected_cash and variance_amount are derived
- * ONLY from opening_cash_amount + cash_in - cash_out. Nothing here may
- * back-derive cash_out from closing_cash_amount, because that silently
- * masks the real variance and produces inconsistent numbers between
- * buildSessionSummary(), listSessions(), dailySummary(), and closeSession().
+ * Cash flows come from cash_transactions; expected cash is opening cash plus cash-in minus cash-out.
  */
 class CashierSessionService
 {
@@ -70,7 +57,13 @@ class CashierSessionService
      * @throws SessionDeniedException on business-rule violation (handler logs audit with full context)
      * @throws \Exception on unexpected DB error
      */
-    public function openSession(int $tenantId, array $data, ?int $jwtUserId, ?int $jwtRoleId): array
+    public function openSession(
+        int $tenantId,
+        array $data,
+        ?int $jwtUserId,
+        ?int $jwtRoleId,
+        bool $canManageTenantSessions = false
+    ): array
     {
         $lockAcquired         = false;
         $terminalLockAcquired = false;
@@ -91,7 +84,7 @@ class CashierSessionService
             ]);
 
             $allowOverride = (int) $this->settings->get($tenantId, 'pos.sessions.allow_manager_override', '0') === 1;
-            $isAdmin       = in_array((int) $jwtRoleId, [1, 2], true);
+            $isAdmin       = $canManageTenantSessions || (int) $jwtRoleId === 2;
             if ($isAdmin) {
                 $allowOverride = true;
             }
@@ -387,10 +380,9 @@ class CashierSessionService
     }
 
     /**
-     * Close a cashier session.
+     * Close an open session and return its final cash reconciliation.
      *
-     * @return array  merged summary + closing details
-     * @throws \Exception on validation error
+     * @throws SessionDeniedException when the amount or session state is invalid
      */
     public function closeSession(
         int    $tenantId,
@@ -399,6 +391,22 @@ class CashierSessionService
         ?int   $closedBy,
         ?string $varianceReason
     ): array {
+        // Guard against non-finite floats (NaN / INF) that PHP can produce when the
+        // caller casts a non-numeric string with (float). The Handler already rejects
+        // null and negative values, but is_finite() covers the remaining edge cases.
+        if (!is_finite($closingCash)) {
+            throw new SessionDeniedException(
+                'مبلغ النقد المدخل غير صحيح.',
+                400,
+                'pos_session_close_invalid_cash_nan',
+                ['closing_cash' => 'non-finite']
+            );
+        }
+
+        // Normalize to 2 decimal places (fils/cents) before arithmetic to prevent
+        // IEEE 754 floating-point artifacts in the variance calculation below.
+        $closingCash = round((float) $closingCash, 2);
+
         $stmt = $this->db->prepare(
             "SELECT id FROM cashier_sessions WHERE id = ? AND tenant_id = ? AND status = 'open'"
         );
@@ -414,7 +422,9 @@ class CashierSessionService
 
         $summaryBefore = $this->buildSessionSummary($tenantId, $sessionId);
         $expected      = (float) ($summaryBefore['calculated']['expected_cash'] ?? 0);
-        $variance      = $closingCash - $expected;
+        // Use round() with 4-decimal precision to prevent IEEE 754 floating-point artifacts
+        // This matches the tolerance used in LiquidityPolicyService (0.001 tolerance)
+        $variance      = round($closingCash - $expected, 4);
 
         // Normalise variance reason
         if (
@@ -454,6 +464,7 @@ class CashierSessionService
     // Shared Read Helpers (used by Handler for current, summary, listSessions)
     // =========================================================================
 
+    /** Build a session summary from its cash transactions and stored session details. */
     public function buildSessionSummary(int $tenantId, int $sessionId): array
     {
         $transactions = $this->getSessionTransactions($tenantId, $sessionId);
@@ -461,6 +472,9 @@ class CashierSessionService
         $cashIn  = 0.0;
         $cashOut = 0.0;
         foreach ($transactions as $tx) {
+            if (($tx['status'] ?? '') === 'cancelled') {
+                continue;
+            }
             if (in_array($tx['type'], ['income', 'return_receipt', 'sale', 'deposit'], true)) {
                 $cashIn += (float)$tx['amount'];
             } elseif (in_array($tx['type'], ['expense', 'return_payment', 'purchase', 'withdrawal'], true)) {
@@ -470,7 +484,7 @@ class CashierSessionService
 
         $stmt = $this->db->prepare(
             "SELECT COALESCE(SUM(s.net_total_amount + COALESCE(s.tax_amount, 0)), 0) AS total_sales
-             FROM sales s WHERE s.tenant_id = ? AND s.session_id = ? AND s.status != 'cancelled'"
+             FROM sales s WHERE s.tenant_id = ? AND s.session_id = ? AND LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')"
         );
         $stmt->execute([$tenantId, $sessionId]);
         $totalSales = (float)$stmt->fetchColumn();
@@ -502,7 +516,7 @@ class CashierSessionService
         // We intentionally do NOT back-derive cash_out from closing_cash_amount
         // when a variance_reason is present — doing so silently masked the real
         // variance (forcing variance_amount to 0) and caused this endpoint to
-        // disagree with listSessions()/dailySummary()/closeSession(), which all
+        // disagree with listSessions()/closeSession(), which both
         // compute variance directly from opening + cash_in - cash_out.
         // variance_reason is purely descriptive metadata and must never affect
         // the calculation itself.
@@ -519,10 +533,11 @@ class CashierSessionService
         ];
     }
 
+    /** Return a tenant-scoped session transaction history with creator names. */
     public function getSessionTransactions(int $tenantId, int $sessionId): array
     {
         $stmt = $this->db->prepare(
-            "SELECT id, type, amount, reference_type, reference_id, notes, created_at, created_by
+            "SELECT id, type, amount, reference_type, reference_id, notes, created_at, created_by, status
              FROM cash_transactions
              WHERE tenant_id = ? AND session_id = ? ORDER BY created_at ASC"
         );
@@ -545,6 +560,7 @@ class CashierSessionService
         return $transactions;
     }
 
+    /** Return the localized label for a stored session type. */
     public function getSessionTypeLabel(?string $type): string
     {
         return match (strtolower((string)$type)) {
@@ -622,7 +638,7 @@ class CashierSessionService
 
         // ─── Query 2: Fetch all cash transactions ────────────────────────────
         $transactionsStmt = $this->db->prepare("
-            SELECT id, session_id, type, amount, reference_type, reference_id, notes, created_at, created_by
+            SELECT id, session_id, type, amount, reference_type, reference_id, notes, created_at, created_by, status
             FROM cash_transactions
             WHERE tenant_id = ? AND session_id IN ($placeholders)
             ORDER BY session_id, created_at ASC
@@ -670,7 +686,7 @@ class CashierSessionService
         $salesStmt = $this->db->prepare("
             SELECT s.session_id, COALESCE(SUM(s.net_total_amount + COALESCE(s.tax_amount, 0)), 0) AS total_sales
             FROM sales s
-            WHERE s.tenant_id = ? AND s.session_id IN ($placeholders) AND s.status != 'cancelled'
+            WHERE s.tenant_id = ? AND s.session_id IN ($placeholders) AND LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')
             GROUP BY s.session_id
         ");
         $salesParams = array_merge([$tenantId], $sessionIds);
@@ -692,6 +708,9 @@ class CashierSessionService
             $cashIn = 0.0;
             $cashOut = 0.0;
             foreach ($transactions as $tx) {
+                if (($tx['status'] ?? '') === 'cancelled') {
+                    continue;
+                }
                 if (in_array($tx['type'], ['income', 'return_receipt', 'sale', 'deposit'], true)) {
                     $cashIn += (float)$tx['amount'];
                 } elseif (in_array($tx['type'], ['expense', 'return_payment', 'purchase', 'withdrawal'], true)) {
@@ -725,6 +744,7 @@ class CashierSessionService
         return $summaries;
     }
 
+    /** Close admin sessions whose last update is older than the configured timeout. */
     public function checkAndCloseInactiveAdminSessions(int $tenantId): void
     {
         try {

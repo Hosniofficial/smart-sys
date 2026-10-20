@@ -6,6 +6,12 @@ use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 use App\Listeners\SecurityEventListener;
 
+/**
+ * Resolves registered listeners and dispatches security-event payloads.
+ *
+ * The container supplies listener instances; failures are recorded through an
+ * optional PSR logger and do not propagate to the event producer.
+ */
 class SecurityEventDispatcher
 {
     private ContainerInterface $container;
@@ -13,7 +19,7 @@ class SecurityEventDispatcher
     private ?LoggerInterface $logger;
     private bool $initialized = false;
 
-    // Event types
+    // Event identifiers
     public const EVENT_USER_LOGIN = 'user.login';
     public const EVENT_LOGIN_FAILED = 'login.failed';
     public const EVENT_USER_LOGOUT = 'user.logout';
@@ -39,42 +45,33 @@ class SecurityEventDispatcher
         $this->logger = $logger;
     }
 
-    /**
-     * Initialize the event dispatcher with default listeners
-     */
+    /** Register the default wildcard listener once. */
     public function initialize(): void
     {
         if ($this->initialized) {
             return;
         }
 
-        // Register the security event listener
         $this->addListener(SecurityEventListener::class);
 
         $this->initialized = true;
     }
 
-    /**
-     * Add an event listener
-     */
+    /** Register a listener for one event type or for all events. */
     public function addListener(string $listenerClass, ?string $eventType = null, int $priority = 0): void
     {
         $key = $eventType ?? '*';
         $this->listeners[$key][$priority][] = $listenerClass;
 
-        // Sort listeners by priority (higher priority first)
         krsort($this->listeners[$key]);
     }
 
-    /**
-     * Dispatch an event
-     */
+    /** Resolve and invoke listeners for an event, containing listener failures. */
     public function dispatch(string $eventType, array $eventData = []): void
     {
         try {
             $this->initialize();
 
-            // Get listeners for this specific event type and wildcard listeners
             $listeners = array_merge(
                 $this->getListenersForEvent($eventType),
                 $this->getListenersForEvent('*')
@@ -106,12 +103,9 @@ class SecurityEventDispatcher
         }
     }
 
-    /**
-     * Get the handler method name for an event type
-     */
+    /** Convert a dotted event identifier into its conventional handler name. */
     private function getHandlerMethod(string $eventType): string
     {
-        // Convert event type to method name (e.g., 'user.login' -> 'onUserLogin')
         $parts = explode('.', $eventType);
         $method = 'on' . str_replace(' ', '', ucwords(str_replace('_', ' ', $parts[0])));
 
@@ -122,9 +116,7 @@ class SecurityEventDispatcher
         return $method;
     }
 
-    /**
-     * Get all listeners for a specific event type
-     */
+    /** Return listeners for an event in descending priority order. */
     private function getListenersForEvent(string $eventType): array
     {
         $listeners = [];
@@ -138,9 +130,7 @@ class SecurityEventDispatcher
         return $listeners;
     }
 
-    /**
-     * Log an error message
-     */
+    /** Log dispatcher failures when a logger was supplied. */
     private function logError(string $message, array $context = []): void
     {
         if ($this->logger) {
@@ -148,9 +138,7 @@ class SecurityEventDispatcher
         }
     }
 
-    /**
-     * Helper methods for common event types
-     */
+    /** Convenience dispatchers for common event payloads. */
 
     public function dispatchUserLogin($user, $request = null): void
     {

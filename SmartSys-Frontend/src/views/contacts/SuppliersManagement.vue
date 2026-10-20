@@ -12,8 +12,8 @@
       <PageHeader
         :breadcrumb="breadcrumb"
         title="إدارة الموردين والذمم"
-        description="مراقبة حسابات الموردين، الأرصدة المستحقة، وجدولة الدفعات النقدية."
-        :branches="branches"
+        description="أدر بيانات الموردين، وتابع الأرصدة المستحقة والمدفوعات ومواعيد السداد."
+        :branches="canSelectBranches ? branches : []"
         :selectedBranch="selectedBranch"
         @branch-changed="handleBranchChange"
       >
@@ -63,6 +63,14 @@
         </div>
 
         <!-- Empty State -->
+        <div v-else-if="loadError" class="py-24 text-center bg-white border border-rose-200 rounded-xl">
+          <div class="w-16 h-16 bg-rose-50 text-rose-300 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-triangle-exclamation text-2xl"></i>
+          </div>
+          <h3 class="text-sm font-bold text-slate-900 uppercase tracking-widest">تعذر تحميل الموردين</h3>
+          <p class="text-xs text-rose-600 mt-1">{{ loadError }}</p>
+          <button @click="fetchContacts" class="mt-6 text-xs font-bold text-indigo-600 hover:underline">إعادة تحميل البيانات</button>
+        </div>
         <div v-else-if="!filteredContacts.length" class="py-24 text-center bg-white border border-slate-200 rounded-xl">
           <div class="w-16 h-16 bg-slate-50 text-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
             <i class="fas fa-truck-fast text-2xl"></i>
@@ -177,6 +185,7 @@
     <!-- Modals: Minimal Standard Overlay -->
     
     <!-- Supplier Form -->
+    <Teleport to="body">
     <transition name="fade">
       <div v-if="showFormModal" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
         <div class="bg-white w-full max-w-xl rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn flex flex-col max-h-[90vh]">
@@ -206,6 +215,7 @@
         </div>
       </div>
     </transition>
+    </Teleport>
 
     <!-- Payment Collection (Supplier Outgoing) -->
     <transition name="fade">
@@ -216,19 +226,46 @@
             <p class="text-[10px] text-slate-400 mt-1 font-medium italic">سداد المبالغ للمورد: {{ selectedContact.name }}</p>
           </div>
           <form @submit.prevent="handlePaymentSubmit" class="p-8 space-y-6">
-            <div class="text-center">
+            <div class="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+              <button type="button" @click="paymentMode = 'allocate'" :disabled="hasPendingSupplierPayment" :class="paymentMode === 'allocate' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'" class="h-9 rounded-md text-[10px] font-bold transition-all disabled:opacity-50">تخصيص على الفواتير</button>
+              <button type="button" @click="paymentMode = 'general'" :disabled="hasPendingSupplierPayment" :class="paymentMode === 'general' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'" class="h-9 rounded-md text-[10px] font-bold transition-all disabled:opacity-50">دفعة عامة للمورد</button>
+            </div>
+            <p v-if="hasPendingSupplierPayment" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-800">
+              توجد دفعة لم تُحسم نتيجتها. أعد المحاولة بالبيانات نفسها قبل بدء دفعة أخرى.
+            </p>
+
+            <div v-if="paymentMode === 'allocate'" class="space-y-2">
+              <p class="text-[10px] font-bold text-slate-500">أدخل مبلغ التخصيص لكل فاتورة؛ يجب ألا يتجاوز المتبقي عليها.</p>
+              <div v-if="isLoadingSupplierPurchases" class="flex justify-center py-5"><BaseSpinner /></div>
+              <div v-else-if="!supplierOpenPurchases.length" class="rounded-md border border-amber-100 bg-amber-50 p-3 text-center text-[10px] font-bold text-amber-700">لا توجد فواتير مستحقة لهذا المورد.</div>
+              <div v-else class="max-h-48 space-y-2 overflow-y-auto pr-1">
+                <div v-for="purchase in supplierOpenPurchases" :key="purchase.id" class="grid grid-cols-[1fr_110px] items-center gap-3 rounded-md border border-slate-200 p-3">
+                  <div class="min-w-0">
+                    <div class="truncate text-[11px] font-bold text-slate-700">{{ purchase.invoice_number || `فاتورة #${purchase.id}` }}</div>
+                    <div class="mt-1 text-[9px] text-slate-400">المتبقي: {{ formatPrice(purchase.remaining_balance) }}</div>
+                  </div>
+                  <input v-model.number="purchaseAllocations[purchase.id]" :disabled="hasPendingSupplierPayment" type="number" min="0" :max="purchase.remaining_balance" step="0.01" class="filter-input-v2 h-9 text-left font-mono" placeholder="0.00" aria-label="مبلغ التخصيص" />
+                </div>
+              </div>
+              <div class="flex items-center justify-between border-t border-slate-100 pt-2 text-xs font-bold">
+                <span class="text-slate-500">إجمالي المبلغ المخصص</span>
+                <span class="font-mono text-indigo-700">{{ formatPrice(allocatedPaymentTotal) }}</span>
+              </div>
+            </div>
+
+            <div v-else class="text-center">
               <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">المبلغ المسدد</label>
-              <input type="number" v-model.number="paymentData.amount" class="w-full h-14 text-3xl font-bold text-center text-rose-600 border-b-2 border-slate-100 focus:border-rose-500 outline-none transition-all font-mono" required />
+              <input type="number" v-model.number="paymentData.amount" :disabled="hasPendingSupplierPayment" class="w-full h-14 text-3xl font-bold text-center text-rose-600 border-b-2 border-slate-100 focus:border-rose-500 outline-none transition-all font-mono" required />
             </div>
             <div class="grid grid-cols-2 gap-4">
-              <div class="space-y-1.5"><label class="metadata-label">التاريخ</label><input ref="paymentDateRef" type="date" v-model="paymentData.payment_date" class="filter-input-v2 h-10 font-mono" required /></div>
-              <div class="space-y-1.5"><label class="metadata-label">طريقة الدفع</label><select v-model.number="paymentData.payment_method_id" class="filter-input-v2 h-10 font-bold" required><option value="">-- اختر --</option><option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option></select></div>
+              <div class="space-y-1.5"><label class="metadata-label">التاريخ</label><input ref="paymentDateRef" type="date" v-model="paymentData.payment_date" :disabled="hasPendingSupplierPayment" class="filter-input-v2 h-10 font-mono" required /></div>
+              <div class="space-y-1.5"><label class="metadata-label">طريقة الدفع</label><select v-model.number="paymentData.payment_method_id" :disabled="hasPendingSupplierPayment" class="filter-input-v2 h-10 font-bold" required><option value="">-- اختر --</option><option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option></select></div>
             </div>
-            <div class="space-y-1.5"><label class="metadata-label">الفرع المرتبط</label><select v-model="paymentData.branch_id" class="filter-input-v2 h-10"><option value="">-- اختياري --</option><option v-for="w in branches" :key="w.id" :value="w.id">{{ w.name }}</option></select></div>
-            <div class="space-y-1.5"><label class="metadata-label">ملاحظات</label><textarea v-model="paymentData.notes" rows="2" class="filter-input-v2 h-auto py-2 italic" placeholder="مرجع شيك، تحويل بنكي..."></textarea></div>
+            <div class="space-y-1.5"><label class="metadata-label">الفرع المرتبط</label><select v-model="paymentData.branch_id" :disabled="!canSelectBranches || hasPendingSupplierPayment" class="filter-input-v2 h-10 disabled:bg-slate-100 disabled:text-slate-500"><option value="">-- اختياري --</option><option v-for="w in branches" :key="w.id" :value="String(w.id)">{{ w.name }}</option></select></div>
+            <div class="space-y-1.5"><label class="metadata-label">ملاحظات</label><textarea v-model="paymentData.notes" :disabled="hasPendingSupplierPayment" rows="2" class="filter-input-v2 h-auto py-2 italic" placeholder="مرجع شيك، تحويل بنكي..."></textarea></div>
             <div class="pt-4 border-t border-slate-100 flex gap-3">
-              <button type="button" @click="showPaymentModal = false" class="flex-1 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">إلغاء</button>
-              <button type="submit" class="flex-[2] h-10 bg-indigo-600 text-white rounded-md text-xs font-bold shadow-lg shadow-indigo-900/20 active:scale-95 transition-all">تأكيد السداد</button>
+              <button type="button" @click="showPaymentModal = false" :disabled="isSubmittingSupplierPayment" class="flex-1 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors disabled:opacity-50">إلغاء</button>
+              <button type="submit" :disabled="isSubmittingSupplierPayment || isLoadingSupplierPurchases" class="flex-[2] h-10 bg-indigo-600 text-white rounded-md text-xs font-bold shadow-lg shadow-indigo-900/20 active:scale-95 transition-all disabled:opacity-50">{{ isSubmittingSupplierPayment ? 'جارٍ التسجيل...' : 'تأكيد السداد' }}</button>
             </div>
           </form>
         </div>
@@ -241,32 +278,34 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useToast } from '@/composables/useToast';
-import getLocalDateISO from '@/utils/date';
+import { getLocalDateISO } from '@/utils';
 import { useRouter } from 'vue-router';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import AlertService from '@/services/AlertService';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useTableFilters } from '@/composables/useTableFilters';
-import { useSessionExemption } from '@/composables/useCashierSessionGuard';
 import { useBranchIsolation } from '@/composables/useBranchIsolation';
+import { usePendingIdempotentRequest } from '@/composables/usePendingIdempotentRequest';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 
 const { showToast } = useToast(); 
 const router = useRouter();
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import { useSupplierStore } from '@/stores/supplier/supplierStore';
 import { usePaymentStore } from '@/stores/payment/paymentStore';
+import { usePurchaseStore } from '@/stores/purchase/purchaseStore';
+import { useStatementStore } from '@/stores/statement/statementStore';
 import PageHeader from '@/components/PageHeader.vue';
 
 // --- Logic Initialization ---
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
-const { ensureLoaded: ensureExemptionLoaded, isExempt } = useSessionExemption();
 const { breadcrumb } = useBreadcrumb();
 const authStore = useAuthStore();
 const branchStore = useBranchStore();
 const branchIsolation = useBranchIsolation();
+const canSelectBranches = branchIsolation.isExempt;
 
 // ✅ Use branchStore directly (removed useUserBranchPreference)
 const branches = computed(() => branchStore.branches);
@@ -283,6 +322,7 @@ const selectedBranch = computed({
 });
 
 const handleBranchChange = (newBranchId) => {
+  if (!canSelectBranches.value) return;
   branchStore.setSelectedBranch(newBranchId);
   fetchContacts(); // Reload data with new branch
 };
@@ -290,6 +330,8 @@ const formatPrice = (amount) => formatCurrencyLocale(amount, 2);
 
 const supplierStore = useSupplierStore();
 const paymentStore = usePaymentStore();
+const purchaseStore = usePurchaseStore();
+const statementStore = useStatementStore();
 const contacts = computed(() => supplierStore.suppliers);
 const search = ref('');
 const showFormModal = ref(false);
@@ -297,7 +339,27 @@ const isLoading = ref(false);
 const selectedContact = ref(null);
 const viewMode = ref('cards'); 
 const showPaymentModal = ref(false);
+const loadError = ref('');
 const paymentData = ref({ amount: null, payment_date: null, payment_method_id: null, branch_id: null, notes: '' });
+const pendingSupplierPayment = usePendingIdempotentRequest('supplier-payment');
+const hasPendingSupplierPayment = computed(() => !!pendingSupplierPayment.pending.value);
+const paymentMode = ref('allocate');
+const supplierOpenPurchases = ref([]);
+const purchaseAllocations = ref({});
+const isLoadingSupplierPurchases = ref(false);
+const isSubmittingSupplierPayment = ref(false);
+const allocatedPayments = computed(() =>
+  supplierOpenPurchases.value
+    .map(purchase => ({
+      purchase_id: Number(purchase.id),
+      amount: Math.round((Number(purchaseAllocations.value[purchase.id]) || 0) * 100) / 100,
+      remaining_balance: Number(purchase.remaining_balance) || 0,
+    }))
+    .filter(allocation => allocation.amount > 0)
+);
+const allocatedPaymentTotal = computed(() =>
+  Math.round(allocatedPayments.value.reduce((total, allocation) => total + allocation.amount, 0) * 100) / 100
+);
 
 // Date input refs
 const paymentDateRef = ref(null);
@@ -334,30 +396,37 @@ const kpis = computed(() => {
 
 const fetchContacts = async () => {
   isLoading.value = true;
+  loadError.value = '';
   try {
     let params = {};
-    if (!isExempt.value) {
+    if (!canSelectBranches.value) {
       try {
         const wid = branchIsolation.getRequiredBranchId();
         params.branch_id = String(wid);
       } catch (e) {
+        loadError.value = e.message || 'لم يتم تعيين فرع للمستخدم';
         showToast(e.message || 'لم يتم تعيين مخزن للمستخدم', 'warning');
         return;
       }
     } else if (selectedBranch.value) {
       params.branch_id = String(selectedBranch.value);
     }
-    // isExempt + no branch selected → no branch_id param → API returns all suppliers
-    await supplierStore.fetchSuppliers({ force: true, params });
+    // No selected branch for a branch-privileged user means all suppliers.
+    const result = await supplierStore.fetchSuppliers({ force: true, params });
+    if (result.status !== 'success') {
+      loadError.value = result.message || 'تعذر تحميل الموردين.';
+      showToast(loadError.value, 'error');
+    }
   } catch (err) {
-    showToast(err.response?.data?.message || 'خطأ في تحميل البيانات', 'error');
+    loadError.value = err.response?.data?.message || err.message || 'تعذر تحميل الموردين.';
+    showToast(loadError.value, 'error');
   } finally { isLoading.value = false; }
 };
 
 const goToStatement = (c) => router.push({ name: 'AccountStatement', params: { type: 'suppliers', id: c.id } });
 const openAddModal = () => {
   let branchId = null;
-  if (!isExempt.value) {
+  if (!canSelectBranches.value) {
     try {
       branchId = branchIsolation.getRequiredBranchId();
     } catch {
@@ -375,7 +444,11 @@ const viewContact = (c) => { try { sessionStorage.setItem('selectedContact', JSO
 const deleteContact = async (c) => {
   if (await AlertService.confirm(`هل أنت متأكد من حذف المورد ${c.name}?`, 'حذف المورد')) {
     try {
-      await supplierStore.deleteSupplier(c.id);
+      const result = await supplierStore.deleteSupplier(c.id);
+      if (result?.status !== 'success') {
+        showToast(result?.message || 'فشل حذف المورد', 'error');
+        return;
+      }
       showToast('تم الحذف بنجاح', 'success');
       fetchContacts();
     } catch (e) { showToast(e.response?.data?.message || 'فشل الحذف', 'error'); }
@@ -392,35 +465,145 @@ const handleFormSubmit = async (formData) => {
   } catch (e) { showToast(e.response?.data?.message || 'خطأ في الحفظ', 'error'); }
 };
 
-const openPaymentModal = (c) => {
+const openPaymentModal = async (c) => {
+  let branchId = null;
+  if (!canSelectBranches.value) {
+    try {
+      branchId = branchIsolation.getRequiredBranchId();
+    } catch (error) {
+      showToast(error.message || 'يجب تحديد الفرع قبل تسجيل دفعة المورد.', 'error');
+      return;
+    }
+  } else {
+    branchId = selectedBranch.value || null;
+  }
+
+  let pending;
+  try {
+    pending = pendingSupplierPayment.restore(c.id);
+  } catch (error) {
+    showToast(error.message || 'تعذر استعادة عملية الدفع السابقة.', 'error');
+    return;
+  }
+  if (pending?.payload?.branch_id) {
+    branchId = Number(pending.payload.branch_id);
+  }
+
   selectedContact.value = c;
-  paymentData.value = { amount: null, payment_date: getLocalDateISO(), payment_method_id: null, branch_id: null, notes: '' };
+  paymentData.value = pending?.payload
+    ? { ...pending.payload }
+    : {
+        amount: null,
+        payment_date: getLocalDateISO(),
+        payment_method_id: null,
+        branch_id: branchId ? String(branchId) : '',
+        notes: ''
+      };
+  paymentMode.value = pending
+    ? (pending.payload.purchases?.length ? 'allocate' : 'general')
+    : 'allocate';
+  supplierOpenPurchases.value = [];
+  purchaseAllocations.value = Object.fromEntries(
+    (pending?.payload?.purchases || []).map(({ purchase_id, amount }) => [purchase_id, Number(amount)])
+  );
   showPaymentModal.value = true;
+  isLoadingSupplierPurchases.value = true;
+  try {
+    const pageSize = 100;
+    const firstPage = await purchaseStore.fetchPurchasesList({
+      branchId,
+      supplierId: c.id,
+      page: 1,
+      perPage: pageSize,
+      force: true,
+    });
+    if (firstPage.status !== 'success' || !firstPage.data) {
+      throw new Error(firstPage.message || 'تعذر تحميل فواتير المورد.');
+    }
+
+    const allPurchases = [...(firstPage.data.items || [])];
+    const totalPages = Math.ceil(Number(firstPage.data.total || allPurchases.length) / pageSize);
+    for (let page = 2; page <= totalPages; page += 1) {
+      const nextPage = await purchaseStore.fetchPurchasesList({
+        branchId,
+        supplierId: c.id,
+        page,
+        perPage: pageSize,
+        force: true,
+      });
+      if (nextPage.status !== 'success' || !nextPage.data) {
+        throw new Error(nextPage.message || 'تعذر تحميل جميع فواتير المورد.');
+      }
+      allPurchases.push(...(nextPage.data.items || []));
+    }
+    supplierOpenPurchases.value = allPurchases.filter(purchase =>
+      Number(purchase.remaining_balance) > 0
+      && !['canceled', 'cancelled', 'rejected'].includes(String(purchase.dynamic_status || purchase.status).toLowerCase())
+    );
+  } catch (error) {
+    supplierOpenPurchases.value = [];
+    showToast(error.message || 'تعذر تحميل فواتير المورد.', 'error');
+  } finally {
+    isLoadingSupplierPurchases.value = false;
+  }
 };
 
 const handlePaymentSubmit = async () => {
-  if (!paymentData.value.amount || paymentData.value.amount <= 0) return showToast('ادخل مبلغ صحيح', 'error');
-  if (!paymentData.value.payment_method_id) return showToast('اختر الطريقة', 'error');
-  if (!paymentData.value.payment_date) {
+  if (isSubmittingSupplierPayment.value) return;
+  const savedRequest = pendingSupplierPayment.pending.value;
+  const amount = savedRequest
+    ? Number(savedRequest.payload.amount)
+    : (paymentMode.value === 'allocate' ? allocatedPaymentTotal.value : Number(paymentData.value.amount));
+  if (!Number.isFinite(amount) || amount <= 0) return showToast(paymentMode.value === 'allocate' ? 'خصص مبلغًا موجبًا لفاتورة واحدة على الأقل' : 'ادخل مبلغ صحيح', 'error');
+  if (!(savedRequest?.payload?.payment_method_id || paymentData.value.payment_method_id)) return showToast('اختر الطريقة', 'error');
+  if (!(savedRequest?.payload?.payment_date || paymentData.value.payment_date)) {
     showToast('الرجاء تحديد تاريخ الدفع', 'error');
     return;
   }
+  if (!savedRequest && paymentMode.value === 'allocate' && allocatedPayments.value.some(allocation => allocation.amount > allocation.remaining_balance + 0.009)) {
+    return showToast('مبلغ التخصيص لا يمكن أن يتجاوز المتبقي على الفاتورة.', 'error');
+  }
+
+  isSubmittingSupplierPayment.value = true;
   try {
-    const res = await supplierStore.recordSupplierPayment(selectedContact.value?.id, paymentData.value);
+    const payload = savedRequest?.payload || {
+      supplier_id: Number(selectedContact.value?.id),
+      amount,
+      payment_date: paymentData.value.payment_date,
+      payment_method_id: Number(paymentData.value.payment_method_id),
+      branch_id: paymentData.value.branch_id ? String(paymentData.value.branch_id) : undefined,
+      notes: paymentData.value.notes || '',
+      ...(paymentMode.value === 'allocate'
+        ? { purchases: allocatedPayments.value.map(({ purchase_id, amount: allocationAmount }) => ({ purchase_id, amount: allocationAmount })) }
+        : {}),
+    };
+    const pending = pendingSupplierPayment.prepare(selectedContact.value?.id, payload);
+    const res = await supplierStore.paySupplierDebt(pending.payload, pending.key);
     if (res.status === 'success') {
-      showToast(`تم التسجيل بنجاح`, 'success');
+      showToast(paymentMode.value === 'allocate' ? 'تم تسجيل الدفعة وتخصيصها على الفواتير' : 'تم تسجيل الدفعة العامة بنجاح', 'success');
       showPaymentModal.value = false;
+      pendingSupplierPayment.clear(selectedContact.value?.id);
+      purchaseStore.clearPurchasesListCache();
+      purchaseStore.clearDetailsCache();
+      statementStore.clearSupplierCache();
       fetchContacts();
     } else {
-      showToast(res.message || 'فشل التسجيل', 'error');
+      if (res.outcomeUnknown) {
+        showToast('تعذر تأكيد نتيجة الدفعة. أعد المحاولة بالبيانات نفسها لتجنب تكرارها.', 'error');
+      } else {
+        pendingSupplierPayment.clear(selectedContact.value?.id);
+        showToast(res.message || 'فشل التسجيل', 'error');
+      }
     }
   } catch (e) {
     showToast(e.response?.data?.message || e.message || 'فشل التسجيل', 'error');
+  } finally {
+    isSubmittingSupplierPayment.value = false;
   }
 };
 
 onMounted(async () => {
-  await Promise.all([fetchSettings(), ensureExemptionLoaded(), paymentStore.fetchPaymentMethods().catch(() => {})]);
+  await Promise.all([fetchSettings(), paymentStore.fetchPaymentMethods().catch(() => {})]);
   paymentMethods.value = paymentStore.paymentMethods;
   // ✅ replaced initializePreferences with branchStore.fetchBranches()
   await branchStore.fetchBranches();

@@ -9,6 +9,7 @@ use App\Services\BalanceCalculationService;
 use App\Services\CostCenter\CostCenterService;
 use App\Services\AccountingService;
 use App\Services\CashVoucherService;
+use App\Utils\SuperAdminHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use PDO;
@@ -16,6 +17,13 @@ use Throwable;
 use Exception;
 use DateTime;
 
+/**
+ * Handles tenant-scoped cash voucher listing, posting, revision, and cancellation.
+ *
+ * CashVoucherService owns voucher validation and accounting creation; this handler
+ * enforces API branch/session access and coordinates edits with their linked records.
+ * Routes and permission checks are registered in app/routes/cash-vouchers.php.
+ */
 class CashVouchersHandler extends BaseHandler
 {
     private CostCenterService $costCenterService;
@@ -29,6 +37,7 @@ class CashVouchersHandler extends BaseHandler
         $this->balanceCalcService = new BalanceCalculationService($this->db);
     }
 
+    /** List tenant vouchers using the supported filters and the caller's branch access. */
     public function getList(Request $request, Response $response, array $args = []): Response
     {
         try {
@@ -39,11 +48,35 @@ class CashVouchersHandler extends BaseHandler
             }
 
             $filters = $this->normalizeListFilters($request->getQueryParams());
-            $isExempt = $this->isCashierSessionExempt($request);
+            $user = $request->getAttribute('user');
+            $user = is_array($user) ? $user : null;
+            $branchId = $filters['branch_id'];
+            if ($branchId !== null) {
+                $branchId = filter_var($branchId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                if ($branchId === false) {
+                    return $this->errorResponse($response, 'معرف الفرع غير صالح.', 400);
+                }
+            }
 
-            // Non-exempt users must have branch_id filter
-            if (!$isExempt && !$filters['branch_id']) {
-                return $this->errorResponse($response, 'مطلوب تحديد الفرع (branch_id) لعرض السندات.', 400);
+            if (!$this->canViewAllBranches($user)) {
+                $userBranchId = (int) ($user['branch_id'] ?? 0);
+                if ($userBranchId <= 0) {
+                    return $this->errorResponse($response, 'لم يتم تعيين فرع لحسابك.', 403);
+                }
+                if ($branchId !== null && (int) $branchId !== $userBranchId) {
+                    return $this->errorResponse($response, 'غير مصرح لك بعرض بيانات هذا الفرع.', 403);
+                }
+                $branchId = $userBranchId;
+            }
+
+            if ($branchId !== null) {
+                $branchError = $this->validateVoucherBranch($branchId, (int) $tenantId);
+                if ($branchError !== null) {
+                    return $this->errorResponse($response, $branchError['message'], $branchError['status']);
+                }
+                $filters['branch_id'] = (int) $branchId;
+            } else {
+                $filters['branch_id'] = null;
             }
 
             $sql = "
@@ -65,7 +98,6 @@ class CashVouchersHandler extends BaseHandler
 
             $binds = [':tenant_id' => (int) $tenantId];
 
-            // Branch filtering: mandatory for non-exempt (checked above), optional for exempt
             if ($filters['branch_id']) {
                 $sql .= " AND cv.branch_id = :branch_id";
                 $binds[':branch_id'] = $filters['branch_id'];
@@ -131,67 +163,13 @@ class CashVouchersHandler extends BaseHandler
         }
     }
 
-    public function get(Request $request, Response $response, array $args): Response
-    {
-        try {
-            $tenantId = $this->extractTenantId($request);
-            if (!$tenantId) {
-                $this->logger->warning('Cash voucher get - missing tenant ID');
-                return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-            }
-
-            $id = isset($args['id']) ? (int) $args['id'] : 0;
-            if ($id <= 0) {
-                return $this->errorResponse($response, 'مطلوب رقم السند', 400);
-            }
-
-            $stmt = $this->db->prepare("
-                SELECT
-                    cv.*,
-                    COALESCE(c.name, s.name, a.name, '-') AS account_name
-                FROM cash_vouchers cv
-                LEFT JOIN customers c
-                    ON c.id = cv.customer_id
-                    AND c.tenant_id = cv.tenant_id
-                LEFT JOIN suppliers s
-                    ON s.id = cv.supplier_id
-                    AND s.tenant_id = cv.tenant_id
-                LEFT JOIN accounts a
-                    ON a.id = cv.account_id
-                    AND a.tenant_id = cv.tenant_id
-                WHERE cv.id = :id AND cv.tenant_id = :tenant_id
-                LIMIT 1
-            ");
-            $stmt->execute([
-                ':id' => $id,
-                ':tenant_id' => (int) $tenantId
-            ]);
-
-            $item = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$item) {
-                return $this->errorResponse($response, 'لم يتم العثور على السند', 404);
-            }
-
-            $this->decorateVoucherRow($item);
-
-            return $this->successResponse($response, $item, 200);
-        } catch (Throwable $e) {
-            $this->logger->error('Cash voucher get error', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'tenant_id' => $tenantId ?? null,
-                'voucher_id' => $id ?? null
-            ]);
-
-            return $this->errorResponse($response, 'حدث خطأ أثناء جلب بيانات السند', 500);
-        }
-    }
-
+    /** Validate and post a voucher, resolving branch/session context and idempotent replays. */
     public function create(Request $request, Response $response): Response
     {
         $tenantId       = null;
         $userId         = null;
         $idempotencyKey = null;
+        $idempotencyHash = null;
         $voucherType    = null;
 
         try {
@@ -204,19 +182,24 @@ class CashVouchersHandler extends BaseHandler
             $svc    = new CashVoucherService($this->db, (int) $tenantId, $userId);
 
             $rawData = $this->parseRequestData($request);
+            $bodyKey = $rawData['idempotency_key'] ?? null;
+            $headerKey = trim($request->getHeaderLine('Idempotency-Key'));
+            if ($bodyKey !== null && !is_string($bodyKey)) {
+                return $this->errorResponse($response, 'مفتاح منع التكرار غير صالح.', 400);
+            }
+            $bodyKey = is_string($bodyKey) ? trim($bodyKey) : '';
+            if ($headerKey !== '' && $bodyKey !== '' && $headerKey !== $bodyKey) {
+                return $this->errorResponse($response, 'مفتاح منع التكرار في الرأس يختلف عن المفتاح في البيانات.', 400);
+            }
+            $idempotencyKey = $headerKey !== '' ? $headerKey : $bodyKey;
+            if ($idempotencyKey !== '' && strlen($idempotencyKey) > 128) {
+                return $this->errorResponse($response, 'مفتاح منع التكرار يجب ألا يتجاوز 128 بايتًا.', 400);
+            }
             $data    = $svc->normalizeVoucherPayload($rawData);
-            $data['created_by'] = $userId;
-
-            $idempotencyKey = $data['idempotency_key'] ?? null;
-            if ($idempotencyKey) {
-                $existing = $svc->findVoucherByIdempotencyKey($idempotencyKey);
-                if ($existing) {
-                    return $this->jsonResponse($response, [
-                        'status'  => 'success',
-                        'message' => 'السند موجود بالفعل',
-                        'data'    => ['id' => (int) $existing['id'], 'reference' => $existing['reference']],
-                    ], 200);
-                }
+            if ($idempotencyKey !== '') {
+                $data['idempotency_key'] = $idempotencyKey;
+            } else {
+                $data['idempotency_key'] = null;
             }
 
             $validationError = $svc->validateVoucherPayload($data, false);
@@ -240,14 +223,39 @@ class CashVouchersHandler extends BaseHandler
                 );
             }
 
+            $branchError = $this->validateVoucherBranch($data['branch_id'] ?? null, (int) $tenantId);
+            if ($branchError !== null) {
+                return $this->errorResponse($response, $branchError['message'], $branchError['status']);
+            }
+            if (!$this->canAccessVoucherBranch($request, (int) ($data['branch_id'] ?? 0))) {
+                return $this->errorResponse($response, 'غير مصرح لك بتسجيل سند في هذا الفرع.', 403);
+            }
+
+            if ($idempotencyKey !== '') {
+                $idempotencyHash = $svc->getVoucherRequestHash($data);
+                $existing = $svc->findVoucherByIdempotencyKey($idempotencyKey);
+                if ($existing) {
+                    return $this->respondWithIdempotentVoucher($response, $existing, $idempotencyHash);
+                }
+            }
+
             if (!empty($data['sale_id'])) {
                 if (!in_array($data['type'], ['receipt', 'قبض'], true)) {
                     return $this->errorResponse($response, 'ربط فاتورة مبيعات متاح فقط لسندات القبض.', 400);
                 }
-                $stmtChk = $this->db->prepare("SELECT id FROM sales WHERE id = ? AND customer_id = ? AND tenant_id = ? LIMIT 1");
+                $stmtChk = $this->db->prepare(
+                    "SELECT id, status FROM sales
+                     WHERE id = ? AND customer_id = ? AND tenant_id = ? LIMIT 1"
+                );
                 $stmtChk->execute([$data['sale_id'], $data['customer_id'], $tenantId]);
-                if (!$stmtChk->fetchColumn()) {
+                $linkedSale = $stmtChk->fetch(PDO::FETCH_ASSOC);
+                if (!$linkedSale) {
                     return $this->errorResponse($response, 'فاتورة المبيعات المحددة غير موجودة أو لا تنتمي لهذا العميل.', 400);
+                }
+                if (!in_array(strtolower((string) $linkedSale['status']), [
+                    'pending_payment', 'partial', 'due',
+                ], true)) {
+                    return $this->errorResponse($response, 'لا يمكن ربط سند قبض بفاتورة ملغاة أو غير معتمدة.', 400);
                 }
             }
 
@@ -262,18 +270,6 @@ class CashVouchersHandler extends BaseHandler
                 }
             }
 
-            $duplicateId = $svc->findDuplicateVoucher(
-                $data['type'],
-                $data['date'],
-                (float) $data['amount'],
-                $data['customer_id'],
-                $data['supplier_id']
-            );
-            if ($duplicateId) {
-                return $this->errorResponse($response, 'سند مطابق موجود بالفعل بنفس التاريخ والمبلغ والطرف.', 409);
-            }
-
-            // Cashier session — HTTP concern stays in handler
             $branchId        = $data['branch_id'];
             $paymentMethodId = $data['payment_method_id'];
             $amount          = (float) $data['amount'];
@@ -322,11 +318,43 @@ class CashVouchersHandler extends BaseHandler
                 }
             }
             $msg = $e->getMessage();
+            $idempotencyConflict = $e instanceof \PDOException
+                && ($e->errorInfo[0] ?? null) === '23000';
+            $concurrentJournalReplay = $msg === 'Failed to create journal entry.';
+            if (
+                $idempotencyKey !== null
+                && $idempotencyKey !== ''
+                && $idempotencyHash !== null
+                && ($idempotencyConflict || $concurrentJournalReplay)
+            ) {
+                try {
+                    $existing = (new CashVoucherService($this->db, (int) $tenantId, $userId))
+                        ->findVoucherByIdempotencyKey($idempotencyKey);
+                    if ($existing) {
+                        return $this->respondWithIdempotentVoucher($response, $existing, $idempotencyHash);
+                    }
+                } catch (Throwable $lookupError) {
+                    $this->logger->error('Unable to resolve a concurrent voucher idempotency conflict', [
+                        'tenant_id' => $tenantId,
+                        'idempotency_key' => $idempotencyKey,
+                        'message' => $lookupError->getMessage(),
+                    ]);
+                }
+            }
             $this->logger->error('Cash voucher creation failed', [
                 'message' => $msg, 'trace' => $e->getTraceAsString(),
                 'tenant_id' => $tenantId, 'user_id' => $userId,
                 'voucher_type' => $voucherType, 'idempotency_key' => $idempotencyKey,
             ]);
+            if ($e instanceof \App\Exceptions\InsufficientLiquidityException) {
+                return $this->errorResponse($response, $msg, 402, [
+                    'error_code' => 'insufficient_liquidity',
+                    'details' => $e->getContext(),
+                ]);
+            }
+            if ($e instanceof \App\Exceptions\AccountingPeriodClosedException) {
+                return $this->errorResponse($response, $msg, 409);
+            }
             if (strpos($msg, 'لا توجد جلسة كاشير مفتوحة') !== false) {
                 return $this->errorResponse($response, $msg, 400);
             }
@@ -334,6 +362,7 @@ class CashVouchersHandler extends BaseHandler
         }
     }
 
+    /** Revise a posted voucher by reversing it and creating a replacement atomically. */
     public function update(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -361,12 +390,26 @@ class CashVouchersHandler extends BaseHandler
         if (!$oldVoucher) {
             return $this->errorResponse($response, 'لم يتم العثور على السند', 404);
         }
+        if (!$this->canAccessVoucherBranch($request, (int) ($oldVoucher['branch_id'] ?? 0))) {
+            return $this->errorResponse($response, 'لم يتم العثور على السند', 404);
+        }
 
         try {
             $userId = $this->extractUserId($request);
             $svc    = new CashVoucherService($this->db, (int) $tenantId, $userId);
-            $data   = $this->parseRequestData($request);
-            $data   = $svc->normalizeVoucherPayload($data, true, $oldVoucher);
+            $rawData = $this->parseRequestData($request);
+            $branchError = $this->validateVoucherBranch($rawData['branch_id'] ?? null, (int) $tenantId);
+            if ($branchError !== null) {
+                return $this->errorResponse($response, $branchError['message'], $branchError['status']);
+            }
+            $data   = $svc->normalizeVoucherPayload($rawData, true, $oldVoucher);
+            $branchError = $this->validateVoucherBranch($data['branch_id'] ?? null, (int) $tenantId);
+            if ($branchError !== null) {
+                return $this->errorResponse($response, $branchError['message'], $branchError['status']);
+            }
+            if (!$this->canAccessVoucherBranch($request, (int) ($data['branch_id'] ?? 0))) {
+                return $this->errorResponse($response, 'غير مصرح لك بنقل السند إلى هذا الفرع.', 403);
+            }
             $data['created_by'] = $userId;
 
             try {
@@ -392,93 +435,50 @@ class CashVouchersHandler extends BaseHandler
 
             $this->db->beginTransaction();
 
-            $svc->reverseJournalEntryByVoucherIdIfNeeded($id);
-
-            $newVoucherData = array_merge($oldVoucher, $data);
-            $newVoucherData['id'] = $id;
-
-            $journalEntryId = $svc->postToJournal($newVoucherData, $id);
-            if (!$journalEntryId) {
-                throw new Exception('Failed to create new journal entry for the updated voucher.');
+            $lockedVoucher = $this->lockEditableVoucher($id, (int) $tenantId);
+            if ((int) $lockedVoucher['journal_entry_id'] !== (int) $oldVoucher['journal_entry_id']) {
+                throw new \DomainException('تم تعديل السند بالتزامن؛ أعد تحميله ثم حاول مرة أخرى.');
             }
+            $session = $this->lockVoucherCashSession($id, (int) $tenantId);
+            $this->assertVoucherHasNoInvoicePayment($lockedVoucher);
+            $this->validateReceiptReversalLiquidity($lockedVoucher, $session);
+            if (!empty($session['session_id']) &&
+                (int) ($data['branch_id'] ?? 0) !== (int) ($session['branch_id'] ?? 0)) {
+                throw new \DomainException('لا يمكن تغيير فرع سند مرتبط بجلسة كاشير.');
+            }
+            $svc->reverseJournalEntryByVoucherIdIfNeeded($id);
+            $affectedSaleIds = $this->reverseVoucherPaymentRecords($lockedVoucher, (int) $tenantId);
 
-            $notes = $newVoucherData['notes'] ?? ($newVoucherData['description'] ?? $oldVoucher['notes'] ?? null);
+            $cancelTransaction = $this->db->prepare(
+                "UPDATE cash_transactions SET status = 'cancelled'
+                 WHERE reference_type = 'cash_voucher' AND reference_id = ? AND tenant_id = ?"
+            );
+            $cancelTransaction->execute([$id, (int) $tenantId]);
+            if ($cancelTransaction->rowCount() !== 1) {
+                throw new Exception('لم يتم العثور على حركة النقد المرتبطة بالسند.');
+            }
+            $this->db->prepare(
+                "UPDATE cash_vouchers SET status = 'cancelled' WHERE id = ? AND tenant_id = ?"
+            )->execute([$id, (int) $tenantId]);
 
-            $stmt = $this->db->prepare("
-                UPDATE cash_vouchers SET
-                    branch_id = :branch_id,
-                    type = :type,
-                    date = :date,
-                    amount = :amount,
-                    currency = :currency,
-                    account_id = :account_id,
-                    customer_id = :customer_id,
-                    supplier_id = :supplier_id,
-                    reference = :reference,
-                    notes = :notes,
-                    created_by = :created_by,
-                    journal_entry_id = :journal_entry_id,
-                    cost_center_id = :cost_center_id
-                WHERE id = :id AND tenant_id = :tenant_id
-            ");
-
-            $stmt->execute([
-                ':branch_id' => $newVoucherData['branch_id'] ?? null,
-                ':type' => $newVoucherData['type'],
-                ':date' => $newVoucherData['date'],
-                ':amount' => $newVoucherData['amount'],
-                ':currency' => $newVoucherData['currency'],
-                ':account_id' => $newVoucherData['account_id'],
-                ':customer_id' => $newVoucherData['customer_id'],
-                ':supplier_id' => $newVoucherData['supplier_id'],
-                ':reference' => $newVoucherData['reference'] ?? $oldVoucher['reference'],
-                ':notes' => $notes,
-                ':created_by' => $newVoucherData['created_by'] ?? $oldVoucher['created_by'],
-                ':journal_entry_id' => (int) $journalEntryId,
-                ':cost_center_id' => $newVoucherData['cost_center_id'],
-                ':id' => $id,
-                ':tenant_id' => (int) $tenantId
-            ]);
-
-            $stmtCashTrans = $this->db->prepare("
-                UPDATE cash_transactions SET
-                    customer_id = :customer_id,
-                    supplier_id = :supplier_id,
-                    amount = :amount,
-                    type = :type,
-                    description = :description,
-                    payment_method_id = :payment_method_id,
-                    created_by = :created_by,
-                    created_at = :created_at,
-                    notes = :notes,
-                    journal_entry_id = :journal_entry_id,
-                    cost_center_id = :cost_center_id
-                WHERE reference_type = 'cash_voucher'
-                  AND reference_id = :reference_id
-                  AND tenant_id = :tenant_id
-            ");
-
-            $stmtCashTrans->execute([
-                ':customer_id' => $newVoucherData['customer_id'],
-                ':supplier_id' => $newVoucherData['supplier_id'],
-                ':amount' => $newVoucherData['amount'],
-                ':type' => $svc->mapVoucherTypeToCashTransactionType($newVoucherData['type']),
-                ':description' => $notes,
-                ':payment_method_id' => $newVoucherData['payment_method_id'] ?? null,
-                ':created_by' => $userId,
-                ':created_at' => $newVoucherData['date'],
-                ':notes' => $notes,
-                ':journal_entry_id' => (int) $journalEntryId,
-                ':cost_center_id' => $newVoucherData['cost_center_id'],
-                ':reference_id' => $id,
-                ':tenant_id' => (int) $tenantId
-            ]);
+            $replacementData = array_merge($lockedVoucher, $data);
+            $replacementData['idempotency_key'] =
+                'voucher_revision_' . $id . '_' . (int) $lockedVoucher['journal_entry_id'];
+            $replacement = $svc->createVoucher(
+                $replacementData,
+                !empty($session['session_id']) ? (int) $session['session_id'] : null
+            );
+            $accounting = new AccountingService($this->db);
+            foreach ($affectedSaleIds as $saleId) {
+                $accounting->recalculateSaleStatus((int) $tenantId, $saleId);
+            }
 
             $this->db->commit();
 
             return $this->jsonResponse($response, [
                 'status' => 'success',
-                'message' => 'تم تحديث السند بنجاح'
+                'message' => 'تم حفظ التعديل كسند جديد وإلغاء السند السابق بعد عكس قيده.',
+                'data' => $replacement,
             ], 200);
         } catch (Throwable $e) {
             if ($this->db->inTransaction()) {
@@ -491,10 +491,20 @@ class CashVouchersHandler extends BaseHandler
                 'tenant_id' => $tenantId
             ]);
 
-            return $this->errorResponse($response, 'فشل في تحديث السند', 500);
+            if ($e instanceof \DomainException) {
+                return $this->errorResponse($response, $e->getMessage(), 409);
+            }
+            if ($e instanceof \App\Exceptions\InsufficientLiquidityException) {
+                return $this->errorResponse($response, $e->getMessage(), 402, [
+                    'error_code' => 'insufficient_liquidity',
+                    'details' => $e->getContext(),
+                ]);
+            }
+            return $this->errorResponse($response, 'فشل في تحديث السند: ' . $e->getMessage(), 500);
         }
     }
 
+    /** Cancel a posted voucher and reverse its linked accounting and payment records atomically. */
     public function delete(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -522,6 +532,9 @@ class CashVouchersHandler extends BaseHandler
         if (!$voucher) {
             return $this->errorResponse($response, 'لم يتم العثور على السند', 404);
         }
+        if (!$this->canAccessVoucherBranch($request, (int) ($voucher['branch_id'] ?? 0))) {
+            return $this->errorResponse($response, 'لم يتم العثور على السند', 404);
+        }
 
         try {
             $userId = $this->extractUserId($request);
@@ -529,10 +542,16 @@ class CashVouchersHandler extends BaseHandler
 
             $this->db->beginTransaction();
 
+            $lockedVoucher = $this->lockEditableVoucher($id, (int) $tenantId);
+            $session = $this->lockVoucherCashSession($id, (int) $tenantId);
+            $this->assertVoucherHasNoInvoicePayment($lockedVoucher);
+            $this->validateReceiptReversalLiquidity($lockedVoucher, $session);
             $svc->reverseJournalEntryByVoucherIdIfNeeded($id);
+            $affectedSaleIds = $this->reverseVoucherPaymentRecords($lockedVoucher, (int) $tenantId);
 
             $stmtCashTrans = $this->db->prepare("
-                DELETE FROM cash_transactions
+                UPDATE cash_transactions
+                SET status = 'cancelled'
                 WHERE reference_type = 'cash_voucher'
                   AND reference_id = :reference_id
                   AND tenant_id = :tenant_id
@@ -541,21 +560,32 @@ class CashVouchersHandler extends BaseHandler
                 ':reference_id' => $id,
                 ':tenant_id' => (int) $tenantId
             ]);
+            if ($stmtCashTrans->rowCount() !== 1) {
+                throw new Exception('لم يتم العثور على حركة نقد واحدة مرتبطة بالسند.');
+            }
+            $accounting = new AccountingService($this->db);
+            foreach ($affectedSaleIds as $saleId) {
+                $accounting->recalculateSaleStatus((int) $tenantId, $saleId);
+            }
 
             $stmt = $this->db->prepare("
-                DELETE FROM cash_vouchers
+                UPDATE cash_vouchers
+                SET status = 'cancelled'
                 WHERE id = :id AND tenant_id = :tenant_id
             ");
             $stmt->execute([
                 ':id' => $id,
                 ':tenant_id' => (int) $tenantId
             ]);
+            if ($stmt->rowCount() !== 1) {
+                throw new Exception('تعذر حفظ حالة إلغاء السند.');
+            }
 
             $this->db->commit();
 
             return $this->jsonResponse($response, [
                 'status' => 'success',
-                'message' => 'تم حذف السند بنجاح'
+                'message' => 'تم إلغاء السند وعكس أثره المحاسبي'
             ], 200);
         } catch (Throwable $e) {
             if ($this->db->inTransaction()) {
@@ -568,15 +598,238 @@ class CashVouchersHandler extends BaseHandler
                 'tenant_id' => $tenantId
             ]);
 
-            return $this->errorResponse($response, 'فشل في حذف السند', 500);
+            if ($e instanceof \DomainException) {
+                return $this->errorResponse($response, $e->getMessage(), 409);
+            }
+            if ($e instanceof \App\Exceptions\InsufficientLiquidityException) {
+                return $this->errorResponse($response, $e->getMessage(), 402, [
+                    'error_code' => 'insufficient_liquidity',
+                    'details' => $e->getContext(),
+                ]);
+            }
+            return $this->errorResponse($response, 'فشل في إلغاء السند: ' . $e->getMessage(), 500);
         }
     }
 
+    /** A receipt reversal is a cash outflow and must obey the same balance policy as a disbursement. */
+    private function validateReceiptReversalLiquidity(array $voucher, array $session): void
+    {
+        if (!in_array((string) ($voucher['type'] ?? ''), ['receipt', 'قبض'], true)) {
+            return;
+        }
+
+        $amount = (float) ($voucher['amount'] ?? 0);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $paymentMethodId = (int) ($session['payment_method_id'] ?? 0);
+        $tenantId = (int) ($voucher['tenant_id'] ?? 0);
+        $validation = (new \App\Services\LiquidityPolicyService($this->db, $this->logger))
+            ->validateLiquidityBalance(
+                tenantId: $tenantId,
+                paymentMethodId: $paymentMethodId,
+                debitAmount: $amount,
+                cashierSessionId: !empty($session['session_id']) ? (int) $session['session_id'] : null
+            );
+
+        if (!$validation['allowed']) {
+            throw new \App\Exceptions\InsufficientLiquidityException(
+                $validation['reason'],
+                402,
+                $validation + ['required_amount' => $amount]
+            );
+        }
+    }
+
+    /** Lock a posted voucher with a linked journal entry for revision or cancellation. */
+    private function lockEditableVoucher(int $voucherId, int $tenantId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT * FROM cash_vouchers WHERE id = ? AND tenant_id = ? FOR UPDATE'
+        );
+        $stmt->execute([$voucherId, $tenantId]);
+        $voucher = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$voucher) {
+            throw new \DomainException('لم يتم العثور على السند.');
+        }
+        if (($voucher['status'] ?? 'posted') !== 'posted') {
+            throw new \DomainException('لا يمكن تعديل أو إلغاء سند ملغى مسبقاً.');
+        }
+        if ((int) ($voucher['journal_entry_id'] ?? 0) <= 0) {
+            throw new \DomainException('لا يمكن تعديل أو إلغاء سند دون قيد محاسبي مرتبط.');
+        }
+        return $voucher;
+    }
+
+    /** Lock the linked cash movement/session and reject closed or mismatched sessions. */
+    private function lockVoucherCashSession(int $voucherId, int $tenantId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT session_id, branch_id, payment_method_id
+             FROM cash_transactions
+             WHERE reference_type = 'cash_voucher' AND reference_id = ? AND tenant_id = ?
+             LIMIT 1 FOR UPDATE"
+        );
+        $stmt->execute([$voucherId, $tenantId]);
+        $transaction = $stmt->fetch(PDO::FETCH_ASSOC) ?: [
+            'session_id' => null,
+            'branch_id' => null,
+            'payment_method_id' => null,
+        ];
+        if (!empty($transaction['session_id'])) {
+            $sessionStmt = $this->db->prepare(
+                'SELECT status, branch_id FROM cashier_sessions WHERE id = ? AND tenant_id = ? FOR UPDATE'
+            );
+            $sessionStmt->execute([(int) $transaction['session_id'], $tenantId]);
+            $session = $sessionStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$session || $session['status'] !== 'open') {
+                throw new \DomainException('لا يمكن تعديل أو إلغاء سند مرتبط بجلسة كاشير مغلقة.');
+            }
+            if ((int) ($transaction['branch_id'] ?? 0) !== (int) ($session['branch_id'] ?? 0)) {
+                throw new \DomainException('فرع السند لا يطابق فرع جلسة الكاشير المرتبطة.');
+            }
+        }
+        return $transaction;
+    }
+
+    /** Prevent generic voucher revision when its payment is tied to a sale or purchase invoice. */
+    private function assertVoucherHasNoInvoicePayment(array $voucher): void
+    {
+        $stmt = $this->db->prepare(
+            "SELECT id FROM payments
+             WHERE tenant_id = ? AND type = 'voucher'
+               AND (reference_number = ? OR journal_entry_id = ?)
+               AND (sale_id IS NOT NULL OR purchase_id IS NOT NULL)
+             LIMIT 1 FOR UPDATE"
+        );
+        $stmt->execute([
+            (int) $voucher['tenant_id'],
+            (string) ($voucher['reference'] ?? ''),
+            (int) ($voucher['journal_entry_id'] ?? 0),
+        ]);
+        if ($stmt->fetchColumn()) {
+            throw new \DomainException(
+                'لا يمكن تعديل أو إلغاء سند مسجل كدفعة على فاتورة بيع أو شراء؛ استخدم مسار تصحيح الدفعة المتخصص.'
+            );
+        }
+    }
+
+    /**
+     * Reverse the payment mirror for an editable, non-invoice voucher.
+     *
+     * @return int[] Allocated sale IDs that need their paid balance recalculated.
+     */
+    private function reverseVoucherPaymentRecords(array $voucher, int $tenantId): array
+    {
+        $paymentStmt = $this->db->prepare(
+            "SELECT id FROM payments
+             WHERE tenant_id = ? AND type = 'voucher' AND journal_entry_id = ?"
+        );
+        $paymentStmt->execute([$tenantId, (int) ($voucher['journal_entry_id'] ?? 0)]);
+        $paymentIds = array_map('intval', $paymentStmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+        if (!$paymentIds) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($paymentIds), '?'));
+        $saleStmt = $this->db->prepare(
+            "SELECT DISTINCT sale_id FROM customer_payment_allocations
+             WHERE tenant_id = ? AND payment_id IN ({$placeholders})"
+        );
+        $saleStmt->execute(array_merge([$tenantId], $paymentIds));
+        $saleIds = array_map('intval', $saleStmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+
+        $update = $this->db->prepare(
+            "UPDATE payments SET status = 'reversed'
+             WHERE tenant_id = ? AND type = 'voucher' AND journal_entry_id = ?"
+        );
+        $update->execute([$tenantId, (int) ($voucher['journal_entry_id'] ?? 0)]);
+
+        return $saleIds;
+    }
+
+    /** Validate an optional branch ID against the current tenant. */
+    private function validateVoucherBranch(mixed $branchId, int $tenantId): ?array
+    {
+        if ($branchId === null || $branchId === '') {
+            return null;
+        }
+
+        if (filter_var($branchId, FILTER_VALIDATE_INT) === false || (int) $branchId <= 0) {
+            return ['message' => 'معرف الفرع غير صالح.', 'status' => 400];
+        }
+
+        $stmt = $this->db->prepare('SELECT 1 FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1');
+        $stmt->execute([(int) $branchId, $tenantId]);
+        if (!$stmt->fetchColumn()) {
+            return ['message' => 'الفرع المحدد غير متاح لهذا المستأجر.', 'status' => 403];
+        }
+        return null;
+    }
+
+    /** Check whether the authenticated user has tenant-wide voucher visibility. */
+    private function canViewAllBranches(?array $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $roles = [];
+        if (isset($user['roles']) && is_array($user['roles'])) {
+            $roles = array_map(
+                static fn ($role): string => strtolower((string) $role),
+                $user['roles']
+            );
+        } elseif (isset($user['role']) && is_string($user['role'])) {
+            $roles = [strtolower($user['role'])];
+        }
+
+        return SuperAdminHelper::isAdminOrAbove($user)
+            || in_array('manager', $roles, true);
+    }
+
+    /** Check whether the caller may access a voucher in the specified branch. */
+    private function canAccessVoucherBranch(Request $request, int $branchId): bool
+    {
+        $user = $request->getAttribute('user');
+        $user = is_array($user) ? $user : null;
+        if ($this->canViewAllBranches($user)) {
+            return true;
+        }
+
+        return $branchId > 0 && $branchId === (int) ($user['branch_id'] ?? 0);
+    }
+
+    /** Return the existing voucher only when its stored request hash matches the replay. */
+    private function respondWithIdempotentVoucher(
+        Response $response,
+        array $existing,
+        string $requestHash
+    ): Response {
+        if (empty($existing['request_hash']) || !hash_equals((string) $existing['request_hash'], $requestHash)) {
+            return $this->errorResponse(
+                $response,
+                'مفتاح منع التكرار مستخدم لطلب مختلف أو لسند قديم لا يمكن التحقق من بصمته. استخدم مفتاحًا جديدًا بعد مراجعة السندات.',
+                409
+            );
+        }
+
+        return $this->jsonResponse($response, [
+            'status'  => 'success',
+            'message' => 'تمت معالجة هذا الطلب مسبقًا.',
+            'data'    => ['id' => (int) $existing['id'], 'reference' => $existing['reference']],
+        ], 200);
+    }
+
+    /** Normalize supported voucher-list query parameters for SQL filtering. */
     private function normalizeListFilters(array $params): array
     {
         return [
             'type' => $params['type'] ?? null,
-            'branch_id' => !empty($params['branch_id']) ? (int) $params['branch_id'] : null,
+            'branch_id' => isset($params['branch_id']) && $params['branch_id'] !== ''
+                ? $params['branch_id']
+                : null,
             'customer_id' => !empty($params['customer_id']) ? (int) $params['customer_id'] : null,
             'supplier_id' => !empty($params['supplier_id']) ? (int) $params['supplier_id'] : null,
             'date_from' => $params['start_date'] ?? ($params['from'] ?? null),
@@ -585,6 +838,7 @@ class CashVouchersHandler extends BaseHandler
         ];
     }
 
+    /** Read the parsed body or decode a raw JSON body, rejecting malformed JSON. */
     private function parseRequestData(Request $request): array
     {
         $parsed = $request->getParsedBody();
@@ -605,6 +859,7 @@ class CashVouchersHandler extends BaseHandler
         return $decoded;
     }
 
+    /** Fill compatibility fields and derive a display reference when absent. */
     private function decorateVoucherRow(array &$item): void
     {
         if (!isset($item['description'])) {

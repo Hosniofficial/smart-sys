@@ -1,5 +1,5 @@
 import { computed } from 'vue';
-import { useAuthStore } from '@/stores/auth';
+import { useAuthStore } from '@/stores/auth/authStore';
 
 /**
  * Composable: useStatementRBAC
@@ -225,8 +225,7 @@ export function useStatementRBAC(type = 'customers') {
       console.log('[RBAC Audit]', auditLog);
     }
 
-    // TODO: إرسال لـ audit API عند الحاجة
-    // await apiClient.post('/audit/log', auditLog);
+
   };
 
   /**
@@ -248,7 +247,7 @@ export function useStatementRBAC(type = 'customers') {
       console.warn('[RBAC Denial]', auditLog);
     }
 
-    // TODO: إرسال لـ audit API عند الحاجة
+
   };
 
   // ─── Return Public API ─────────────────────────────────────────────────────

@@ -46,6 +46,7 @@ export const useReturnStore = defineStore('return', () => {
     partyId  = null,
     dateFrom = null,
     dateTo   = null,
+    search   = null,
     force    = false,
     signal   = null,
   } = {}) => {
@@ -60,7 +61,7 @@ export const useReturnStore = defineStore('return', () => {
 
       const cacheKey = [
         type, branchId || 'all', page, perPage,
-        status || 'all', partyId || 'all',
+        status || 'all', partyId || 'all', search || 'all',
         dateFrom || 'all', dateTo || 'all',
       ].join('_');
 
@@ -94,8 +95,9 @@ export const useReturnStore = defineStore('return', () => {
           if (partyId) {
             params[type === 'sales' ? 'customer_id' : 'supplier_id'] = String(partyId);
           }
-          if (dateFrom) params.date_from = dateFrom;
-          if (dateTo)   params.date_to   = dateTo;
+          if (dateFrom) params.start_date = dateFrom;
+          if (dateTo)   params.end_date   = dateTo;
+          if (search)   params.search     = search;
 
           const response = await apiClient.get(endpoint, { params, signal });
           const raw      = response?.data?.data ?? response?.data ?? {};
@@ -111,11 +113,6 @@ export const useReturnStore = defineStore('return', () => {
           returnsList.value[cacheKey]          = structuredResponse;
           returnsListFetchedAt.value[cacheKey] = nowMs();
           return structuredResponse;
-        } catch {
-          const empty = { items: [], total: 0, page: 1, perPage: parseInt(perPage) || 50 };
-          returnsList.value[cacheKey]          = empty;
-          returnsListFetchedAt.value[cacheKey] = 0;
-          return empty;
         } finally {
           if (returnsListInFlight.value?.[cacheKey])
             delete returnsListInFlight.value[cacheKey];
@@ -233,7 +230,7 @@ export const useReturnStore = defineStore('return', () => {
       }
 
       const endpoint = type === 'sales' ? '/returns/sale' : '/returns/purchase';
-      const params   = { q, limit: String(limit) };
+      const params   = { search: q, limit: String(limit) };
       if (branchId) params.branch_id = String(branchId);
 
       const response = await apiClient.get(endpoint, { params, signal });

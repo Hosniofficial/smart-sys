@@ -307,9 +307,12 @@
                   <tbody class="divide-y divide-slate-50">
                     <tr v-for="tx in transactions[detailsSession.id]" :key="tx.id" class="hover:bg-slate-50 transition-colors">
                       <td class="px-4 py-3 text-slate-400 font-mono">{{ formatTime(tx.created_at) }}</td>
-                      <td class="px-4 py-3 font-bold text-slate-700">{{ getTransactionTypeLabel(tx.type) }}</td>
-                      <td class="px-4 py-3 text-left font-bold font-mono" :class="isExpense(tx.type) ? 'text-rose-600' : 'text-emerald-600'">
-                        {{ isExpense(tx.type) ? '-' : '+' }}{{ formatCurrency(tx.amount) }}
+                      <td class="px-4 py-3 font-bold text-slate-700">
+                        {{ getTransactionTypeLabel(tx.type) }}
+                        <span v-if="tx.status === 'cancelled'" class="mr-1 text-[9px] text-slate-400">ملغاة</span>
+                      </td>
+                      <td class="px-4 py-3 text-left font-bold font-mono" :class="tx.status === 'cancelled' ? 'text-slate-400 line-through' : (isExpense(tx.type) ? 'text-rose-600' : 'text-emerald-600')">
+                        <span v-if="tx.status !== 'cancelled'">{{ isExpense(tx.type) ? '-' : '+' }}</span>{{ formatCurrency(tx.amount) }}
                       </td>
                     </tr>
                     <tr v-if="!transactions[detailsSession.id]?.length"><td colspan="3" class="py-8 text-center text-slate-300 italic text-[10px]">لا توجد حركات مسجلة لهذه الجلسة</td></tr>
@@ -358,16 +361,16 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useSessionStore } from '@/stores/session/sessionStore';
-import { useBranchStore } from '@/stores/branch';
-import { useAuthStore } from '@/stores/auth';
+import { useBranchStore } from '@/stores/branch/branchStore';
+import { useAuthStore } from '@/stores/auth/authStore';
 import { useBranchIsolation } from '@/composables/useBranchIsolation';
-import { useBootstrapStore } from '@/stores/bootstrap';
+import { useBootstrapStore } from '@/stores/bootstrap/bootstrapStore';
 import { useToast } from '@/composables/useToast';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useDateValidation } from '@/composables/useDateValidation';
 import { useSessionExemption } from '@/composables/useCashierSessionGuard';
 import { useHistoryFilters } from '@/composables/useHistoryFilters';
-import { getLocalDateISO } from '@/utils/date';
+import { getLocalDateISO } from '@/utils';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
@@ -527,11 +530,6 @@ const getTransactionTypeLabel = (t) => ({
   return: 'مرتجع مبيعات', withdrawal: 'سحب نقدي', deposit: 'إيداع نقدي',
   payment: 'دفعة', refund: 'استرداد', discount: 'خصم', tax: 'ضريبة'
 }[t] || t);
-
-const getTransactionTypeClass = (t) => ({
-  sale: 'text-emerald-600', expense: 'text-rose-600',
-  return: 'text-amber-600', withdrawal: 'text-rose-600', deposit: 'text-blue-600'
-}[t] || '');
 
 const isExpense = (t) => ['expense', 'withdrawal', 'refund'].includes(t);
 

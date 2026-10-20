@@ -13,8 +13,10 @@
         :breadcrumb="breadcrumb"
         title="تقرير الأرباح والخسائر"
         description="تحليل القوائم المالية وهوامش الربحية التشغيلية"
-        :branches="[]"
-        :selectedBranch="null"
+        :branches="branches"
+        :selectedBranch="selectedBranch === 'all' ? null : selectedBranch"
+        :hasExplicitSelection="true"
+        @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
           <button @click="fetchReport" :disabled="isLoading" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
@@ -79,6 +81,26 @@
             </label>
           </div>
         </div>
+      </section>
+
+      <section
+        v-if="unresolvedReturnCostLineCount > 0 || (compareEnabled && previousUnresolvedReturnCostLineCount > 0)"
+        class="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900"
+        role="alert"
+      >
+        <p class="font-bold">تكلفة بعض مرتجعات المبيعات غير محسومة</p>
+        <p v-if="unresolvedReturnCostLineCount > 0" class="mt-1">
+          الفترة الحالية: {{ unresolvedReturnCostLineCount }} بند مرتجع غير محسوم
+          <span v-if="unresolvedReturnCostQuantity > 0"> (الكمية {{ unresolvedReturnCostQuantity }})</span>.
+        </p>
+        <p v-if="compareEnabled && previousUnresolvedReturnCostLineCount > 0" class="mt-1">
+          الفترة السابقة: {{ previousUnresolvedReturnCostLineCount }} بند مرتجع غير محسوم
+          <span v-if="previousUnresolvedReturnCostQuantity > 0"> (الكمية {{ previousUnresolvedReturnCostQuantity }})</span>.
+        </p>
+        <p class="mt-1">
+          استُبعدت هذه التكلفة من تكلفة المرتجعات، لذلك قد لا تعكس الأرباح المقارنة القيمة النهائية.
+          راجع تكلفة حركة المرتجع أو تكلفة بند البيع الأصلي.
+        </p>
       </section>
 
       <!-- Summary Performance KPIs: Metric Blocks -->
@@ -281,17 +303,24 @@
 // [SCRIPT SECTION] منطق الحسابات والـ API محفوظ كاملاً
 // تحديثات: إزالة console.log، تعديل نص اسم الإيراد، استبدال Cairo بـ sans-serif، إصلاح Legend
 import { ref, computed, onMounted, watch } from 'vue';
-import { useReportsStore } from '../../stores/reports';
+import { useReportsStore } from '@/stores/reports/reportsStore';
 import { Line as LineChart, Doughnut as DoughnutChart } from 'vue-chartjs';
-import { Chart as ChartJS, Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement, ArcElement } from 'chart.js';
+import { Chart as ChartJS, Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement, ArcElement, Filler } from 'chart.js';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
-import { getLocalDateISO } from '@/utils/date';
+import { getLocalDateISO } from '@/utils';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import PageHeader from '@/components/PageHeader.vue';
 
-ChartJS.register(Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement, ArcElement);
+ChartJS.register(Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement, ArcElement, Filler);
 
 const reportsStore = useReportsStore();
+const branchStore = useBranchStore();
+const branches = computed(() => branchStore.branches);
+const selectedBranch = computed({
+  get: () => branchStore.selectedBranchId || 'all',
+  set: (val) => branchStore.setSelectedBranch(val === 'all' ? null : val)
+});
 const { breadcrumb } = useBreadcrumb();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const isLoading = ref(true);
@@ -322,6 +351,18 @@ const createSummary = (data) => {
 
 const currentSummary = computed(() => createSummary(currentPeriodData.value));
 const previousSummary = computed(() => createSummary(previousPeriodData.value));
+const unresolvedReturnCostLineCount = computed(
+  () => Number(currentPeriodData.value.meta?.returnsCostUnresolvedLineCount ?? 0)
+);
+const unresolvedReturnCostQuantity = computed(
+  () => Number(currentPeriodData.value.meta?.returnsCostUnresolvedQuantity ?? 0)
+);
+const previousUnresolvedReturnCostLineCount = computed(
+  () => Number(previousPeriodData.value.meta?.returnsCostUnresolvedLineCount ?? 0)
+);
+const previousUnresolvedReturnCostQuantity = computed(
+  () => Number(previousPeriodData.value.meta?.returnsCostUnresolvedQuantity ?? 0)
+);
 const calculateChange = (current, previous) => { if (previous === 0) return current > 0 ? 100 : 0; return ((current - previous) / previous) * 100; };
 
 const summaryCards = computed(() => {
@@ -367,21 +408,44 @@ const mapApiToPeriodData = (apiData) => {
     const cogs = Number(data?.revenue?.cogs ?? data?.summary?.cogs ?? 0);
     const totalExpenses = Number(data?.summary?.total_expenses ?? 0);
     const netProfit = Number(data?.summary?.net_profit ?? 0);
+    const returnsCostUnresolvedLineCount = Number(
+        data?.revenue?.returns_cost_unresolved_line_count
+        ?? data?.summary?.returns_cost_unresolved_line_count
+        ?? 0
+    );
+    const returnsCostUnresolvedQuantity = Number(
+        data?.revenue?.returns_cost_unresolved_quantity
+        ?? data?.summary?.returns_cost_unresolved_quantity
+        ?? 0
+    );
     const revenue = [{ name: 'إجمالي الإيرادات التشغيلية', amount: totalRevenue }];
-    return { revenue, expenses, meta: { totalRevenue, grossProfit, cogs, totalExpenses, netProfit } };
+    return {
+        revenue,
+        expenses,
+        meta: {
+            totalRevenue,
+            grossProfit,
+            cogs,
+            totalExpenses,
+            netProfit,
+            returnsCostUnresolvedLineCount,
+            returnsCostUnresolvedQuantity,
+        },
+    };
 };
 
 const fetchReport = async () => {
     isLoading.value = true; error.value = null;
     try {
-        const current = await reportsStore.fetchProfitLossReport(startDate.value, endDate.value);
+        const branchId = selectedBranch.value === 'all' ? null : selectedBranch.value;
+        const current = await reportsStore.fetchProfitLossReport(startDate.value, endDate.value, 'cogs', 'vouchers', branchId);
         currentPeriodData.value = mapApiToPeriodData(current);
         if (compareEnabled.value) {
             const start = new Date(startDate.value); const end = new Date(endDate.value);
             const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
             const prevEnd = new Date(start); prevEnd.setDate(start.getDate() - 1);
             const prevStart = new Date(start); prevStart.setDate(start.getDate() - diffDays);
-            const previous = await reportsStore.fetchProfitLossReport(getLocalDateISO(prevStart), getLocalDateISO(prevEnd));
+            const previous = await reportsStore.fetchProfitLossReport(getLocalDateISO(prevStart), getLocalDateISO(prevEnd), 'cogs', 'vouchers', branchId);
             previousPeriodData.value = mapApiToPeriodData(previous);
         } else { previousPeriodData.value = { revenue: [], expenses: [], meta: {} }; }
     } catch (err) { error.value = 'فشل في تحميل التقرير.'; } finally { isLoading.value = false; }
@@ -395,8 +459,10 @@ const setDateRange = (range) => {
     endDate.value = getLocalDateISO(end); startDate.value = getLocalDateISO(start);
 };
 
-watch([startDate, endDate, compareEnabled], () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(fetchReport, 700); });
-onMounted(async () => { await Promise.all([fetchSettings(), fetchReport()]); });
+watch([startDate, endDate, compareEnabled, selectedBranch], () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(fetchReport, 700); });
+onMounted(async () => {
+  await Promise.all([fetchSettings(), branchStore.fetchBranches().catch(() => {}), fetchReport()]);
+});
 </script>
 
 <style scoped>

@@ -1,6 +1,6 @@
 import { ref, computed, watch, onMounted } from 'vue';
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
 
 /**
  * Composable موحد لإدارة الفلاتر في الجداول
@@ -29,10 +29,10 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
   // الحل: isExempt هنا computed من authStore مباشرة — نفس المنطق، بدون async، بدون state منفصل.
   const isExempt = computed(() => {
     const role = String(authStore.user?.role || '').toLowerCase();
-    const rid  = Number(authStore.user?.role_id || 0);
     return (
-      ['admin', 'administrator', 'manager', 'owner', 'superadmin', 'super_admin'].includes(role) ||
-      rid === 1
+      authStore.isSuperAdmin ||
+      authStore.isAdmin ||
+      role === 'manager'
     );
   });
 

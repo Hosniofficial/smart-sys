@@ -13,32 +13,26 @@
       </div>
       
       <!-- Page Title -->
-      <h1 class="text-2xl font-bold tracking-tight text-slate-900">{{ title }}</h1>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900" v-html="title"></h1>
       
       <!-- Page Description -->
-      <p class="text-sm text-slate-500 font-medium">{{ description }}</p>
+      <p class="text-sm text-slate-500 font-medium" v-html="description"></p>
     </div>
 
     <!-- Right Side Controls (Slots) -->
     <div class="flex flex-wrap items-center gap-3">
       <!-- Branch Selector — يظهر فقط للـ exempt users (branches غير فارغة) -->
-      <div v-if="branches && branches.length > 0" class="relative">
+      <div v-if="canSelectBranch && branches && branches.length > 0" class="relative">
         <select 
-          :value="selectedBranch === null ? '' : String(selectedBranch)"
+          :value="selectedBranch === null
+            ? (branchSelectionMode === 'optional' ? 'all' : '')
+            : String(selectedBranch)"
           @change="onSelectChange"
           class="h-9 pr-9 pl-4 rounded-md border border-slate-200 bg-white text-xs font-bold hover:border-slate-300 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all appearance-none cursor-pointer min-w-[180px]"
           :class="isUnselected ? 'text-slate-400' : 'text-slate-700'"
         >
-          <!--
-            الحالتان:
-            1. لم يُختر فرع بعد (selectedBranch=null AND hasExplicitSelection=false):
-               → يُعرض الـ placeholder "اختر فرعاً..." بلون رمادي
-               → غير قابل للاختيار من القائمة (disabled)
-            2. المستخدم اختار فرعاً أو "جميع الفروع":
-               → يُعرض اسم الفرع أو "جميع الفروع"
-          -->
-          <option value="" disabled :class="isUnselected ? '' : 'hidden'">اختر فرعاً...</option>
-          <option value="">جميع الفروع</option>
+          <option v-if="branchSelectionMode === 'required'" value="" disabled>اختر فرعاً...</option>
+          <option v-if="branchSelectionMode === 'optional'" value="all">جميع الفروع</option>
           <option v-for="branch in branches" :key="branch.id" :value="String(branch.id)">
             {{ branch.name }}
           </option>
@@ -46,7 +40,7 @@
         <i class="fas fa-building absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px]"></i>
       </div>
 
-      <div v-if="branches && branches.length > 0" class="h-6 w-px bg-slate-200 mx-1 hidden sm:block"></div>
+      <div v-if="canSelectBranch && branches && branches.length > 0" class="h-6 w-px bg-slate-200 mx-1 hidden sm:block"></div>
 
       <!-- Slot for Additional Controls -->
       <slot name="controls"></slot>
@@ -57,6 +51,8 @@
 <script setup>
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useBranchIsolation } from '@/composables/useBranchIsolation'
+import { useBranchStore } from '@/stores/branch/branchStore'
 
 const props = defineProps({
   breadcrumb: {
@@ -80,23 +76,40 @@ const props = defineProps({
     type: [String, Number, null],
     default: null
   },
-  // true = المستخدم اختار فرعاً أو "جميع الفروع" صراحةً
-  // false (default) = لم يُختر بعد → يُعرض placeholder
+  // Kept for compatibility with pages that pass the previous explicit-selection state.
   hasExplicitSelection: {
     type: Boolean,
     default: false
+  },
+  branchSelectionMode: {
+    type: String,
+    default: 'optional',
+    validator: (value) => ['optional', 'required'].includes(value)
   }
 })
 
 const emit = defineEmits(['branch-changed'])
+const branchIsolation = useBranchIsolation()
+const branchStore = useBranchStore()
+const canSelectBranch = computed(() => branchIsolation.isExempt.value)
 
-// placeholder يظهر فقط عندما لم يُختر فرع صراحةً بعد
-const isUnselected = computed(() => props.selectedBranch === null && !props.hasExplicitSelection)
+// Optional branch filters default to all branches; only required filters show a placeholder.
+const isUnselected = computed(() => {
+  return props.branchSelectionMode === 'required'
+    && (props.selectedBranch === null || props.selectedBranch === '')
+})
 
 const onSelectChange = (e) => {
   const val = e.target.value
-  // '' = "جميع الفروع" → يُرسل null
-  emit('branch-changed', val === '' ? null : val)
+  const branchId = val === 'all' || val === '' ? null : val
+
+  if (props.branchSelectionMode === 'required') {
+    if (branchId !== null) branchStore.setTemporaryBranch(branchId)
+  } else {
+    branchStore.setSelectedBranch(branchId)
+  }
+
+  emit('branch-changed', branchId)
 }
 </script>
 

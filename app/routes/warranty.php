@@ -16,9 +16,6 @@ return function (RouteCollectorProxy $group, Container $container): void {
     $group->group('/warranty', function (RouteCollectorProxy $group) use ($handler, $db) {
 
         // ── Read ──────────────────────────────────────────────────────────────
-        $group->get('', [$handler, 'list'])
-            ->add(PermissionMiddleware::require(Permissions::WARRANTY_VIEW, $db));
-
         $group->get('/requests', [$handler, 'list'])
             ->add(PermissionMiddleware::require(Permissions::WARRANTY_VIEW, $db));
 

@@ -63,22 +63,18 @@ export const usePaymentStore = defineStore('payment', () => {
         };
       }
 
-      const promise = (async () => {
-        try {
-          const res  = await paymentService.getPaymentMethods();
+      const promise = paymentService.getPaymentMethods()
+        .then((res) => {
           const list = normalizeArray(res);
-
-          paymentMethods.value          = Array.isArray(list) ? list : [];
+          paymentMethods.value = list;
           paymentMethodsFetchedAt.value = nowMs();
-          return paymentMethods.value;
-        } catch {
-          paymentMethods.value          = [];
-          paymentMethodsFetchedAt.value = 0;
-          return [];
-        } finally {
-          paymentMethodsInFlight.value = null;
-        }
-      })();
+          return list;
+        })
+        .finally(() => {
+          if (paymentMethodsInFlight.value === promise) {
+            paymentMethodsInFlight.value = null;
+          }
+        });
 
       paymentMethodsInFlight.value = promise;
       const result = await promise;
@@ -112,21 +108,24 @@ export const usePaymentStore = defineStore('payment', () => {
     perPage = 50,
     force   = false,
     signal  = null,
+    params: queryParams = {},
   } = {}) => {
     try {
-      if (!contactId || !contactType) {
-        return {
-          status: 'error',
-          data:   { items: [], total: 0, page: 1, perPage },
-          message: 'Contact ID and type are required'
-        };
-      }
+      const isContactRequest = Boolean(contactId && contactType);
+      const endpoint = contactType === 'customers' ? '/receipts' : '/payments';
+      const idKey = contactType === 'customers' ? 'customer_id' : 'supplier_id';
+      const params = {
+        ...queryParams,
+        page: String(queryParams.page ?? page),
+        per_page: String(queryParams.per_page ?? perPage),
+      };
+      if (isContactRequest) params[idKey] = String(contactId);
 
-      const cacheKey = `payments_${contactType}_${contactId}_${page}_${perPage}`;
+      const cacheKey = `payments_${endpoint}_${JSON.stringify(params)}`;
       const cached   = searchCache.value[cacheKey];
       const cachedAt = searchCacheFetchedAt.value[cacheKey];
 
-      if (!force && cached && isFresh(cachedAt, TTL.paymentMethods)) {
+      if (!force && cached && isFresh(cachedAt, 60 * 1000)) {
         return {
           status: 'success',
           data:   cached,
@@ -134,32 +133,22 @@ export const usePaymentStore = defineStore('payment', () => {
         };
       }
 
-      const endpoint  = contactType === 'customers' ? '/receipts' : '/payments';
-      const idKey     = contactType === 'customers' ? 'customer_id' : 'supplier_id';
-      const params    = {
-        page:     String(page),
-        per_page: String(perPage),
-        [idKey]:  String(contactId),
-      };
-
       const response = await apiClient.get(endpoint, { params, signal });
       const raw      = response?.data?.data ?? response?.data ?? {};
       const list     = Array.isArray(raw) ? raw : (raw.items || []);
 
-      // فلتر client-side لو الـ backend ما فلترش صح
-      const filteredList = list.filter(item =>
-        String(item[idKey]) === String(contactId)
-      );
+      const filteredList = isContactRequest
+        ? list.filter(item => String(item[idKey]) === String(contactId))
+        : list;
+      const responseMeta = raw.meta || {};
 
       const structuredResponse = {
         items:   filteredList,
-        total:   parseInt(raw.total ?? raw.count ?? list.length) || 0,
-        page:    parseInt(page)    || 1,
-        perPage: parseInt(perPage) || 50,
-        meta: {
-          filtered:         filteredList.length !== list.length,
-          backendFiltering: filteredList.length === list.length,
-        },
+        total:   parseInt(responseMeta.total ?? raw.total ?? raw.count ?? list.length) || 0,
+        page:    parseInt(responseMeta.page ?? params.page) || 1,
+        per_page: parseInt(responseMeta.per_page ?? params.per_page) || 50,
+        perPage: parseInt(responseMeta.per_page ?? params.per_page) || 50,
+        meta: responseMeta,
       };
 
       searchCache.value[cacheKey]          = structuredResponse;
@@ -214,9 +203,9 @@ export const usePaymentStore = defineStore('payment', () => {
    *   const res = await paymentStore.updatePaymentMethodKind(id, kind, accountId);
    *   if (res.status === 'success') { ... }
    */
-  const updatePaymentMethodKind = async (id, kind, accountId = null) => {
+  const updatePaymentMethodKind = async (id, kind, accountId = null, liquiditySettings = {}) => {
     try {
-      await paymentService.updatePaymentMethodKind(id, kind, accountId);
+      await paymentService.updatePaymentMethodKind(id, kind, accountId, liquiditySettings);
       await fetchPaymentMethods({ force: true });
 
       return {

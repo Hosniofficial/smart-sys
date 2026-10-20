@@ -77,30 +77,7 @@ export const useSupplierStore = defineStore('supplier', () => {
 
       const promise = (async () => {
         try {
-          let list;
-
-          if (id) {
-            // جرب endpoint المورد المفرد أولاً
-            try {
-              const response = await apiClient.get(`/suppliers/${id}`);
-              const supplier = response?.data?.data || response?.data;
-              if (supplier) {
-                const existingIndex = suppliers.value.findIndex(s => String(s.id) === String(id));
-                if (existingIndex >= 0) {
-                  suppliers.value[existingIndex] = supplier;
-                } else {
-                  suppliers.value.push(supplier);
-                }
-                suppliersFetchedAt.value = nowMs();
-                return supplier;
-              }
-            } catch (specificError) {
-              console.warn('Specific supplier endpoint failed, falling back to list:', specificError);
-            }
-          }
-
-          // Fallback: جيب القائمة كاملة
-          list             = await listSuppliers({ per_page: 1000, ...params });
+          const list = await listSuppliers({ per_page: 1000, ...params });
           suppliers.value  = Array.isArray(list) ? list : (list?.items || []);
           suppliersFetchedAt.value = nowMs();
 
@@ -114,7 +91,7 @@ export const useSupplierStore = defineStore('supplier', () => {
           console.error('Failed to fetch suppliers:', err);
           suppliers.value          = [];
           suppliersFetchedAt.value = 0;
-          return [];
+          throw err;
         } finally {
           suppliersInFlight.value = null;
         }
@@ -319,30 +296,26 @@ export const useSupplierStore = defineStore('supplier', () => {
     }
   };
 
- const recordSupplierPayment = async (supplierId, payload) => {
+  const paySupplierDebt = async (payload, idempotencyKey) => {
     try {
-      if (!supplierId) {
-        return {
-          status: 'error',
-          data:   null,
-          message: 'Supplier ID is required'
-        };
-      }
- 
-      const response = await apiClient.post(`/suppliers/${supplierId}/payments`, payload);
+      const response = await apiClient.post('/purchases/pay-debt', payload, {
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+      });
       suppliersFetchedAt.value = 0;
- 
+
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
-        data:   response?.data?.data || response?.data || {},
-        message: response?.data?.message || null
+        data: response?.data?.data || response?.data || {},
+        message: response?.data?.message || null,
+        outcomeUnknown: false,
       };
     } catch (err) {
-      console.error('recordSupplierPayment failed:', err);
+      console.error('paySupplierDebt failed:', err);
       return {
         status: 'error',
-        data:   null,
-        message: err.response?.data?.message || err.message
+        data: null,
+        message: err.response?.data?.message || err.message,
+        outcomeUnknown: !err.response || err.response.status >= 500,
       };
     }
   };
@@ -377,7 +350,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     createSupplier,
     updateSupplier,
     deleteSupplier,
-    recordSupplierPayment,
+    paySupplierDebt,
 
 
     // Cache

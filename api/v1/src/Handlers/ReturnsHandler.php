@@ -12,61 +12,23 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
 use App\Services\CostCenter\CostCenterService;
 use App\Services\LabelService;
+use App\Security\Permissions;
 use App\Utils\PaginationHelper;
+use App\Utils\SuperAdminHelper;
 
 /**
- * ──────────────────────────────────────────────────────────
- * RETURNS HANDLER
- * ──────────────────────────────────────────────────────────
+ * Handles sales and purchase return reads, creation, status updates, and invoice lookup.
  *
- * HTTP handler for return management (sales returns and purchase returns)
- * with inventory tracking and accounting journal posting.
- *
- * **Key Responsibilities**:
- * - Sales return CRUD operations (returned quantities per invoice)
- * - Purchase return CRUD operations (returned quantities per purchase)
- * - Inventory adjustment tracking on return creation/update
- * - Returnable quantity calculations (available stock for return per product)
- * - Journal entry posting via AccountingService for return transactions
- * - Multi-tenancy filtering and branch/warehouse isolation
- * - Localized response labels (ar/en) via LabelService
- *
- * **Multi-Tenancy**:
- * All queries filtered by tenant_id and branch_id; per-user cost center resolution
- * for financial transaction tracking.
- *
- * **Dependencies**:
- * - ReturnService: Core business logic (CRUD, inventory calculations, accounting)
- * - CostCenterService: Cost center resolution for return transactions
- * - AccountingService: Journal entry posting for return inventory adjustments
- * - MonologHandler: Entity-specific logging (returns channel)
- * - LabelService: Localized reference and status labels
- * - PaginationHelper: Query result pagination (limit, offset)
- *
- * **Return Types Supported**:
- * - sale: Returns from customer sales (decreases A/R, increases inventory)
- * - purchase: Returns to supplier purchases (decreases A/P, increases inventory)
- *
- * **HTTP Status Codes**:
- * - 200: Success (GET, list operations)
- * - 201: Created (POST operations)
- * - 400: Bad Request (missing/invalid parameters, insufficient returnable qty)
- * - 403: Forbidden (insufficient permissions, missing tenant_id)
- * - 404: Not Found (return/sale/purchase not found)
- * - 500: Server Error (database/transaction failures)
+ * ReturnService performs return persistence, inventory, and accounting work;
+ * this handler validates HTTP input, resolves branch/session/cost-center context,
+ * and builds localized responses. Return endpoints are registered in returns.php.
  */
 class ReturnsHandler extends BaseHandler
 {
     protected $logger;
     private $costCenterService;
 
-    /**
-     * Lazy cache: reuse the same ReturnService instance within a single request
-     * instead of constructing a new one (+ AccountingService + SettingsRepository)
-     * on every helper call inside create().
-     *
-     * Key format: "{tenantId}:{userId}"
-     */
+    /** Cache service instances by tenant and user for this handler request. */
     private array $returnServiceCache = [];
 
     public function __construct($pdo, $logger = null)
@@ -76,23 +38,13 @@ class ReturnsHandler extends BaseHandler
         $this->costCenterService = new CostCenterService($pdo, 'returns');
     }
 
-    /**
-     * Returns a cached ReturnService instance for (tenantId, userId).
-     * Avoids repeated instantiation of AccountingService + SettingsRepository
-     * on every helper call within the same request.
-     */
+    /** Resolve the tenant/user-scoped return service, reusing the local cache. */
     private function returnService(int $tenantId, ?int $userId): \App\Services\ReturnService
     {
         $key = $tenantId . ':' . ($userId ?? 'null');
         return $this->returnServiceCache[$key]
             ??= $this->services->returns($tenantId, $userId);
     }
-
-    /**
-     * ──────────────────────────────────────────────────────────
-     * HELPER METHODS
-     * ──────────────────────────────────────────────────────────
-     */
 
     private function refLabel(?string $type, string $locale = 'ar'): string
     {
@@ -104,12 +56,7 @@ class ReturnsHandler extends BaseHandler
         return LabelService::statusLabel($code, $locale);
     }
 
-    /**
-     * ──────────────────────────────────────────────────────────
-     * RETRIEVAL & INVENTORY OPERATIONS
-     * ──────────────────────────────────────────────────────────
-     */
-
+    /** Calculate original, returned, and remaining item quantities for an invoice. */
     public function getReturnedQuantities(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -130,18 +77,24 @@ class ReturnsHandler extends BaseHandler
         }
 
         if ($type === 'sale') {
-            $stmt = $this->db->prepare("SELECT id FROM sales WHERE id = ? AND tenant_id = ?");
+            $stmt = $this->db->prepare("SELECT id, status FROM sales WHERE id = ? AND tenant_id = ?");
             $stmt->execute([$invoiceId, $tenantId]);
+            $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if (!$stmt->fetchColumn()) {
+            if (!$invoice) {
                 return $this->errorResponse($response, 'لم يتم العثور على فاتورة المبيعات المطلوبة', 403);
+            }
+            try {
+                \App\Security\SaleWorkflowPolicy::assertReturnAllowed((string) $invoice['status']);
+            } catch (\DomainException $e) {
+                return $this->errorResponse($response, $e->getMessage(), 400);
             }
 
             $stmtOrig = $this->db->prepare("
-                SELECT product_id, COALESCE(SUM(quantity), 0) AS original_qty
+                SELECT product_id, unit_id, COALESCE(SUM(quantity), 0) AS original_qty
                 FROM sales_items
                 WHERE sale_id = ? AND tenant_id = ?
-                GROUP BY product_id
+                GROUP BY product_id, unit_id
             ");
             $stmtOrig->execute([$invoiceId, $tenantId]);
             $rows = $stmtOrig->fetchAll(PDO::FETCH_ASSOC);
@@ -154,10 +107,10 @@ class ReturnsHandler extends BaseHandler
             }
 
             $stmtOrig = $this->db->prepare("
-                SELECT product_id, COALESCE(SUM(quantity), 0) AS original_qty
+                SELECT product_id, unit_id, COALESCE(SUM(quantity), 0) AS original_qty
                 FROM purchase_items
                 WHERE purchase_id = ? AND tenant_id = ?
-                GROUP BY product_id
+                GROUP BY product_id, unit_id
             ");
             $stmtOrig->execute([$invoiceId, $tenantId]);
             $rows = $stmtOrig->fetchAll(PDO::FETCH_ASSOC);
@@ -183,6 +136,7 @@ class ReturnsHandler extends BaseHandler
                   AND r.return_type = 'sale'
                   AND r.sale_id = ?
                   AND ri.product_id = ?
+                  AND COALESCE(ri.unit_id, 0) = COALESCE(?, 0)
             ");
         } else {
             $stmtPrev = $this->db->prepare("
@@ -193,6 +147,7 @@ class ReturnsHandler extends BaseHandler
                   AND r.return_type = 'purchase'
                   AND r.purchase_id = ?
                   AND ri.product_id = ?
+                  AND COALESCE(ri.unit_id, 0) = COALESCE(?, 0)
             ");
         }
 
@@ -209,13 +164,15 @@ class ReturnsHandler extends BaseHandler
                 'unit_name' => 'قطعة'
             ];
 
-            $stmtPrev->execute([$tenantId, $invoiceId, $productId]);
+            $unitId = (int) ($r['unit_id'] ?? 0);
+            $stmtPrev->execute([$tenantId, $invoiceId, $productId, $unitId]);
             $returnedQty = (float) $stmtPrev->fetchColumn();
 
             $remainingQty = max(0.0, $originalQty - $returnedQty);
 
             $result[] = [
                 'product_id' => $productId,
+                'unit_id' => $unitId,
                 'product_name' => $prod['name'],
                 'barcode' => $prod['barcode'],
                 'unit' => $prod['unit_name'],
@@ -228,13 +185,7 @@ class ReturnsHandler extends BaseHandler
         return $this->successResponse($response, $result, 200);
     }
 
-    /**
-     * List returns with pagination and filtering by type (sale or purchase).
-     *
-     * @param Request $request
-     * @param Response $response
-     * @return Response
-     */
+    /** List tenant returns with branch scope, filters, pagination, and localized labels. */
     public function list(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -244,11 +195,30 @@ class ReturnsHandler extends BaseHandler
 
         $queryParams = $request->getQueryParams();
         $branchId = $queryParams['branch_id'] ?? null;
-        $isExempt = $this->isCashierSessionExempt($request);
+        $user = $request->getAttribute('user');
 
-        // المستخدم المقيّد بفرع فقط يُطالَب بتحديد branch_id إجباريًا
-        if (!$isExempt && (!$branchId || $branchId === '')) {
-            return $this->errorResponse($response, 'مطلوب تحديد المخزن (branch_id) لعرض المرتجعات.', 400);
+        if (!$this->canViewAllBranches(is_array($user) ? $user : null)) {
+            $userBranchId = is_array($user) ? (int) ($user['branch_id'] ?? 0) : 0;
+            if ($userBranchId <= 0) {
+                return $this->errorResponse(
+                    $response,
+                    'حسابك غير مرتبط بفرع. يرجى التواصل مع الإدارة لتعيين فرع لحسابك.',
+                    403
+                );
+            }
+            $branchId = $userBranchId;
+        } elseif ($branchId !== null && $branchId !== '') {
+            $branchId = filter_var($branchId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if ($branchId === false) {
+                return $this->errorResponse($response, 'معرف الفرع غير صالح.', 400);
+            }
+            $branchStmt = $this->db->prepare(
+                'SELECT 1 FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1'
+            );
+            $branchStmt->execute([(int) $branchId, (int) $tenantId]);
+            if (!$branchStmt->fetchColumn()) {
+                return $this->errorResponse($response, 'الفرع المحدد غير موجود.', 404);
+            }
         }
 
         [$page, $limit, $offset] = PaginationHelper::fromArray($queryParams, 10);
@@ -278,7 +248,12 @@ class ReturnsHandler extends BaseHandler
                     WHEN r.return_type = 'sale' THEN c.name
                     WHEN r.return_type = 'purchase' THEN s.name
                 END AS party_name,
-                u.name AS created_by_name
+                u.name AS created_by_name,
+                (
+                    SELECT COUNT(*)
+                    FROM return_items ri
+                    WHERE ri.return_id = r.id AND ri.tenant_id = r.tenant_id
+                ) AS items_count
             FROM returns r
             LEFT JOIN customers c
                 ON r.return_type = 'sale' AND r.customer_id = c.id AND c.tenant_id = ?
@@ -302,7 +277,6 @@ class ReturnsHandler extends BaseHandler
             WHERE r.tenant_id = ?
         ";
 
-        // فلتر الفرع اختياري الآن — يُطبَّق فقط إن وُجد فعليًا في الطلب
         if ($branchId !== null && $branchId !== '') {
             $query .= " AND r.branch_id = ?";
             $countQuery .= " AND r.branch_id = ?";
@@ -382,14 +356,7 @@ class ReturnsHandler extends BaseHandler
         ], 200);
     }
 
-    /**
-     * Get single return details with associated items and localized labels.
-     *
-     * @param Request $request
-     * @param Response $response
-     * @param array $args expects ['id'] => return_id, ['type'] => 'sale'|'purchase'
-     * @return Response
-     */
+    /** Return one tenant return with items and cash/credit settlement details. */
     public function get(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -442,6 +409,23 @@ class ReturnsHandler extends BaseHandler
             return $this->errorResponse($response, 'لم يتم العثور على المرتجع', 404);
         }
 
+        $settlementTotal = max(0.0, (float) ($return['grand_total'] ?? $return['total_amount'] ?? 0));
+        $cashRefundAmount = min($settlementTotal, max(0.0, (float) ($return['paid_amount'] ?? 0)));
+        if (($return['return_type'] ?? null) === 'purchase') {
+            // Purchase return policy applies the amount not refunded in cash to the supplier account.
+            $offsetAmount = max(0.0, $settlementTotal - $cashRefundAmount);
+        } else {
+            // Sales-return offsets are persisted as allocations; use actual allocations rather than infer from the total.
+            $offsetStmt = $this->db->prepare(
+                'SELECT COALESCE(SUM(allocated_amount), 0) FROM return_credit_allocations WHERE return_id = ? AND tenant_id = ?'
+            );
+            $offsetStmt->execute([$id, $tenantId]);
+            $offsetAmount = min($settlementTotal, max(0.0, (float) $offsetStmt->fetchColumn()));
+        }
+        $return['cash_refund_amount'] = number_format($cashRefundAmount, 2, '.', '');
+        $return['offset_amount'] = number_format($offsetAmount, 2, '.', '');
+        $return['net_settlement_amount'] = number_format($cashRefundAmount + $offsetAmount, 2, '.', '');
+
         $stmt = $this->db->prepare("
             SELECT
                 ri.*,
@@ -472,12 +456,7 @@ class ReturnsHandler extends BaseHandler
         return $this->successResponse($response, $return, 200);
     }
 
-    /**
-     * ──────────────────────────────────────────────────────────
-     * CONVENIENCE WRAPPERS
-     * ──────────────────────────────────────────────────────────
-     */
-
+    /** List only sales returns by forwarding to the shared list implementation. */
     public function listSale(Request $request, Response $response): Response
     {
         $params = $request->getQueryParams();
@@ -487,6 +466,7 @@ class ReturnsHandler extends BaseHandler
         return $this->list($request, $response);
     }
 
+    /** List only purchase returns by forwarding to the shared list implementation. */
     public function listPurchase(Request $request, Response $response): Response
     {
         $params = $request->getQueryParams();
@@ -496,57 +476,37 @@ class ReturnsHandler extends BaseHandler
         return $this->list($request, $response);
     }
 
+    /** Fetch a sales return through the shared detail implementation. */
     public function getSale(Request $request, Response $response, array $args): Response
     {
         $args['type'] = 'sale';
         return $this->get($request, $response, $args);
     }
 
+    /** Fetch a purchase return through the shared detail implementation. */
     public function getPurchase(Request $request, Response $response, array $args): Response
     {
         $args['type'] = 'purchase';
         return $this->get($request, $response, $args);
     }
 
-    /**
-     * Get detailed return information with items and calculations.
-     *
-     * @param Request $request
-     * @param Response $response
-     * @param array $args expects ['id'] => return_id
-     * @return Response
-     */
-    public function getReturnDetails(Request $request, Response $response, array $args): Response
-    {
-        $tenantId = $this->extractTenantId($request);
-        if (!$tenantId) {
-            return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-        }
-
-        $returnId = (int) ($args['id'] ?? 0);
-        if ($returnId <= 0) {
-            return $this->errorResponse($response, 'معرّف المرتجع غير صالح', 400);
-        }
-
-        $acceptLang = $request->getHeaderLine('Accept-Language');
-        $locale     = (stripos($acceptLang, 'ar') === 0) ? 'ar' : 'en';
-
-        $userId  = $this->extractUserId($request);
-        $details = $this->returnService((int) $tenantId, $userId)->getDetails($returnId, $locale);
-
-        if ($details === null) {
-            return $this->errorResponse($response, 'لم يتم العثور على المرتجع', 403);
-        }
-
-        return $this->successResponse($response, $details, 200);
-    }
-
+    /** Validate and create a sale or purchase return through ReturnService. */
     public function create(Request $request, Response $response): Response
     {
         $data = $request->getParsedBody();
 
         if (!$data) {
             return $this->errorResponse($response, 'بيانات الطلب غير صالحة', 400);
+        }
+        $refundMode = strtolower(trim((string) ($data['refund_mode'] ?? 'auto')));
+        $salePayoutModes = ['auto', 'cash', 'deduct_and_return', 'refund_excess'];
+        if (in_array($refundMode, $salePayoutModes, true) && ($data['return_type'] ?? null) === 'sale') {
+            if (!$this->can($request, Permissions::RETURN_APPROVE)) {
+                return $this->errorResponse($response, 'لا تملك صلاحية اعتماد صرف مبالغ مرتجعات المبيعات.', 403);
+            }
+        }
+        if ($refundMode === 'refund_excess' && ($data['return_type'] ?? null) !== 'sale') {
+            return $this->errorResponse($response, 'خيار صرف فائض المرتجع متاح لمرتجعات المبيعات فقط.', 400);
         }
 
         $requiredFields = ['return_type', 'return_date', 'items', 'paid_amount', 'payment_method_id', 'invoice_id'];
@@ -571,7 +531,7 @@ class ReturnsHandler extends BaseHandler
             $this->logger->warning('applyDefaultCostCenter failed in ReturnsHandler::create', ['message' => $e->getMessage()]);
         }
 
-        // استخراج party_id من الفاتورة إذا لم يُمرَّر
+        // Resolve the customer or supplier from the source invoice when omitted.
         if (empty($data['party_id'])) {
             if ($data['return_type'] === 'sale') {
                 $stmt = $this->db->prepare("SELECT customer_id FROM sales WHERE id = ? AND tenant_id = ?");
@@ -581,6 +541,20 @@ class ReturnsHandler extends BaseHandler
                 $stmt = $this->db->prepare("SELECT supplier_id FROM purchases WHERE id = ? AND tenant_id = ?");
                 $stmt->execute([$data['invoice_id'], $tenantId]);
                 $data['party_id'] = $stmt->fetchColumn() ?: null;
+            }
+        }
+
+        if ($data['return_type'] === 'sale' && $refundMode === 'cash') {
+            if (!empty($data['party_id'])) {
+                return $this->errorResponse($response, 'استخدم خيار صرف فائض المرتجع لفاتورة مرتبطة بعميل.', 400);
+            }
+            $methodStmt = $this->db->prepare(
+                'SELECT kind FROM payment_methods WHERE id = ? AND tenant_id = ? LIMIT 1'
+            );
+            $methodStmt->execute([(int) $data['payment_method_id'], $tenantId]);
+            $methodKind = strtolower((string) ($methodStmt->fetchColumn() ?: ''));
+            if ($methodKind === '' || $methodKind === 'credit') {
+                return $this->errorResponse($response, 'اختر طريقة دفع غير آجلة لرد قيمة المرتجع.', 400);
             }
         }
 
@@ -614,7 +588,6 @@ class ReturnsHandler extends BaseHandler
 
         $userId = $request->getAttribute('user_id') ?? $this->extractUserId($request) ?? 1;
 
-        // حل cost_center_id
         try {
             $data['cost_center_id'] = $this->costCenterService->resolve($tenantId, $userId, $data['cost_center_id'] ?? null);
         } catch (\Exception $e) {
@@ -624,14 +597,17 @@ class ReturnsHandler extends BaseHandler
             return $this->errorResponse($response, 'فشل في إنشاء المرتجع', 400);
         }
 
-        // حل session_id (HTTP concern — يبقى في الـ Handler)
+        // Session requirements depend on the payment method and source invoice branch.
         $sessionId       = null;
         $methodIsCash    = $this->isCashMethod((int) $data['payment_method_id'], (int) $tenantId);
-        $isCash          = $methodIsCash && $data['paid_amount'] > 0;
+        $isCash          = $methodIsCash && (
+            $data['paid_amount'] > 0
+            || (($data['refund_mode'] ?? null) === 'refund_excess' && $data['return_type'] === 'sale')
+        );
         $isSessionsEnabled = $this->isSessionsEnabled((int) $tenantId);
         $isExempt        = $this->isCashierSessionExempt($request);
 
-        // نحتاج branch_id لحل الجلسة — نجلبه من الفاتورة مؤقتاً
+        // Resolve the session branch from the source invoice.
         $branchIdForSession = null;
         if ($data['return_type'] === 'sale') {
             $stmtBr = $this->db->prepare("SELECT branch_id FROM sales WHERE id = ? AND tenant_id = ? LIMIT 1");
@@ -656,16 +632,21 @@ class ReturnsHandler extends BaseHandler
             $sessionId = $this->findOpenCashierSession((int) $tenantId, (int) $branchIdForSession, null);
         }
 
-        // ── تفويض كل المنطق للـ Service ──────────────────────────────────────────
         try {
             if (!$this->db->inTransaction()) {
+                if (
+                    $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql'
+                    && $data['return_type'] === 'sale'
+                ) {
+                    // Branch-scoped liquidity reads use nested source-row lookups that must see committed returns.
+                    $this->db->exec('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
+                }
                 $this->db->beginTransaction();
             }
 
             $svc    = $this->returnService((int) $tenantId, $userId);
             $result = $svc->createReturn($data, $tenantId, $userId, $sessionId);
 
-            // Audit
             try {
                 $this->audit->logAction('return_created', 'returns', $result['return_id'], [
                     'tenant_id'        => $tenantId,
@@ -703,6 +684,36 @@ class ReturnsHandler extends BaseHandler
                 $this->db->rollBack();
             }
             $this->logger->error('Return creation failed', ['message' => $e->getMessage(), 'tenant_id' => $tenantId]);
+
+            if ($e instanceof \App\Exceptions\InsufficientLiquidityException) {
+                $context = $e->getContext();
+                $balanceDetails = isset($context['current_balance'], $context['shortfall'])
+                    ? sprintf(
+                        ' الرصيد النقدي الحالي: %s، والعجز المتوقع: %s.',
+                        number_format((float) $context['current_balance'], 2),
+                        number_format((float) $context['shortfall'], 2)
+                    )
+                    : '';
+                $message = match ($e->getMessage()) {
+                    'Cash account cannot go negative (setting disabled)' =>
+                        'لا يمكن رد المبلغ نقدًا لأن رصيد الصندوق سيصبح سالبًا وإعداد السماح بالسالب غير مفعّل.' . $balanceDetails,
+                    'Cash account requires active cashier session for negative balance' =>
+                        'لا يمكن رد المبلغ نقدًا لأن الرصيد المتاح أقل من مبلغ الاسترداد. افتح جلسة كاشير نشطة للفرع ثم أعد المحاولة.' . $balanceDetails,
+                    'Cash account cannot go negative when cashier sessions are disabled' =>
+                        'لا يمكن رد المبلغ نقدًا لأن رصيد الصندوق سيصبح سالبًا وإلزام جلسات الكاشير معطل.' . $balanceDetails,
+                    'Cashier session not open (required for intra-day negative balance)' =>
+                        'جلسة الكاشير غير مفتوحة أو أُغلقت. افتح جلسة للفرع المختار ثم أعد المحاولة.' . $balanceDetails,
+                    default => $e->getMessage(),
+                };
+                return $this->errorResponse($response, $message, 402, [
+                    'error_code' => 'insufficient_liquidity',
+                    'details' => $context,
+                ]);
+            }
+            if ($e instanceof \DomainException) {
+                return $this->errorResponse($response, $e->getMessage(), 422);
+            }
+
             $msg = $e->getMessage();
             if (strpos($msg, 'لا يمكن') !== false || strpos($msg, 'فشل') !== false) {
                 return $this->errorResponse($response, $msg, 400);
@@ -711,6 +722,7 @@ class ReturnsHandler extends BaseHandler
         }
     }
 
+    /** Set a tenant return to approved. */
     public function approve(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -729,6 +741,7 @@ class ReturnsHandler extends BaseHandler
         return $this->successResponse($response, ['message' => 'تم اعتماد المرتجع بنجاح.'], 200);
     }
 
+    /** Set a tenant return to rejected. */
     public function reject(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -747,6 +760,7 @@ class ReturnsHandler extends BaseHandler
         return $this->successResponse($response, ['message' => 'تم رفض المرتجع بنجاح.'], 200);
     }
 
+    /** Assemble return and company settings for printing. */
     public function getPrintData(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -816,6 +830,7 @@ class ReturnsHandler extends BaseHandler
             'company' => $settings
         ], 200);
     }
+    /** Search eligible source invoices with branch, date, party, and settlement data. */
     public function searchInvoice(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -829,6 +844,32 @@ class ReturnsHandler extends BaseHandler
         $returnType = trim((string)($queryParams['type'] ?? ''));
         $fromDate = trim((string)($queryParams['from_date'] ?? ''));
         $toDate = trim((string)($queryParams['to_date'] ?? ''));
+        $branchId = null;
+        if (isset($queryParams['branch_id']) && $queryParams['branch_id'] !== '') {
+            if (!ctype_digit((string) $queryParams['branch_id']) || (int) $queryParams['branch_id'] <= 0) {
+                return $this->errorResponse($response, 'معرف الفرع غير صالح.', 400);
+            }
+            $branchId = (int) $queryParams['branch_id'];
+            $branchStmt = $this->db->prepare(
+                'SELECT 1 FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1'
+            );
+            $branchStmt->execute([$branchId, $tenantId]);
+            if (!$branchStmt->fetchColumn()) {
+                return $this->errorResponse($response, 'الفرع المحدد غير موجود.', 404);
+            }
+        }
+        $user = $request->getAttribute('user');
+        if (!$this->canViewAllBranches(is_array($user) ? $user : null)) {
+            $userBranchId = is_array($user) ? (int) ($user['branch_id'] ?? 0) : 0;
+            if ($userBranchId <= 0) {
+                return $this->errorResponse(
+                    $response,
+                    'حسابك غير مرتبط بفرع. يرجى التواصل مع الإدارة لتعيين فرع لحسابك.',
+                    403
+                );
+            }
+            $branchId = $userBranchId;
+        }
 
         if (!in_array($returnType, ['sale', 'purchase'], true)) {
             return $this->errorResponse($response, 'نوع المرتجع غير صالح، يجب أن يكون sale أو purchase', 400);
@@ -847,23 +888,25 @@ class ReturnsHandler extends BaseHandler
             : 'LEFT JOIN suppliers s ON i.supplier_id = s.id AND s.tenant_id = :tenant_id_party';
 
         if ($isSale) {
+            $actualPaidAmount = '(COALESCE(spt.direct_paid_amount, 0) + COALESCE(apt.allocated_paid_amount, 0))';
             $selectFields = "
             i.total_amount,
             i.discount_type,
             i.discount_value,
             i.tax_amount,
             i.net_total_amount,
-            IFNULL(i.paid_amount, 0) AS paid_amount,
+            {$actualPaidAmount} AS paid_amount,
+            {$actualPaidAmount} AS actual_paid_amount,
             (i.net_total_amount + IFNULL(i.tax_amount, 0)) AS grand_total,
             COALESCE(SUM(rca.allocated_amount), 0) AS return_credits_applied,
-            ((i.net_total_amount + IFNULL(i.tax_amount, 0)) - IFNULL(i.paid_amount, 0)) AS outstanding,
-            ((i.net_total_amount + IFNULL(i.tax_amount, 0)) - IFNULL(i.paid_amount, 0)) AS outstanding_amount,
-            GREATEST(0, (i.net_total_amount + IFNULL(i.tax_amount, 0)) - IFNULL(i.paid_amount, 0) - COALESCE(SUM(rca.allocated_amount), 0)) AS net_outstanding,
+            ((i.net_total_amount + IFNULL(i.tax_amount, 0)) - {$actualPaidAmount}) AS outstanding,
+            ((i.net_total_amount + IFNULL(i.tax_amount, 0)) - {$actualPaidAmount}) AS outstanding_amount,
+            GREATEST(0, (i.net_total_amount + IFNULL(i.tax_amount, 0)) - {$actualPaidAmount} - COALESCE(SUM(rca.allocated_amount), 0)) AS net_outstanding,
             CASE
-                WHEN IFNULL(i.paid_amount, 0) <= 0 AND COALESCE(SUM(rca.allocated_amount), 0) > 0 THEN 'credit'
-                WHEN IFNULL(i.paid_amount, 0) >= (i.net_total_amount + IFNULL(i.tax_amount, 0)) THEN 'cash'
-                WHEN IFNULL(i.paid_amount, 0) > 0
-                     AND IFNULL(i.paid_amount, 0) < (i.net_total_amount + IFNULL(i.tax_amount, 0)) THEN 'partial'
+                WHEN {$actualPaidAmount} <= 0 AND COALESCE(SUM(rca.allocated_amount), 0) > 0 THEN 'credit'
+                WHEN {$actualPaidAmount} >= (i.net_total_amount + IFNULL(i.tax_amount, 0)) THEN 'cash'
+                WHEN {$actualPaidAmount} > 0
+                     AND {$actualPaidAmount} < (i.net_total_amount + IFNULL(i.tax_amount, 0)) THEN 'partial'
                 ELSE 'unknown'
             END AS payment_status,
             CASE
@@ -874,6 +917,43 @@ class ReturnsHandler extends BaseHandler
             i.payment_method_id,
             pm.name AS payment_method_name,
             pm.kind AS payment_method_kind,
+            (
+                SELECT COALESCE(SUM(jel.debit_amount - jel.credit_amount), 0)
+                FROM customers cb
+                LEFT JOIN journal_entry_lines jel
+                    ON jel.account_id = cb.account_id
+                   AND jel.tenant_id = cb.tenant_id
+                WHERE cb.id = i.customer_id
+                  AND cb.tenant_id = :tenant_id_customer_balance
+            ) AS customer_account_balance,
+            (
+                SELECT COALESCE(SUM(GREATEST(
+                    0,
+                    cs.net_total_amount + IFNULL(cs.tax_amount, 0)
+                    - COALESCE((
+                        SELECT SUM(CASE WHEN cp.type = 'return_payment' THEN -cp.amount ELSE cp.amount END)
+                        FROM payments cp
+                        WHERE cp.sale_id = cs.id AND cp.tenant_id = cs.tenant_id
+                          AND cp.is_draft = 0 AND cp.status = 'completed'
+                    ), 0)
+                    - COALESCE((
+                        SELECT SUM(cpa.allocated_amount)
+                        FROM customer_payment_allocations cpa
+                        INNER JOIN payments ap ON ap.id = cpa.payment_id AND ap.tenant_id = cpa.tenant_id
+                        WHERE cpa.sale_id = cs.id AND cpa.tenant_id = cs.tenant_id
+                          AND ap.is_draft = 0 AND ap.status = 'completed'
+                    ), 0)
+                    - COALESCE((
+                        SELECT SUM(rca.allocated_amount)
+                        FROM return_credit_allocations rca
+                        WHERE rca.sale_id = cs.id AND rca.tenant_id = cs.tenant_id
+                    ), 0)
+                )), 0)
+                FROM sales cs
+                WHERE cs.customer_id = i.customer_id
+                  AND cs.tenant_id = i.tenant_id
+                  AND LOWER(COALESCE(cs.status, '')) NOT IN ('cancelled', 'canceled')
+            ) AS customer_total_outstanding,
             (SELECT COUNT(*) FROM sales_items WHERE sale_id = i.id AND tenant_id = :tenant_id_subquery) AS items_count
         ";
         } else {
@@ -913,7 +993,7 @@ class ReturnsHandler extends BaseHandler
             i.payment_method_id,
             pm.name AS payment_method_name,
             pm.kind AS payment_method_kind,
-            (SELECT COUNT(*) FROM purchases_items WHERE purchase_id = i.id AND tenant_id = :tenant_id_subquery) AS items_count
+            (SELECT COUNT(*) FROM purchase_items WHERE purchase_id = i.id AND tenant_id = :tenant_id_subquery) AS items_count
         ";
         }
 
@@ -922,6 +1002,7 @@ class ReturnsHandler extends BaseHandler
             i.id,
             i.invoice_number,
             i.{$dateField} AS invoice_date,
+            i.status,
             {$selectFields},
             {$partySelect},
             b.name AS branch_name
@@ -933,11 +1014,29 @@ class ReturnsHandler extends BaseHandler
         LEFT JOIN branches b
             ON i.branch_id = b.id
            AND b.tenant_id = :tenant_id_branch
-        " . ($isSale ? "LEFT JOIN return_credit_allocations rca
+        " . ($isSale ? "LEFT JOIN (
+            SELECT tenant_id, sale_id,
+                   SUM(CASE WHEN type = 'return_payment' THEN -amount ELSE amount END) AS direct_paid_amount
+            FROM payments
+            WHERE is_draft = 0 AND status = 'completed' AND sale_id IS NOT NULL
+            GROUP BY tenant_id, sale_id
+        ) spt ON spt.sale_id = i.id AND spt.tenant_id = i.tenant_id
+        LEFT JOIN (
+            SELECT cpa.tenant_id, cpa.sale_id, SUM(cpa.allocated_amount) AS allocated_paid_amount
+            FROM customer_payment_allocations cpa
+            INNER JOIN payments ap ON ap.id = cpa.payment_id AND ap.tenant_id = cpa.tenant_id
+            WHERE ap.is_draft = 0 AND ap.status = 'completed'
+            GROUP BY cpa.tenant_id, cpa.sale_id
+        ) apt ON apt.sale_id = i.id AND apt.tenant_id = i.tenant_id
+        LEFT JOIN return_credit_allocations rca
             ON i.id = rca.sale_id
            AND i.tenant_id = rca.tenant_id" : "") . "
         WHERE i.tenant_id = :tenant_id_where
     ";
+
+        $sql .= $isSale
+            ? " AND LOWER(COALESCE(i.status, '')) NOT IN ('draft', 'pending', 'pending_approval', 'awaiting_approval', 'rejected', 'canceled', 'cancelled')"
+            : " AND LOWER(COALESCE(i.status, '')) NOT IN ('draft', 'rejected', 'canceled', 'cancelled')";
 
         $params = [
             ':tenant_id_where' => $tenantId,
@@ -946,6 +1045,13 @@ class ReturnsHandler extends BaseHandler
             ':tenant_id_branch' => $tenantId,
             ':tenant_id_subquery' => $tenantId
         ];
+        if ($isSale) {
+            $params[':tenant_id_customer_balance'] = $tenantId;
+        }
+        if ($branchId !== null) {
+            $sql .= ' AND i.branch_id = :branch_id';
+            $params[':branch_id'] = $branchId;
+        }
 
         if ($invoiceNumber !== '') {
             $sql .= " AND (i.invoice_number LIKE :invoice_number";
@@ -982,7 +1088,7 @@ class ReturnsHandler extends BaseHandler
         }
 
         if ($isSale) {
-            $sql .= " GROUP BY i.id, i.invoice_number, i.{$dateField}, i.total_amount, i.discount_type, i.discount_value, i.tax_amount, i.net_total_amount, i.paid_amount, i.branch_id, i.payment_method_id, pm.name, pm.kind, c.name, c.id, c.phone, b.name";
+            $sql .= " GROUP BY i.id, i.invoice_number, i.{$dateField}, i.status, i.total_amount, i.discount_type, i.discount_value, i.tax_amount, i.net_total_amount, i.paid_amount, i.branch_id, i.payment_method_id, pm.name, pm.kind, c.name, c.id, c.phone, b.name, spt.direct_paid_amount, apt.allocated_paid_amount";
         }
 
         $sql .= " ORDER BY i.{$dateField} DESC LIMIT 50";
@@ -1010,6 +1116,7 @@ class ReturnsHandler extends BaseHandler
         }
     }
 
+    /** Return item rows and invoice metadata used to prepare a return. */
     public function getInvoiceItems(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -1046,9 +1153,9 @@ class ReturnsHandler extends BaseHandler
                 FROM sales_items si
                 JOIN products p
                     ON si.product_id = p.id
-                   AND p.tenant_id = :tenant_id
+                   AND p.tenant_id = :tenant_id_product
                 WHERE si.sale_id = :invoice_id
-                  AND si.tenant_id = :tenant_id
+                  AND si.tenant_id = :tenant_id_items
             ");
 
                 $invoiceStmt = $this->db->prepare("
@@ -1081,9 +1188,9 @@ class ReturnsHandler extends BaseHandler
                 FROM purchase_items pi
                 JOIN products p
                     ON pi.product_id = p.id
-                   AND p.tenant_id = :tenant_id
+                   AND p.tenant_id = :tenant_id_product
                 WHERE pi.purchase_id = :invoice_id
-                  AND pi.tenant_id = :tenant_id
+                  AND pi.tenant_id = :tenant_id_items
             ");
 
                 $invoiceStmt = $this->db->prepare("
@@ -1097,13 +1204,15 @@ class ReturnsHandler extends BaseHandler
             ");
             }
 
-            $params = [
+            $itemsStmt->execute([
                 ':invoice_id' => $invoiceId,
-                ':tenant_id' => $tenantId
-            ];
-
-            $itemsStmt->execute($params);
-            $invoiceStmt->execute($params);
+                ':tenant_id_product' => $tenantId,
+                ':tenant_id_items' => $tenantId,
+            ]);
+            $invoiceStmt->execute([
+                ':invoice_id' => $invoiceId,
+                ':tenant_id' => $tenantId,
+            ]);
 
             $invoice = $invoiceStmt->fetch(PDO::FETCH_ASSOC);
             if (!$invoice) {
@@ -1124,5 +1233,26 @@ class ReturnsHandler extends BaseHandler
 
             return $this->errorResponse($response, 'حدث خطأ أثناء جلب بيانات الفاتورة', 500);
         }
+    }
+
+    /** Determine whether the request user may bypass the default branch filter. */
+    private function canViewAllBranches(?array $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $roles = [];
+        if (isset($user['roles']) && is_array($user['roles'])) {
+            $roles = array_map(
+                static fn ($role): string => strtolower((string) $role),
+                $user['roles']
+            );
+        } elseif (isset($user['role']) && is_string($user['role'])) {
+            $roles = [strtolower($user['role'])];
+        }
+
+        return SuperAdminHelper::isAdminOrAbove($user)
+            || in_array('manager', $roles, true);
     }
 }

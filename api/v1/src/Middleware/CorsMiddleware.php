@@ -9,7 +9,14 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 use Slim\Psr7\Response as SlimResponse;
+use App\Services\MonologHandler;
 
+/**
+ * Handles CORS preflight requests and adds CORS headers to allowed origins.
+ *
+ * Origin, method, request-header, credential, and cache settings come from the
+ * security configuration. Downstream exceptions are logged and converted to JSON.
+ */
 class CorsMiddleware implements MiddlewareInterface
 {
     private array $allowedOrigins;
@@ -17,9 +24,12 @@ class CorsMiddleware implements MiddlewareInterface
     private array $allowedMethods;
     private array $allowedHeaders;
     private bool $allowCredentials;
+    private $logger;
 
     public function __construct(array $corsConfig = [])
     {
+        $this->logger = MonologHandler::getInstance('api');
+
         // Origins
         $originConfig = $corsConfig['origin'] ?? '*';
         if ($originConfig === '*' || (is_string($originConfig) && trim($originConfig) === '*')) {
@@ -39,6 +49,7 @@ class CorsMiddleware implements MiddlewareInterface
         $this->allowCredentials = (bool)($corsConfig['credentials'] ?? false);
     }
 
+    /** Handle preflight directly; otherwise dispatch and decorate the response. */
     public function process(Request $request, RequestHandler $handler): Response
     {
         $origin = $request->getHeaderLine('Origin');
@@ -57,6 +68,14 @@ class CorsMiddleware implements MiddlewareInterface
 
             return $response;
         } catch (\Throwable $e) {
+            $this->logger->error('Unhandled API request exception', [
+                'exception' => get_class($e),
+                'message'   => $e->getMessage(),
+                'method'    => $method,
+                'path'      => $request->getUri()->getPath(),
+                'trace'     => $e->getTraceAsString(),
+            ]);
+
             $response = new SlimResponse();
 
             if ($this->isOriginAllowed($origin)) {
@@ -83,10 +102,8 @@ class CorsMiddleware implements MiddlewareInterface
             $requestedMethod = $request->getHeaderLine('Access-Control-Request-Method');
             $requestedHeaders = $request->getHeaderLine('Access-Control-Request-Headers');
 
-            // If specific method is requested, use it, otherwise use all allowed methods
             $allowedMethods = $requestedMethod ? [$requestedMethod] : $this->allowedMethods;
 
-            // Use specific origin instead of wildcard when credentials are enabled
             if ($this->allowCredentials && !in_array('*', $this->allowedOrigins, true)) {
                 $response = $response->withHeader('Access-Control-Allow-Origin', $origin);
             } else {
@@ -96,7 +113,6 @@ class CorsMiddleware implements MiddlewareInterface
 
             $response = $response->withHeader('Access-Control-Allow-Methods', implode(', ', $allowedMethods));
 
-            // Add allowed headers if requested
             if ($requestedHeaders) {
                 $response = $response->withHeader('Access-Control-Allow-Headers', $requestedHeaders);
             } elseif (!empty($this->allowedHeaders)) {
@@ -109,7 +125,6 @@ class CorsMiddleware implements MiddlewareInterface
                 $response = $response->withHeader('Access-Control-Allow-Credentials', 'true');
             }
 
-            // Expose headers if needed
             if (!empty($this->allowedHeaders)) {
                 $response = $response->withHeader('Access-Control-Expose-Headers', implode(', ', $this->allowedHeaders));
             }
@@ -124,17 +139,14 @@ class CorsMiddleware implements MiddlewareInterface
             return false;
         }
 
-        // Allow all origins
         if (in_array('*', $this->allowedOrigins, true)) {
             return true;
         }
 
-        // Check for exact match
         if (in_array($origin, $this->allowedOrigins, true)) {
             return true;
         }
 
-        // Check for wildcard subdomains (e.g., *.example.com)
         foreach ($this->allowedOrigins as $allowedOrigin) {
             if (strpos($allowedOrigin, '*') !== false) {
                 $pattern = '/^' . str_replace('\*', '.*', preg_quote($allowedOrigin, '/')) . '$/';
@@ -149,11 +161,9 @@ class CorsMiddleware implements MiddlewareInterface
 
     private function addCorsHeaders(Response $response, string $origin): Response
     {
-        // Use specific origin instead of wildcard when credentials are enabled
         if ($this->allowCredentials && !in_array('*', $this->allowedOrigins, true)) {
             $response = $response->withHeader('Access-Control-Allow-Origin', $origin);
         } else {
-            // Fallback to wildcard if no credentials or wildcard allowed
             $allowedOrigin = in_array('*', $this->allowedOrigins, true) ? '*' : $origin;
             $response = $response->withHeader('Access-Control-Allow-Origin', $allowedOrigin);
         }
@@ -166,7 +176,6 @@ class CorsMiddleware implements MiddlewareInterface
             $response = $response->withHeader('Access-Control-Expose-Headers', implode(', ', $this->allowedHeaders));
         }
 
-        // Add Vary header to prevent caching of CORS responses
         if ($response->hasHeader('Vary')) {
             $vary = $response->getHeaderLine('Vary');
             if (stripos($vary, 'Origin') === false) {

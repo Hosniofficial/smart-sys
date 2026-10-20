@@ -8,13 +8,14 @@
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="سجل العمليات المالية"
-        description="عرض مركزي وموحد لكافة المقبوضات والمدفوعات المالية عبر النظام."
-        :branches="[]"
-        :selectedBranch="null"
+        description="استعرض جميع المقبوضات والمدفوعات، وتابع تفاصيل العمليات المالية عبر النظام من مكان واحد."
+        :branches="branches"
+        :selectedBranch="selectedBranch"
+        :hasExplicitSelection="hasExplicitBranchSelection"
+        @branch-changed="onBranchChange"
       >
         <template #controls>
           <button @click="load" :disabled="isLoading" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2">
@@ -163,14 +164,17 @@
               <tr v-else-if="!items.length">
                 <td colspan="8" class="py-24 text-center text-slate-300">
                    <i class="fas fa-receipt text-3xl mb-4 opacity-20"></i>
-                   <p class="text-xs font-bold uppercase tracking-widest">لا توجد عمليات مالية مسجلة</p>
+                   <p class="text-xs font-bold uppercase tracking-widest">{{ loadError || 'لا توجد عمليات مالية مسجلة' }}</p>
                 </td>
               </tr>
               <tr v-for="p in items" :key="p.id" class="hover:bg-blue-50/20 transition-all group">
                 <td class="px-6 py-4 text-[10px] font-mono font-bold text-slate-400 group-hover:text-slate-900">{{ p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-GB') : '-' }}</td>
                 <td class="px-4 py-4">
                   <div class="flex flex-col">
-                    <router-link v-if="p.sale_id" :to="{ name: 'SalesHistory', query: { id: p.sale_id } }" class="text-blue-600 font-bold hover:underline underline-offset-4">
+                    <router-link v-if="p.return_id" :to="{ name: 'ReturnsHistory', query: { id: p.return_id } }" class="text-rose-600 font-bold hover:underline underline-offset-4">
+                      {{ p.reference || '#' + p.id }}
+                    </router-link>
+                    <router-link v-else-if="p.sale_id" :to="{ name: 'SalesHistory', query: { id: p.sale_id } }" class="text-blue-600 font-bold hover:underline underline-offset-4">
                       {{ p.reference || '#' + p.id }}
                     </router-link>
                     <router-link v-else-if="p.purchase_id" :to="{ name: 'PurchaseHistory', query: { id: p.purchase_id } }" class="text-indigo-600 font-bold hover:underline underline-offset-4">
@@ -248,15 +252,16 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
-import getLocalDateISO from '@/utils/date';
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { getLocalDateISO } from '@/utils';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
+import { useBranchIsolation } from '@/composables/useBranchIsolation';
 import { usePaymentStore } from '@/stores/payment/paymentStore';
 import { useCustomerStore } from '@/stores/customer/customerStore';
 import { useSupplierStore } from '@/stores/supplier/supplierStore';
 import { useUserStore } from '@/stores/user/userStore';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
-import { useBootstrapStore } from '@/stores/bootstrap';
+import { useBootstrapStore } from '@/stores/bootstrap/bootstrapStore';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
@@ -265,6 +270,7 @@ import PageHeader from '@/components/PageHeader.vue';
 // --- State ---
 const { breadcrumb } = useBreadcrumb();
 const isLoading = ref(false);
+const loadError = ref('');
 const items = ref([]);
 const meta = ref({ total: 0, page: 1, per_page: 50 });
 
@@ -284,6 +290,28 @@ const page = ref(1);
 const { formatCurrency, fetchSettings } = useCompanyCurrency();
 const bootstrapStore = useBootstrapStore();
 const paymentStore = usePaymentStore();
+const branchStore = useBranchStore();
+const branchIsolation = useBranchIsolation();
+const authStore = useAuthStore();
+const branches = computed(() => branchStore.branches);
+const selectedBranch = computed({
+  get: () => branchStore.selectedBranchId,
+  set: (value) => branchStore.setSelectedBranch(value)
+});
+const userChoseBranch = ref(
+  localStorage.getItem('selectedBranchId') !== null
+  && localStorage.getItem('selectedBranchId') !== 'all'
+);
+const hasExplicitBranchSelection = computed(() =>
+  userChoseBranch.value || localStorage.getItem('selectedBranchId') === 'all'
+);
+const onBranchChange = (branchId) => {
+  if (!branchIsolation.isExempt.value) return;
+  branchStore.setSelectedBranch(branchId);
+  userChoseBranch.value = true;
+  page.value = 1;
+  load();
+};
 const paymentMethods = computed(() => paymentStore.paymentMethods);
 const customerStore = useCustomerStore();
 const customers = computed(() => customerStore.customers);
@@ -341,6 +369,11 @@ const filteredSuppliers = computed(() => {
 // --- Query params ---
 const queryParams = computed(() => {
   const p = { per_page: perPage.value, page: page.value };
+  if (branchIsolation.isExempt.value) {
+    if (selectedBranch.value) p.branch_id = String(selectedBranch.value);
+  } else if (authStore.user?.branch_id) {
+    p.branch_id = String(authStore.user.branch_id);
+  }
   if (dateFrom.value) p.date_from = dateFrom.value;
   if (dateTo.value) p.date_to = dateTo.value;
   if (type.value) p.type = type.value;
@@ -355,8 +388,9 @@ const queryParams = computed(() => {
 // --- Load data ---
 async function load() {
   isLoading.value = true;
+  loadError.value = '';
   try {
-    const result = await paymentStore.fetchPayments(queryParams.value);
+    const result = await paymentStore.fetchPayments({ params: queryParams.value, force: true });
     if (result.status === 'success') {
       const { items: rows, meta: m } = result.data || { items: [], meta: {} };
       items.value = rows || [];
@@ -364,11 +398,13 @@ async function load() {
     } else {
       items.value = [];
       meta.value = { total: 0, page: 1, per_page: perPage.value };
+      loadError.value = result.message || 'تعذر تحميل العمليات المالية';
     }
   } catch (e) {
     console.error('Failed to load payments', e);
     items.value = [];
     meta.value = { total: 0, page: 1, per_page: perPage.value };
+    loadError.value = e?.response?.data?.message || e?.message || 'تعذر تحميل العمليات المالية';
   } finally {
     isLoading.value = false;
   }
@@ -481,6 +517,12 @@ function prevPage() { if (page.value > 1) { page.value -= 1; load(); } }
 const cleanup = ref(() => {});
 
 onMounted(async () => {
+  try {
+    await branchStore.fetchBranches();
+  } catch (e) {
+    console.error('[PaymentsList] Failed to load branches', e);
+  }
+
   // Use bootstrap API to fetch all required data in a single request
   try {
     const data = await bootstrapStore.fetchPaymentsData();

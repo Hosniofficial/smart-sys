@@ -6,33 +6,36 @@
       <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
     </div>
 
-    <!-- Header: Integrated Navigation & Actions -->
-    <header class="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-3">
-      <div class="max-w-[1600px] mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div class="flex items-center gap-4">
-          <div :class="[type === 'customers' ? 'bg-blue-600' : 'bg-indigo-600']"
-               class="w-10 h-10 rounded-lg flex items-center justify-center text-white shadow-sm shrink-0">
-            <i :class="[type === 'customers' ? 'fas fa-user-tie' : 'fas fa-truck-ramp-box', 'text-sm']"></i>
-          </div>
-          <div>
-            <h1 class="text-sm font-bold text-slate-900">ملف التعريف الموحد</h1>
-            <p class="text-[10px] text-slate-500 font-medium uppercase tracking-widest mt-0.5">مراجعة الحركات والذمم المالية</p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2">
+    <main class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8 min-w-0">
+      <PageHeader
+        :breadcrumb="breadcrumb"
+        :title="type === 'customers' ? 'تفاصيل العميل' : 'تفاصيل المورد'"
+        :description="type === 'customers'
+          ? 'بيانات العميل ورصيده وفواتيره وتحصيلاته.'
+          : 'بيانات المورد ورصيده وفواتيره ومدفوعاته.'"
+        :branches="branches"
+        :selected-branch="statementBranchId"
+        :has-explicit-selection="hasExplicitBranchSelection"
+        @branch-changed="handleBranchChange"
+      >
+        <template #controls>
+          <button
+            @click="showFilters = !showFilters"
+            :class="[showFilters ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 border-slate-200']"
+            class="h-9 px-4 rounded-md border text-xs font-bold transition-all flex items-center gap-2 shadow-sm"
+          >
+            <i class="fas fa-filter text-[10px]"></i>
+            {{ showFilters ? 'إخفاء أدوات التصفية' : 'تصفية النتائج' }}
+          </button>
           <RouterLink v-if="type && id" :to="`/contacts/${type}/${id}/statement`"
                       class="h-9 px-4 rounded-md text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 hover:bg-blue-100 transition-all flex items-center gap-2">
-            <i class="fas fa-file-invoice-dollar text-[10px]"></i> كشف حساب تفصيلي
+            <i class="fas fa-file-invoice-dollar text-[10px]"></i> كشف الحساب
           </RouterLink>
           <button @click="goBack" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2">
-            <i class="fas fa-arrow-right text-[10px]"></i> العودة
+            <i class="fas fa-arrow-right text-[10px]"></i> العودة للقائمة
           </button>
-        </div>
-      </div>
-    </header>
-
-    <main class="max-w-[1600px] mx-auto p-6 lg:p-8 space-y-8">
+        </template>
+      </PageHeader>
 
       <!-- Loading State Overlay -->
       <div v-if="isLoading" class="py-32 text-center bg-white border border-slate-200 rounded-xl shadow-sm">
@@ -53,35 +56,27 @@
       <!-- Main Profile Body -->
       <div v-else class="space-y-8 animate-fadeIn">
 
-        <!-- Filters & Period Utility -->
-        <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <details class="group">
-            <summary class="px-6 py-4 cursor-pointer flex items-center justify-between hover:bg-slate-50/50 transition-colors list-none">
-              <div class="flex items-center gap-3">
-                <i class="fas fa-filter text-slate-400 text-xs"></i>
-                <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">تخصيص فترة التحليل والبيانات</span>
-              </div>
-              <i class="fas fa-chevron-down text-slate-300 group-open:rotate-180 transition-transform text-[10px]"></i>
-            </summary>
-
-            <div class="px-6 pb-6 pt-2 space-y-6 border-t border-slate-50">
+        <!-- Filters Panel -->
+        <transition name="slide-down">
+          <section v-if="showFilters" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden animate-fadeIn">
+            <div class="p-6 space-y-6">
               <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="space-y-1.5">
-                  <label class="metadata-label">من تاريخ</label>
-                  <div class="relative group">
-                    <input ref="startDateRef" type="date" v-model="startDate" @change="applyFilter" class="filter-input-v3 font-mono" />
-                    <i class="fas fa-calendar absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-hover:text-blue-500 transition-colors text-[10px]"></i>
+                  <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">من تاريخ</label>
+                  <div class="relative">
+                    <input ref="startDateRef" type="date" v-model="startDate" @change="applyFilter" class="filter-input" style="padding-left: 2rem;" />
+                    <i @click="startDateRef?.showPicker?.()" class="fas fa-calendar absolute left-3 top-1/2 -translate-y-1/2 cursor-pointer text-slate-300 hover:text-slate-500 transition-colors text-[10px]"></i>
                   </div>
                 </div>
                 <div class="space-y-1.5">
-                  <label class="metadata-label">إلى تاريخ</label>
-                  <div class="relative group">
-                    <input ref="endDateRef" type="date" v-model="endDate" @change="applyFilter" class="filter-input-v3 font-mono" />
-                    <i class="fas fa-calendar-check absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-hover:text-blue-500 transition-colors text-[10px]"></i>
+                  <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">إلى تاريخ</label>
+                  <div class="relative">
+                    <input ref="endDateRef" type="date" v-model="endDate" @change="applyFilter" class="filter-input" style="padding-left: 2rem;" />
+                    <i @click="endDateRef?.showPicker?.()" class="fas fa-calendar absolute left-3 top-1/2 -translate-y-1/2 cursor-pointer text-slate-300 hover:text-slate-500 transition-colors text-[10px]"></i>
                   </div>
                 </div>
                 <div class="md:col-span-2 space-y-1.5">
-                  <label class="metadata-label">اختصارات زمنية</label>
+                  <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">اختصارات زمنية</label>
                   <div class="flex flex-wrap gap-2">
                     <button v-for="range in [
                       { id: 'last7', label: 'آخر 7 أيام' },
@@ -89,32 +84,37 @@
                       { id: 'prevMonth', label: 'الشهر السابق' },
                       { id: 'thisYear', label: 'هذا العام' },
                       { id: 'allTime', label: 'الكل' }
-                    ]" :key="range.id" @click="setQuickRange(range.id)" class="quick-range-pill">{{ range.label }}</button>
+                    ]" :key="range.id" @click="setQuickRange(range.id)" class="filter-input w-auto px-3 cursor-pointer">{{ range.label }}</button>
                   </div>
                 </div>
               </div>
 
-              <div class="flex items-center justify-between pt-4 border-t border-slate-100">
-                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">
-                  تغطية البيانات: <span class="text-blue-600 font-mono">{{ startDate }}</span> <i class="fas fa-arrow-left mx-1 text-[8px]"></i> <span class="text-blue-600 font-mono">{{ endDate }}</span>
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end pt-4 border-t border-slate-50">
+                <p class="text-[10px] font-bold text-slate-500 md:col-span-2">
+                  الفترة المحددة:
+                  <span class="text-blue-700 font-mono mx-1">{{ startDate }}</span>
+                  <i class="fas fa-arrow-left text-[8px] text-slate-300"></i>
+                  <span class="text-blue-700 font-mono mx-1">{{ endDate }}</span>
                 </p>
-                <button @click="applyFilter" :disabled="isLoading" class="h-9 px-6 rounded-md bg-slate-900 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all">تحديث النتائج</button>
+                <button @click="applyFilter" :disabled="isLoading || statementLoading" class="h-9 w-full rounded-md bg-slate-100 text-slate-600 text-[11px] font-bold hover:bg-slate-200 disabled:opacity-50 transition-all md:col-span-2">
+                  <i class="fas fa-sync-alt text-[9px]"></i> تحديث النتائج
+                </button>
               </div>
             </div>
-          </details>
-        </section>
+          </section>
+        </transition>
 
         <!-- Profile Identity Header -->
         <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div class="flex flex-col lg:flex-row">
-            <div class="p-8 flex-grow space-y-6">
-              <div class="flex items-center gap-6">
+            <div class="p-5 sm:p-8 flex-grow min-w-0 space-y-6">
+              <div class="flex items-center gap-4 sm:gap-6 min-w-0">
                 <div :class="[type === 'customers' ? 'bg-blue-50 text-blue-600' : 'bg-indigo-50 text-indigo-600']"
-                     class="w-20 h-20 rounded-xl flex items-center justify-center text-4xl shadow-inner border border-white">
+                     class="w-14 h-14 sm:w-20 sm:h-20 rounded-xl flex items-center justify-center text-2xl sm:text-4xl shadow-inner border border-white shrink-0">
                   <i :class="type === 'customers' ? 'fas fa-user' : 'fas fa-truck'"></i>
                 </div>
-                <div>
-                  <h3 class="text-2xl font-bold text-slate-900 tracking-tight">{{ contact.name }}</h3>
+                <div class="min-w-0">
+                  <h3 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight break-words">{{ contact.name }}</h3>
                   <div class="flex flex-wrap gap-4 mt-2">
                     <span class="text-[11px] font-bold text-slate-400 flex items-center gap-2"><i class="fas fa-phone-alt text-blue-500 w-3"></i> {{ contact.phone || '—' }}</span>
                     <span class="text-[11px] font-bold text-slate-400 flex items-center gap-2"><i class="fas fa-envelope text-blue-500 w-3"></i> {{ contact.email || '—' }}</span>
@@ -125,9 +125,9 @@
             </div>
 
             <!-- Balance Card: Dark Professional Accent -->
-            <div v-if="canViewSensitiveData" class="p-8 bg-slate-900 text-white min-w-[320px] relative flex flex-col justify-center text-center">
+            <div v-if="canViewSensitiveData" class="p-5 sm:p-8 bg-slate-900 text-white w-full min-w-0 lg:w-[320px] lg:min-w-[320px] relative flex flex-col justify-center text-center">
               <div class="absolute top-0 left-0 w-32 h-32 bg-white/5 rounded-full -translate-x-12 -translate-y-12"></div>
-              <p class="text-[10px] font-bold text-blue-400 uppercase tracking-[0.2em] mb-3 relative z-10">الرصيد الحسابي الختامي</p>
+              <p class="text-[10px] font-bold text-blue-400 uppercase tracking-[0.2em] mb-3 relative z-10">الرصيد الختامي للحساب</p>
               <div class="flex items-baseline justify-center gap-2 relative z-10">
                 <span class="text-4xl font-bold tracking-tighter font-mono">{{ formatPrice(Math.abs(contact.balance)) }}</span>
                 <span class="text-xs font-bold text-white/30 uppercase">{{ currencySymbol }}</span>
@@ -138,7 +138,7 @@
                 {{ type === 'customers' ? (contact.balance > 0 ? 'مديونية مستحقة' : 'رصيد دائن') : (contact.balance > 0 ? 'ذمم دائنة (للمورد)' : 'رصيد مدين لنا') }}
               </p>
             </div>
-            <div v-else class="p-8 bg-slate-900 text-white min-w-[320px] flex items-center justify-center">
+            <div v-else class="p-5 sm:p-8 bg-slate-900 text-white w-full min-w-0 lg:w-[320px] lg:min-w-[320px] flex items-center justify-center">
                <p class="text-xs font-bold text-white/30 uppercase tracking-[0.2em]">🔒 بيانات خاصة</p>
             </div>
           </div>
@@ -146,8 +146,8 @@
 
         <!-- Smart Decision Alerts -->
         <section v-if="hasOutstanding || hasCredit" class="grid grid-cols-1 gap-4">
-          <div v-if="hasOutstanding" class="bg-white border-r-4 border-r-rose-500 border border-slate-200 rounded-xl p-6 shadow-sm flex items-center justify-between group">
-            <div class="flex items-center gap-5">
+          <div v-if="hasOutstanding" class="bg-white border-r-4 border-r-rose-500 border border-slate-200 rounded-xl p-4 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 group">
+            <div class="flex items-center gap-4 sm:gap-5 min-w-0">
               <div class="w-12 h-12 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center shadow-inner shrink-0">
                 <i class="fas fa-exclamation-circle text-xl"></i>
               </div>
@@ -156,13 +156,13 @@
                 <p class="text-sm font-medium text-slate-500">يتطلب هذا الحساب إجراءً مالياً فورياً بقيمة <span class="font-bold text-rose-600 font-mono mx-1">{{ formatPrice(outstandingAmount) }}</span> {{ currencySymbol }}</p>
               </div>
             </div>
-            <button class="h-10 px-6 bg-slate-900 text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-slate-200 active:scale-95">
+            <button @click="openPaymentModal" class="h-10 px-6 self-start sm:self-auto shrink-0 bg-slate-900 text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-slate-200 active:scale-95">
               {{ type === 'customers' ? 'تحصيل الآن' : 'تسجيل دفع' }}
             </button>
           </div>
 
-          <div v-if="hasCredit" class="bg-white border-r-4 border-r-emerald-500 border border-slate-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
-            <div class="flex items-center gap-5">
+          <div v-if="hasCredit" class="bg-white border-r-4 border-r-emerald-500 border border-slate-200 rounded-xl p-4 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div class="flex items-center gap-4 sm:gap-5 min-w-0">
               <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center shadow-inner shrink-0">
                 <i class="fas fa-check-circle text-xl"></i>
               </div>
@@ -171,39 +171,36 @@
                 <p class="text-sm font-medium text-slate-500">يملك الحساب رصيداً فائضاً بقيمة <span class="font-bold text-emerald-600 font-mono mx-1">{{ formatPrice(creditAmount) }}</span> يمكن توظيفه في العمليات القادمة.</p>
               </div>
             </div>
-            <button class="h-10 px-6 bg-emerald-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-900/20 active:scale-95">
+            <button class="h-10 px-6 self-start sm:self-auto shrink-0 bg-emerald-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-900/20 active:scale-95">
               {{ type === 'customers' ? 'إصدار فاتورة' : 'أمر شراء جديد' }}
             </button>
           </div>
         </section>
 
         <!-- KPI Performance Grid -->
-        <section v-if="activeTab === 'overview'" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+        <section v-if="activeTab === 'overview'" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-6">
           <div v-for="kpi in [
             { l: 'إجمالي الفواتير', v: contact.invoices_count ?? invoicesCount, i: 'fa-file-invoice', c: 'text-slate-400', bg: 'bg-slate-50' },
-            { l: 'قيمة المشتريات/المبيعات', v: formatPrice(contact.invoices_total ?? invoicesTotal), i: 'fa-receipt', c: 'text-blue-600', bg: 'bg-blue-50' },
-            { l: 'المدفوعات المحصلة', v: formatPrice(contact.payments_total ?? paymentsTotal), i: 'fa-hand-holding-dollar', c: 'text-emerald-600', bg: 'bg-emerald-50' },
+            { l: type === 'customers' ? 'إجمالي المبيعات' : 'إجمالي المشتريات', v: formatPrice(contact.invoices_total ?? invoicesTotal), i: 'fa-receipt', c: 'text-blue-600', bg: 'bg-blue-50' },
+            { l: type === 'customers' ? 'التحصيلات المستلمة' : 'المدفوعات للمورد', v: formatPrice(contact.payments_total ?? paymentsTotal), i: 'fa-hand-holding-dollar', c: 'text-emerald-600', bg: 'bg-emerald-50' },
             { l: 'المتبقي المستحق', v: formatPrice(contact.balance ?? remainingTotal), i: 'fa-hourglass-half', c: 'text-rose-600', bg: 'bg-rose-50' }
-          ]" :key="kpi.l" class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 hover:border-slate-300 transition-all">
+          ]" :key="kpi.l" class="bg-white border border-slate-200 rounded-xl p-3 sm:p-5 shadow-sm space-y-3 sm:space-y-4 hover:border-slate-300 transition-all min-w-0">
             <div class="flex justify-between items-start">
               <div :class="[kpi.bg, kpi.c]" class="w-9 h-9 rounded-lg flex items-center justify-center text-sm shadow-inner"><i :class="['fas', kpi.i]"></i></div>
-              <span class="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Metric</span>
             </div>
             <div>
-              <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">{{ kpi.l }}</p>
-              <p :class="[kpi.c]" class="text-lg font-bold font-mono tracking-tighter">{{ kpi.v }}</p>
+              <p class="text-[9px] font-bold text-slate-400 mb-1">{{ kpi.l }}</p>
+              <p :class="[kpi.c]" class="text-base sm:text-lg font-bold font-mono tracking-tighter break-words">{{ kpi.v }}</p>
             </div>
           </div>
 
-          <!-- ✅ RESTORED: بطاقة المرتجعات بتفاصيلها الفرعية (كانت مختصرة لرقم واحد بس، وكانت أيضاً سبب باق إغلاق الـ tags) -->
-          <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3 hover:border-slate-300 transition-all">
+          <div class="bg-white border border-slate-200 rounded-xl p-3 sm:p-5 shadow-sm space-y-3 hover:border-slate-300 transition-all min-w-0">
             <div class="flex justify-between items-start">
               <div class="w-9 h-9 rounded-lg flex items-center justify-center text-sm shadow-inner bg-orange-50 text-orange-500"><i class="fas fa-rotate-left"></i></div>
-              <span class="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Metric</span>
             </div>
             <div>
-              <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">إجمالي المرتجعات</p>
-              <p class="text-lg font-bold font-mono tracking-tighter" :class="returnsTotalValue > 0 ? 'text-orange-500' : 'text-slate-300'">{{ formatPrice(returnsTotalValue) }}</p>
+              <p class="text-[9px] font-bold text-slate-400 mb-1">إجمالي المرتجعات</p>
+              <p class="text-base sm:text-lg font-bold font-mono tracking-tighter break-words" :class="returnsTotalValue > 0 ? 'text-orange-500' : 'text-slate-300'">{{ formatPrice(returnsTotalValue) }}</p>
             </div>
             <div class="space-y-1.5 pt-2 border-t border-slate-50">
               <div class="flex justify-between items-center">
@@ -223,11 +220,11 @@
         </section>
 
         <!-- Navigation Segmented Tabs -->
-        <section class="flex items-center justify-center">
-          <div class="flex bg-slate-100 p-1 rounded-lg border border-slate-200/50">
+        <section class="flex items-center justify-center min-w-0">
+          <div class="flex w-full sm:w-fit overflow-x-auto bg-slate-100 p-1 rounded-lg border border-slate-200/50 custom-scroll">
             <button v-for="tab in tabs" :key="tab.id" @click="activeTab = tab.id"
                     :class="[activeTab === tab.id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700']"
-                    class="px-8 py-2 rounded-md text-[11px] font-bold transition-all uppercase tracking-wider flex items-center gap-2">
+                    class="px-3 sm:px-8 py-2 rounded-md text-[10px] sm:text-[11px] font-bold transition-all uppercase tracking-wider flex items-center gap-2 whitespace-nowrap shrink-0">
               <i :class="[tab.icon, 'text-[10px]']"></i>
               {{ tab.name }}
             </button>
@@ -244,13 +241,13 @@
             
             <!-- Smart Credit Alert: Refined -->
             <transition name="fade">
-              <div v-if="overpaymentCredit > 0" class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex items-center gap-6 relative overflow-hidden">
+              <div v-if="overpaymentCredit > 0" class="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 relative overflow-hidden">
                 <div class="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500"></div>
                 <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center shrink-0 shadow-inner">
                   <i class="fas fa-wallet text-xl"></i>
                 </div>
-                <div>
-                  <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">تنبيه الرصيد الدائن الفائض (Credit Note)</h4>
+                <div class="min-w-0">
+                  <h4 class="text-xs font-bold text-slate-900 tracking-wider">تنبيه الرصيد الدائن</h4>
                   <p class="text-sm font-medium text-slate-500 mt-1">
                     يوجد رصيد متاح في الحساب بقيمة <span class="font-bold text-emerald-600 font-mono mx-1">{{ formatPrice(overpaymentCredit) }}</span>
                     {{ type === 'customers' ? 'لصالح العميل (مقدمات دفع)' : 'لصالحكم لدى المورد' }}.
@@ -263,11 +260,11 @@
             <div v-if="canViewAgingAnalysis" class="space-y-6">
               <div class="flex items-center gap-3 px-1">
                  <div class="w-1.5 h-6 bg-gradient-to-b from-amber-400 to-rose-500 rounded-full"></div>
-                 <h3 class="text-sm font-bold text-slate-900 uppercase tracking-widest">تحليل أعمار المديونية (Aging Report)</h3>
+                 <h3 class="text-sm font-bold text-slate-900 tracking-widest">تحليل أعمار المديونية</h3>
               </div>
 
               <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                <div class="p-8 grid grid-cols-1 md:grid-cols-4 gap-10 divide-x divide-slate-100 divide-x-reverse">
+                <div class="p-5 sm:p-8 grid grid-cols-1 md:grid-cols-4 gap-5 md:gap-8 md:divide-x md:divide-slate-100 md:divide-x-reverse">
                   
                   <div v-for="bucket in [
                     { l: 'فواتير حالية', v: agingBreakdown.current, s: '0 - لم تستحق', c: 'text-emerald-600', bg: 'bg-emerald-500' },
@@ -290,7 +287,7 @@
                 </div>
               </div>
             </div>
-            <!-- ✅ RESTORED: رسالة عدم الصلاحية لتحليل أعمار الديون -->
+
             <div v-else class="bg-white border border-orange-200 rounded-xl p-8 text-center shadow-sm">
               <i class="fas fa-lock text-3xl text-orange-400 mb-3 block"></i>
               <h4 class="text-sm font-bold text-orange-900 mb-1">🔒 بيانات محدودة الوصول</h4>
@@ -320,10 +317,10 @@
                   <tr class="bg-slate-50/80 border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px] tracking-widest">
                     <th class="px-6 py-4">التاريخ</th>
                     <th class="px-4 py-4">نوع الحركة</th>
-                    <th class="px-4 py-4">مدين (+)</th>
-                    <th class="px-4 py-4">دائن (-)</th>
                     <th class="px-6 py-4">البيان / الوصف</th>
                     <th class="px-4 py-4">المرجع</th>
+                    <th class="px-4 py-4">مدين (+)</th>
+                    <th class="px-4 py-4">دائن (-)</th>
                     <th class="px-6 py-4 text-left">الرصيد</th>
                   </tr>
                 </thead>
@@ -343,10 +340,10 @@
                   <tr v-else v-for="t in transactions" :key="t.id" class="hover:bg-slate-50 transition-colors group">
                     <td class="px-6 py-4 text-[10px] font-mono font-bold text-slate-400 group-hover:text-slate-900">{{ formatDate(t.date) }}</td>
                     <td class="px-4 py-4 font-bold text-slate-700">{{ transactionTypeText(t.type || t.transaction_type) }}</td>
-                    <td class="px-4 py-4 font-bold font-mono tracking-tighter" :class="t.debit > 0 ? 'text-rose-600' : 'text-slate-200'">{{ t.debit > 0 ? formatPrice(t.debit) : '—' }}</td>
-                    <td class="px-4 py-4 font-bold font-mono tracking-tighter" :class="t.credit > 0 ? 'text-emerald-600' : 'text-slate-200'">{{ t.credit > 0 ? formatPrice(t.credit) : '—' }}</td>
                     <td class="px-6 py-4 text-slate-500 italic max-w-xs truncate" :title="t.description">{{ t.description }}</td>
                     <td class="px-4 py-4 font-mono text-slate-400 text-[10px] uppercase tracking-tighter">{{ t.reference || '-' }}</td>
+                    <td class="px-4 py-4 font-bold font-mono tracking-tighter" :class="t.debit > 0 ? 'text-rose-600' : 'text-slate-200'">{{ t.debit > 0 ? formatPrice(t.debit) : '—' }}</td>
+                    <td class="px-4 py-4 font-bold font-mono tracking-tighter" :class="t.credit > 0 ? 'text-emerald-600' : 'text-slate-200'">{{ t.credit > 0 ? formatPrice(t.credit) : '—' }}</td>
                     <td class="px-6 py-4 text-sm font-bold font-mono tracking-tighter text-left" :class="t.balance === 0 ? 'text-slate-400' : (t.balance < 0 ? 'text-emerald-700' : 'text-rose-700')">
                       {{ formatPrice(t.balance) }}
                     </td>
@@ -444,7 +441,7 @@
             
             <!-- Receipts/Payments List -->
             <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-              <div class="p-6 bg-slate-50/50 border-b border-slate-100 flex items-center gap-3">
+              <div class="p-4 sm:p-6 bg-slate-50/50 border-b border-slate-100 flex flex-wrap items-center gap-3">
                 <span class="w-1.5 h-5 bg-emerald-500 rounded-full"></span>
                 <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest">{{ type === 'customers' ? 'سجل المقبوضات النقدية' : 'سجل الدفعات للمورد' }}</h3>
               </div>
@@ -469,8 +466,9 @@
                     <tr v-else v-for="p in sortedReceiptPayments" :key="p.id" class="hover:bg-slate-50 transition-all font-bold">
                       <td class="px-6 py-4 text-[10px] font-mono text-slate-400">{{ formatDateEn(p.payment_date || p.date) }}</td>
                       <td class="px-4 py-4">
-                        <p class="text-slate-800 leading-none">{{ p.reference_label || paymentRef(p) }}</p>
-                        <p class="text-[9px] text-slate-400 mt-1 uppercase tracking-tighter">REF: {{ p.id }}</p>
+                        <p class="text-slate-800 leading-none">{{ p.invoice_number ? `فاتورة ${p.invoice_number}` : (p.source_label || p.reference_label || paymentRef(p)) }}</p>
+                        <p v-if="p.invoice_number" class="text-[9px] text-blue-600 mt-1">{{ paymentSourceLabel(p) }}</p>
+                        <p class="text-[9px] text-slate-400 mt-1 uppercase tracking-tighter">رقم العملية: {{ p.id }}</p>
                       </td>
                       <td class="px-4 py-4">
                         <span class="px-2 py-1 bg-slate-100 rounded text-[9px] font-bold text-slate-500 border border-slate-200 uppercase">{{ p.payment_method_name || 'نقدي' }}</span>
@@ -516,6 +514,139 @@
         </div>
       </div>
     </main>
+
+    <!-- Payment / Collection Modal — Teleported to body to escape Layout stacking context -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="showPaymentModal"
+          class="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"
+          @click.self="showPaymentModal = false"
+          @keydown.esc="showPaymentModal = false"
+        >
+          <div class="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn" dir="rtl">
+            <!-- Header -->
+            <div class="px-8 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900">{{ type === 'customers' ? 'تحصيل دفعة من' : 'تسجيل دفعة إلى' }}</h3>
+                <p class="text-[10px] text-slate-400 mt-0.5 font-medium">{{ contact?.name }}</p>
+              </div>
+              <button type="button" @click="showPaymentModal = false"
+                      class="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all flex items-center justify-center">
+                <i class="fas fa-times text-xs"></i>
+              </button>
+            </div>
+
+            <!-- Form -->
+            <form @submit.prevent="submitPayment" class="px-8 py-6 space-y-4">
+              <p v-if="pendingPayment" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-800">
+                توجد دفعة لم تُحسم نتيجتها. أعد المحاولة بالبيانات نفسها قبل بدء دفعة أخرى.
+              </p>
+              <!-- المبلغ -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  المبلغ <span class="text-rose-500">*</span>
+                </label>
+                <input
+                  v-model.number="paymentData.amount"
+                  :disabled="!!pendingPayment"
+                  type="number" step="0.01" min="0.01"
+                  class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-mono"
+                  placeholder="0.00" required
+                />
+                <button
+                  v-if="outstandingAmount > 0"
+                  type="button"
+                  @click="paymentData.amount = outstandingAmount"
+                  :disabled="!!pendingPayment"
+                  class="text-[9px] font-bold text-blue-600 hover:underline px-1"
+                >
+                  تحصيل الرصيد كاملاً ({{ formatPrice(outstandingAmount) }})
+                </button>
+              </div>
+
+              <!-- تاريخ الدفع -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  تاريخ الدفع <span class="text-rose-500">*</span>
+                </label>
+                <input
+                  v-model="paymentData.payment_date"
+                  :disabled="!!pendingPayment"
+                  type="date"
+                  class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-mono"
+                  required
+                />
+              </div>
+
+              <!-- طريقة الدفع -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  طريقة الدفع <span class="text-rose-500">*</span>
+                </label>
+                <select
+                  v-model="paymentData.payment_method_id"
+                  :disabled="!!pendingPayment"
+                  class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none"
+                  required
+                >
+                  <option value="">اختر طريقة الدفع</option>
+                  <option v-for="m in collectiblePaymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option>
+                </select>
+              </div>
+
+              <!-- الفرع -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  الفرع <span class="text-rose-500">*</span>
+                </label>
+                <select
+                  v-model="paymentData.branch_id"
+                  :disabled="!!pendingPayment || !canSelectBranches"
+                  class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none"
+                  required
+                >
+                  <option value="">اختر الفرع</option>
+                  <option v-for="w in paymentBranches" :key="w.id" :value="w.id">{{ w.name || w.branch_name }}</option>
+                </select>
+              </div>
+
+              <!-- ملاحظات -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">ملاحظات</label>
+                <textarea
+                  v-model="paymentData.notes"
+                  :disabled="!!pendingPayment"
+                  rows="2"
+                  class="w-full bg-white border border-slate-200 rounded-md px-3 py-2 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all italic resize-none"
+                  placeholder="مرجع التحويل، رقم الشيك..."
+                ></textarea>
+              </div>
+
+              <!-- أزرار -->
+              <div class="pt-4 border-t border-slate-100 flex gap-3">
+                <button
+                  type="button"
+                  @click="showPaymentModal = false"
+                  class="flex-1 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors rounded-md hover:bg-slate-50"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  :disabled="paymentLoading"
+                  :class="type === 'customers' ? 'bg-emerald-600 shadow-emerald-900/20 hover:bg-emerald-700' : 'bg-indigo-600 shadow-indigo-900/20 hover:bg-indigo-700'"
+                  class="flex-[2] h-10 text-white rounded-md text-xs font-bold shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {{ paymentLoading ? 'جاري...' : (pendingPayment ? 'إعادة المحاولة بنفس البيانات' : (type === 'customers' ? 'تأكيد التحصيل' : 'تأكيد السداد')) }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
   </div>
 </template>
 
@@ -526,11 +657,15 @@ import { useToast } from '@/composables/useToast';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useStatementData } from '@/composables/useStatementData';
 import { useStatementRBAC } from '@/composables/useStatementRBAC';
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
+import { useBranchIsolation } from '@/composables/useBranchIsolation';
+import { usePaymentStore } from '@/stores/payment/paymentStore';
 import { useCustomerStore } from '@/stores/customer/customerStore';
 import { useSupplierStore } from '@/stores/supplier/supplierStore';
-import { getLocalDateISO } from '@/utils/date';
+import { usePendingIdempotentRequest } from '@/composables/usePendingIdempotentRequest';
+import { getLocalDateISO, getImageUrl } from '@/utils';
+import PageHeader from '@/components/PageHeader.vue';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
 
 // --- Core ---
@@ -541,6 +676,13 @@ const { fetchSettings, currencySymbol } = useCompanyCurrency();
 
 const type = ref(route.params.type); // 'customers' | 'suppliers'
 const id = ref(Number(route.params.id));
+const breadcrumb = computed(() => ({
+  parent: {
+    label: type.value === 'customers' ? 'العملاء' : 'الموردون',
+    path: type.value === 'customers' ? '/customers' : '/suppliers'
+  },
+  current: { label: contact.value?.name || (type.value === 'customers' ? 'تفاصيل العميل' : 'تفاصيل المورد') }
+}));
 
 // --- Composables ---
 const {
@@ -577,11 +719,49 @@ const {
 // --- Stores ---
 const customerStore = useCustomerStore();
 const supplierStore = useSupplierStore();
+const pendingCustomerPayment = usePendingIdempotentRequest('customer-payment');
+const pendingSupplierPayment = usePendingIdempotentRequest('supplier-payment');
+const paymentStore = usePaymentStore();
+const branchStore = useBranchStore();
+const branchIsolation = useBranchIsolation();
 
 // --- State ---
 const isLoading = ref(false);
 const contact = ref(null);
 const activeTab = ref('overview');
+const showFilters = ref(false);
+
+// --- Payment Modal State ---
+const showPaymentModal = ref(false);
+const paymentLoading = ref(false);
+const paymentData = ref({ amount: null, payment_date: null, payment_method_id: null, branch_id: null, notes: '' });
+const pendingPayment = computed(() =>
+  type.value === 'customers' ? pendingCustomerPayment.pending.value : pendingSupplierPayment.pending.value
+);
+const paymentMethods = computed(() => paymentStore.paymentMethods);
+const collectiblePaymentMethods = computed(() =>
+  paymentMethods.value.filter(method => String(method.kind || '').toLowerCase() !== 'credit')
+);
+const branches = computed(() => branchStore.branches);
+const canSelectBranches = branchIsolation.isExempt;
+const hasExplicitBranchSelection = computed(() =>
+    Boolean(branchStore.selectedBranchId) || localStorage.getItem('selectedBranchId') === 'all'
+);
+const statementBranchId = computed(() => canSelectBranches.value
+    ? branchStore.selectedBranchId
+    : branchIsolation.currentBranchId.value);
+const statementBranchParams = computed(() => statementBranchId.value
+    ? { branch_id: Number(statementBranchId.value) }
+    : {});
+const paymentBranches = computed(() => {
+    if (canSelectBranches.value) return branches.value;
+    try {
+        const requiredBranchId = branchIsolation.getRequiredBranchId();
+        return branches.value.filter(branch => String(branch.id) === requiredBranchId);
+    } catch {
+        return [];
+    }
+});
 
 // ─── Filter State ───────────────────────────────────────────────────────────
 const today = new Date();
@@ -848,6 +1028,19 @@ const paymentRef = (p) => {
     return '-';
 };
 
+const paymentSourceLabel = (payment) => {
+    if (payment?.source_label) return payment.source_label;
+    if (payment?.source_payment_type === 'return_payment' || payment?.return_id) return 'استرداد مرتجع';
+    if (payment?.source_payment_type === 'voucher') return 'سند قبض';
+    if (payment?.source_payment_type === 'sale' || payment?.sale_id) return 'تحصيل مرتبط بفاتورة';
+    if (payment?.source_payment_type === 'customer' || payment?.source_payment_type === 'debt_payment') return 'تحصيل من حساب العميل';
+    if (payment?.type === 'return_payment' || payment?.return_id) return 'استرداد مرتجع';
+    if (payment?.type === 'voucher' || payment?.type === 'cash_voucher') return 'سند قبض';
+    if (payment?.type === 'sale' || payment?.sale_id) return 'تحصيل مرتبط بفاتورة';
+    if (payment?.type === 'customer' || payment?.type === 'debt_payment') return 'تحصيل من حساب العميل';
+    return type.value === 'customers' ? 'تحصيل من العميل' : 'دفعة إلى المورد';
+};
+
 // Build flexible params covering all backend key variants
 const contactParams = computed(() => {
     const pid = id.value;
@@ -918,8 +1111,25 @@ const applyFilter = async () => {
         end_date: endDate.value,
         include_references: 1,
         status: 'any',
+        ...statementBranchParams.value,
     });
 
+    if (result.status !== 'success') {
+        handleStatementError(result);
+    }
+};
+
+const handleBranchChange = async (branchId) => {
+    if (!canSelectBranches.value) return;
+    branchStore.setSelectedBranch(branchId);
+    page.value = 1;
+    const result = await fetchStatementData(type.value, id.value, {
+        start_date: startDate.value,
+        end_date: endDate.value,
+        include_references: 1,
+        status: 'any',
+        ...statementBranchParams.value,
+    }, { force: true });
     if (result.status !== 'success') {
         handleStatementError(result);
     }
@@ -990,6 +1200,128 @@ const goBack = () => {
     router.back();
 };
 
+// ─── Payment Collection ────────────────────────────────────────────────────
+
+const openPaymentModal = () => {
+    try {
+        const requiredBranchId = canSelectBranches.value
+            ? branchStore.selectedBranchId
+            : branchIsolation.getRequiredBranchId();
+        if (!requiredBranchId && !canSelectBranches.value) {
+            showToast('لم يتم تعيين فرع لحسابك.', 'error');
+            return;
+        }
+        const requestStore = type.value === 'customers' ? pendingCustomerPayment : pendingSupplierPayment;
+        const pending = requestStore.restore(id.value);
+        if (type.value === 'suppliers' && pending?.payload?.purchases?.length) {
+            showToast('توجد دفعة مخصصة لفواتير. أعد المحاولة من صفحة إدارة الموردين.', 'error');
+            return;
+        }
+        paymentData.value = pending?.payload
+            ? { ...pending.payload }
+            : {
+                amount: outstandingAmount.value > 0 ? outstandingAmount.value : null,
+                payment_date: getLocalDateISO(new Date()),
+                payment_method_id: null,
+                branch_id: branchStore.selectedBranchId || null,
+                notes: ''
+            };
+        if (!canSelectBranches.value) {
+            paymentData.value.branch_id = requiredBranchId;
+        }
+        showPaymentModal.value = true;
+    } catch (error) {
+        showToast(error.message || 'تعذر استعادة عملية الدفع السابقة.', 'error');
+    }
+};
+
+const submitPayment = async () => {
+    if (!paymentData.value.amount || paymentData.value.amount <= 0) {
+        showToast('ادخل مبلغ صحيح', 'error');
+        return;
+    }
+    if (!paymentData.value.payment_method_id) {
+        showToast('اختر طريقة الدفع', 'error');
+        return;
+    }
+    if (!paymentData.value.payment_date) {
+        showToast('الرجاء تحديد تاريخ الدفع', 'error');
+        return;
+    }
+    if (!paymentData.value.branch_id) {
+        showToast('اختر فرعاً لتسجيل الدفعة', 'error');
+        return;
+    }
+    if (!canSelectBranches.value) {
+        try {
+            paymentData.value.branch_id = branchIsolation.getRequiredBranchId();
+        } catch (error) {
+            showToast(error.message || 'لم يتم تعيين فرع لحسابك.', 'error');
+            return;
+        }
+    }
+
+    paymentLoading.value = true;
+    try {
+        const requestStore = type.value === 'customers' ? pendingCustomerPayment : pendingSupplierPayment;
+        const payload = type.value === 'customers'
+            ? {
+                amount: Number(paymentData.value.amount),
+                payment_date: paymentData.value.payment_date,
+                payment_method_id: Number(paymentData.value.payment_method_id),
+                branch_id: paymentData.value.branch_id ? Number(paymentData.value.branch_id) : undefined,
+                notes: paymentData.value.notes || '',
+            }
+            : {
+                supplier_id: Number(id.value),
+                amount: Number(paymentData.value.amount),
+                payment_date: paymentData.value.payment_date,
+                payment_method_id: Number(paymentData.value.payment_method_id),
+                branch_id: paymentData.value.branch_id ? String(paymentData.value.branch_id) : undefined,
+                notes: paymentData.value.notes || '',
+            };
+        const pending = requestStore.prepare(id.value, payload);
+        const res = type.value === 'customers'
+            ? await customerStore.recordCustomerPayment(id.value, pending.payload, pending.key)
+            : await supplierStore.paySupplierDebt(pending.payload, pending.key);
+        if (res.status === 'success') {
+            requestStore.clear(id.value);
+            showToast('تم التحصيل بنجاح', 'success');
+            showPaymentModal.value = false;
+            // Refresh statement data to reflect updated balance
+            await fetchStatementData(type.value, id.value, {
+                start_date: startDate.value,
+                end_date: endDate.value,
+                include_references: 1,
+                status: 'any',
+                ...statementBranchParams.value,
+            }, { force: true });
+            if (type.value === 'customers') {
+                const refreshedCustomer = await customerStore.fetchCustomers({
+                    id: id.value,
+                    force: true,
+                });
+                if (refreshedCustomer.status === 'success' && refreshedCustomer.data) {
+                    contact.value = { ...contact.value, ...refreshedCustomer.data };
+                } else {
+                    showToast('تم تسجيل الدفعة، لكن تعذر تحديث الرصيد. أعد تحميل بيانات العميل.', 'warning');
+                }
+            }
+        } else {
+            if (res.outcomeUnknown) {
+                showToast('تعذر تأكيد نتيجة الدفعة. أعد المحاولة بالبيانات نفسها.', 'error');
+            } else {
+                requestStore.clear(id.value);
+                showToast(res.message || 'فشل التسجيل', 'error');
+            }
+        }
+    } catch (e) {
+        showToast(e.response?.data?.message || e.message || 'فشل التسجيل', 'error');
+    } finally {
+        paymentLoading.value = false;
+    }
+};
+
 // ─── Lifecycle ────────────────────────────────────────────────────────────
 
 onMounted(async () => {
@@ -1011,7 +1343,7 @@ onMounted(async () => {
     } catch (_) {}
 
     // Load all data: settings and contact info first, then all unified data from statement API
-    await Promise.all([fetchSettings(), fetchContact()]);
+    await Promise.all([fetchSettings(), fetchContact(), paymentStore.fetchPaymentMethods().catch(() => {}), branchStore.fetchBranches().catch(() => {})]);
     
     // Single unified call replaces fetchInvoices + fetchPayments + fetchTransactions
     const result = await fetchStatementData(type.value, id.value, {
@@ -1019,6 +1351,7 @@ onMounted(async () => {
         end_date: endDate.value,
         include_references: 1,
         status: 'any',
+        ...statementBranchParams.value,
     });
 
     if (result.status !== 'success') {
@@ -1037,6 +1370,7 @@ watch(() => route.params, async (nv) => {
         end_date: endDate.value,
         include_references: 1,
         status: 'any',
+        ...statementBranchParams.value,
     });
 
     if (result.status !== 'success') {
@@ -1067,7 +1401,8 @@ watch([page, perPage, startDate, endDate], async () => {
         include_references: 1,
         status: 'any',
         page: page.value,
-        per_page: perPage.value
+        per_page: perPage.value,
+        ...statementBranchParams.value,
     });
 
     if (result.status !== 'success') {
@@ -1086,13 +1421,17 @@ watch(activeTab, async (tab) => {
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
 .filter-input-v3 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all;
+  @apply h-11 w-full bg-white border border-slate-200 rounded-xl px-3 text-xs font-semibold text-slate-700 hover:border-slate-300 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
 }
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1; }
+.filter-input {
+  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
+}
+
+.metadata-label { @apply block text-[10px] font-bold text-slate-500 tracking-wide px-1 mb-1; }
 
 .quick-range-pill {
-  @apply px-3 py-1.5 rounded-md bg-white border border-slate-200 text-[10px] font-bold text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-all;
+  @apply px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-[10px] font-bold text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-all;
 }
 
 .pagination-btn-v2 {
@@ -1103,6 +1442,9 @@ watch(activeTab, async (tab) => {
 
 .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
+
+.slide-down-enter-active, .slide-down-leave-active { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.slide-down-enter-from, .slide-down-leave-to { opacity: 0; transform: translateY(-10px); }
 
 .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }

@@ -12,15 +12,16 @@ use App\Services\AccountManagementService;
 use App\Utils\PaginationHelper;
 
 /**
- * Base Contact Handler
+ * Shared contact listing and ledger-account helpers for customer/supplier handlers.
  *
- * Provides shared functionality for Customers and Suppliers handlers
- * Contains common methods for account management and validation
+ * Concrete subclasses set contactType, which selects the tenant table and
+ * contact-specific account mappings.
  */
 abstract class BaseContactHandler extends BaseHandler
 {
     protected string $contactType; // 'customer' or 'supplier'
 
+    /** Accept the legacy Database wrapper or PDO and initialize the shared handler. */
     public function __construct($db)
     {
         parent::__construct($db instanceof \Database ? $db->pdo : $db);
@@ -55,9 +56,7 @@ abstract class BaseContactHandler extends BaseHandler
         ], 200);
     }
 
-    /**
-     * Ensure a contact has a linked sub-account. If missing, create it and link atomically.
-     */
+    /** Use AccountManagementService to create and link a missing sub-account transactionally. */
     public function ensureAccount(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -101,7 +100,6 @@ abstract class BaseContactHandler extends BaseHandler
                 throw new \RuntimeException('Parent account not found for this contact type');
             }
 
-            // Use single source of truth: AccountManagementService::createContactAccount()
             $accountMgmt = new AccountManagementService($this->db);
             $accountId = $accountMgmt->createContactAccount(
                 $id,
@@ -115,7 +113,6 @@ abstract class BaseContactHandler extends BaseHandler
                 throw new \Exception('Failed to create contact account');
             }
 
-            // Get the account code for response
             $stmtGetCode = $this->db->prepare("SELECT code FROM accounts WHERE id = ? AND tenant_id = ?");
             $stmtGetCode->execute([$accountId, $tenantId]);
             $accountCode = $stmtGetCode->fetchColumn();
@@ -147,33 +144,25 @@ abstract class BaseContactHandler extends BaseHandler
         }
     }
 
-    /**
-     * Get the appropriate table name based on contact type
-     */
+    /** Return the contact table selected by the concrete handler's contactType. */
     protected function getTableName(): string
     {
         return $this->contactType === 'supplier' ? 'suppliers' : 'customers';
     }
 
-    /**
-     * Logical contact type used at application level
-     */
+    /** Return the application-level contact type used by account creation. */
     protected function getAccountType(): string
     {
         return $this->contactType === 'supplier' ? 'supplier' : 'customer';
     }
 
-    /**
-     * Ledger account type used in accounts table
-     */
+    /** Return the ledger account classification for this contact type. */
     protected function getLedgerAccountType(): string
     {
         return $this->contactType === 'supplier' ? 'liability' : 'asset';
     }
 
-    /**
-     * Generate unique account code
-     */
+    /** Generate the next tenant account code using the contact type's numeric prefix. */
     protected function generateAccountCode(int $tenantId): string
     {
         $prefix = $this->contactType === 'supplier' ? '200' : '100';
@@ -190,9 +179,7 @@ abstract class BaseContactHandler extends BaseHandler
         return $prefix . str_pad((string) ($maxNum + 1), 4, '0', STR_PAD_LEFT);
     }
 
-    /**
-     * Get parent account ID (receivables/payables)
-     */
+    /** Find the tenant's receivables or payables parent account. */
     protected function getParentAccountId(int $tenantId): ?int
     {
         $parentCode = $this->contactType === 'supplier' ? '2100' : '1100';
@@ -210,9 +197,7 @@ abstract class BaseContactHandler extends BaseHandler
         return $value !== false ? (int) $value : null;
     }
 
-    /**
-     * Validate contact data
-     */
+    /** Validate a required name and optional email and phone formats. */
     protected function validateContactData(array $data): array
     {
         $errors = [];
@@ -232,9 +217,7 @@ abstract class BaseContactHandler extends BaseHandler
         return $errors;
     }
 
-    /**
-     * Standard contact listing with filtering and pagination
-     */
+    /** Return paginated tenant contacts, optionally searched by name, phone, or email. */
     protected function listContacts(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);

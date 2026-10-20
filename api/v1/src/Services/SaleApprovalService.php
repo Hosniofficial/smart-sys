@@ -21,7 +21,6 @@ use App\Repositories\SettingsRepository;
  *   - approveSale()          ✅ real logic (stock + journal + payments)
  *   - rejectSale()           ✅ real logic
  *   - listPendingApprovals() ✅ real logic
- *   - updateSaleStatus()     ✅ real logic
  */
 class SaleApprovalService
 {
@@ -148,6 +147,16 @@ class SaleApprovalService
         usort($items, fn ($a, $b) => (int)$a['product_id'] <=> (int)$b['product_id']);
 
         foreach ($items as $item) {
+            $tracksStock = ProductBranchActivationGuard::assertSellableInBranch(
+                $this->pdo,
+                $tenantId,
+                $branchId,
+                (int) $item['product_id']
+            );
+            if (!$tracksStock) {
+                continue;
+            }
+
             $baseQuantity = (float) $item['quantity'] * (float) ($item['conversion_factor'] ?? 1);
             $unitCost     = (float) ($item['purchase_price'] ?? 0);
             $totalCost    = $baseQuantity * $unitCost;
@@ -164,7 +173,7 @@ class SaleApprovalService
 
             if ($availableQty < $baseQuantity) {
                 throw new \App\Exceptions\InsufficientStockException(
-                    "الكمية المتوفرة للمنتج {$item['product_id']} ({$availableQty}) " .
+                    "الكمية المتاحة للمنتج {$item['product_id']} ({$availableQty}) " .
                     "أقل من الكمية المطلوبة ({$baseQuantity}) عند الاعتماد.",
                     (int)$item['product_id'],
                     $availableQty,
@@ -231,9 +240,18 @@ class SaleApprovalService
     // اعتماد الفاتورة: مخزون + قيد محاسبي + تحويل الدفعات المسودة
     // =========================================================================
 
-    public function approveSale(int $tenantId, int $saleId, ?string $note = null, array $paymentOverride = []): array
+    public function approveSale(
+        int $tenantId,
+        int $saleId,
+        ?string $note = null,
+        array $paymentOverride = [],
+        ?bool $requireCashierSession = null
+    ): array
     {
-        return $this->txManager->execute(function () use ($tenantId, $saleId, $note, $paymentOverride) {
+        $sessionRequired = $requireCashierSession
+            ?? $this->settingsRepo->getBool($tenantId, 'pos.sessions.enabled', false);
+
+        return $this->txManager->execute(function () use ($tenantId, $saleId, $note, $paymentOverride, $sessionRequired) {
 
             // 1. جلب الفاتورة مع قفل للتحديث
             $stmt = $this->pdo->prepare("
@@ -250,9 +268,10 @@ class SaleApprovalService
             if (!$sale) {
                 throw new Exception('الفاتورة غير موجودة');
             }
-            if ($sale['status'] !== 'pending_approval') {
+            if (!\App\Security\SaleWorkflowPolicy::isApprovalPending((string) $sale['status'])) {
                 throw new Exception('لا يمكن اعتماد فاتورة ليست قيد الموافقة');
             }
+            $previousStatus = (string) $sale['status'];
 
             // 2. التحقق: فواتير الآجل تحتاج عميلاً
             if (!empty($sale['payment_method_id'])) {
@@ -397,21 +416,11 @@ class SaleApprovalService
                         }
                     }
                     if (!$sessionId) {
-                        $roleId   = $this->getCurrentUserRoleId();
-                        $enforced = $this->isRoleEnforced((int) $tenantId, $roleId);
-                        if ($enforced) {
+                        if ($sessionRequired) {
                             throw new Exception(
                                 'لا توجد جلسة كاشير مفتوحة لتحويل دفعات المسودة النقدية. افتح جلسة قبل الاعتماد.'
                             );
                         }
-                        // أدوار غير مُلزَمة: جلسة admin ذرية للحفاظ على سجل التدقيق
-                        $this->pdo->prepare("
-                            INSERT INTO cashier_sessions (
-                                tenant_id, branch_id, cashier_id, session_type,
-                                start_time, end_time, status, created_by, created_at, updated_at
-                            ) VALUES (?, ?, ?, 'admin', NOW(), NOW(), 'closed', ?, NOW(), NOW())
-                        ")->execute([$tenantId, $branchId, $this->userId, $this->userId]);
-                        $sessionId = (int) $this->pdo->lastInsertId();
                     }
                 }
 
@@ -468,8 +477,8 @@ class SaleApprovalService
 
             $this->pdo->prepare("
                 INSERT INTO invoice_approvals (tenant_id, sale_id, action, previous_status, new_status, note, action_by)
-                VALUES (?, ?, 'approve', 'pending_approval', ?, ?, ?)
-            ")->execute([$tenantId, $saleId, $newStatus, $note, $this->userId]);
+                VALUES (?, ?, 'approve', ?, ?, ?, ?)
+            ")->execute([$tenantId, $saleId, $previousStatus, $newStatus, $note, $this->userId]);
 
             $this->logAudit('sale_status_updated', 'sales', (int) $saleId, [
                 'tenant_id'  => (int) $tenantId,
@@ -510,9 +519,14 @@ class SaleApprovalService
             if (!$sale) {
                 throw new Exception('الفاتورة غير موجودة');
             }
-            if ($sale['status'] !== 'pending_approval') {
+            if (!\App\Security\SaleWorkflowPolicy::isApprovalPending((string) $sale['status'])) {
                 throw new Exception('لا يمكن رفض فاتورة ليست قيد الموافقة');
             }
+            $previousStatus = (string) $sale['status'];
+
+            $this->pdo->prepare(
+                'DELETE FROM payments WHERE tenant_id = ? AND sale_id = ? AND is_draft = 1'
+            )->execute([$tenantId, $saleId]);
 
             $this->pdo->prepare("
                 UPDATE sales
@@ -522,8 +536,8 @@ class SaleApprovalService
 
             $this->pdo->prepare("
                 INSERT INTO invoice_approvals (tenant_id, sale_id, action, previous_status, new_status, note, action_by)
-                VALUES (?, ?, 'reject', 'pending_approval', 'rejected', ?, ?)
-            ")->execute([$tenantId, $saleId, $note, $this->userId]);
+                VALUES (?, ?, 'reject', ?, 'rejected', ?, ?)
+            ")->execute([$tenantId, $saleId, $previousStatus, $note, $this->userId]);
 
             $this->logAudit('sale_status_updated', 'sales', (int) $saleId, [
                 'tenant_id'  => (int) $tenantId,
@@ -550,75 +564,4 @@ class SaleApprovalService
         }
     }
 
-    // =========================================================================
-    // updateSaleStatus — real logic extracted from SalesService
-    // تغيير حالة الفاتورة يدوياً (draft/pending/canceled فقط)
-    // =========================================================================
-
-    public function updateSaleStatus(int $tenantId, int $saleId, string $newStatus, ?int $userId = null): array
-    {
-        $userId = $userId ?? $this->userId;
-
-        $manuallyAllowed = ['draft', 'pending', 'canceled'];
-        if (!in_array($newStatus, $manuallyAllowed, true)) {
-            throw new Exception(
-                'قيمة الحالة غير صالحة. الحالات المسموح بتعيينها يدوياً: ' .
-                implode(', ', $manuallyAllowed) .
-                '. حالات السداد (paid/partial/unpaid) تُحدَّث تلقائياً عند تسجيل الدفعات.'
-            );
-        }
-
-        $stmt = $this->pdo->prepare(
-            "SELECT status FROM sales WHERE id = ? AND tenant_id = ? LIMIT 1"
-        );
-        $stmt->execute([$saleId, $tenantId]);
-        $sale = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$sale) {
-            throw new \App\Exceptions\NotFoundException('الفاتورة غير موجودة');
-        }
-
-        $currentStatus = $sale['status'];
-        $immutable     = ['posted', 'canceled', 'rejected', 'pending_approval'];
-
-        if (in_array($currentStatus, $immutable, true)) {
-            throw new Exception(
-                "لا يمكن تغيير حالة فاتورة بحالة «{$currentStatus}». " .
-                'استخدم نقطة نهاية الاعتماد أو الإلغاء المخصصة.'
-            );
-        }
-
-        $transitions = [
-            'draft'           => ['pending', 'canceled'],
-            'pending'         => ['draft', 'canceled'],
-            'paid'            => ['canceled'],
-            'partial'         => ['canceled'],
-            'pending_payment' => ['draft', 'canceled'],
-        ];
-
-        $allowed = $transitions[$currentStatus] ?? [];
-        if (!in_array($newStatus, $allowed, true)) {
-            throw new Exception(
-                "الانتقال من «{$currentStatus}» إلى «{$newStatus}» غير مسموح."
-            );
-        }
-
-        $this->pdo->prepare(
-            "UPDATE sales SET status = ?, updated_at = NOW() WHERE id = ? AND tenant_id = ?"
-        )->execute([$newStatus, $saleId, $tenantId]);
-
-        $this->logAudit('sale_status_updated', 'sales', $saleId, [
-            'tenant_id'   => (int) $tenantId,
-            'user_id'     => $userId,
-            'sale_id'     => (int) $saleId,
-            'from_status' => $currentStatus,
-            'to_status'   => $newStatus,
-        ], (int) $tenantId);
-
-        return [
-            'sale_id'     => $saleId,
-            'from_status' => $currentStatus,
-            'to_status'   => $newStatus,
-        ];
-    }
 }

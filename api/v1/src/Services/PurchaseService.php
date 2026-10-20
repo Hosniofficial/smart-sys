@@ -18,10 +18,7 @@ use App\Repositories\PaymentRepository;
 use App\Utils\DateHelper;
 
 /**
- * PurchaseService
- *
- * Centralises purchase invoice business logic extracted from PurchasesHandler.
- * Handlers should delegate to this service instead of containing SQL/accounting logic.
+ * Coordinates tenant purchase balances, inventory movements, supplier payments, and accounting entries.
  */
 class PurchaseService
 {
@@ -50,21 +47,7 @@ class PurchaseService
         $this->logger               = MonologHandler::getInstance('purchases');
     }
 
-    // -------------------------------------------------------------------------
-    // Status helpers
-    // -------------------------------------------------------------------------
-
-    /**
-     * ── AUDIT FINDING (new, discovered while tracing supplier statements) ────
-     * تحديد حالة فاتورة الشراء. `$returnAmount` كانت موجودة كباراميتر لكنها لم
-     * تُستخدَم إلا في التحقق من "إرجاع كامل" (returned) — لم تكن تُطرَح من
-     * المبلغ المتبقي في حالة الإرجاع الجزئي، فيبقى `outstanding` محسوبًا وكأن
-     * المرتجع لم يحدث إطلاقًا لأي حالة غير الإرجاع الكامل 100%. تم تصحيحه
-     * الآن ليطرح قيمة المرتجع من المتبقي بشكل صحيح (يماثل outstanding =
-     * grandTotal - paid - returnCredits على جانب المبيعات)، وأُضيفت حالة
-     * 'closed_by_return' لتمييز فاتورة أُغلقت عبر مرتجع دون دفع نقدي، بنفس
-     * منطق الجانب الآخر (بتفويض صريح: "نحن في مرحلة تطوير... قم بتنفيذه").
-     */
+    /** Derive invoice status from its net total, completed payments, and return credits. */
     public function determinePurchaseStatus(float $netTotal, float $paidAmount, float $returnAmount = 0.0): string
     {
         if ($netTotal <= 0) {
@@ -77,7 +60,7 @@ class PurchaseService
         $outstanding = max(0.0, round($netTotal - $paidAmount - $returnAmount, 2));
         if ($outstanding < 0.01) {
             if ($returnAmount > 0.01 && $paidAmount > 0.01) {
-                return 'settled_mixed'; // نفس مفردات جانب المبيعات: تسديد جزئي نقدًا + تغطية الباقي بمرتجع
+                return 'settled_mixed';
             }
             return $returnAmount > 0.01 ? 'closed_by_return' : 'paid';
         }
@@ -87,9 +70,7 @@ class PurchaseService
         return 'partial';
     }
 
-    /**
-     * إجمالي قيمة مرتجعات المشتريات المرتبطة بهذه الفاتورة (return_type='purchase').
-     */
+    /** Sum purchase-return totals linked to this tenant's invoice. */
     public function getReturnedAmount(int $purchaseId): float
     {
         $stmt = $this->db->prepare(
@@ -100,27 +81,7 @@ class PurchaseService
         return round((float) $stmt->fetchColumn(), 2);
     }
 
-    // -------------------------------------------------------------------------
-    // Balance recalculation
-    // -------------------------------------------------------------------------
-
-    /**
-     * Recalculate and persist paid_amount + status for a purchase.
-     *
-     * ── AUDIT FINDING (new) ──────────────────────────────────────────────────
-     * كانت تُستدعى بدون تمرير قيمة المرتجعات إطلاقًا (returnAmount=0.0
-     * الافتراضية دائمًا)، حتى في الحالات التي فيها مرتجعات فعلية — والأهطر:
-     * هذه الدالة نفسها لم تكن تُستدعى إطلاقًا من ReturnService::createReturn
-     * لمرتجعات المشتريات (تحقّقتُ: بحث شامل عن `recalculateBalance` و
-     * `UPDATE purchases` في ReturnService.php أعطى صفر نتائج). النتيجة: كان
-     * القيد المحاسبي (GL) يُخفِّض ذمة المورد (حساب 2101) بشكل صحيح عند كل
-     * مرتجع مشتريات، بينما purchases.paid_amount/status يبقيان كأن المرتجع لم
-     * يحدث للأبد — بلا أي آلية تصحيح لاحقة (بعكس جانب المبيعات الذي كان لديه
-     * على الأقل dynamic_status الصحيح للعرض). كشف حساب المورد
-     * (AccountStatementHandler::getSupplierReferences) كان بالتالي يعرض دائمًا
-     * رصيدًا مستحقًا للمورد أكبر من الصحيح فعليًا بعد أي مرتجع — خطر مباشر
-     * بدفع مبلغ زائد لمورد.
-     */
+    /** Recalculate paid_amount and status from recorded payments, invoice total, and returns. */
     public function recalculateBalance(int $purchaseId): void
     {
         $totalPaid    = $this->paymentRepo->getTotalPaidForPurchase($purchaseId, $this->tenantId);
@@ -130,10 +91,7 @@ class PurchaseService
         $this->purchaseRepo->updateBalance($purchaseId, $this->tenantId, $totalPaid, $status);
     }
 
-    // -------------------------------------------------------------------------
-    // Account resolution helpers
-    // -------------------------------------------------------------------------
-
+    /** Resolve the tenant supplier's linked ledger account. */
     public function getSupplierAccountId(int $supplierId): int
     {
         $stmt = $this->db->prepare(
@@ -149,16 +107,17 @@ class PurchaseService
         return $accountId;
     }
 
+    /** Resolve the inventory ledger account for the requested branch. */
     public function getInventoryAccountId(?int $branchId = null): int
     {
         $id = $this->accounting->resolveInventoryAccountForBranch($this->tenantId, $branchId) ?? 0;
         if ($id > 0) {
             return $id;
         }
-
         throw new Exception('لم يتم تحديد حساب المخزون المناسب.');
     }
 
+    /** Resolve the configured input-tax account, falling back to account code 2201. */
     public function getVatInputAccountId(): int
     {
         $id = $this->settingsRepo->getInt($this->tenantId, 'vat.input_account_id', 0);
@@ -174,6 +133,7 @@ class PurchaseService
         throw new Exception('حساب ضريبة المدخلات غير معرف (vat.input_account_id أو الحساب 2201).');
     }
 
+    /** Resolve the liquidity ledger account linked to a payment method. */
     public function resolveLiquidityAccountId(int $paymentMethodId): int
     {
         $accountId = $this->accounting->resolveLiquidityAccount($paymentMethodId, $this->tenantId);
@@ -185,17 +145,99 @@ class PurchaseService
         return $accountId;
     }
 
-    // -------------------------------------------------------------------------
-    // Invoice number generation
-    // -------------------------------------------------------------------------
+    /** Validate an outgoing purchase payment before its journal entry is posted. */
+    public function validatePaymentLiquidity(int $paymentMethodId, float $amount, ?int $sessionId): void
+    {
+        if ($amount <= 0) {
+            return;
+        }
 
+        try {
+            $liquidityPolicy = new \App\Services\LiquidityPolicyService($this->db, $this->logger);
+            $validation = $liquidityPolicy->validateLiquidityBalance(
+                tenantId: $this->tenantId,
+                paymentMethodId: $paymentMethodId,
+                debitAmount: $amount,
+                cashierSessionId: $sessionId
+            );
+
+            if ($validation['allowed']) {
+                return;
+            }
+
+            $currentBalance = isset($validation['current_balance'])
+                ? (float) $validation['current_balance']
+                : null;
+            $shortfall = $validation['shortfall'] ?? ($currentBalance !== null
+                ? max(0.0, round($amount - $currentBalance, 2))
+                : null);
+            $policyReason = match ($validation['reason']) {
+                'Cash account cannot go negative (setting disabled)' => 'إعداد السماح بأن يصبح رصيد الصندوق سالبًا غير مفعّل.',
+                'Cash account cannot go negative when cashier sessions are disabled' => 'لا يمكن أن يصبح رصيد الصندوق سالبًا عند تعطيل إلزام جلسات الكاشير.',
+                'Cash account requires active cashier session for negative balance' => 'السماح بالسالب مفعّل، لكن يلزم فتح جلسة كاشير للفرع المختار قبل تسجيل الدفعة.',
+                'Cashier session not open (required for intra-day negative balance)' => 'جلسة الكاشير غير مفتوحة أو أُغلقت. افتح جلسة للفرع المختار ثم أعد المحاولة.',
+                'Payment method not found or inactive' => 'طريقة الدفع المحددة غير موجودة أو غير مفعّلة.',
+                'Payment method has no linked liquidity account' => 'طريقة الدفع المحددة غير مربوطة بحساب سيولة.',
+                'Payment method account type does not match its kind' => 'تصنيف حساب طريقة الدفع لا يطابق نوعها. راجع إعدادات طريقة الدفع.',
+                'Liquidity account must be an asset account' => 'الحساب المرتبط بطريقة الدفع ليس حساب أصل صالحًا للصندوق أو البنك.',
+                'Credit method has no liquidity account' => 'طريقة الدفع آجلة ولا تمثل دفعة نقدية للمورد.',
+                'Debit amount must be greater than zero' => 'قيمة الدفعة يجب أن تكون أكبر من صفر.',
+                default => 'سياسة الحساب المرتبط بطريقة الدفع لا تسمح بإتمام هذه الدفعة.',
+            };
+            $message = $currentBalance === null
+                ? sprintf('تعذر تسجيل دفعة الشراء. %s لم يُرحّل قيد الفاتورة ولم تُسجل الدفعة.', $policyReason)
+                : sprintf(
+                    'تعذّر تسجيل دفعة الشراء. %s الرصيد النقدي قبل العملية: %s، المبلغ المطلوب: %s، العجز: %s.',
+                    $policyReason,
+                    number_format($currentBalance, 2),
+                    number_format($amount, 2),
+                    number_format((float) $shortfall, 2)
+                );
+
+            throw new \App\Exceptions\InsufficientLiquidityException(
+                $message,
+                402,
+                [
+                    'current_balance'     => $currentBalance,
+                    'required_amount'     => $amount,
+                    'shortfall'           => $validation['shortfall'] ?? $shortfall,
+                    'account_id'          => $validation['account_id'] ?? null,
+                    'payment_method_id'   => $paymentMethodId,
+                    'payment_method_kind' => $validation['payment_method_kind'] ?? null,
+                    'policy_reason'       => $validation['reason'],
+                ]
+            );
+        } catch (\App\Exceptions\InsufficientLiquidityException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            $this->logger->error('Liquidity validation error — payment blocked', [
+                'amount'            => $amount,
+                'payment_method_id' => $paymentMethodId,
+                'error'             => $e->getMessage(),
+            ]);
+            throw new \Exception(
+                'تعذّر التحقق من رصيد الحساب قبل تسجيل الدفعة: ' . $e->getMessage()
+            );
+        }
+    }
+
+    /** Generate a tenant/day invoice number; the caller must provide transaction scope for row locking. */
     public function generateInvoiceNumber(?string $invoiceDate = null): string
     {
+        if (!$this->db->inTransaction()) {
+            throw new \LogicException('Purchase invoice numbers must be generated inside a transaction.');
+        }
+
+        $tenantLock = $this->db->prepare('SELECT id FROM tenants WHERE id = ? FOR UPDATE');
+        $tenantLock->execute([$this->tenantId]);
+        if ($tenantLock->fetchColumn() === false) {
+            throw new \RuntimeException('Cannot generate a purchase invoice number for an unknown tenant.');
+        }
+
         $invoiceDateTime = DateHelper::normalize($invoiceDate);
         $day      = date('Y-m-d', strtotime($invoiceDateTime));
         $dayShort = date('ymd', strtotime($invoiceDateTime));
 
-        // Retry logic for handling duplicate entry errors
         $maxAttempts = 3;
         $attempt = 0;
 
@@ -203,11 +245,9 @@ class PurchaseService
             try {
                 $attempt++;
 
-                // Get sequential count for today with table lock to prevent duplicates
                 $stmt = $this->db->prepare(
                     "SELECT COUNT(*) FROM purchases
-                     WHERE tenant_id = ? AND DATE(invoice_date) = ?
-                     FOR UPDATE"
+                     WHERE tenant_id = ? AND DATE(invoice_date) = ?"
                 );
                 $stmt->execute([
                     $this->tenantId,
@@ -217,30 +257,22 @@ class PurchaseService
                 $count = (int) $stmt->fetchColumn() + 1;
                 $invoiceNumber = sprintf('PUR-%s-%03d', $dayShort, $count);
 
-                // If we got here without exception, return the number
                 return $invoiceNumber;
 
             } catch (PDOException $e) {
                 $msg = $e->getMessage();
-                // If it's a duplicate entry error and we haven't exceeded max attempts, retry
                 if (($e->getCode() === '23000' || strpos($msg, 'Duplicate entry') !== false) && $attempt < $maxAttempts) {
-                    // Wait a brief moment before retrying to reduce contention
-                    usleep(100000); // 100ms
+                    usleep(100000);
                     continue;
                 }
-                // If it's not a duplicate or we've exceeded attempts, throw the exception
                 throw $e;
             }
         }
 
-        // Should not reach here, but if it does, throw an exception
         throw new PDOException('Failed to generate unique invoice number after ' . $maxAttempts . ' attempts');
     }
 
-    // -------------------------------------------------------------------------
-    // Journal entry creation — delegates to AccountingService (Single Source of Truth)
-    // -------------------------------------------------------------------------
-
+    /** Post the purchase journal entry through AccountingService and link it to the invoice. */
     public function createJournalEntry(array $purchaseData, int $supplierAccountId): int
     {
         $purchaseId      = (int) ($purchaseData['id'] ?? 0);
@@ -250,9 +282,7 @@ class PurchaseService
         $userId          = isset($purchaseData['user_id']) ? (int) $purchaseData['user_id'] : $this->userId;
         $costCenterId    = !empty($purchaseData['cost_center_id'])
             ? (int) $purchaseData['cost_center_id']
-            // نُمرِّر فرع فاتورة الشراء نفسها (وليس فرع المستخدم فقط) — كان مفقوداً سابقاً
-            // رغم توفره في $branchId أعلاه، ما كان يُسبب نسب مركز تكلفة خاطئ حين يسجّل
-            // موظف من فرع (ب) فاتورة شراء واردة لفرع (أ).
+            // Use the invoice branch rather than the user's default branch.
             : (int) $this->costCenterService->resolve($this->tenantId, $userId, null, $branchId);
         $totalAmount     = round((float) ($purchaseData['total_amount'] ?? 0), 2);
         $paidAmount      = round((float) ($purchaseData['paid_amount'] ?? 0), 2);
@@ -280,29 +310,18 @@ class PurchaseService
             $costCenterId
         );
 
-        // ربط journal_entry_id بسجل الفاتورة
         $this->purchaseRepo->setJournalEntryId($purchaseId, $this->tenantId, $journalEntryId);
 
         return $journalEntryId;
     }
 
-    // -------------------------------------------------------------------------
-    // Currency
-    // -------------------------------------------------------------------------
-
+    /** Return the tenant's configured company currency, defaulting to EGP. */
     public function getCompanyCurrency(): string
     {
         return $this->settingsRepo->get($this->tenantId, 'company.currency', 'EGP') ?: 'EGP';
     }
 
-    // -------------------------------------------------------------------------
-    // Stock management
-    // -------------------------------------------------------------------------
-
-    /**
-     * Insert purchase items and optionally update stock.
-     * Extracted from PurchasesHandler::insertPurchaseItems().
-     */
+    /** Persist calculated line items and optionally record their stock receipts. */
     public function insertPurchaseItems(
         int $purchaseId,
         array $items,
@@ -341,9 +360,9 @@ class PurchaseService
                 $itemTaxRate,
                 $taxAmountItem,
                 $subtotal,
-                $item['batch_number'] ?? null,
-                $item['expiry_date'] ?? null,
-                $item['serial'] ?? null,
+                $item['batch_number'] ?: null,
+                ($item['expiry_date'] !== '' && $item['expiry_date'] !== null) ? $item['expiry_date'] : null,
+                $item['serial'] ?: null,
                 $branchId,
                 $item['category_id'] ?? null,
             ]);
@@ -358,18 +377,15 @@ class PurchaseService
                     'in',
                     $notes,
                     (float) ($item['cost'] ?? 0),
-                    $item['batch_number'] ?? null,
-                    $item['expiry_date'] ?? null,
-                    $item['serial'] ?? null
+                    $item['batch_number'] ?: null,
+                    ($item['expiry_date'] !== '' && $item['expiry_date'] !== null) ? $item['expiry_date'] : null,
+                    $item['serial'] ?: null
                 );
             }
         }
     }
 
-    /**
-     * Update stock for a purchase item.
-     * Extracted from PurchasesHandler::updateStock().
-     */
+    /** Record a purchase-linked stock movement and update branch quantity, valuation, and tracking data. */
     public function updateStock(
         int $productId,
         int $unitId,
@@ -386,6 +402,19 @@ class PurchaseService
         if (!$branchId) {
             throw new \Exception('يجب تحديد المخزن لتحديث حركة المخزون.');
         }
+
+        if ($type === 'in') {
+            ProductBranchActivationGuard::assertActiveForStock(
+                $this->db,
+                $this->tenantId,
+                $branchId,
+                $productId
+            );
+        }
+
+        $expiryDate = ($expiryDate !== '' && $expiryDate !== null) ? $expiryDate : null;
+        $batchNumber = ($batchNumber !== '') ? $batchNumber : null;
+        $serial = ($serial !== '') ? $serial : null;
 
         $totalCost  = round($quantity * $unitCost, 2);
         $branchFrom = $type === 'out' ? $branchId : null;
@@ -447,11 +476,7 @@ class PurchaseService
         }
     }
 
-    /**
-     * Record a payment for a purchase invoice.
-     * Extracted from PurchasesHandler::recordPurchasePayment().
-     * $request replaced with explicit session parameters to decouple from HTTP layer.
-     */
+    /** Persist and post a purchase payment; the caller owns its transaction. */
     public function recordPayment(
         int $purchaseId,
         int $supplierId,
@@ -463,10 +488,15 @@ class PurchaseService
         ?int $costCenterId,
         ?int $supplierAccountId,
         ?int $sessionId = null,
-        bool $purchaseJeAlreadyCreated = false
+        bool $purchaseJeAlreadyCreated = false,
+        bool $liquidityAlreadyValidated = false
     ): array {
         if ($amount <= 0) {
             throw new \Exception('قيمة الدفعة يجب أن تكون أكبر من صفر.');
+        }
+
+        if (!$liquidityAlreadyValidated) {
+            $this->validatePaymentLiquidity($paymentMethodId, $amount, $sessionId);
         }
 
         $referenceNumber = $referenceNumber ?: ('PP-' . date('ymd-His'));
@@ -486,14 +516,16 @@ class PurchaseService
 
         $paymentId = (int) $this->db->lastInsertId();
 
-        $this->paymentRepo->insertApplication(
+        if (!$this->paymentRepo->insertApplication(
             $this->tenantId,
             $paymentId,
             'purchase',
             $purchaseId,
             $amount,
             $this->userId
-        );
+        )) {
+            throw new \RuntimeException('تعذر ربط دفعة المورد بفاتورة الشراء.');
+        }
 
         $journalEntryId = null;
 
@@ -503,10 +535,13 @@ class PurchaseService
             );
             $stmtPJe->execute([$purchaseId, $this->tenantId]);
             $inheritedJeId = (int) $stmtPJe->fetchColumn();
-            if ($inheritedJeId > 0) {
-                $this->paymentRepo->setJournalEntryId($paymentId, $this->tenantId, $inheritedJeId);
-                $journalEntryId = $inheritedJeId;
+            if ($inheritedJeId <= 0) {
+                throw new \RuntimeException('قيد فاتورة الشراء غير موجود لربط الدفعة به.');
             }
+            if (!$this->paymentRepo->setJournalEntryId($paymentId, $this->tenantId, $inheritedJeId)) {
+                throw new \RuntimeException('تعذر ربط دفعة المورد بقيد فاتورة الشراء.');
+            }
+            $journalEntryId = $inheritedJeId;
         } else {
             try {
                 $liquidityAccountId = $this->resolveLiquidityAccountId($paymentMethodId);
@@ -516,7 +551,7 @@ class PurchaseService
                     $this->tenantId,
                     $paymentId,
                     $amount,
-                    'purchase',
+                    'supplier_payment',
                     null,
                     $purchaseId,
                     null,
@@ -527,14 +562,41 @@ class PurchaseService
                     $desc
                 );
 
-                if ($journalEntryId) {
-                    $this->paymentRepo->setJournalEntryId($paymentId, $this->tenantId, $journalEntryId);
+                if (!$journalEntryId) {
+                    throw new \RuntimeException('فشل ترحيل قيد دفعة المورد.');
+                }
+                if (!$this->paymentRepo->setJournalEntryId($paymentId, $this->tenantId, $journalEntryId)) {
+                    throw new \RuntimeException('تعذر ربط دفعة المورد بقيدها المحاسبي.');
                 }
             } catch (Throwable $e) {
-                $this->logger->warning('Failed to post purchase payment to journal', [
+                $this->logger->error('Failed to post purchase payment to journal', [
                     'payment_id' => $paymentId, 'error' => $e->getMessage(),
                 ]);
+                throw new \RuntimeException('تعذر ترحيل القيد المحاسبي لدفعة المورد.', 0, $e);
             }
+        }
+
+        if ($this->accounting->isCashMethod($paymentMethodId, $this->tenantId)) {
+            $this->db->prepare(
+                "INSERT INTO cash_transactions (
+                    tenant_id, supplier_id, amount, type, reference_type, reference_id,
+                    payment_method_id, description, created_by, created_at, status, notes,
+                    journal_entry_id, session_id, branch_id, cost_center_id
+                 ) VALUES (?, ?, ?, 'expense', 'purchase', ?, ?, ?, ?, NOW(), 'completed', ?, ?, ?, ?, ?)"
+            )->execute([
+                $this->tenantId,
+                $supplierId,
+                $amount,
+                $purchaseId,
+                $paymentMethodId,
+                'سداد فاتورة شراء #' . $purchaseId,
+                $this->userId,
+                $referenceNumber,
+                $journalEntryId,
+                $sessionId,
+                $branchId,
+                $costCenterId,
+            ]);
         }
 
         return [
@@ -544,9 +606,7 @@ class PurchaseService
         ];
     }
 
-    /**
-     * Safe audit logging — delegates to AuditHandler.
-     */
+    /** Write an audit event without allowing audit-storage failures to abort the purchase flow. */
     public function auditSafe(string $action, string $entityType, int $entityId, array $payload): void
     {
         try {
@@ -559,23 +619,19 @@ class PurchaseService
                 $this->userId
             );
         } catch (Throwable $e) {
+            $this->logger->warning('Purchase audit logging failed', [
+                'action' => $action,
+                'entity_type' => $entityType,
+                'entity_id' => $entityId,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
-    // -------------------------------------------------------------------------
-    // updatePurchase — تحديث فاتورة شراء كاملة
-    // -------------------------------------------------------------------------
-
     /**
-     * تحديث فاتورة شراء: عكس المخزون القديم + حذف items + update + insert items + قيد جديد.
+     * Replace an unpaid, unreturned invoice's lines, stock movements, and journal entry.
      *
-     * @param int   $purchaseId
-     * @param array $purchase   السجل الحالي من DB (يُمرَّر من الـ handler بعد التحقق)
-     * @param array $data       بيانات الطلب (supplier_id, branch_id, items, ...)
-     * @param array $totals     نتيجة calculatePurchaseTotals()
-     * @param string $invoiceDate
-     * @param int|null $costCenterId
-     * @return array ['id' => int, 'invoice_number' => string]
+     * The caller must provide a transaction for the changes and MySQL row lock.
      */
     public function updatePurchase(
         int    $purchaseId,
@@ -583,14 +639,62 @@ class PurchaseService
         array  $data,
         array  $totals,
         string $invoiceDate,
-        ?int   $costCenterId = null
+        ?int   $costCenterId = null,
+        ?int   $sessionId = null
     ): array {
-        // 1. حذف القيد المحاسبي القديم
-        if (!empty($purchase['journal_entry_id'])) {
-            $this->accounting->deleteJournalEntry($this->tenantId, (int) $purchase['journal_entry_id']);
+        $forUpdate = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+        $purchaseStmt = $this->db->prepare(
+            "SELECT * FROM purchases WHERE id = ? AND tenant_id = ? LIMIT 1{$forUpdate}"
+        );
+        $purchaseStmt->execute([$purchaseId, $this->tenantId]);
+        $lockedPurchase = $purchaseStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$lockedPurchase) {
+            throw new \App\Exceptions\NotFoundException('Purchase not found');
+        }
+        $purchase = $lockedPurchase;
+        if (in_array(strtolower((string) ($purchase['status'] ?? '')), ['canceled', 'cancelled', 'rejected'], true)) {
+            throw new \InvalidArgumentException('لا يمكن تعديل فاتورة شراء ملغاة أو مرفوضة.');
         }
 
-        // 2. عكس المخزون القديم
+        $paymentStmt = $this->db->prepare(
+            "SELECT COUNT(*) FROM payments
+             WHERE purchase_id = ? AND tenant_id = ? AND status = 'completed' AND is_draft = 0"
+        );
+        $paymentStmt->execute([$purchaseId, $this->tenantId]);
+        if ((int) $paymentStmt->fetchColumn() > 0) {
+            throw new \InvalidArgumentException(
+                'لا يمكن تعديل فاتورة عليها دفعة مكتملة؛ استخدم مرتجعًا أو سجل دفعة مستقلة.'
+            );
+        }
+        $returnStmt = $this->db->prepare(
+            "SELECT COUNT(*) FROM returns
+             WHERE purchase_id = ? AND tenant_id = ? AND return_type = 'purchase'"
+        );
+        $returnStmt->execute([$purchaseId, $this->tenantId]);
+        if ((int) $returnStmt->fetchColumn() > 0) {
+            throw new \InvalidArgumentException('لا يمكن تعديل فاتورة لها مرتجع مرتبط.');
+        }
+
+        // A posted journal is immutable; use the explicit cancel-and-recreate flow.
+        if (!empty($purchase['journal_entry_id'])) {
+            $journalStatusStmt = $this->db->prepare(
+                'SELECT status FROM journal_entries WHERE id = ? AND tenant_id = ? LIMIT 1'
+            );
+            $journalStatusStmt->execute([(int) $purchase['journal_entry_id'], $this->tenantId]);
+            $journalStatus = $journalStatusStmt->fetchColumn();
+            if ($journalStatus === false) {
+                throw new \RuntimeException('القيد المحاسبي المرتبط بفاتورة الشراء غير موجود.');
+            }
+            if (in_array($journalStatus, ['posted', 'reversed'], true)) {
+                throw new \InvalidArgumentException(
+                    'لا يمكن تعديل فاتورة شراء مرحّلة؛ ألغِها بالطريقة الآمنة وأنشئ فاتورة بديلة.'
+                );
+            }
+            if (!$this->accounting->deleteJournalEntry($this->tenantId, (int) $purchase['journal_entry_id'])) {
+                throw new \RuntimeException('تعذر حذف القيد المحاسبي السابق لفاتورة الشراء.');
+            }
+        }
+
         $stmtOldItems = $this->db->prepare(
             "SELECT * FROM purchase_items WHERE purchase_id = ? AND tenant_id = ?"
         );
@@ -613,12 +717,10 @@ class PurchaseService
             );
         }
 
-        // 3. حذف items القديمة
         $this->db->prepare(
             "DELETE FROM purchase_items WHERE purchase_id = ? AND tenant_id = ?"
         )->execute([$purchaseId, $this->tenantId]);
 
-        // 4. تحديث رأس الفاتورة
         $this->db->prepare("
             UPDATE purchases
             SET supplier_id       = ?,
@@ -656,7 +758,6 @@ class PurchaseService
             $this->tenantId,
         ]);
 
-        // 5. إدراج items الجديدة + تحديث المخزون
         $this->insertPurchaseItems(
             $purchaseId,
             $totals['items'],
@@ -667,8 +768,14 @@ class PurchaseService
             true
         );
 
-        // 6. إنشاء قيد محاسبي جديد
         $supplierAccountId = $this->getSupplierAccountId((int) $data['supplier_id']);
+        if ((float) $totals['paid_amount'] > 0) {
+            $this->validatePaymentLiquidity(
+                (int) $data['payment_method_id'],
+                (float) $totals['paid_amount'],
+                $sessionId
+            );
+        }
         $this->createJournalEntry([
             'id'                => $purchaseId,
             'invoice_number'    => (string) ($purchase['invoice_number'] ?? ''),
@@ -683,58 +790,99 @@ class PurchaseService
             'cost_center_id'    => $costCenterId,
         ], $supplierAccountId);
 
+        if ((float) $totals['paid_amount'] > 0) {
+            $this->recordPayment(
+                $purchaseId,
+                (int) $data['supplier_id'],
+                (float) $totals['paid_amount'],
+                $invoiceDate,
+                (int) $data['payment_method_id'],
+                $data['reference_number'] ?? null,
+                (int) $data['branch_id'],
+                $costCenterId,
+                $supplierAccountId,
+                $sessionId,
+                true,
+                true
+            );
+        }
+
         return [
             'id'             => $purchaseId,
             'invoice_number' => (string) ($purchase['invoice_number'] ?? ''),
         ];
     }
 
-    // -------------------------------------------------------------------------
-    // deletePurchase — حذف فاتورة شراء
-    // -------------------------------------------------------------------------
-
     /**
-     * حذف فاتورة شراء: التحقق من عدم وجود مدفوعات + عكس المخزون + حذف items + حذف الفاتورة + عكس القيد.
+     * Cancel a purchase while preserving its document, reversing its journal, and removing available stock.
      *
-     * @throws \Exception إذا كانت هناك مدفوعات مرتبطة
+     * Refuses invoices with payments, returns, tracked items, or insufficient stock.
+     * Owns the transaction only when the caller has not already started one.
      */
     public function deletePurchase(int $purchaseId): void
     {
+        $ownTransaction = !$this->db->inTransaction();
         try {
-            // التحقق من عدم وجود مدفوعات
-            $stmtPay = $this->db->prepare(
-                "SELECT COUNT(*) FROM payments WHERE purchase_id = ? AND tenant_id = ?"
-            );
-            $stmtPay->execute([$purchaseId, $this->tenantId]);
-            if ((int) $stmtPay->fetchColumn() > 0) {
-                throw new \Exception('لا يمكن حذف الفاتورة: يوجد عليها مدفوعات مرتبطة بها');
+            if ($ownTransaction) {
+                $this->db->beginTransaction();
             }
 
-            // جلب بيانات الفاتورة
+            $forUpdate = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
             $stmt = $this->db->prepare(
-                "SELECT * FROM purchases WHERE id = ? AND tenant_id = ? LIMIT 1"
+                "SELECT * FROM purchases WHERE id = ? AND tenant_id = ? LIMIT 1{$forUpdate}"
             );
             $stmt->execute([$purchaseId, $this->tenantId]);
             $purchase = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$purchase) {
                 throw new \App\Exceptions\NotFoundException('Purchase not found');
             }
-
-            // ابدأ transaction
-            $this->db->beginTransaction();
-
-            // حذف القيد المحاسبي
-            if (!empty($purchase['journal_entry_id'])) {
-                $this->accounting->deleteJournalEntry($this->tenantId, (int) $purchase['journal_entry_id']);
+            if (in_array(strtolower((string) ($purchase['status'] ?? '')), ['canceled', 'cancelled', 'rejected'], true)) {
+                throw new \InvalidArgumentException('فاتورة الشراء ملغاة أو مرفوضة بالفعل.');
             }
 
-            // عكس المخزون
+            // Keep the payment trail intact; reversing an invoice alone would leave cash movements posted.
+            $stmtPay = $this->db->prepare(
+                "SELECT COUNT(*) FROM payments
+                 WHERE purchase_id = ? AND tenant_id = ?
+                   AND COALESCE(type, '') <> 'payment_for_return'"
+            );
+            $stmtPay->execute([$purchaseId, $this->tenantId]);
+            if ((int) $stmtPay->fetchColumn() > 0) {
+                throw new \InvalidArgumentException(
+                    'لا يمكن إلغاء فاتورة مرتبطة بمدفوعات؛ عالجها من خلال مسار مرتجع المشتريات للحفاظ على أثر الدفعات.'
+                );
+            }
+            $stmtReturns = $this->db->prepare(
+                "SELECT COUNT(*) FROM returns
+                 WHERE purchase_id = ? AND tenant_id = ? AND return_type = 'purchase'"
+            );
+            $stmtReturns->execute([$purchaseId, $this->tenantId]);
+            if ((int) $stmtReturns->fetchColumn() > 0) {
+                throw new \InvalidArgumentException('لا يمكن حذف فاتورة لها مرتجع مرتبط.');
+            }
+
             $stmtItems = $this->db->prepare(
                 "SELECT * FROM purchase_items WHERE purchase_id = ? AND tenant_id = ?"
             );
             $stmtItems->execute([$purchaseId, $this->tenantId]);
             $items = $stmtItems->fetchAll(\PDO::FETCH_ASSOC);
 
+            $this->assertPurchaseCancellationStockAvailable($purchase, $items);
+
+            $journalEntryId = (int) ($purchase['journal_entry_id'] ?? 0);
+            if ($journalEntryId <= 0) {
+                throw new \RuntimeException('لا يمكن إلغاء فاتورة شراء دون قيد محاسبي مرتبط.');
+            }
+            $journalStatusStmt = $this->db->prepare(
+                'SELECT status FROM journal_entries WHERE id = ? AND tenant_id = ? LIMIT 1'
+            );
+            $journalStatusStmt->execute([$journalEntryId, $this->tenantId]);
+            if ($journalStatusStmt->fetchColumn() !== 'posted') {
+                throw new \RuntimeException('لا يمكن إلغاء فاتورة شراء دون قيد محاسبي مرحّل.');
+            }
+            $this->accounting->reverseJournalEntry($journalEntryId, $this->tenantId, $this->userId);
+
+            // Preserve the original invoice and lines for audit.
             foreach ($items as $item) {
                 $this->updateStock(
                     (int) $item['product_id'],
@@ -751,45 +899,84 @@ class PurchaseService
                 );
             }
 
-            // حذف items
             $this->db->prepare(
-                "DELETE FROM purchase_items WHERE purchase_id = ? AND tenant_id = ?"
+                "UPDATE purchases SET status = 'cancelled', updated_at = NOW()
+                 WHERE id = ? AND tenant_id = ?"
             )->execute([$purchaseId, $this->tenantId]);
 
-            // حذف الفاتورة
-            $this->db->prepare(
-                "DELETE FROM purchases WHERE id = ? AND tenant_id = ?"
-            )->execute([$purchaseId, $this->tenantId]);
+            if ($ownTransaction) {
+                $this->db->commit();
+            }
 
-            // أكمل transaction
-            $this->db->commit();
-
-        } catch (\Exception $e) {
-            if ($this->db->inTransaction()) {
+        } catch (Throwable $e) {
+            if ($ownTransaction && $this->db->inTransaction()) {
                 $this->db->rollBack();
             }
             throw $e;
         }
     }
 
-    // -------------------------------------------------------------------------
-    // addPaymentToInvoice — إضافة دفعة لفاتورة شراء قائمة
-    // -------------------------------------------------------------------------
+    /**
+     * Ensure cancelling the purchase will not remove stock that has already
+     * been consumed or whose batch/serial tracking cannot be safely reversed.
+     */
+    private function assertPurchaseCancellationStockAvailable(array $purchase, array $items): void
+    {
+        $requiredByProduct = [];
+        $productStmt = $this->db->prepare(
+            'SELECT has_batch_number, has_expiry_date, has_serial_number
+             FROM products WHERE id = ? AND tenant_id = ? LIMIT 1'
+        );
+
+        foreach ($items as $item) {
+            $productId = (int) ($item['product_id'] ?? 0);
+            $productStmt->execute([$productId, $this->tenantId]);
+            $tracking = $productStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$tracking) {
+                throw new \RuntimeException('تعذر التحقق من تتبع صنف بفاتورة الشراء.');
+            }
+            if (
+                !empty($tracking['has_batch_number'])
+                || !empty($tracking['has_expiry_date'])
+                || !empty($tracking['has_serial_number'])
+                || !empty($item['batch_number'])
+                || !empty($item['expiry_date'])
+                || !empty($item['serial'])
+            ) {
+                throw new \InvalidArgumentException(
+                    'لا يمكن إلغاء الفاتورة آليًا لوجود أصناف متتبعة بدفعة أو صلاحية أو رقم مسلسل؛ استخدم مسار المرتجع.'
+                );
+            }
+
+            $requiredByProduct[$productId] = ($requiredByProduct[$productId] ?? 0.0)
+                + (float) ($item['quantity'] ?? 0);
+        }
+
+        $forUpdate = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+        $stockStmt = $this->db->prepare(
+            "SELECT quantity FROM branch_products
+             WHERE tenant_id = ? AND branch_id = ? AND product_id = ?
+             LIMIT 1{$forUpdate}"
+        );
+        foreach ($requiredByProduct as $productId => $required) {
+            $stockStmt->execute([
+                $this->tenantId,
+                (int) ($purchase['branch_id'] ?? 0),
+                (int) $productId,
+            ]);
+            $available = $stockStmt->fetchColumn();
+            if ($available === false || (float) $available + 0.0001 < $required) {
+                throw new \InvalidArgumentException(
+                    'لا يمكن إلغاء الفاتورة لأن كامل كمية أحد الأصناف لم تعد متاحة في المخزون.'
+                );
+            }
+        }
+    }
 
     /**
-     * التحقق من المبلغ المتبقي وإضافة دفعة لفاتورة شراء.
+     * Add a payment up to the invoice's outstanding balance and recalculate its status.
      *
-     * @param int    $purchaseId
-     * @param array  $purchase          بيانات الفاتورة + supplier_account_id
-     * @param float  $amount
-     * @param string $paymentDate
-     * @param int    $paymentMethodId
-     * @param string|null $referenceNumber
-     * @param int|null $branchId
-     * @param int|null $costCenterId
-     * @param int|null $sessionId       يُحسب في الـ handler (HTTP concern)
-     * @return array ['payment_id', 'journal_entry_id', 'session_id', 'remaining', 'new_paid', 'status']
-     * @throws \Exception إذا تجاوزت الدفعة المبلغ المتبقي
+     * The caller must provide a transaction for the MySQL row lock and related writes.
      */
     public function addPaymentToInvoice(
         int    $purchaseId,
@@ -802,13 +989,20 @@ class PurchaseService
         ?int   $costCenterId     = null,
         ?int   $sessionId        = null
     ): array {
-        // حساب المبلغ المتبقي
-        $stmtPaid = $this->db->prepare(
-            "SELECT COALESCE(SUM(amount), 0) FROM payments
-             WHERE purchase_id = ? AND tenant_id = ? AND status = 'completed'"
+        $forUpdate = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+        $purchaseLock = $this->db->prepare(
+            "SELECT status FROM purchases WHERE id = ? AND tenant_id = ? LIMIT 1{$forUpdate}"
         );
-        $stmtPaid->execute([$purchaseId, $this->tenantId]);
-        $actualPaidSoFar = round((float) $stmtPaid->fetchColumn(), 2);
+        $purchaseLock->execute([$purchaseId, $this->tenantId]);
+        $purchaseStatus = $purchaseLock->fetchColumn();
+        if ($purchaseStatus === false) {
+            throw new \App\Exceptions\NotFoundException('Purchase not found');
+        }
+        if (in_array(strtolower((string) $purchaseStatus), ['canceled', 'cancelled', 'rejected'], true)) {
+            throw new \InvalidArgumentException('لا يمكن تسجيل دفعة على فاتورة شراء ملغاة أو مرفوضة.');
+        }
+
+        $actualPaidSoFar = $this->paymentRepo->getTotalPaidForPurchase($purchaseId, $this->tenantId);
 
         $stmtRet = $this->db->prepare(
             "SELECT COALESCE(SUM(grand_total), 0) FROM returns
@@ -817,8 +1011,11 @@ class PurchaseService
         $stmtRet->execute([$purchaseId, $this->tenantId]);
         $returnAmt = round((float) $stmtRet->fetchColumn(), 2);
 
-        $netOwed   = max(0.0, (float) $purchase['total_amount'] - $returnAmt);
-        $remaining = round(max(0.0, $netOwed - $actualPaidSoFar), 2);
+        $remaining = PurchaseReturnSettlementPolicy::outstandingAmount(
+            (float) $purchase['total_amount'],
+            $actualPaidSoFar,
+            $returnAmt
+        );
 
         if ($amount > $remaining + 0.01) {
             throw new \Exception(
@@ -840,7 +1037,7 @@ class PurchaseService
             $costCenterId,
             $supplierAccountId,
             $sessionId,
-            false  // قيد مستقل لكل دفعة
+            false
         );
 
         $this->recalculateBalance($purchaseId);
@@ -858,58 +1055,135 @@ class PurchaseService
         ]);
     }
 
-    // -------------------------------------------------------------------------
-    // recordSupplierDebtPayment — سداد دين مورد (supplier_payments)
-    // -------------------------------------------------------------------------
-
     /**
-     * تسجيل سداد دين مورد في جدول supplier_payments + قيد محاسبي.
+     * Record an unallocated supplier payment and post its accounting entry.
      *
-     * @return array ['payment_id', 'journal_entry_id']
+     * Starts and commits a transaction only when the caller does not already own one.
      */
     public function recordSupplierDebtPayment(
-        int    $supplierId,
-        float  $amount,
+        int $supplierId,
+        float $amount,
         string $paymentDate,
-        string $notes = ''
+        string $notes,
+        int $paymentMethodId,
+        ?int $branchId = null,
+        ?int $costCenterId = null,
+        ?int $sessionId = null
     ): array {
-        $supplierAccountId = $this->getSupplierAccountId($supplierId);
-
-        $this->db->prepare(
-            "INSERT INTO supplier_payments
-                 (supplier_id, tenant_id, amount, payment_date, notes, created_by, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, NOW())"
-        )->execute([
-            $supplierId, $this->tenantId, $amount, $paymentDate, $notes, $this->userId,
-        ]);
-        $paymentId = (int) $this->db->lastInsertId();
-
-        $jeId = null;
-        try {
-            $jeId = $this->accounting->postPayment(
-                $this->tenantId,
-                $paymentId,
-                $amount,
-                'supplier_payment',
-                null,
-                null,
-                null,
-                $this->userId,
-                null,
-                $supplierAccountId,
-                null,
-                "سداد دين مورد #$supplierId"
-            );
-        } catch (Throwable $e) {
-            $this->logger->warning('recordSupplierDebtPayment: failed to post journal', [
-                'payment_id' => $paymentId,
-                'error'      => $e->getMessage(),
-            ]);
+        if (!is_finite($amount) || $amount <= 0) {
+            throw new \InvalidArgumentException('قيمة الدفعة يجب أن تكون أكبر من صفر.');
         }
 
-        return [
-            'payment_id'       => $paymentId,
-            'journal_entry_id' => $jeId,
-        ];
+        $ownsTransaction = !$this->db->inTransaction();
+        if ($ownsTransaction) {
+            $this->db->beginTransaction();
+        }
+
+        try {
+            $supplierAccountId = $this->getSupplierAccountId($supplierId);
+            $liquidityAccountId = $this->accounting->resolveLiquidityAccount($paymentMethodId, $this->tenantId);
+            if ($liquidityAccountId === null) {
+                throw new \InvalidArgumentException('لا يمكن تسجيل دفعة مورد بطريقة دفع آجلة.');
+            }
+
+            $policy = new \App\Services\LiquidityPolicyService($this->db, $this->logger);
+            $validation = $policy->validateLiquidityBalance(
+                tenantId: $this->tenantId,
+                paymentMethodId: $paymentMethodId,
+                debitAmount: $amount,
+                cashierSessionId: $sessionId
+            );
+            if (!$validation['allowed']) {
+                throw new \App\Exceptions\InsufficientLiquidityException(
+                    $validation['reason'],
+                    402,
+                    $validation + ['required_amount' => $amount]
+                );
+            }
+
+            if ($costCenterId === null) {
+                $costCenterId = $this->costCenterService->resolve(
+                    $this->tenantId,
+                    $this->userId,
+                    null,
+                    $branchId
+                );
+            }
+
+            $stmt = $this->db->prepare(
+                "INSERT INTO payments (
+                    tenant_id, supplier_id, amount, payment_date, payment_method_id,
+                    reference_number, created_by, is_draft, status, type, created_at,
+                    cost_center_id, currency, session_id
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'completed', 'supplier', NOW(), ?, ?, ?)"
+            );
+            $stmt->execute([
+                $this->tenantId,
+                $supplierId,
+                $amount,
+                $paymentDate,
+                $paymentMethodId,
+                $notes !== '' ? $notes : null,
+                $this->userId,
+                $costCenterId,
+                $this->getCompanyCurrency(),
+                $sessionId,
+            ]);
+            $paymentId = (int) $this->db->lastInsertId();
+
+            $journalEntryId = $this->accounting->postPayment(
+                tenantId: $this->tenantId,
+                paymentId: $paymentId,
+                amount: $amount,
+                paymentType: 'supplier_payment',
+                userId: $this->userId,
+                costCenterId: $costCenterId,
+                debitAccountId: $supplierAccountId,
+                creditAccountId: $liquidityAccountId,
+                description: "سداد دين مورد #{$supplierId}",
+                paymentMethodId: $paymentMethodId
+            );
+            if (!$journalEntryId) {
+                throw new \RuntimeException('فشل ترحيل قيد سداد المورد.');
+            }
+
+            if ($this->accounting->isCashMethod($paymentMethodId, $this->tenantId)) {
+                $this->db->prepare(
+                    "INSERT INTO cash_transactions (
+                        tenant_id, supplier_id, amount, type, reference_type, reference_id,
+                        payment_method_id, description, created_by, status, notes,
+                        journal_entry_id, session_id, branch_id, cost_center_id
+                     ) VALUES (?, ?, ?, 'expense', 'supplier_payment', ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?)"
+                )->execute([
+                    $this->tenantId,
+                    $supplierId,
+                    $amount,
+                    $paymentId,
+                    $paymentMethodId,
+                    $notes,
+                    $this->userId,
+                    $notes,
+                    $journalEntryId,
+                    $sessionId,
+                    $branchId,
+                    $costCenterId,
+                ]);
+            }
+
+            if ($ownsTransaction) {
+                $this->db->commit();
+            }
+
+            return [
+                'payment_id' => $paymentId,
+                'journal_entry_id' => $journalEntryId,
+                'session_id' => $sessionId,
+            ];
+        } catch (Throwable $e) {
+            if ($ownsTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $e;
+        }
     }
 }

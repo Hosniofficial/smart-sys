@@ -7,19 +7,9 @@ namespace App\Services;
 use PDO;
 
 /**
- * Unified service for posting product opening balances.
+ * Posts branch opening stock to inventory, costing, and the general ledger.
  *
- * Handles all three entry points consistently:
- *   - ProductsHandler  (product creation with initial stock)
- *   - ProductBranchHandler::postOpeningBalance()  (retroactive per-mapping)
- *   - OpeningBalanceHandler::commit()  (bulk setup page)
- *
- * Transaction management is self-contained:
- *   - Starts its own transaction if none is active (safe to nest inside a caller transaction).
- *   - Uses SELECT FOR UPDATE on the mapping row to prevent race conditions.
- * Existing branch mappings are updated after successful posting, but this service never creates one.
- * The snapshot's mapping reference is nullable; the stock and journal records remain valid without it.
- * On failure throws \RuntimeException so the caller can react.
+ * Joins an active caller transaction or manages its own; updates an existing GL mapping but never creates one.
  */
 class InventoryOpeningBalanceService
 {
@@ -33,24 +23,9 @@ class InventoryOpeningBalanceService
     }
 
     /**
-     * Post opening balance for one product-branch combination.
+     * Post one product-branch opening balance and return its journal entry ID.
      *
-     * @param int         $tenantId
-     * @param int         $productId
-     * @param int         $branchId
-     * @param int         $unitId
-     * @param float       $quantity
-     * @param float       $unitCost
-     * @param string      $entryDate        (Y-m-d)
-     * @param int|null    $userId
-     * @param string      $productName      for journal description
-     * @param string      $branchName       for journal description
-     * @param int|null    $inventoryGLAccountId  resolved from branch/settings if null
-     * @param int|null    $costCenterId
-     *
-     * @return int  journal_entry_id
-     *
-     * @throws \RuntimeException  on duplicate or any failure
+     * @throws \RuntimeException when an active duplicate exists or posting fails.
      */
     public function post(
         int    $tenantId,
@@ -117,16 +92,23 @@ class InventoryOpeningBalanceService
     ): int {
         // Serialize opening-balance attempts for this product before checking for a prior posting.
         $productLock = $this->db->prepare(
-            'SELECT id FROM products WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE'
+            'SELECT id, product_type FROM products WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE'
         );
         $productLock->execute([$tenantId, $productId]);
-        if (!$productLock->fetchColumn()) {
+        $lockedProduct = $productLock->fetch(PDO::FETCH_ASSOC);
+        if (!$lockedProduct) {
             throw new \RuntimeException("المنتج #{$productId} غير موجود في المستأجر #{$tenantId}.");
+        }
+        if (strtolower((string) ($lockedProduct['product_type'] ?? 'stock')) !== 'stock') {
+            throw new \InvalidArgumentException("المنتج #{$productId} من نوع خدمة ولا يقبل رصيدًا مخزنيًا.");
         }
 
         // The opening-balance ledger is the authoritative duplicate guard; it works without a GL mapping.
         $openingBalanceCheck = $this->db->prepare(
-            'SELECT 1 FROM opening_balances WHERE tenant_id = ? AND product_id = ? AND branch_id = ? LIMIT 1 FOR UPDATE'
+            'SELECT 1 FROM opening_balances
+             WHERE tenant_id = ? AND product_id = ? AND branch_id = ?
+               AND reversed_at IS NULL
+             LIMIT 1 FOR UPDATE'
         );
         $openingBalanceCheck->execute([$tenantId, $productId, $branchId]);
         if ($openingBalanceCheck->fetchColumn()) {
@@ -137,7 +119,6 @@ class InventoryOpeningBalanceService
         }
 
 
-        // ── 2. Resolve GL accounts ────────────────────────────────────────────
         if (!$inventoryGLAccountId) {
             $inventoryGLAccountId = $this->accounting->resolveInventoryAccountForBranch($tenantId, $branchId);
         }
@@ -167,7 +148,6 @@ class InventoryOpeningBalanceService
             default                  => "رصيد افتتاحي: {$productName}",
         };
 
-        // ── 4. inventory_transactions ─────────────────────────────────────────
         $this->db->prepare("
             INSERT INTO inventory_transactions
                 (tenant_id, product_id, unit_id, branch_from, branch_to,
@@ -186,8 +166,9 @@ class InventoryOpeningBalanceService
             $movementNote,
             $userId ?: 1,
         ]);
+        $inventoryTransactionId = (int) $this->db->lastInsertId();
 
-        // ── 5. branch_products (SET semantics — opening balance sets initial stock) ──
+        // Opening balance replaces the branch's initial stock values.
         $this->db->prepare("
             INSERT INTO branch_products
                 (tenant_id, product_id, branch_id, quantity, quantity_cost,
@@ -201,15 +182,24 @@ class InventoryOpeningBalanceService
                 last_update          = NOW()
         ")->execute([$tenantId, $productId, $branchId, $quantity, $totalCost]);
 
-        // ── 6. opening_balances record ────────────────────────────────────────
         $this->db->prepare("
-            INSERT IGNORE INTO opening_balances
+            INSERT INTO opening_balances
                 (tenant_id, product_id, branch_id, quantity, unit_cost, entry_date)
             VALUES (?, ?, ?, ?, ?, ?)
         ")->execute([$tenantId, $productId, $branchId, $quantity, $unitCost, $entryDate]);
+        $openingBalanceId = (int) $this->db->lastInsertId();
 
-        // ── 7. Journal entry: debit Inventory / credit Opening Balance Equity ──
+        // Debit inventory and credit opening-balance equity.
+        $cycleStmt = $this->db->prepare(
+            'SELECT COUNT(*) FROM opening_balances
+             WHERE tenant_id = ? AND product_id = ? AND branch_id = ?'
+        );
+        $cycleStmt->execute([$tenantId, $productId, $branchId]);
+        $reversalCycle = max(0, (int) $cycleStmt->fetchColumn() - 1);
         $idempotencyKey = "{$movementType}:t{$tenantId}:p{$productId}:b{$branchId}:d{$entryDate}";
+        if ($reversalCycle > 0) {
+            $idempotencyKey .= ":r{$reversalCycle}";
+        }
         $description = match ($movementType) {
             'initial_stock'          => "إدخال مخزون أولي: {$productName} - {$branchName}",
             'opening_balance_manual' => "رصيد افتتاحي يدوي: {$productName} - {$branchName}",
@@ -256,7 +246,7 @@ class InventoryOpeningBalanceService
              WHERE tenant_id = ? AND product_id = ? AND branch_id = ?'
         )->execute([$tenantId, $productId, $branchId]);
 
-        // ── 8. inventory_cost_snapshot (WAC/FIFO costing layer) ──────────────
+        // Add the opening quantity as a costing layer.
         $this->db->prepare("
             INSERT IGNORE INTO inventory_cost_snapshot
                 (tenant_id, product_id, branch_id, product_branch_mapping_id,
@@ -282,7 +272,6 @@ class InventoryOpeningBalanceService
             ")->execute([$unitCost, $totalCost, $userId, $mappingId, $tenantId, $productId, $branchId]);
         }
 
-        // ── 9b. Mark product opening_balance_posted flag ──────────────────────
         $this->db->prepare("
             UPDATE products
             SET opening_balance_posted = 1,
@@ -290,15 +279,16 @@ class InventoryOpeningBalanceService
             WHERE tenant_id = ? AND id = ?
         ")->execute([$tenantId, $productId]);
 
-        // ── 10. Update inventory_transactions with journal_entry_id ───────────
         $this->db->prepare("
             UPDATE inventory_transactions
             SET journal_entry_id = ?
-            WHERE tenant_id = ? AND product_id = ? AND branch_to = ?
-              AND movement_type = ?
-              AND journal_entry_id IS NULL
-            ORDER BY id DESC LIMIT 1
-        ")->execute([$jeId, $tenantId, $productId, $branchId, $movementType]);
+            WHERE id = ? AND tenant_id = ?
+        ")->execute([$jeId, $inventoryTransactionId, $tenantId]);
+        $this->db->prepare("
+            UPDATE opening_balances
+            SET inventory_transaction_id = ?
+            WHERE id = ? AND tenant_id = ?
+        ")->execute([$inventoryTransactionId, $openingBalanceId, $tenantId]);
 
         return $jeId;
     }

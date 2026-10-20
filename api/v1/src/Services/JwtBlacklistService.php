@@ -13,6 +13,11 @@ use Firebase\JWT\SignatureInvalidException;
 use DomainException;
 use UnexpectedValueException;
 
+/**
+ * Stores revoked JWT identifiers and checks tokens against the blacklist.
+ *
+ * Uses a signed token's JTI and expiry when decodable; otherwise it keys by token hash.
+ */
 class JwtBlacklistService
 {
     private PDO $db;
@@ -25,10 +30,9 @@ class JwtBlacklistService
         $this->db        = $db;
         $this->jwtSecret = $jwtSecret;
         $this->logger    = MonologHandler::getInstance('jwt');
-        // Table creation moved to migration: database/migrations/001_create_jwt_blacklist_table.sql
     }
 
-
+    /** Add a token identifier to the blacklist until its expiry. */
     public function addToBlacklist(string $token): bool
     {
         try {
@@ -36,7 +40,7 @@ class JwtBlacklistService
             try {
                 $decoded = $this->decodeToken($token);
             } catch (\Throwable $e) {
-                // Fallback to hash-based JTI if decode fails
+                // Hash fallback also supports expired or invalid tokens being revoked.
             }
             $jti = $decoded->jti ?? $this->generateJtiFromToken($token);
             $exp = $decoded->exp ?? (time() + 3600); // Default 1 hour if not set
@@ -54,19 +58,16 @@ class JwtBlacklistService
         }
     }
 
+    /** Return whether a token is currently blacklisted. */
     public function isBlacklisted(string $token): bool
     {
-        // Try to decode to extract JTI; if it fails, use a stable hash-based JTI
         $decoded = null;
         try {
             $decoded = $this->decodeToken($token);
         } catch (\Throwable $e) {
-            // ignore; we'll fallback to hash
+            // Use the same hash fallback as addToBlacklist().
         }
         $jti = $decoded->jti ?? $this->generateJtiFromToken($token);
-
-        // Cleanup expired tokens periodically
-        $this->cleanupExpiredTokens();
 
         $stmt = $this->db->prepare("
             SELECT 1 FROM `{$this->tableName}` 
@@ -78,6 +79,7 @@ class JwtBlacklistService
         return (bool) $stmt->fetchColumn();
     }
 
+    /** Delete expired blacklist records and return the number removed. */
     public function cleanupExpiredTokens(): int
     {
         try {

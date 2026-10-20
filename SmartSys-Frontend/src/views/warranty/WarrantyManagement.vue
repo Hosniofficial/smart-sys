@@ -10,9 +10,9 @@
       
       <!-- Page Header -->
       <PageHeader
-        :breadcrumb="breadcrumb"
-        title="إدارة خدمات الضمان"
-        description="معالجة مطالبات الصيانة، الدعم الفني، وتتبع سجلات الضمان."
+        :breadcrumb="{ parent: 'العمليات', current: 'طلبات الضمان' }"
+        title="إدارة الضمان"
+        description="تابع مطالبات الضمان، وتحقّق من صلاحية التغطية، وراجع حالة الطلبات وسجلات الضمان."
         :branches="branches"
         :selectedBranch="selectedBranch"
         :hasExplicitSelection="hasExplicitBranchSelection"
@@ -34,7 +34,7 @@
             :key="t.value"
             @click="statusFilter = t.value"
             :class="[statusFilter === t.value ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700']"
-            class="px-6 py-2 rounded-md text-[11px] font-bold transition-all uppercase tracking-wider"
+            class="px-8 py-2 rounded-md text-xs font-bold transition-all uppercase tracking-wider"
           >
             {{ t.label }}
           </button>
@@ -42,47 +42,49 @@
       </section>
 
       <!-- Search & Advanced Filters Utility Bar -->
-      <section class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-6">
+      <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
+        <div class="p-6 bg-slate-50/30 border-b border-slate-100 space-y-6">
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
           
           <div class="lg:col-span-4 space-y-1.5 group">
-            <label class="metadata-label">بحث سريع</label>
+            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">بحث سريع</label>
             <div class="relative">
-              <input v-model="search" type="text" class="filter-input-v3" style="padding-right: 2rem;" placeholder="رقم الطلب، العميل، الرقم التسلسلي..." />
+              <input v-model="search" type="text" class="filter-input-v2 h-9" style="padding-right: 2rem;" placeholder="رقم الطلب، العميل، الرقم التسلسلي..." />
               <i class="fas fa-search absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] pointer-events-none"></i>
             </div>
           </div>
 
-          <div class="lg:col-span-2 space-y-1.5">
-            <label class="metadata-label">أولوية الطلب</label>
-            <select v-model="priorityFilter" class="filter-input-v3 appearance-none font-bold">
+          <div class="lg:col-span-3 space-y-1.5">
+            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">أولوية الطلب</label>
+            <select v-model="priorityFilter" class="filter-input-v2 h-9 appearance-none font-bold">
               <option v-for="p in priorityOptions" :key="p.value" :value="p.value">{{ p.label }}</option>
             </select>
           </div>
 
           <div class="lg:col-span-2 space-y-1.5">
-            <label class="metadata-label">من تاريخ</label>
+            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">من تاريخ</label>
             <div class="relative">
-              <input ref="dateFromRef" type="date" v-model="dateFrom" class="filter-input-v3 font-mono" style="padding-left: 2rem;" />
+              <input ref="dateFromRef" type="date" v-model="dateFrom" class="filter-input-v2 h-9 font-mono" style="padding-left: 2rem;" />
               <i @click="dateFromRef?.showPicker?.()" class="fas fa-calendar absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] cursor-pointer hover:text-slate-500 transition-colors"></i>
             </div>
           </div>
 
           <div class="lg:col-span-2 space-y-1.5">
-            <label class="metadata-label">إلى تاريخ</label>
+            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">إلى تاريخ</label>
             <div class="relative">
-              <input ref="dateToRef" type="date" v-model="dateTo" class="filter-input-v3 font-mono" style="padding-left: 2rem;" />
+              <input ref="dateToRef" type="date" v-model="dateTo" class="filter-input-v2 h-9 font-mono" style="padding-left: 2rem;" />
               <i @click="dateToRef?.showPicker?.()" class="fas fa-calendar absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] cursor-pointer hover:text-slate-500 transition-colors"></i>
             </div>
           </div>
 
           <div class="lg:col-span-1">
-            <button @click="fetchList" class="h-9 w-full rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 transition-colors shadow-sm">
+            <button @click="applyFilters" class="h-9 w-full rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 transition-colors shadow-sm">
               <i class="fas fa-sync-alt text-xs" :class="{'animate-spin': isLoading}"></i>
             </button>
           </div>
 
 
+        </div>
         </div>
       </section>
 
@@ -106,7 +108,7 @@
                   <td v-for="m in 6" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                 </tr>
               </template>
-              <tr v-else-if="filteredItems.length === 0">
+              <tr v-else-if="items.length === 0">
                 <td colspan="6" class="py-24 text-center text-slate-300">
                    <i class="fas fa-shield-virus text-3xl mb-4 opacity-20"></i>
                    <p class="text-xs font-bold uppercase tracking-widest">لا توجد طلبات ضمان مسجلة</p>
@@ -148,28 +150,27 @@
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ filters.totalPages.value }}</span>
             <span class="mx-2 text-slate-200">|</span>
-            إجمالي <span class="text-slate-900">{{ filteredItems.length }}</span> طلب ضمان
+            إجمالي <span class="text-slate-900">{{ warrantyStore.warrantiesTotal }}</span> طلب ضمان
           </div>
           <div class="flex items-center gap-3">
              <div class="flex items-center gap-2">
                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">النتائج:</span>
-               <select v-model.number="filters.perPage.value" class="h-8 border border-slate-200 rounded px-2 text-[10px] font-bold outline-none">
+               <select v-model.number="filters.perPage.value" @change="applyFilters" class="h-8 border border-slate-200 rounded px-2 text-[10px] font-bold outline-none">
                  <option :value="10">10</option>
                  <option :value="20">20</option>
                  <option :value="50">50</option>
                </select>
              </div>
              <div class="flex items-center gap-1">
-               <button @click="filters.previousPage()" :disabled="filters.page.value <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-               <button @click="filters.nextPage(filters.totalPages.value)" :disabled="filters.page.value >= filters.totalPages.value" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
+               <button @click="changePage(filters.page.value - 1)" :disabled="filters.page.value <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
+               <button @click="changePage(filters.page.value + 1)" :disabled="filters.page.value >= filters.totalPages.value" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
              </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ -->
-    <!-- Create Warranty Modal: Using BaseModal -->
+    <!-- Create Warranty Modal -->
     <BaseModal :show="showCreate" @close="showCreate = false; resetForm()" maxWidth="4xl">
       <template #header>
         <div class="flex items-center gap-3">
@@ -189,7 +190,7 @@
             <div class="space-y-1.5 relative">
               <label class="metadata-label">العميل المستهدف <span class="text-rose-500">*</span></label>
               <div class="relative group">
-                <input v-model="customerQuery" type="text" class="filter-input-v2 h-10 font-bold pr-9" placeholder="ابحث بالاسم أو الهاتف..." @input="debouncedCustomerSearch(customerQuery)" @focus="showCustomerDropdown = true; debouncedCustomerSearch(customerQuery)" @blur="scheduleHideCustomerDropdown" />
+                <input v-model="customerQuery" type="text" class="filter-input-v2 h-10 font-bold pr-9" placeholder="ابحث بالاسم أو الهاتف..." @input="handleCustomerInput(customerQuery)" @focus="showCustomerDropdown = true; debouncedCustomerSearch(customerQuery)" @blur="scheduleHideCustomerDropdown" />
                 <i class="fas fa-user-search absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px]"></i>
                 
                 <div v-if="showCustomerDropdown" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-auto py-2">
@@ -211,7 +212,49 @@
 
           <div class="space-y-6">
             <div class="space-y-1.5"><label class="metadata-label">أولوية المعالجة <span class="text-rose-500">*</span></label><select v-model="form.priority" class="filter-input-v2 h-10 font-bold"><option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high">مرتفعة</option><option value="urgent">عاجل</option></select><p v-if="errors.priority" class="text-[9px] text-rose-500 font-bold px-1">{{ errors.priority }}</p></div>
-            <div class="space-y-1.5"><label class="metadata-label">الفاتورة المرجعية</label><input v-model="form.invoice_id" type="text" class="filter-input-v2 h-10 font-mono" placeholder="INV-0000" /></div>
+            <div class="space-y-1.5 relative">
+              <label class="metadata-label">فاتورة البيع المرجعية <span class="text-slate-400 font-normal normal-case">(اختياري)</span></label>
+              <input
+                v-model="invoiceQuery"
+                type="text"
+                class="filter-input-v2 h-10 font-mono"
+                :class="{ 'border-rose-300': errors.invoice_id }"
+                :disabled="!form.customer_id"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-controls="warranty-sale-dropdown"
+                :aria-expanded="showInvoiceDropdown.toString()"
+                placeholder="اختر العميل أولاً ثم ابحث برقم الفاتورة..."
+                @input="handleInvoiceInput"
+                @focus="showInvoiceDropdown = Boolean(form.customer_id); debouncedInvoiceSearch(invoiceQuery)"
+                @blur="scheduleHideInvoiceDropdown"
+              />
+              <div
+                v-if="showInvoiceDropdown && form.customer_id"
+                id="warranty-sale-dropdown"
+                role="listbox"
+                :aria-busy="invoiceSearchLoading"
+                class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-auto py-2"
+              >
+                <div v-if="invoiceSearchLoading" role="status" class="px-4 py-2 text-[10px] text-slate-400 font-bold">جارٍ البحث عن فواتير البيع...</div>
+                <div v-else-if="invoiceSearchError" role="alert" class="px-4 py-2 text-[10px] text-rose-600 font-bold">{{ invoiceSearchError }}</div>
+                <div v-else-if="invoiceQuery.trim().length === 1" role="status" class="px-4 py-2 text-[10px] text-slate-400 font-bold">اكتب حرفين على الأقل للبحث...</div>
+                <div v-else-if="invoiceResults.length === 0" role="status" class="px-4 py-2 text-[10px] text-slate-400 font-bold">لا توجد فواتير بيع لهذا العميل.</div>
+                <button
+                  v-for="sale in invoiceResults"
+                  :key="sale.id"
+                  type="button"
+                  role="option"
+                  @mousedown.prevent="selectInvoice(sale)"
+                  class="w-full px-4 py-2.5 text-right hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 transition-colors"
+                >
+                  <span class="block text-xs font-bold text-slate-800">{{ sale.invoice_number || `فاتورة #${sale.id}` }}</span>
+                  <span class="block text-[9px] text-slate-400 font-mono mt-1">#{{ sale.id }} · {{ formatDateTime(sale.created_at) }}</span>
+                </button>
+              </div>
+              <p v-if="errors.invoice_id" class="text-[9px] text-rose-500 font-bold px-1">{{ errors.invoice_id }}</p>
+              <p v-if="invoiceQuery && form.invoice_id" class="text-[9px] text-emerald-600 font-bold px-1">تم ربط الطلب بفاتورة البيع المحددة.</p>
+            </div>
           </div>
         </div>
 
@@ -272,9 +315,7 @@
       </template>
     </BaseModal>
 
-    <!-- ═══════════════════════════════════════════════════════ -->
-    <!-- Details Modal: Activity Feed Architecture -->
-    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- Details Modal -->
     <transition name="fade">
       <div v-if="showDetails && details" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md" @click.self="closeDetails">
         <div class="bg-white w-full max-w-5xl rounded-xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[92vh] animate-modalIn">
@@ -398,7 +439,7 @@
       </div>
     </transition>
 
-    <!-- Lightbox: Premium Visual Experience -->
+    <!-- Lightbox -->
     <transition name="fade">
       <div v-if="lightboxOpen" class="fixed inset-0 z-[200] bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-8" @click.self="closeLightbox">
         <img :src="lightboxSrc" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-modalIn" />
@@ -412,60 +453,50 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import { useCustomerStore } from '@/stores/customer/customerStore';
+import { useSalesStore } from '@/stores/sales/salesStore';
 import { useProductStore } from '@/stores/product/productStore';
 import { useToast } from '@/composables/useToast';
 import { useTableFilters } from '@/composables/useTableFilters';
+import { useDateValidation } from '@/composables/useDateValidation';
+import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import AlertService from '@/services/AlertService';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseModal from '@/components/BaseModal.vue';
-// BUG 2 FIX: removed duplicate semicolon
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
-import { useWarrantyStore } from '@/stores/warranty/warrantyStore';
-import { useDateValidation } from '@/composables/useDateValidation';
-import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
+import { useWarrantyStore } from '@/stores/warranty/warrantyStore';
 
 const router = useRouter();
 const route = useRoute();
 const warrantyStore = useWarrantyStore();
 const { breadcrumb } = useBreadcrumb();
-const branchStore = useBranchStore(); // ✅ Add branchStore
-
-// ─── State ────────────────────────────────────────────────────────────────────
-
-const items = computed(() => warrantyStore.warranties);
-const isLoading = computed(() => warrantyStore.isLoading);
-const error = computed(() => warrantyStore.error);
+const branchStore = useBranchStore();
 const { showToast } = useToast();
 const { validateDateRange } = useDateValidation();
 
-// ✅ Branch state from branchStore
+// State and Filters
+const items = computed(() => warrantyStore.warranties);
+const isLoading = computed(() => warrantyStore.isLoading);
+const error = computed(() => warrantyStore.error);
 const branches = computed(() => branchStore.branches);
 const selectedBranch = computed(() => branchStore.selectedBranchId);
-
-// ✅ يتتبع الاختيار اليدوي للفرع (النمط A — متطابق مع SalesHistory/PurchaseHistory/ReturnsHistory)
-const userChoseBranch = ref(
-  localStorage.getItem('selectedBranchId') !== null
-  && localStorage.getItem('selectedBranchId') !== 'all'
-);
+const userChoseBranch = ref(localStorage.getItem('selectedBranchId') !== null && localStorage.getItem('selectedBranchId') !== 'all');
 const hasExplicitBranchSelection = computed(() => userChoseBranch.value && branchStore.selectedBranchId !== null);
 
-// Filters & pagination
 const search = ref('');
 const statusFilter = ref('');
 const priorityFilter = ref('');
-
-// ─── Pagination (using useTableFilters composable)
 const filters = useTableFilters('warranty_filters');
+let warrantyListRequestId = 0;
 
 const onBranchChange = (newBranchId) => {
   branchStore.setSelectedBranch(newBranchId);
   userChoseBranch.value = (newBranchId !== null && newBranchId !== '' && newBranchId === 'all');
   filters.page.value = 1;
-  fetchList(true);  // ✅ force=true
+  fetchList(true);
 };
 const dateFrom = ref('');
 const dateTo = ref('');
@@ -498,14 +529,21 @@ const form = ref({
 
 // Customer autocomplete
 const customerQuery = ref('');
+const customerSelectionLabel = ref('');
 const customerStore = useCustomerStore();
+const salesStore = useSalesStore();
 const customers = computed(() => customerStore.customers);
 const customerSearchResults = ref([]);
 const productStore = useProductStore();
 const showCustomerDropdown = ref(false);
 let customerSearchAbortCtrl = null;
+const invoiceQuery = ref('');
+const invoiceResults = ref([]);
+const invoiceSearchLoading = ref(false);
+const invoiceSearchError = ref('');
+const showInvoiceDropdown = ref(false);
+let invoiceSearchRequestId = 0;
 
-// ─── BUG 5 FIX: tracked timeout IDs for safe cleanup on unmount ───────────────
 const pendingTimeouts = new Set();
 
 function safeTimeout(fn, delay) {
@@ -542,8 +580,6 @@ function debounce(fn, delay = 300) {
   };
 }
 
-// ─── Details enrichment ───────────────────────────────────────────────────────
-
 const customerName = ref('');
 const productNameMap = ref({});
 
@@ -566,7 +602,6 @@ function formatDateTime(val) {
 
 async function fetchCustomerNameById(id) {
   try {
-    // BUG 4 FIX: use the return value of searchCustomers directly
     const list = await customerStore.searchCustomers(String(id));
     const exact = (list || []).find(c => String(c.id) === String(id));
     if (exact?.name) customerName.value = exact.name;
@@ -582,7 +617,8 @@ async function fetchProductNameById(id) {
     return;
   }
   try {
-    const list = await productStore.searchProducts({ query: String(id), limit: 1 });
+    const result = await productStore.searchProducts({ query: String(id), limit: 1 });
+    const list = result?.data || [];
     const m = list.find(p => String(p.id) === String(id)) || list[0];
     if (m?.name) {
       productNameCache.set(id, m.name);
@@ -606,8 +642,6 @@ async function enrichDetailsNames() {
   }
 }
 
-// ─── Customer search ──────────────────────────────────────────────────────────
-
 const searchCustomers = async (q) => {
   if (!q || q.trim().length < 2) { 
     customerSearchResults.value = [];
@@ -616,7 +650,6 @@ const searchCustomers = async (q) => {
   try {
     if (customerSearchAbortCtrl) customerSearchAbortCtrl.abort();
     customerSearchAbortCtrl = new AbortController();
-    // BUG 4 FIX: use the returned list instead of relying on store.searchResults
     const list = await customerStore.searchCustomers(q.trim());
     customerSearchResults.value = list || [];
   } catch (_) { 
@@ -629,14 +662,98 @@ const debouncedCustomerSearch = debounce((q) => {
   searchCustomers(q);
 }, 300);
 
+function clearSelectedInvoice() {
+  form.value.invoice_id = null;
+  invoiceQuery.value = '';
+  invoiceResults.value = [];
+  invoiceSearchError.value = '';
+  showInvoiceDropdown.value = false;
+  invoiceSearchRequestId += 1;
+}
+
+function handleCustomerInput(query) {
+  if (form.value.customer_id && query !== customerSelectionLabel.value) {
+    form.value.customer_id = null;
+    customerSelectionLabel.value = '';
+    clearSelectedInvoice();
+  }
+  debouncedCustomerSearch(query);
+}
+
+function handleInvoiceInput() {
+  invoiceSearchRequestId += 1;
+  invoiceResults.value = [];
+  invoiceSearchLoading.value = false;
+  if (form.value.invoice_id) {
+    form.value.invoice_id = null;
+  }
+  errors.value.invoice_id = invoiceQuery.value.trim() ? 'اختر فاتورة بيع من النتائج أو امسح نص البحث.' : '';
+  invoiceSearchError.value = '';
+  showInvoiceDropdown.value = Boolean(form.value.customer_id);
+  debouncedInvoiceSearch(invoiceQuery.value);
+}
+
+const searchCustomerSales = async (query) => {
+  const customerId = form.value.customer_id;
+  const requestId = ++invoiceSearchRequestId;
+  if (!customerId || (query.trim().length > 0 && query.trim().length < 2)) {
+    invoiceResults.value = [];
+    invoiceSearchLoading.value = false;
+    return;
+  }
+
+  invoiceSearchLoading.value = true;
+  invoiceSearchError.value = '';
+  try {
+    const result = await salesStore.fetchSalesList({
+      customerId,
+      search: query.trim() || undefined,
+      perPage: 20,
+      force: true,
+    });
+    if (requestId !== invoiceSearchRequestId || String(customerId) !== String(form.value.customer_id)) return;
+    if (result.status !== 'success') {
+      invoiceResults.value = [];
+      invoiceSearchError.value = result.message || 'تعذر تحميل فواتير البيع.';
+      return;
+    }
+    invoiceResults.value = result.data?.items || [];
+  } catch (error) {
+    if (requestId !== invoiceSearchRequestId) return;
+    console.error('Warranty sale search failed:', error);
+    invoiceResults.value = [];
+    invoiceSearchError.value = error?.message || 'تعذر تحميل فواتير البيع.';
+  } finally {
+    if (requestId === invoiceSearchRequestId) {
+      invoiceSearchLoading.value = false;
+    }
+  }
+};
+
+const debouncedInvoiceSearch = debounce((query) => {
+  searchCustomerSales(String(query || ''));
+}, 300);
+
+function scheduleHideInvoiceDropdown() {
+  safeTimeout(() => { showInvoiceDropdown.value = false; }, 150);
+}
+
+function selectInvoice(sale) {
+  form.value.invoice_id = Number(sale.id);
+  invoiceQuery.value = sale.invoice_number || `فاتورة #${sale.id}`;
+  invoiceSearchError.value = '';
+  errors.value.invoice_id = '';
+  showInvoiceDropdown.value = false;
+}
+
 const selectCustomer = (c) => {
   form.value.customer_id = c.id;
   customerQuery.value = c.name || c.phone || String(c.id);
+  customerSelectionLabel.value = customerQuery.value;
   showCustomerDropdown.value = false;
+  clearSelectedInvoice();
   validateCustomer();
 };
-
-// ─── Product search per-item ──────────────────────────────────────────────────
 
 let productSearchAbortCtrlMap = new Map();
 
@@ -670,16 +787,12 @@ const selectProduct = (idx, p) => {
   validateItem(idx);
 };
 
-// ─── Details modal state ──────────────────────────────────────────────────────
-
 const showDetails = ref(false);
 const details = ref(null);
 const detailsLoading = ref(false);
 const statusChange = ref({ value: 'open', note: '' });
 const noteContent = ref('');
 const noteInternal = ref(false);
-
-// ─── Timeline ─────────────────────────────────────────────────────────────────
 
 const timelineEvents = computed(() => {
   const evts = [];
@@ -711,10 +824,9 @@ const timelineEvents = computed(() => {
   return evts;
 });
 
-// ─── Lightbox ─────────────────────────────────────────────────────────────────
-
 const lightboxOpen = ref(false);
 const lightboxSrc = ref('');
+
 function fileUrl(fileName) { return `/api/public/uploads/${fileName}`; }
 function isImage(fileName) {
   const ext = String(fileName || '').toLowerCase().split('.').pop();
@@ -722,8 +834,6 @@ function isImage(fileName) {
 }
 function openLightbox(src) { lightboxSrc.value = src; lightboxOpen.value = true; }
 function closeLightbox() { lightboxOpen.value = false; lightboxSrc.value = ''; }
-
-// ─── Options ──────────────────────────────────────────────────────────────────
 
 const priorityOptions = [
   { value: '', label: 'كل الأولويات' },
@@ -733,9 +843,8 @@ const priorityOptions = [
   { value: 'urgent', label: 'عاجل' }
 ];
 
-// ─── Fetch list ───────────────────────────────────────────────────────────────
-
 async function fetchList(forceRefresh = false) {
+  const requestId = ++warrantyListRequestId;
   // Validate date range if both dates are provided
   if (dateFrom.value && dateTo.value) {
     if (!validateDateRange(dateFrom.value, dateTo.value)) {
@@ -752,16 +861,33 @@ async function fetchList(forceRefresh = false) {
     date_to: dateTo.value || undefined,
     page: filters.page.value,
     per_page: filters.perPage.value,
-    branch_id: selectedBranch.value || undefined
+    branch_id: Number.isInteger(Number(selectedBranch.value)) && Number(selectedBranch.value) > 0
+      ? String(selectedBranch.value)
+      : undefined
   };
-  // ✅ forceRefresh كـ argument ثانٍ مستقل — لأن warrantyStore.fetchWarranties(params, force)
+
   const result = await warrantyStore.fetchWarranties(params, forceRefresh);
-  if (result.status !== 'success') {
+  if (requestId !== warrantyListRequestId) return;
+  if (result.status === 'success') {
+    filters.totalCount.value = result.total ?? result.data.length;
+  } else {
     showToast(result.message || 'فشل تحميل طلبات الضمان', 'error');
   }
 }
 
-// ─── Form management ──────────────────────────────────────────────────────────
+function applyFilters() {
+  if (filters.page.value !== 1) {
+    filters.page.value = 1;
+  }
+  fetchList();
+}
+
+function changePage(page) {
+  if (page >= 1 && page <= filters.totalPages.value && page !== filters.page.value) {
+    filters.page.value = page;
+    fetchList();
+  }
+}
 
 function resetForm() {
   form.value = {
@@ -770,8 +896,10 @@ function resetForm() {
     items: [{ product_id: null, quantity: 1, issue_notes: '', _productQuery: '', _productResults: [], _showProductDropdown: false, _productName: '' }]
   };
   customerQuery.value = '';
+  customerSelectionLabel.value = '';
   showCustomerDropdown.value = false;
-  errors.value = { customer_id: '', priority: '', issue_description: '', items: '' };
+  clearSelectedInvoice();
+  errors.value = { customer_id: '', invoice_id: '', priority: '', issue_description: '', items: '' };
   itemErrors.value = [];
 }
 
@@ -784,9 +912,7 @@ function removeItem(idx) {
   form.value.items.splice(idx, 1);
 }
 
-// ─── Validation helpers (pure — no side effects) ──────────────────────────────
-
-const errors = ref({ customer_id: '', priority: '', issue_description: '', items: '' });
+const errors = ref({ customer_id: '', invoice_id: '', priority: '', issue_description: '', items: '' });
 const itemErrors = ref([]);
 
 function ensureItemErrorsSize() {
@@ -805,19 +931,17 @@ function validateItem(idx) {
   if (!it) return;
   const e = itemErrors.value[idx];
   e.product_id = it.product_id ? '' : 'اختر منتجاً';
-  e.quantity = it.quantity && Number(it.quantity) >= 1 ? '' : 'الكمية يجب أن تكون 1 على الأقل';
+  e.quantity = it.quantity && Number(it.quantity) >= 1 ? '' : 'يجب ألا تقل الكمية عن 1.';
 }
 function validateItemsSummary() {
   const hasAny = form.value.items.some(i => i.product_id);
   errors.value.items = hasAny ? '' : 'أضف عنصرًا واحدًا على الأقل';
 }
 
-// BUG 3 FIX: isFormValid is now a pure read-only getter — validation is
-// triggered by a dedicated watcher instead of inside the computed itself.
-// The computed only READS the already-updated errors refs.
 const isFormValid = computed(() => {
   const noFieldErrors =
     !errors.value.customer_id &&
+    !errors.value.invoice_id &&
     !errors.value.priority &&
     !errors.value.issue_description &&
     !errors.value.items;
@@ -846,11 +970,12 @@ watch(
 
 watch(() => form.value.items.length, ensureItemErrorsSize);
 
-// ─── Create warranty ──────────────────────────────────────────────────────────
-
 async function createWarranty() {
   // Run a final validation pass before submit
   validateCustomer(); validatePriority(); validateIssueDescription();
+  errors.value.invoice_id = invoiceQuery.value.trim() && !form.value.invoice_id
+    ? 'اختر فاتورة بيع من النتائج أو امسح نص البحث.'
+    : '';
   ensureItemErrorsSize();
   form.value.items.forEach((_, idx) => validateItem(idx));
   validateItemsSummary();
@@ -890,8 +1015,6 @@ async function createWarranty() {
   }
 }
 
-// ─── Open / close details ─────────────────────────────────────────────────────
-
 async function openDetails(id) {
   detailsLoading.value = true;
   showDetails.value = true;
@@ -919,8 +1042,6 @@ function closeDetails() {
   delete q.id;
   router.replace({ path: '/warranty', query: q });
 }
-
-// ─── Status / Notes / Attachments ────────────────────────────────────────────
 
 async function applyStatus() {
   if (!details.value) return;
@@ -976,45 +1097,16 @@ async function removeAttachment(attId) {
   }
 }
 
-// ─── Filtered / paginated items ───────────────────────────────────────────────
-
-const filteredItems = computed(() => {
-  let arr = [...items.value];
-  if (statusFilter.value) arr = arr.filter(r => r.status === statusFilter.value);
-  if (priorityFilter.value) arr = arr.filter(r => r.priority === priorityFilter.value);
-  if (search.value) {
-    const q = search.value.toLowerCase();
-    arr = arr.filter(r =>
-      String(r.id).includes(q) ||
-      String(r.customer_id || '').includes(q) ||
-      (r.product_serial || '').toLowerCase().includes(q) ||
-      (r.issue_description || '').toLowerCase().includes(q)
-    );
-  }
-  return arr;
-});
-
-const pageItems = computed(() => {
-  filters.totalCount.value = filteredItems.value.length;
-  const start = (filters.page.value - 1) * filters.perPage.value;
-  return filteredItems.value.slice(start, start + filters.perPage.value);
-});
-
-function goToPage(p) {
-  if (p >= 1 && p <= filters.totalPages.value) filters.page.value = p;
-}
-
-// ─── Lifecycle ────────────────────────────────────────────────────────────────
+const pageItems = items;
 
 onMounted(async () => {
-  // ✅ FIX: تهيئة branch context قبل أول API call (النمط A)
   const hadPriorBranchChoice = localStorage.getItem('selectedBranchId') !== null
-                                && localStorage.getItem('selectedBranchId') !== 'all';
+      && localStorage.getItem('selectedBranchId') !== 'all';
   branchStore.loadFromStorage();
   if (!branchStore.branches || branchStore.branches.length === 0) {
     await branchStore.fetchBranches();
   }
-  // بعد fetchBranches: أعد تعيين الـ flag بما كان موجوداً قبل الكتابة
+
   userChoseBranch.value = hadPriorBranchChoice;
 
   await fetchList();
@@ -1022,13 +1114,9 @@ onMounted(async () => {
   if (id) openDetails(id);
 });
 
-// BUG 6 FIX: watcher now calls fetchList() so filters actually apply automatically
 watch([search, statusFilter, priorityFilter], () => {
-  filters.page.value = 1;
-  fetchList();
+  applyFilters();
 });
-
-// ─── Label / class helpers ────────────────────────────────────────────────────
 
 function statusLabel(s) {
   return ({ open: 'مفتوح', in_progress: 'قيد المعالجة', pending_customer: 'بانتظار العميل', resolved: 'تم الحل', closed: 'مغلق' }[s] || s || '-');

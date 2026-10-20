@@ -230,9 +230,12 @@ return [
             'Authorization',
             'X-Requested-With',
             'X-Tenant-ID',
+            'X-Tenant-Id',
             'X-Device-Fingerprint',
+            'Accept',
             'Accept-Language',
             'Origin',
+            'Idempotency-Key',
         ],
         'max_age'     => 86400,
         // credentials: true is REQUIRED for HttpOnly cookies to be sent cross-origin.

@@ -4,6 +4,9 @@ namespace App\Services;
 
 use PDO;
 
+/**
+ * Calculates tenant-scoped weighted-average inventory costs and sale COGS.
+ */
 class CostingService
 {
     private PDO $pdo;
@@ -13,8 +16,9 @@ class CostingService
         $this->pdo = $pdo;
     }
 
-    // ─── getWeightedAverageCost ───────────────────────────────────────────────
-    // WAC لمنتج واحد — يطرح مردودات الشراء من التكلفة الكلية
+    /**
+     * Returns a product's weighted-average cost, falling back to its catalog cost.
+     */
     public function getWeightedAverageCost(int $tenantId, int $productId, ?string $upToDate = null): ?float
     {
         $wacMap = $this->computeBatchWAC($tenantId, [$productId], $upToDate);
@@ -24,17 +28,19 @@ class CostingService
             return $wac;
         }
 
-        // Fallback إلى product.purchase_price
         $p = $this->pdo->prepare("SELECT COALESCE(purchase_price,0) FROM products WHERE id = ? AND tenant_id = ?");
         $p->execute([$productId, $tenantId]);
         $fallback = (float)$p->fetchColumn();
         return $fallback > 0 ? $fallback : null;
     }
 
-    // ─── computeBatchWAC ──────────────────────────────────────────────────────
-    // Compute WAC (Weighted Average Cost) for batch of products in two queries
-    // Deducts purchase returns (return_type='purchase') from total inventory
-    // Returns: [product_id => float|null]  — null = no purchases, needs fallback
+    /**
+     * Calculates weighted-average costs for multiple products using purchase and return history.
+     *
+     * A supplied date is inclusive; null results indicate that no net purchase quantity is available.
+     *
+     * @return array<int, float|null> Product ID to weighted-average cost.
+     */
     public function computeBatchWAC(int $tenantId, array $productIds, ?string $upToDate = null): array
     {
         if (empty($productIds)) {
@@ -43,16 +49,16 @@ class CostingService
 
         $productIds   = array_values(array_unique(array_map('intval', $productIds)));
         $placeholders = implode(',', array_fill(0, count($productIds), '?'));
+        $nextDay = date('Y-m-d', strtotime(($upToDate ?? '') . ' +1 day'));
 
         $dateFilter = '';
         $dateParam  = [];
         if ($upToDate) {
-            $nextDay      = date('Y-m-d', strtotime($upToDate . ' +1 day'));
             $dateFilter   = ' AND p.invoice_date < ?';
-            $dateParam     = [$nextDay . ' 00:00:00'];
+            $dateParam    = [$nextDay . ' 00:00:00'];
         }
 
-        // Query 1: مجموع المشتريات لكل منتج
+        // Aggregate purchase quantities and costs by product.
         $purchaseSql = "
             SELECT pi.product_id,
                    COALESCE(SUM(pi.quantity * pi.cost), 0) AS total_cost,
@@ -75,7 +81,7 @@ class CostingService
             ];
         }
 
-        // Query 2: Calculate WAC deducting purchase returns
+        // Subtract purchase returns from the purchase totals.
         $returnDateFilter = '';
         $returnDateParam  = [];
         if ($upToDate) {
@@ -105,7 +111,6 @@ class CostingService
             ];
         }
 
-        // حساب WAC الصافي لكل منتج
         $result = [];
         foreach ($productIds as $pid) {
             $pCost = $purchases[$pid]['cost'] ?? 0.0;
@@ -122,15 +127,22 @@ class CostingService
         return $result;
     }
 
-    // ─── computeCOGSForSale ───────────────────────────────────────────────────
-    // Compute COGS using batch WAC + batch fallback for constant query count regardless of product count
+    /**
+     * Calculates sale COGS from as-of-date WAC, with stored item and catalog cost fallbacks.
+     */
     public function computeCOGSForSale(int $tenantId, int $saleId, ?string $saleDate = null): float
     {
         $stmt = $this->pdo->prepare("SELECT sale_date FROM sales WHERE id = ? AND tenant_id = ?");
         $stmt->execute([$saleId, $tenantId]);
         $date = $saleDate ?: $stmt->fetchColumn();
 
-        $itemsStmt = $this->pdo->prepare("SELECT product_id, quantity, conversion_factor FROM sales_items WHERE sale_id = ? AND tenant_id = ?");
+                $itemsStmt = $this->pdo->prepare(
+                        "SELECT si.product_id, si.quantity, si.conversion_factor, si.purchase_price
+                         FROM sales_items si
+                         INNER JOIN products p ON p.id = si.product_id AND p.tenant_id = si.tenant_id
+                         WHERE si.sale_id = ? AND si.tenant_id = ?
+                             AND COALESCE(p.product_type, 'stock') = 'stock'"
+                );
         $itemsStmt->execute([$saleId, $tenantId]);
         $items = $itemsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
@@ -138,11 +150,10 @@ class CostingService
             return 0.0;
         }
 
-        // ✅ batch WAC — 2 queries لكل المنتجات معاً
+        // Batch WAC keeps the query count independent of the number of sale items.
         $productIds = array_values(array_unique(array_map(fn ($it) => (int)$it['product_id'], $items)));
         $wacMap     = $this->computeBatchWAC($tenantId, $productIds, $date);
 
-        // ✅ batch fallback لـ product.purchase_price دفعة واحدة
         $nullPids = array_values(array_filter($productIds, fn ($pid) => $wacMap[$pid] === null));
         if (!empty($nullPids)) {
             $ph  = implode(',', array_fill(0, count($nullPids), '?'));
@@ -164,10 +175,15 @@ class CostingService
             }
             $wac = $wacMap[$pid] ?? null;
             if ($wac === null) {
+                $saleItemCost = (float) ($it['purchase_price'] ?? 0);
+                if ($saleItemCost > 0) {
+                    $total += $qty * $saleItemCost;
+                }
                 continue;
             }
             $total += $baseQty * $wac;
         }
+
         return $total;
     }
 }

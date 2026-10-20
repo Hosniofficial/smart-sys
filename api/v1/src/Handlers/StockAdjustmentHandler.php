@@ -12,13 +12,14 @@ use App\Services\BranchInventoryReconciliationService;
 use App\Services\MonologHandler;
 
 /**
- * StockAdjustmentHandler
+ * Handles single and bulk branch-stock adjustments, including CSV imports.
  *
- * Handles inventory adjustment operations extracted from BranchHandler:
- *   - upsertInventoryItem()   — add/update a single inventory item in a branch
- *   - adjustStockQuantity()   — single product adjustment (delta + journal entry)
- *   - bulkAdjustments()       — JSON bulk adjustments across branches
- *   - bulkAdjustmentsCsv()    — CSV import for bulk adjustments
+ * Each adjustment records an inventory transaction, updates branch quantity
+ * and valuation, and marks the stock unreconciled. Non-zero valuations require
+ * a journal entry; zero-valued movements may proceed without one. CostingService
+ * supplies fallback unit costs, and BranchInventoryReconciliationService tracks
+ * reconciliation state. Routes and permissions are defined in
+ * app/routes/branches.php.
  */
 class StockAdjustmentHandler extends BaseHandler
 {
@@ -28,18 +29,37 @@ class StockAdjustmentHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('branch');
     }
 
-    // =========================================================================
-    // Private Helpers
-    // =========================================================================
-
     private function resolveAccountId(int $tenantId, string $settingKeyName, string $fallbackCode): ?int
     {
         return $this->accounting->resolveAccountId($tenantId, $settingKeyName, $fallbackCode);
     }
 
-    /**
-     * إدراج سجل في inventory_transactions — Single Source of Truth للتسويات.
-     */
+    /** Use a positive supplied cost or fall back to weighted-average and purchase costs. */
+    private function resolveAdjustmentUnitCost(int $tenantId, int $productId, float $providedUnitCost): float
+    {
+        if ($providedUnitCost > 0) {
+            return $providedUnitCost;
+        }
+
+        try {
+            $unitCost = (float) (new CostingService($this->db))
+                ->getWeightedAverageCost($tenantId, $productId, date('Y-m-d H:i:s'));
+        } catch (\Throwable $e) {
+            $unitCost = 0.0;
+        }
+
+        if ($unitCost <= 0) {
+            $stmt = $this->db->prepare(
+                "SELECT COALESCE(purchase_price, 0) FROM products WHERE id = ? AND tenant_id = ?"
+            );
+            $stmt->execute([$productId, $tenantId]);
+            $unitCost = (float) ($stmt->fetchColumn() ?: 0);
+        }
+
+        return max(0.0, $unitCost);
+    }
+
+    /** Record the adjustment direction, quantity, and valuation in inventory_transactions. */
     private function insertInventoryAdjustment(
         int     $tenantId,
         int     $productId,
@@ -71,8 +91,9 @@ class StockAdjustmentHandler extends BaseHandler
     }
 
     /**
-     * إنشاء قيد يومية للتسوية (زيادة أو نقص مخزون).
-     * يُرجع journal_entry_id أو null إذا تعذّر الإنشاء.
+     * Post the accounting entry for a valued adjustment.
+     *
+     * Returns null for a zero amount; missing accounts and posting failures throw.
      */
     private function createAdjustmentJournalEntry(
         int     $tenantId,
@@ -81,61 +102,24 @@ class StockAdjustmentHandler extends BaseHandler
         float   $delta,
         ?string $notes,
         ?int    $userId,
-        string  $movement
+        string  $movement,
+        float   $unitCost
     ): ?int {
         $stmt = $this->db->prepare(
-            "SELECT name, COALESCE(purchase_price, 0) AS cost FROM products WHERE id = ? AND tenant_id = ?"
+            "SELECT name FROM products WHERE id = ? AND tenant_id = ?"
         );
         $stmt->execute([$productId, $tenantId]);
-        $prod = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['name' => 'منتج', 'cost' => 0];
-
-        $unitCost = null;
-        try {
-            $unitCost = (float) (new CostingService($this->db))
-                ->getWeightedAverageCost($tenantId, $productId, date('Y-m-d H:i:s'));
-        } catch (\Throwable $e) {
-            $unitCost = null;
-        }
-        if ($unitCost === null || $unitCost <= 0) {
-            $unitCost = (float) $prod['cost'];
-        }
+        $prod = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['name' => 'منتج'];
 
         $amount = abs($delta) * $unitCost;
         if ($amount <= 0) {
-            // لا قيمة مالية حقيقية لهذه التسوية (تكلفة الوحدة غير معروفة/صفرية) —
-            // لا حاجة لقيد محاسبي (Dr=Cr=0 لا يضيف أي معلومة)، وهذا ليس الخطأ
-            // الذي رصده التدقيق. الاستمرار بتسوية الكمية فقط هنا آمن ومقصود.
+            // A zero-valued movement has no meaningful debit/credit entry.
             $this->logger->warning('[StockAdjustment] Zero amount — journal entry skipped.', [
                 'tenant_id' => $tenantId, 'branch_id' => $branchId,
                 'product_id' => $productId, 'delta' => $delta,
             ]);
             return null;
         }
-
-        // ── AUDIT FIX #8 (MEDIUM-HIGH) ──────────────────────────────────────────
-        // Previously: if the branch/tenant had no inventory or inventory-
-        // adjustment GL account configured, this branch just logged a warning
-        // and returned null — and the caller (adjustStockQuantity) proceeded to
-        // COMMIT the quantity + quantity_cost change to branch_products anyway,
-        // with $warnings['reason']='missing_accounts_or_zero_amount' silently
-        // attached to the JSON response. A caller that doesn't inspect
-        // `warnings` (most UI flows) never learns that inventory value moved
-        // with zero trace in the GL — a direct, silent divergence between the
-        // physical stock report and the GL inventory account (1301).
-        //
-        // Also previously: this whole method was wrapped in one blanket
-        // try/catch that swallowed EVERY failure — including postJournalEntry()
-        // rejecting the entry for a genuinely bad reason (Dr≠Cr, closed
-        // accounting period, DB error) — and still returned null silently. That
-        // meant even a real posting failure never blocked the stock mutation.
-        //
-        // Fix: once we know real money is on the line ($amount > 0), a missing
-        // account or a failed postJournalEntry() call now THROWS instead of
-        // returning null. adjustStockQuantity() runs inside its own DB
-        // transaction and already rolls back on any Throwable, so this turns a
-        // silent, value-changing, GL-less stock mutation into a rejected
-        // request — the adjustment either gets a full accounting trail or it
-        // doesn't happen at all.
 
         $inventoryAccountId = $this->accounting->resolveInventoryAccountForBranch($tenantId, $branchId);
         $adjustmentAccountId = $this->resolveAccountId($tenantId, 'inventory_adjustment_account_id', '5104');
@@ -162,9 +146,7 @@ class StockAdjustmentHandler extends BaseHandler
             ['account_id' => $inventoryAccountId,  'debit' => 0,       'credit' => $amount, 'description' => 'قيد مقابل نقص مخزون'],
         ];
 
-        // لا نلتقط الاستثناءات هنا: أي فشل حقيقي في postJournalEntry (توازن Dr/Cr،
-        // دورة مغلقة، خطأ قاعدة بيانات) يجب أن يوقف العملية بالكامل عبر rollback
-        // في adjustStockQuantity، وليس أن يُبتلع صامتاً كما كان يحدث سابقاً.
+        // Posting errors must propagate so the caller can roll back the stock change.
         $jeId = $this->accounting->postJournalEntry(
             $tenantId,
             'inventory_adjustment',
@@ -183,71 +165,7 @@ class StockAdjustmentHandler extends BaseHandler
         return $jeId;
     }
 
-    // =========================================================================
-    // Public Endpoints
-    // =========================================================================
-
-    /**
-     * إضافة/تحديث عنصر مخزون لمستودع
-     * POST /branches/{id}/inventory
-     * PUT  /branches/{id}/inventory/{productId}
-     */
-    public function upsertInventoryItem(Request $request, Response $response, array $args): Response
-    {
-        try {
-            $tenantId  = $this->extractTenantId($request);
-            $branchId  = (int) ($args['id'] ?? 0);
-            $productId = isset($args['productId']) ? (int) $args['productId'] : null;
-            $data      = $request->getParsedBody() ?: [];
-
-            if (!$tenantId || !$branchId) {
-                return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-            }
-
-            if ($request->getMethod() === 'POST') {
-                $productId = (int) ($data['product_id'] ?? 0);
-                $quantity  = (float) ($data['quantity']   ?? 0);
-                if ($productId <= 0) {
-                    return $this->errorResponse($response, 'product_id is required', 400);
-                }
-                $this->db->beginTransaction();
-                $this->db->prepare(
-                    "INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, last_update, gl_reconciled)
-                     VALUES (?, ?, ?, ?, NOW(), 0)
-                     ON DUPLICATE KEY UPDATE quantity = VALUES(quantity), last_update = NOW()"
-                )->execute([$tenantId, $branchId, $productId, $quantity]);
-                BranchInventoryReconciliationService::markUnreconciled($this->db, (int) $tenantId, $branchId, $productId);
-                $this->db->commit();
-                return $this->successResponse($response, ['status' => 'success', 'message' => 'Inventory item added/updated'], 200);
-            }
-
-            // PUT
-            if (!$productId) {
-                return $this->errorResponse($response, 'product id is required in URL', 400);
-            }
-            $quantity = isset($data['quantity']) ? (float) $data['quantity'] : null;
-            $this->db->beginTransaction();
-            if ($quantity !== null) {
-                $this->db->prepare(
-                    "UPDATE branch_products SET quantity = ?, last_update = NOW()
-                     WHERE tenant_id = ? AND branch_id = ? AND product_id = ?"
-                )->execute([$quantity, $tenantId, $branchId, $productId]);
-                BranchInventoryReconciliationService::markUnreconciled($this->db, (int) $tenantId, $branchId, $productId);
-            }
-            $this->db->commit();
-            return $this->successResponse($response, ['status' => 'success', 'message' => 'Inventory item updated'], 200);
-        } catch (\Throwable $e) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
-            }
-            $this->logger->error('خطأ في حفظ عنصر المخزون: ' . $e->getMessage());
-            return $this->errorResponse($response, 'فشل في حفظ عنصر المخزون', 500);
-        }
-    }
-
-    /**
-     * تسوية مخزون (زيادة/نقص) لمستودع — عملية واحدة
-     */
+    /** Apply one stock delta with its inventory transaction and accounting entry. */
     public function adjustStockQuantity(Request $request, Response $response, array $args): Response
     {
         try {
@@ -266,7 +184,14 @@ class StockAdjustmentHandler extends BaseHandler
 
             $this->db->beginTransaction();
 
-            // منع الرصيد السالب عند الخصم
+            \App\Services\ProductBranchActivationGuard::assertActiveForStock(
+                $this->db,
+                (int) $tenantId,
+                $branchId,
+                $productId
+            );
+
+            // Reject a decrement larger than the available stock.
             if ($delta < 0) {
                 $chk = $this->db->prepare(
                     "SELECT COALESCE(quantity, 0) FROM branch_products
@@ -278,7 +203,7 @@ class StockAdjustmentHandler extends BaseHandler
                     $this->db->rollBack();
                     return $this->errorResponse(
                         $response,
-                        'الكمية المتوفرة (' . $currentQty . ') غير كافية للخصم المطلوب (' . abs($delta) . ')',
+                        'الكمية المتاحة (' . $currentQty . ') غير كافية للخصم المطلوب (' . abs($delta) . ')',
                         422
                     );
                 }
@@ -286,7 +211,11 @@ class StockAdjustmentHandler extends BaseHandler
 
             $movement    = $delta > 0 ? 'adjustment_in' : 'adjustment_out';
             $unitId      = (int)   ($data['unit_id']   ?? 1);
-            $unitCost    = (float) ($data['unit_cost']  ?? 0);
+            $unitCost    = $this->resolveAdjustmentUnitCost(
+                (int) $tenantId,
+                $productId,
+                (float) ($data['unit_cost'] ?? 0)
+            );
             $batchNumber = $data['batch_number'] ?? null;
             $expiryDate  = $data['expiry_date']  ?? null;
             $serial      = $data['serial']       ?? null;
@@ -318,7 +247,7 @@ class StockAdjustmentHandler extends BaseHandler
             )->execute([$tenantId, $branchId, $productId, $delta, $costAdjustment]);
             BranchInventoryReconciliationService::markUnreconciled($this->db, (int) $tenantId, $branchId, $productId);
 
-            $jeId     = $this->createAdjustmentJournalEntry($tenantId, $branchId, $productId, $delta, $notes, $userId, $movement);
+            $jeId     = $this->createAdjustmentJournalEntry($tenantId, $branchId, $productId, $delta, $notes, $userId, $movement, $unitCost);
             $warnings = null;
             if ($jeId) {
                 $this->db->prepare(
@@ -339,13 +268,15 @@ class StockAdjustmentHandler extends BaseHandler
                 $this->db->rollBack();
             }
             $this->logger->error('فشل في عملية التسوية: ' . $e->getMessage());
-            return $this->errorResponse($response, 'فشل في عملية التسوية', 500);
+            return $this->errorResponse(
+                $response,
+                $e instanceof \DomainException ? $e->getMessage() : 'فشل في عملية التسوية',
+                $e instanceof \DomainException ? 422 : 500
+            );
         }
     }
 
-    /**
-     * تسويات جماعية — JSON payload
-     */
+    /** Apply a set of product adjustments across branches in one transaction. */
     public function bulkAdjustments(Request $request, Response $response, array $args): Response
     {
         try {
@@ -361,11 +292,17 @@ class StockAdjustmentHandler extends BaseHandler
             }
 
             $this->db->beginTransaction();
-            // 🔴 إصلاح: كان هذا الاستعلام يُحدِّث quantity فقط ويتجاهل quantity_cost تماماً
-            // رغم توفر unit_cost لكل عنصر أدناه — بالضبط نفس الانحراف (drift) الذي كان
-            // تعليق InventoryHandler.php يحذّر منه كسبب لعدم الوثوق بـ quantity_cost. أصبح
-            // الآن يطبّق نفس الصيغة المُثبَتة صحتها في adjustStockQuantity (دالتين أعلاه في
-            // نفس الملف): costAdjustment = delta × unit_cost.
+            foreach ($items as $item) {
+                $branchId = (int) ($item['branch_id'] ?? 0);
+                if ($branchId > 0) {
+                    \App\Services\ProductBranchActivationGuard::assertActiveForStock(
+                        $this->db,
+                        (int) $tenantId,
+                        $branchId,
+                        $productId
+                    );
+                }
+            }
             $upsertWp = $this->db->prepare(
                 "INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, quantity_cost, last_update, gl_reconciled)
                  VALUES (?, ?, ?, ?, ?, NOW(), 0)
@@ -389,8 +326,9 @@ class StockAdjustmentHandler extends BaseHandler
                 if ($branchId <= 0 || $delta == 0.0) {
                     continue;
                 }
+                $unitCost = $this->resolveAdjustmentUnitCost((int) $tenantId, $productId, $unitCost);
 
-                // Prevent negative stock (same check as in adjustStockQuantity)
+                // Reject a decrement larger than the available stock.
                 if ($delta < 0) {
                     $stmt = $this->db->prepare(
                         "SELECT quantity FROM branch_products WHERE tenant_id = ? AND branch_id = ? AND product_id = ? LIMIT 1"
@@ -426,7 +364,7 @@ class StockAdjustmentHandler extends BaseHandler
                 $upsertWp->execute([$tenantId, $branchId, $productId, $delta, $delta * $unitCost]);
                 BranchInventoryReconciliationService::markUnreconciled($this->db, (int) $tenantId, $branchId, $productId);
 
-                $jeId = $this->createAdjustmentJournalEntry($tenantId, $branchId, $productId, $delta, $notes, $userId, $movement);
+                $jeId = $this->createAdjustmentJournalEntry($tenantId, $branchId, $productId, $delta, $notes, $userId, $movement, $unitCost);
                 if ($jeId) {
                     $this->db->prepare(
                         "UPDATE inventory_transactions SET journal_entry_id = ? WHERE id = ? AND tenant_id = ?"
@@ -448,15 +386,19 @@ class StockAdjustmentHandler extends BaseHandler
                 $this->db->rollBack();
             }
             $this->logger->error('فشل في تنفيذ التسويات الجماعية: ' . $e->getMessage());
-            return $this->errorResponse($response, 'فشل في تنفيذ التسويات الجماعية', 500);
+            return $this->errorResponse(
+                $response,
+                $e instanceof \DomainException ? $e->getMessage() : 'فشل في تنفيذ التسويات الجماعية',
+                $e instanceof \DomainException ? 422 : 500
+            );
         }
     }
 
     /**
-     * تسويات جماعية — استيراد CSV
-     * الأعمدة المدعومة: product_id / product_code، branch_id / branch_code، quantity، notes،
-     * unit_id، unit_cost (اختياري — يُستخدم لتحديث quantity_cost بدقة؛ 0 إذا غير موجود)،
-     * batch_number، expiry_date، serial
+     * Import stock adjustments from CSV.
+     *
+     * Rows support product/branch IDs or codes, quantity, notes, unit, cost,
+     * batch, expiry, and serial fields; a request-level product_id is optional.
      */
     public function bulkAdjustmentsCsv(Request $request, Response $response, array $args): Response
     {
@@ -489,9 +431,6 @@ class StockAdjustmentHandler extends BaseHandler
                 : null;
 
             $this->db->beginTransaction();
-            // 🔴 نفس إصلاح bulkAdjustments أعلاه: unit_cost كان يُقرأ من كل صف CSV (راجع
-            // $unitCost أدناه) لكنه كان يُهمَل تماماً عند الكتابة على branch_products —
-            // فيُحدَّث quantity فقط وينحرف quantity_cost تدريجياً مع كل استيراد.
             $upsertWp         = $this->db->prepare(
                 "INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, quantity_cost, last_update, gl_reconciled)
                  VALUES (?, ?, ?, ?, ?, NOW(), 0)
@@ -548,7 +487,14 @@ class StockAdjustmentHandler extends BaseHandler
                     continue;
                 }
 
-                // Prevent negative stock (same check as in bulkAdjustments)
+                \App\Services\ProductBranchActivationGuard::assertActiveForStock(
+                    $this->db,
+                    (int) $tenantId,
+                    $branchId,
+                    $pId
+                );
+
+                // Reject a decrement larger than the available stock.
                 if ($delta < 0) {
                     $stmt = $this->db->prepare(
                         "SELECT quantity FROM branch_products WHERE tenant_id = ? AND branch_id = ? AND product_id = ? LIMIT 1"
@@ -566,6 +512,15 @@ class StockAdjustmentHandler extends BaseHandler
                         );
                     }
                 }
+
+                $unitCost = $this->resolveAdjustmentUnitCost((int) $tenantId, $pId, $unitCost);
+
+                \App\Services\ProductBranchActivationGuard::assertActiveForStock(
+                    $this->db,
+                    (int) $tenantId,
+                    $branchId,
+                    $pId
+                );
 
                 $movement = $delta > 0 ? 'adjustment_in' : 'adjustment_out';
                 $txId     = $this->insertInventoryAdjustment(
@@ -586,7 +541,7 @@ class StockAdjustmentHandler extends BaseHandler
                 $upsertWp->execute([$tenantId, $branchId, $pId, $delta, $delta * $unitCost]);
                 BranchInventoryReconciliationService::markUnreconciled($this->db, (int) $tenantId, $branchId, $pId);
 
-                $jeId = $this->createAdjustmentJournalEntry($tenantId, $branchId, $pId, $delta, $notes, $userId, $movement);
+                $jeId = $this->createAdjustmentJournalEntry($tenantId, $branchId, $pId, $delta, $notes, $userId, $movement, $unitCost);
                 if ($jeId) {
                     $this->db->prepare(
                         "UPDATE inventory_transactions SET journal_entry_id = ? WHERE id = ? AND tenant_id = ?"
@@ -610,7 +565,11 @@ class StockAdjustmentHandler extends BaseHandler
                 $this->db->rollBack();
             }
             $this->logger->error('فشل استيراد CSV للتسويات: ' . $e->getMessage());
-            return $this->errorResponse($response, 'فشل في استيراد ملف CSV', 500);
+            return $this->errorResponse(
+                $response,
+                $e instanceof \DomainException ? $e->getMessage() : 'فشل في استيراد ملف CSV',
+                $e instanceof \DomainException ? 422 : 500
+            );
         }
     }
 }

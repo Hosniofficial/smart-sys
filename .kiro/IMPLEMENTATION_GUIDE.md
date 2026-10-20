@@ -12,37 +12,9 @@
 
 ## 🚀 البدء السريع (Quick Start)
 
-### الخطوة 1: إضافة الخطة الترويجية الجديدة
+### الخطوة 1: التحقق من وجود الخطة الترويجية
 
-**يدويًا من phpMyAdmin:**
-```sql
-INSERT INTO `plans` (
-    `code`,
-    `name`,
-    `description`,
-    `price`,
-    `currency`,
-    `billing_cycle_days`,
-    `is_active`,
-    `created_at`,
-    `updated_at`
-) VALUES (
-    'promo_3months',
-    'Promotional 3 Months',
-    'عرض ترويجي - 3 أشهر مجاني للمستخدمين الجدد',
-    0.00,
-    'EGP',
-    90,
-    1,
-    NOW(),
-    NOW()
-);
-```
-
-**أو استخدم ملف الهجرة:**
-```bash
-mysql -u root -p smartsys < database/migrations/add_promo_3months_plan.sql
-```
+خطة `promo_3months` موجودة في seed الإنتاج المعتمد `database/production/smartsys_production_core_seed_20261002.sql`. لا تُدخلها يدويًا ولا تستورد seed إضافيًا.
 
 ### الخطوة 2: تحقق من إضافة الخطة
 
@@ -247,22 +219,11 @@ Content-Type: application/json
 
 ---
 
-## 📝 الملفات المُضافة
+## 📝 توثيق مرتبط
 
-1. **database/migrations/add_promo_3months_plan.sql**
-   - هجرة الخطة الترويجية الجديدة
-   - آمنة وقابلة للتكرار
-
-2. **database/migrations/README.md**
-   - شرح كيفية تطبيق الهجرات
-   - إرشادات استكشاف الأخطاء
-
-3. **.kiro/docs/PROMOTIONAL_PLANS.md**
-   - توثيق شامل للخطط الترويجية
-   - أمثلة الاستخدام
-
-4. **.kiro/IMPLEMENTATION_GUIDE.md** (هذا الملف)
-   - دليل التطبيق الكامل
+- **database/production/README.md** — حزمة قاعدة البيانات وتهيئة الإنتاج.
+- **database/migrations/README.md** — تطبيق migrations والتحقق منها.
+- **.kiro/docs/PROMOTIONAL_PLANS.md** — توثيق الخطط الترويجية.
    - سيناريوهات عملية
 
 ---

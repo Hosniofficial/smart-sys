@@ -1,0 +1,382 @@
+# Audit Trail Implementation
+
+## Overview
+SmartSys implements a comprehensive audit trail system that records all significant business operations in the `audit_log` table. This document describes the audit trail implementation for the Owner Contribution framework (Phase 7).
+
+**Last Updated:** 2026-09-29
+**Version:** 1.0
+
+---
+
+## Audit Log Schema
+
+```sql
+CREATE TABLE `audit_log` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) DEFAULT NULL,
+  `action` varchar(255) NOT NULL,
+  `entity` varchar(100) NOT NULL,
+  `entity_id` int(11) DEFAULT NULL,
+  `details` text DEFAULT NULL,
+  `tenant_id` int(11) NOT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_tenant_entity` (`tenant_id`,`entity`),
+  KEY `idx_user_action` (`user_id`,`action`),
+  KEY `idx_created_at` (`created_at`),
+  CONSTRAINT `fk_audit_tenant` FOREIGN KEY (`tenant_id`)
+    REFERENCES `tenants` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+---
+
+## Owner Contribution Audit Actions
+
+### Actions Logged
+
+| Action | Entity | Description | When Triggered |
+|--------|--------|-------------|----------------|
+| **owner_contribution_created** | owner_contributions | New contribution recorded | POST /setup/owner-contribution/create (success) |
+| **owner_contribution_voided** | owner_contributions | Contribution voided | POST /setup/owner-contribution/:id/void (success) |
+
+### Audit Entry Structure
+
+#### owner_contribution_created
+
+```json
+{
+  "contribution_type": "capital",
+  "amount": 10000.00,
+  "target_account_id": 1001,
+  "related_gl_account_id": 3001,
+  "journal_entry_id": 12345,
+  "cost_center_id": 1,
+  "interest_rate": null,
+  "due_date": null,
+  "idempotency_key": "contrib_20260929_001",
+  "duplicate": false
+}
+```
+
+#### owner_contribution_voided
+
+```json
+{
+  "original_amount": 10000.00,
+  "reversal_je_id": 12346,
+  "reason": "Incorrect amount entered",
+  "original_journal_entry_id": 12345
+}
+```
+
+---
+
+## Implementation Pattern
+
+### Service Layer (OwnerContributionService)
+
+```php
+class OwnerContributionService
+{
+    private ?AuditHandler $audit;
+
+    public function __construct(
+        PDO $db,
+        int $tenantId,
+        int $userId,
+        ?AuditHandler $audit = null
+    ) {
+        $this->audit = $audit;
+        // ...
+    }
+
+    private function logAuditTrail(
+        string $action,
+        int $contributionId,
+        array $details
+    ): void {
+        // Always log to file for debugging
+        $this->logger->info("Audit: owner_contribution_{$action}", [
+            'contribution_id' => $contributionId,
+            'action' => $action,
+            'user_id' => $this->userId,
+            'tenant_id' => $this->tenantId,
+            ...$details
+        ]);
+
+        // Log to audit_log table if available
+        if ($this->audit !== null) {
+            try {
+                $this->audit->logAction(
+                    action: "owner_contribution_{$action}",
+                    module: 'owner_contributions',
+                    recordId: $contributionId,
+                    data: $details,
+                    tenantId: $this->tenantId,
+                    userId: $this->userId,
+                    ipAddress: $_SERVER['REMOTE_ADDR'] ?? null
+                );
+            } catch (\Throwable $e) {
+                // Log audit failures but don't interrupt
+                $this->logger->warning('Failed to write audit_log', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+    }
+}
+```
+
+### Handler Layer (OwnerContributionHandler)
+
+```php
+class OwnerContributionHandler extends BaseHandler
+{
+    public function create(Request $request, Response $response): Response
+    {
+        $tenantId = $this->getTenantId($request);
+        $userId = $this->getUserId($request);
+
+        // Pass AuditHandler from BaseHandler to Service
+        $service = new OwnerContributionService(
+            $this->db,
+            $tenantId,
+            $userId,
+            $this->audit  // ← Injected from BaseHandler
+        );
+
+        $result = $service->recordContribution(...);
+
+        return $this->successResponse($response, $result, 201);
+    }
+}
+```
+
+---
+
+## Design Principles
+
+### 1. Dual Logging Strategy
+- **Primary:** `audit_log` table (structured, queryable, long-term retention)
+- **Secondary:** MonologHandler files (debugging, immediate access, short-term)
+
+### 2. Fail-Safe Approach
+- Audit logging failures do NOT interrupt business operations
+- Exceptions caught and logged separately
+- Business transaction completes even if audit fails
+
+### 3. Optional Injection
+- AuditHandler is **optional** in service constructor
+- Allows testing without database dependency
+- Backward compatible with existing service instantiation
+
+### 4. Contextual Information
+- IP address captured for security tracking
+- User ID and tenant ID always recorded
+- Timestamp automatically generated by database
+- Detailed JSON context in `details` column
+
+### 5. Idempotent Operations
+- Audit entries NOT deduplicated (intentionally)
+- Every API call creates audit entry, even if idempotent
+- Allows tracking retry attempts and duplicate requests
+
+---
+
+## Querying Audit Logs
+
+### Get All Owner Contribution Actions
+
+```sql
+SELECT
+    al.id,
+    al.action,
+    al.entity_id AS contribution_id,
+    al.user_id,
+    u.email AS user_email,
+    al.details,
+    al.ip_address,
+    al.created_at
+FROM audit_log al
+LEFT JOIN users u ON u.id = al.user_id
+WHERE al.tenant_id = ?
+  AND al.entity = 'owner_contributions'
+ORDER BY al.created_at DESC;
+```
+
+### Get Audit Trail for Specific Contribution
+
+```sql
+SELECT
+    al.action,
+    al.details,
+    u.email AS performed_by,
+    al.ip_address,
+    al.created_at
+FROM audit_log al
+LEFT JOIN users u ON u.id = al.user_id
+WHERE al.tenant_id = ?
+  AND al.entity = 'owner_contributions'
+  AND al.entity_id = ?
+ORDER BY al.created_at ASC;
+```
+
+### Get Voided Contributions with Audit Trail
+
+```sql
+SELECT
+    oc.id,
+    oc.contribution_type,
+    oc.amount,
+    oc.status,
+    al.details->>'$.reason' AS void_reason,
+    al.created_at AS voided_at,
+    u.email AS voided_by
+FROM owner_contributions oc
+INNER JOIN audit_log al
+    ON al.entity_id = oc.id
+    AND al.entity = 'owner_contributions'
+    AND al.action = 'owner_contribution_voided'
+LEFT JOIN users u ON u.id = al.user_id
+WHERE oc.tenant_id = ?
+  AND oc.status = 'voided'
+ORDER BY al.created_at DESC;
+```
+
+### Get All Actions by User
+
+```sql
+SELECT
+    al.action,
+    al.entity,
+    al.entity_id,
+    al.details,
+    al.created_at
+FROM audit_log al
+WHERE al.tenant_id = ?
+  AND al.user_id = ?
+  AND al.action LIKE 'owner_contribution_%'
+ORDER BY al.created_at DESC
+LIMIT 100;
+```
+
+---
+
+## Security Considerations
+
+### Data Retention
+- Audit logs should be retained according to business requirements
+- Typical retention: 7 years for financial operations
+- Consider archiving old logs to separate table
+
+### Access Control
+- Only users with `security.view_audit_log` permission can read audit logs
+- Super Admin can access audit logs across all tenants
+- Regular users can only see their own actions
+
+### Data Privacy
+- IP addresses are logged for security purposes
+- PII in `details` should be minimal
+- Consider encryption for sensitive audit data
+
+### Tamper Prevention
+- Audit log table has no UPDATE operations
+- Only INSERT and SELECT allowed
+- DELETE restricted to system maintenance (with approval)
+
+---
+
+## Testing Audit Trail
+
+### Manual Test: Create Contribution
+
+```bash
+# 1. Create contribution
+curl -X POST http://localhost/api/v1/setup/owner-contribution/create \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contribution_type": "capital",
+    "amount": 5000.00,
+    "target_account_id": 1001,
+    "related_gl_account_id": 3001,
+    "idempotency_key": "test_contrib_001"
+  }'
+
+# 2. Query audit log
+mysql> SELECT * FROM audit_log
+       WHERE entity = 'owner_contributions'
+       ORDER BY created_at DESC LIMIT 1\G
+
+# Expected Output:
+# action: owner_contribution_created
+# entity: owner_contributions
+# entity_id: <contribution_id>
+# details: {"contribution_type":"capital","amount":5000.00,...}
+```
+
+### Manual Test: Void Contribution
+
+```bash
+# 1. Void contribution
+curl -X POST http://localhost/api/v1/setup/owner-contribution/123/void \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "Incorrect amount - should be 6000"
+  }'
+
+# 2. Query audit log
+mysql> SELECT * FROM audit_log
+       WHERE entity = 'owner_contributions'
+       AND entity_id = 123
+       ORDER BY created_at DESC\G
+
+# Expected: Two entries
+# 1. owner_contribution_created (original)
+# 2. owner_contribution_voided (recent)
+```
+
+---
+
+## Integration with Other Modules
+
+### Journal Entries
+- Every owner contribution creates a `journal_entries` record
+- Audit log provides **WHO** and **WHY**
+- Journal entry provides **WHAT** (accounting impact)
+
+### Security Event Monitoring
+- Failed authorization attempts logged separately
+- Suspicious patterns (e.g., many voids) can trigger alerts
+
+---
+
+## Troubleshooting
+
+| Issue | Likely Cause | Solution |
+|-------|--------------|----------|
+| No audit entries created | AuditHandler not passed to service | Check handler passes `$this->audit` |
+| Audit entries missing user_id | User context not set | Verify `$this->currentUser` in BaseHandler |
+| Audit log query slow | Missing indexes | Check indexes on tenant_id, entity, created_at |
+| Details column too large | Excessive context data | Limit details to essential information only |
+
+---
+
+## Future Enhancements (Post-Phase 7)
+
+1. **Audit Log Viewer UI** - Frontend component for browsing audit logs
+2. **Real-time Alerts** - WebSocket notifications for critical actions
+3. **Audit Log Export** - CSV/Excel export for compliance reporting
+4. **Change Tracking** - Before/after snapshots for updates
+5. **Audit Log Archiving** - Automated archiving of old logs
+
+---
+
+**Document Version:** 1.0
+**Last Updated:** 2026-09-29
+**Related Documents:**
+- [OWNER_CONTRIBUTIONS.md](./OWNER_CONTRIBUTIONS.md) (Phase 10)
+- [LIQUIDITY_POLICY.md](./LIQUIDITY_POLICY.md) (Phase 10)

@@ -4,16 +4,7 @@ declare(strict_types=1);
 
 namespace App\Exceptions;
 
-/**
- * Thrown when a user lacks the required permission for an action.
- *
- * Caught by the global error handler (config/middleware.php) which returns
- * a 403 JSON response. Can also be caught inside handlers for custom messages.
- *
- * Usage:
- *   throw new ForbiddenException(Permissions::SALE_VOID);
- *   throw new ForbiddenException('sale.void', 'لا يمكنك إلغاء فاتورة معتمدة');
- */
+/** Permission-denial exception carrying the required permission and HTTP 403 code. */
 class ForbiddenException extends \RuntimeException
 {
     private string $requiredPermission;

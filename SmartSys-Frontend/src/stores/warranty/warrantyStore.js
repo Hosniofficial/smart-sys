@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import WarrantyService from '@/services/warranty';
 
 const nowMs = () => Date.now();
 
 export const useWarrantyStore = defineStore('warranty', () => {
+  let latestWarrantiesRequestId = 0;
+
   // ─── Cache TTL ────────────────────────────────────────────────────────────
   const TTL = {
     warranties: 5 * 60 * 1000,    // 5 دقائق
@@ -13,8 +15,10 @@ export const useWarrantyStore = defineStore('warranty', () => {
 
   // ─── State ────────────────────────────────────────────────────────────────
   const warranties = ref([]);
+  const warrantiesTotal = ref(0);
   const details = ref(null);
   const warrantiesFetchedAt = ref(null);
+  const warrantiesCacheKey = ref(null);
   const detailsFetchedAt = ref({});
   const isLoading = ref(false);
   const error = ref(null);
@@ -23,8 +27,26 @@ export const useWarrantyStore = defineStore('warranty', () => {
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
+  const normalizeWarrantyDetails = (data) => {
+    if (!data?.request) return data;
+    return {
+      ...data.request,
+      customer_name: data.customer?.name || data.request.customer_name,
+      items: data.items || [],
+      attachments: data.attachments || [],
+      notes: data.notes || [],
+    };
+  };
+
+  const refreshWarrantyDetails = async (id) => {
+    const data = normalizeWarrantyDetails(await WarrantyService.get(id));
+    details.value = data;
+    detailsFetchedAt.value[String(id)] = nowMs();
+    return data;
+  };
+
   // ─── Getters ──────────────────────────────────────────────────────────────
-  const totalWarranties = computed(() => warranties.value.length);
+  const totalWarranties = computed(() => warrantiesTotal.value);
   const openWarranties = computed(() => 
     warranties.value.filter(w => ['open', 'in_progress', 'pending_customer'].includes(w.status))
   );
@@ -38,34 +60,69 @@ export const useWarrantyStore = defineStore('warranty', () => {
    * جلب قائمة طلبات الضمان
    */
   const fetchWarranties = async (params = {}, force = false) => {
+    let requestId = null;
     try {
-      if (!force && warranties.value.length > 0 && isFresh(warrantiesFetchedAt.value, TTL.warranties)) {
+      const requestParams = {
+        ...params,
+        from_date: params.from_date || params.date_from,
+        to_date: params.to_date || params.date_to,
+      };
+      delete requestParams.date_from;
+      delete requestParams.date_to;
+      const cacheKey = JSON.stringify(
+        Object.entries(requestParams)
+          .filter(([, value]) => value !== undefined && value !== null && value !== '')
+          .sort(([left], [right]) => left.localeCompare(right))
+      );
+
+      if (
+        !force
+        && warrantiesCacheKey.value === cacheKey
+        && isFresh(warrantiesFetchedAt.value, TTL.warranties)
+      ) {
+        latestWarrantiesRequestId += 1;
+        isLoading.value = false;
         return {
           status: 'success',
           data: warranties.value,
+          total: warrantiesTotal.value,
         };
       }
 
+      requestId = ++latestWarrantiesRequestId;
       isLoading.value = true;
       error.value = null;
 
-      const response = await apiClient.get('/warranty', { params });
-      const data = response?.data?.data || [];
-      warranties.value = Array.isArray(data) ? data : (data?.items || []);
-      warrantiesFetchedAt.value = nowMs();
+      const data = await WarrantyService.list(requestParams);
+      const list = Array.isArray(data) ? data : (data?.items || []);
+      const total = Array.isArray(data)
+        ? list.length
+        : Number(data?.total ?? list.length);
+      if (requestId === latestWarrantiesRequestId) {
+        warranties.value = list;
+        warrantiesTotal.value = total;
+        warrantiesFetchedAt.value = nowMs();
+        warrantiesCacheKey.value = cacheKey;
+      }
 
       return {
         status: 'success',
-        data: warranties.value,
+        data: list,
+        total,
       };
     } catch (err) {
-      error.value = err.response?.data?.message || err.message || 'فشل تحميل طلبات الضمان';
+      const message = err.response?.data?.message || err.message || 'فشل تحميل طلبات الضمان';
+      if (requestId === latestWarrantiesRequestId) {
+        error.value = message;
+      }
       return {
         status: 'error',
-        message: error.value,
+        message,
       };
     } finally {
-      isLoading.value = false;
+      if (requestId !== null && requestId === latestWarrantiesRequestId) {
+        isLoading.value = false;
+      }
     }
   };
 
@@ -75,7 +132,7 @@ export const useWarrantyStore = defineStore('warranty', () => {
   const fetchWarrantyDetails = async (id, force = false) => {
     try {
       const cacheKey = String(id);
-      if (!force && details.value?.id === id && isFresh(detailsFetchedAt.value[cacheKey], TTL.details)) {
+      if (!force && String(details.value?.id) === cacheKey && isFresh(detailsFetchedAt.value[cacheKey], TTL.details)) {
         return {
           status: 'success',
           data: details.value,
@@ -85,9 +142,7 @@ export const useWarrantyStore = defineStore('warranty', () => {
       isLoading.value = true;
       error.value = null;
 
-      const response = await apiClient.get(`/warranty/${id}`);
-      details.value = response?.data?.data || response?.data;
-      detailsFetchedAt.value[cacheKey] = nowMs();
+      details.value = await refreshWarrantyDetails(id);
 
       return {
         status: 'success',
@@ -112,11 +167,8 @@ export const useWarrantyStore = defineStore('warranty', () => {
       isLoading.value = true;
       error.value = null;
 
-      const response = await apiClient.post('/warranty', payload);
-      const newWarranty = response?.data?.data || response?.data;
-
-      // إضافة إلى القائمة المخزنة
-      warranties.value.unshift(newWarranty);
+      const newWarranty = await WarrantyService.create(payload);
+      warrantiesFetchedAt.value = null;
 
       return {
         status: 'success',
@@ -141,22 +193,9 @@ export const useWarrantyStore = defineStore('warranty', () => {
       isLoading.value = true;
       error.value = null;
 
-      const response = await apiClient.put(`/warranty/${id}/status`, { 
-        status, 
-        note 
-      });
-      const updated = response?.data?.data || response?.data;
-
-      // تحديث الـ details إذا كان هو المفتوح حالياً
-      if (details.value?.id === id) {
-        details.value = updated;
-      }
-
-      // تحديث القائمة
-      const index = warranties.value.findIndex(w => w.id === id);
-      if (index >= 0) {
-        warranties.value[index] = updated;
-      }
+      await WarrantyService.changeStatus(id, status, note);
+      const updated = await refreshWarrantyDetails(id);
+      warrantiesFetchedAt.value = null;
 
       return {
         status: 'success',
@@ -180,15 +219,8 @@ export const useWarrantyStore = defineStore('warranty', () => {
     try {
       error.value = null;
 
-      const response = await apiClient.post(`/warranty/${id}/notes`, {
-        content,
-        is_internal: isInternal,
-      });
-      const updated = response?.data?.data || response?.data;
-
-      if (details.value?.id === id) {
-        details.value = updated;
-      }
+      await WarrantyService.addNote(id, { content, is_internal: isInternal });
+      const updated = await refreshWarrantyDetails(id);
 
       return {
         status: 'success',
@@ -210,19 +242,8 @@ export const useWarrantyStore = defineStore('warranty', () => {
     try {
       error.value = null;
 
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await apiClient.post(`/warranty/${id}/attachments`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      const updated = response?.data?.data || response?.data;
-
-      if (details.value?.id === id) {
-        details.value = updated;
-      }
+      await WarrantyService.uploadAttachment(id, file);
+      const updated = await refreshWarrantyDetails(id);
 
       return {
         status: 'success',
@@ -244,12 +265,8 @@ export const useWarrantyStore = defineStore('warranty', () => {
     try {
       error.value = null;
 
-      const response = await apiClient.delete(`/warranty/${warrantyId}/attachments/${attachmentId}`);
-      const updated = response?.data?.data || response?.data;
-
-      if (details.value?.id === warrantyId) {
-        details.value = updated;
-      }
+      await WarrantyService.deleteAttachment(attachmentId);
+      const updated = await refreshWarrantyDetails(warrantyId);
 
       return {
         status: 'success',
@@ -269,14 +286,17 @@ export const useWarrantyStore = defineStore('warranty', () => {
    */
   const clearCache = () => {
     warranties.value = [];
+    warrantiesTotal.value = 0;
     details.value = null;
     warrantiesFetchedAt.value = null;
+    warrantiesCacheKey.value = null;
     detailsFetchedAt.value = {};
   };
 
   return {
     // State
     warranties: computed(() => warranties.value),
+    warrantiesTotal: computed(() => warrantiesTotal.value),
     details: computed(() => details.value),
     isLoading: computed(() => isLoading.value),
     error: computed(() => error.value),

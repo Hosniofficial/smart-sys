@@ -48,6 +48,7 @@
                 <option value="all">كل الحركات</option>
                 <option value="purchase">مشتريات (وارد)</option>
                 <option value="sale">مبيعات (صادر)</option>
+                <option value="sale_cancel">إلغاء بيع (وارد)</option>
                 <option value="return">مرتجعات</option>
                 <option value="adjustment">تسويات</option>
               </select>
@@ -122,7 +123,7 @@
           
           <div class="flex items-center justify-between mb-8 relative z-10">
              <h2 class="text-sm font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
-               <i class="fas fa-chart-line text-blue-500"></i> منحنى تقلبات الرصيد
+               <i class="fas fa-chart-line text-blue-500"></i> منحنى تغير رصيد المخزون
              </h2>
              <span class="text-[9px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-100">تحليل تراكمي</span>
           </div>
@@ -247,11 +248,11 @@ import { Line as LineChart } from 'vue-chartjs';
 import { Chart as ChartJS, Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement, Filler } from 'chart.js';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
-import { getLocalDateISO, getLocalTimestamp } from '@/utils/date';
+import { getLocalDateISO, getLocalTimestamp } from '@/utils';
 import { useTableFilters } from '@/composables/useTableFilters';
-import { useReportsStore } from '@/stores/reports';
-import { useBranchStore } from '@/stores/branch';
-import { useInventoryStore } from '@/stores/inventory/inventoryStore';
+import { useReportsStore } from '@/stores/reports/reportsStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
+import { useProductStore } from '@/stores/product/productStore';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import PageHeader from '@/components/PageHeader.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
@@ -261,7 +262,7 @@ ChartJS.register(Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale
 const reportsStore = useReportsStore();
 const branchStore = useBranchStore();
 const { breadcrumb } = useBreadcrumb();
-const inventoryStore = useInventoryStore();
+const productStore = useProductStore();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const isLoading = ref(true);
 const error = ref(null);
@@ -364,23 +365,43 @@ const fetchReport = async () => {
   } finally { isLoading.value = false; }
 };
 
-const exportCsv = async () => {
-  try {
-    const result = await reportsStore.fetchInventoryMovements(startDate.value, endDate.value, selectedProduct.value?.id || null, movementType.value, selectedBranch.value !== 'all' ? String(selectedBranch.value) : undefined);
-    const a = document.createElement('a'); 
-    a.href = window.URL.createObjectURL(new Blob([Array.isArray(result.data) ? result.data.map(m => `${m.date},${m.product},${m.in},${m.out},${m.balance}`).join('\n') : ''])); 
-    a.download = `inventory_${getLocalTimestamp()}.csv`; a.click();
-  } catch {}
+const exportCsv = () => {
+  const columns = [
+    ['date', 'التاريخ'],
+    ['reference', 'المرجع'],
+    ['product', 'المنتج'],
+    ['type', 'النوع'],
+    ['in', 'وارد'],
+    ['out', 'صادر'],
+    ['balance', 'الرصيد'],
+    ['notes', 'ملاحظات'],
+    ['cost', 'التكلفة']
+  ];
+  const escapeCsv = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+  const rows = [
+    columns.map(([, label]) => escapeCsv(label)).join(','),
+    ...sortedMovements.value.map((movement) => columns
+      .map(([key]) => escapeCsv(movement[key]))
+      .join(','))
+  ];
+  const blob = new Blob(['\uFEFF', rows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `inventory_${getLocalTimestamp()}.csv`;
+  anchor.click();
+  setTimeout(() => window.URL.revokeObjectURL(url), 0);
 };
 
 const formatCurrency = (v) => formatCurrencyLocale(v, 2);
 const formatNumber = (v) => (Number(v) || 0).toLocaleString('en-US');
 const formatDate = (v, o = {}) => v ? new Date(v).toLocaleDateString('en-US', o) : '';
 const movementValue = (mv) => (Number(mv.in || 0) - Number(mv.out || 0)) * Number(mv.cost || 0);
-const getMovementTypeClass = (t) => ({ purchase: 'text-emerald-600 border-emerald-100 bg-emerald-50', sale: 'text-blue-600 border-blue-100 bg-blue-50', return: 'text-amber-600 border-amber-100 bg-amber-50', adjustment: 'text-purple-600 border-purple-100 bg-purple-50' }[t] || 'text-slate-400 bg-slate-50 border-slate-100');
+const getMovementTypeClass = (t) => ({ purchase: 'text-emerald-600 border-emerald-100 bg-emerald-50', sale: 'text-blue-600 border-blue-100 bg-blue-50', sale_cancel: 'text-rose-600 border-rose-100 bg-rose-50', return: 'text-amber-600 border-amber-100 bg-amber-50', adjustment: 'text-purple-600 border-purple-100 bg-purple-50' }[t] || 'text-slate-400 bg-slate-50 border-slate-100');
 const getMovementTypeLabel = (t) => ({
   purchase: 'مشتريات',
   sale: 'مبيعات',
+  sale_cancel: 'إلغاء بيع',
   return: 'مرتجع',
   adjustment: 'تسوية',
   initial_stock: 'إدخال مخزون أولي',
@@ -396,7 +417,11 @@ const onProductInput = async () => {
   showProductDropdown.value = true; clearTimeout(productSearchTimer); 
   productSearchTimer = setTimeout(async () => { 
     try { 
-      const result = await inventoryStore.fetchProducts(1, 50, productQuery.value);
+      const result = await productStore.searchProducts({
+        query: productQuery.value,
+        branchId: selectedBranch.value !== 'all' ? selectedBranch.value : undefined,
+        limit: 50
+      });
       if (result.status === 'success' && Array.isArray(result.data)) productResults.value = result.data;
       else productResults.value = [];
     } catch { productResults.value = []; } 

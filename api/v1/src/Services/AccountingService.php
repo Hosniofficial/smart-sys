@@ -3,10 +3,16 @@
 namespace App\Services;
 
 use PDO;
+use App\Exceptions\AccountingPeriodClosedException;
 use App\Services\MonologHandler;
 use App\Services\CostCenter\CostCenterService;
 use App\Repositories\SettingsRepository;
 
+/**
+ * Resolves tenant accounting configuration and builds journal entries for operational transactions.
+ *
+ * Persistence uses PDO; settings and cost-center resolution are delegated to their repositories and services.
+ */
 class AccountingService
 {
     private PDO $db;
@@ -19,15 +25,13 @@ class AccountingService
         $this->db                = $db;
         $this->logger            = MonologHandler::getInstance('accounting');
         $this->settingsRepo      = new SettingsRepository($db);
-        // نفس محرك حل مركز التكلفة المستخدم في المشتريات/المرتجعات/السندات النقدية —
-        // كانت هذه الدالة تحتوي سابقاً خوارزمية منفصلة ومختلفة (Two Sources of Truth).
         $this->costCenterService = new CostCenterService($db, 'sales');
     }
 
     // ─── isCashMethod ─────────────────────────────────────────────────────────
     /**
      * Single Source of Truth لتحديد هل طريقة الدفع نقدية (تحتاج cashier session).
-     * الأنواع النقدية: cash, bank, card, wallet — أي شيء غير credit.
+    * النوع النقدي الفعلي فقط: cash. التحويل والبطاقة والمحفظة لا تمثل نقد الدرج.
      */
     public function isCashMethod(int $paymentMethodId, int $tenantId): bool
     {
@@ -37,9 +41,7 @@ class AccountingService
             );
             $stmt->execute([$paymentMethodId, $tenantId]);
             $kind = strtolower((string) ($stmt->fetchColumn() ?: ''));
-            // credit = آجل → لا يحتاج session
-            // كل شيء آخر (cash, bank, card, wallet) → يحتاج session
-            return $kind !== '' && $kind !== 'credit';
+            return $kind === 'cash';
         } catch (\Throwable $e) {
             return false;
         }
@@ -47,27 +49,7 @@ class AccountingService
 
     // ─── resolveCostCenterForService ──────────────────────────────────────────
     /**
-     * Single Source of Truth لحل cost_center_id.
-     *
-     * ⚠️ تعديل معماري: كانت هذه الدالة تحتوي سابقاً نسختها الخاصة الكاملة من خوارزمية
-     * الحل (مكررة عن CostCenterService::resolve بترتيب أولوية مختلف قليلاً)، ما كان يعني
-     * أن المبيعات تحل مركز التكلفة بمنطق مختلف عن المشتريات/المرتجعات/السندات النقدية/العملاء.
-     * أصبحت الآن wrapper رقيق حول CostCenterService — المرجع الوحيد الآن لكل الوحدات.
-     *
-     * الأولوية (موحّدة الآن مع كل الوحدات الأخرى):
-     *   provided (يُتحقق من وجوده فعلياً) → providedBranchId → user's branch → tenant setting → أول cost_center متاح
-     *
-     * تغيير سلوك مقصود: القيمة $provided كانت تُقبل سابقاً هنا بدون أي تحقق من وجودها
-     * فعلياً في قاعدة البيانات (خلافاً لبقية الوحدات التي كانت تتحقق منها وترفضها إن كانت
-     * غير موجودة). الآن تُتحقق بنفس الصرامة في كل مكان — إن كانت $provided قيمة غير
-     * موجودة فعلياً، لن تُقبل بصمت، بل يُعاد اللجوء لبقية خطوات الحل تلقائياً (وليس رفض
-     * العملية بالكامل، حفاظاً على السلوك التاريخي لهذه الدالة تحديداً التي تُرجع null
-     * بدل استثناء عند الفشل الكامل).
-     *
-     * @param int      $tenantId         معرف المستأجر
-     * @param int|null $userId           معرف المستخدم (لاستنتاج الفرع)
-     * @param mixed    $provided         قيمة مُمرَّرة صريحاً (أعلى أولوية، تُتحقق من وجودها)
-     * @param int|null $providedBranchId فرع محدد صريحاً (مثل فرع الفاتورة)
+     * Resolve a cost center using the shared policy; log resolution failures and return null.
      */
     public function resolveCostCenterForService(int $tenantId, ?int $userId, $provided = null, ?int $providedBranchId = null): ?int
     {
@@ -243,38 +225,12 @@ class AccountingService
         $saleDate = $sale['created_at'] ?? null;
         $cogs     = (float) $costing->computeCOGSForSale($tenantId, $saleId, $saleDate);
 
-        if ($cogs <= 0.0000001) {
-            try {
-                $fb = $this->db->prepare("SELECT COALESCE(SUM(quantity * purchase_price), 0) FROM sales_items WHERE sale_id = ? AND tenant_id = ?");
-                $fb->execute([$saleId, $tenantId]);
-                $ppSum = (float) $fb->fetchColumn();
-                if ($ppSum > 0) {
-                    $cogs = $ppSum;
-                }
-            } catch (\Throwable $e) {
-            }
-        }
-
-        if ($cogs <= 0.0000001) {
-            try {
-                $st = $this->db->prepare("SELECT COALESCE(SUM(si.quantity * si.sale_price),0) AS amt, COALESCE(s.total_profit,0) AS tp FROM sales s JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id WHERE s.id = ? AND s.tenant_id = ? GROUP BY s.total_profit");
-                $st->execute([$saleId, $tenantId]);
-                $r   = $st->fetch(PDO::FETCH_ASSOC) ?: ['amt' => 0, 'tp' => 0];
-                $amt = (float) $r['amt'];
-                $tp  = (float) $r['tp'];
-                if ($tp > 0 && $amt > 0) {
-                    $cogs = max(0.0, $amt - $tp);
-                }
-            } catch (\Throwable $e) {
-            }
-        }
-
         $cogs = round($cogs, 2);
         if ($cogs <= 0.0) {
             return null;
         }
 
-        $cogsAccountId      = $this->getAccountIdFallback($tenantId, ['5103']);
+        $cogsAccountId      = $this->resolveAccountId($tenantId, 'cogs_account_id', '5103');
         $inventoryAccountId = $this->resolveInventoryAccountForBranch(
             $tenantId,
             (int) ($sale['branch_id'] ?? 0) ?: null
@@ -658,11 +614,7 @@ class AccountingService
 
     // ─── postJournalEntry ─────────────────────────────────────────────────────
     /**
-     * Single Source of Truth لكل journal entries.
-     *
-     * [FIX] حذف الـ duplicate check بالـ reference فقط (بدون idempotency_key)
-     * لأنه كان بيمنع إنشاء entries لنفس المنتج في فروع مختلفة.
-     * الآن الحماية من التكرار تعتمد فقط على الـ idempotency_key.
+     * Validate and persist a balanced journal entry, reusing an existing entry when its idempotency key matches.
      */
     public function postJournalEntry(
         int     $tenantId,
@@ -804,6 +756,44 @@ class AccountingService
                 } catch (\Throwable $re) {
                 }
             }
+
+            // ── [FIX] Idempotency recovery for concurrent duplicates ────────────
+            // If an exception occurred during INSERT and we have an idempotencyKey,
+            // try to retrieve the existing journal entry that caused the UNIQUE violation.
+            // This handles the race condition where two concurrent requests both pass
+            // the idempotency check, but one loses the INSERT race.
+            if ($idempotencyKey) {
+                try {
+                    $stmtRecover = $this->db->prepare(
+                        "SELECT id FROM journal_entries
+                         WHERE tenant_id = ? AND idempotency_key = ?
+                         LIMIT 1"
+                    );
+                    $stmtRecover->execute([$tenantId, $idempotencyKey]);
+                    $recoveredJeId = $stmtRecover->fetchColumn();
+
+                    if ($recoveredJeId !== false && $recoveredJeId !== null) {
+                        $this->logger->info('Idempotency recovery: existing entry found after exception', [
+                            'idempotency_key'  => $idempotencyKey,
+                            'journal_entry_id' => $recoveredJeId,
+                            'original_error'   => $e->getMessage(),
+                        ]);
+                        return (int) $recoveredJeId;
+                    }
+                } catch (\Throwable $recoveryException) {
+                    // Recovery attempt itself failed — log it and continue to return null
+                    $this->logger->warning('Idempotency recovery attempt failed', [
+                        'idempotency_key'   => $idempotencyKey,
+                        'recovery_error'    => $recoveryException->getMessage(),
+                        'original_error'    => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            if ($e instanceof AccountingPeriodClosedException) {
+                throw $e;
+            }
+
             $this->logger->error('postJournalEntry() error', [
                 'reference_type' => $referenceType,
                 'error'          => $e->getMessage(),
@@ -871,8 +861,8 @@ class AccountingService
     // ─── deleteJournalEntry ───────────────────────────────────────────────────
     public function deleteJournalEntry(int $tenantId, int $journalEntryId): bool
     {
+        $ownTransaction = !$this->db->inTransaction();
         try {
-            $ownTransaction = !$this->db->inTransaction();
             if ($ownTransaction) {
                 $this->db->beginTransaction();
             }
@@ -894,11 +884,8 @@ class AccountingService
 
             return true;
         } catch (\Throwable $e) {
-            try {
-                if ($this->db->inTransaction()) {
-                    $this->db->rollBack();
-                }
-            } catch (\Throwable $re) {
+            if ($ownTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
             }
 
             $this->logger->error('Failed to delete journal entry', [
@@ -926,7 +913,7 @@ class AccountingService
         $stmt->execute([$tenantId, $entryDate, $entryDate]);
         $period = $stmt->fetchColumn();
         if ($period !== false && $period !== null) {
-            throw new \Exception("لا يمكن تسجيل قيد في دورة مغلقة: {$period}");
+            throw new AccountingPeriodClosedException("لا يمكن تسجيل قيد في دورة مغلقة: {$period}");
         }
     }
 
@@ -940,12 +927,35 @@ class AccountingService
      */
     public function reverseJournalEntry(int $jeId, int $tenantId, ?int $userId = null): int
     {
+        $ownTransaction = !$this->db->inTransaction();
+        if ($ownTransaction) {
+            $this->db->beginTransaction();
+        }
+
+        try {
+            $reversalJeId = $this->reverseJournalEntryWithinTransaction($jeId, $tenantId, $userId);
+            if ($ownTransaction) {
+                $this->db->commit();
+            }
+            return $reversalJeId;
+        } catch (\Throwable $e) {
+            if ($ownTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    private function reverseJournalEntryWithinTransaction(int $jeId, int $tenantId, ?int $userId): int
+    {
+        $forUpdate = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? 'FOR UPDATE' : '';
         $stmtJE = $this->db->prepare("
             SELECT id, entry_date, description, reference_type, reference_id,
                    status, reversal_of, cost_center_id
             FROM journal_entries
             WHERE id = ? AND tenant_id = ?
             LIMIT 1
+            {$forUpdate}
         ");
         $stmtJE->execute([$jeId, $tenantId]);
         $je = $stmtJE->fetch(\PDO::FETCH_ASSOC);
@@ -954,7 +964,10 @@ class AccountingService
             throw new \Exception("القيد المحاسبي رقم {$jeId} غير موجود.");
         }
         if ($je['status'] === 'reversed') {
-            throw new \Exception("القيد رقم {$jeId} معكوس مسبقاً.");
+            if ((int) ($je['reversal_of'] ?? 0) > 0) {
+                return (int) $je['reversal_of'];
+            }
+            throw new \Exception("القيد رقم {$jeId} معكوس مسبقاً دون رابط لقيد العكس.");
         }
         if ($je['reversal_of'] !== null) {
             throw new \Exception("القيد رقم {$jeId} هو نفسه قيد عكس — لا يمكن عكسه مجدداً.");
@@ -986,13 +999,14 @@ class AccountingService
 
         $reversalJeId = $this->postJournalEntry(
             $tenantId,
-            $je['reference_type'],
-            $je['reference_id'],
+            'reversal',
+            $jeId,
             $reversalDesc,
             $reversedLines,
             $reversalDate,
             $userId,
-            $je['cost_center_id'] ? (int) $je['cost_center_id'] : null
+            $je['cost_center_id'] ? (int) $je['cost_center_id'] : null,
+            'journal_reversal_' . $jeId
         );
 
         if (!$reversalJeId) {
@@ -1385,7 +1399,11 @@ class AccountingService
                 }
 
                 $itemsStmt = $this->db->prepare(
-                    "SELECT product_id, unit_id, quantity FROM return_items WHERE return_id = ? AND tenant_id = ?"
+                                        "SELECT ri.product_id, ri.unit_id, ri.quantity
+                                         FROM return_items ri
+                                         INNER JOIN products p ON p.id = ri.product_id AND p.tenant_id = ri.tenant_id
+                                         WHERE ri.return_id = ? AND ri.tenant_id = ?
+                                             AND COALESCE(p.product_type, 'stock') = 'stock'"
                 );
                 $itemsStmt->execute([$returnId, $tenantId]);
                 $items    = $itemsStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
@@ -1429,6 +1447,7 @@ class AccountingService
                     'return_id' => $returnId,
                     'error'     => $e->getMessage(),
                 ]);
+                throw new \RuntimeException('تعذر عكس تكلفة البضاعة المباعة للمرتجع.', 0, $e);
             }
         } else {
             // ── مرتجع مشتريات ─────────────────────────────────────────────────
@@ -1537,6 +1556,7 @@ class AccountingService
      *
      * @param int    $tenantId
      * @param int    $saleId
+     * @param int    $paymentId     Unique payment-record ID used as journal reference.
      * @param float  $amount
      * @param string $paymentDate
      * @param int    $paymentMethodId
@@ -1548,6 +1568,7 @@ class AccountingService
     public function postSalePaymentJournalEntry(
         int    $tenantId,
         int    $saleId,
+        int    $paymentId,
         float  $amount,
         string $paymentDate,
         int    $paymentMethodId,
@@ -1559,15 +1580,13 @@ class AccountingService
         if ($amount <= 0) {
             throw new \Exception('قيمة الدفعة يجب أن تكون أكبر من صفر.');
         }
+        if ($paymentId <= 0) {
+            throw new \Exception('معرف سجل الدفعة مطلوب لإنشاء قيد تحصيل المبيعات.');
+        }
 
         $liquidityAccountId = $this->resolveLiquidityAccount($paymentMethodId, $tenantId);
         if ($liquidityAccountId === null) {
             throw new \Exception('طريقة الدفع آجلة (credit) — لا سطر سيولة مطلوب.');
-        }
-
-        $arAccountId = $this->resolveAccountId($tenantId, 'ar_account', '1101');
-        if (!$arAccountId) {
-            throw new \Exception('حساب ذمم العملاء (AR) غير معرّف.');
         }
 
         $entryDate = substr($paymentDate, 0, 10) ?: date('Y-m-d');
@@ -1576,14 +1595,28 @@ class AccountingService
         $saleStmt = $this->db->prepare("
             SELECT 
                 invoice_number,
+                customer_account.account_id AS customer_account_id,
                 (net_total_amount + IFNULL(tax_amount, 0)) AS grand_total,
                 IFNULL(paid_amount, 0) AS current_paid_amount
-            FROM sales 
-            WHERE id = ? AND tenant_id = ?
+            FROM sales
+            LEFT JOIN customers customer_account
+                ON customer_account.id = sales.customer_id
+                AND customer_account.tenant_id = sales.tenant_id
+            WHERE sales.id = ? AND sales.tenant_id = ?
             LIMIT 1
         ");
         $saleStmt->execute([$saleId, $tenantId]);
         $sale = $saleStmt->fetch(\PDO::FETCH_ASSOC);
+
+        // Credit the same customer subledger account that was debited by the
+        // invoice. Use the tenant's generic AR account only for walk-in sales
+        // that have no linked customer account.
+        $arAccountId = !empty($sale['customer_account_id'])
+            ? (int) $sale['customer_account_id']
+            : $this->resolveAccountId($tenantId, 'ar_account', '1101');
+        if (!$arAccountId) {
+            throw new \Exception('حساب ذمم العملاء (AR) غير معرّف.');
+        }
 
         // Build description based on payment type
         $paymentDescription = 'تسديد جزء من الفاتورة';
@@ -1602,35 +1635,17 @@ class AccountingService
             }
         }
 
-        // ── AUDIT SELF-REVIEW FIX 15-B (MEDIUM) ─────────────────────────────────
-        // Previously the idempotency key was ALWAYS derived purely from business
-        // data: sale_id + payment_date + amount + payment_method_id + user_id,
-        // with no time bound on the match (journal_entries.idempotency_key is
-        // checked with no expiry). Two genuinely separate payments that happen
-        // to share the same (date, amount, method, user) — plausible whenever
-        // payment_date carries only day-level precision, e.g. a customer paying
-        // the same recurring installment twice in one day — collided on this
-        // key. After AUDIT FIX #1, that collision no longer causes duplicate
-        // GL/payments rows (good), but it now means the SECOND genuine payment
-        // is silently treated as a retry and dropped entirely — money received
-        // but never recorded anywhere. That is a worse failure mode than the
-        // original duplication bug, because it leaves no trace to reconcile.
-        //
-        // Fix: when the caller passes the SAME explicit Idempotency-Key that the
-        // HTTP layer already uses (AUDIT FIX #2), key off of that instead — it
-        // reflects the client's actual intent to retry the same logical request,
-        // not a coincidental resemblance in business data. Falls back to the old
-        // hash-based key only when no explicit key is supplied (callers that
-        // predate AUDIT FIX #2), preserving prior behavior — and the residual
-        // risk in that fallback path is now documented rather than hidden.
+        // Use the request key to recognize an actual retry. When legacy callers
+        // omit it, use the newly-created payment record so distinct receipts
+        // with otherwise identical details cannot collide.
         $idempotencyKey = $externalIdempotencyKey !== null && $externalIdempotencyKey !== ''
             ? 'sale_payment_key_' . $saleId . '_' . $externalIdempotencyKey
-            : 'sale_payment_' . $saleId . '_' . md5($paymentDate . $amount . $paymentMethodId . ($userId ?? 0));
+            : 'sale_payment_record_' . $paymentId;
 
         $journalEntryId = $this->postJournalEntry(
             $tenantId,
-            'sale_payment',
-            $saleId,
+            'customer_payment',
+            $paymentId,
             $paymentDescription,
             [
                 ['account_id' => $liquidityAccountId, 'debit' => $amount, 'credit' => 0,      'description' => 'تحصيل دفعة'],
@@ -1651,48 +1666,8 @@ class AccountingService
 
     // ─── recalculateSaleStatus ────────────────────────────────────────────────
     /**
-     * ── AUDIT SELF-REVIEW FIX 15-A (MEDIUM-HIGH) ────────────────────────────
-     * Single source of truth لحالة الفاتورة، تأخذ في الحسبان الدفعات النقدية
-     * الفعلية *و* أرصدة المرتجعات المُخصَّصة (return_credit_allocations) معًا —
-     * وهو ما كانت تفتقده كل نقاط الكتابة السابقة لعمود sales.status (إنشاء
-     * الفاتورة، إضافة دفعة، اعتماد الفاتورة، ربط سند بفاتورة): كلها كانت تقارن
-     * المدفوعات النقدية فقط بإجمالي الفاتورة، فتُبقي أي فاتورة سُدِّدت بالكامل
-     * عبر رصيد مرتجع (بدون أي نقد) عالقة إلى الأبد على 'pending_payment' أو
-     * 'partial' في العمود المخزَّن، رغم أن dynamic_status (المحسوبة للعرض في
-     * SalesHandler::determineSaleStatus) كانت تعرضها بشكل صحيح.
-     *
-     * ملاحظة تصميم: paid_amount المخزَّن يبقى يعكس النقد الفعلي المُستلَم فقط
-     * (نفس الاتفاقية الموثَّقة في تعليقات ReturnService — المرتجع رصيد دائن
-     * يُخفِّض المديونية، وليس دفعة نقدية) — فقط status هو من يأخذ رصيد
-     * المرتجع بعين الاعتبار عبر outstanding = grandTotal - paid - returnCredits.
-     *
-     * هذا الإصلاح مُطبَّق الآن في SalePaymentService::addSalePayment فقط (أكثر
-     * المسارات استخدامًا). لم يُعمَّم بعد على SaleApprovalService أو
-     * CashVoucherService::linkToSale — كل واحدة منها لا تزال تحسب status
-     * بمنطقها المستقل القديم دون return credits. (ReturnService::createReturn
-     * تبيّن عند إعادة الفحص أنها **بالفعل** تحسب outstanding بنفس الصيغة
-     * الصحيحة وتكتب 'closed_by_return'/'paid' بشكل مستقل — لم تكن جزءًا من
-     * الفجوة كما ذكرتُ خطأً في المراجعة الذاتية السابقة).
-     *
-     * ── تصحيح إضافي (اكتُشف أثناء إعادة الفحص) ──────────────────────────────
-     * النسخة السابقة من هذه الدالة كانت تجمع SUM(payments.amount) مباشرة دون
-     * طرح دفعات الاسترداد النقدي (payments.type = 'return_payment') — بعكس
-     * SalesHandler::determineSaleStatus() (المرجع الصحيح المستخدَم للعرض) الذي
-     * يستخدم SUM(CASE WHEN type='return_payment' THEN -amount ELSE amount END).
-     * هذا يعني: استرداد نقدي فعلي لعميل (Refund مدفوع من الصندوق) لم يكن
-     * يُخفِّض paid_amount المحسوب هنا ولا حالة الفاتورة — تصحيح ذلك الآن
-     * ليطابق تمامًا منطق determineSaleStatus.
-     *
-     * ── قرار مُنفَّذ الآن (بتفويض صريح من صاحب المشروع، مرحلة تطوير) ──────────
-     * تم توسيع status ليطابق الغِنى الكامل لـ dynamic_status (نفس منطق
-     * determineSaleStatus حرفيًا) بدل الاكتفاء بـ 'paid' الجامعة. القيم
-     * المُنتَجة الآن: paid, partial, pending_payment, returned,
-     * settled_by_credit, closed_by_return, settled_mixed. تم تحديث كل مستهلكي
-     * status IN ('paid','completed') المعروفين (AdvancedReportsHandler،
-     * PosAnalyticsHandler) في نفس الدفعة ليشملوا كل الحالات "المُسوَّاة"
-     * (paid/settled_by_credit/closed_by_return/settled_mixed) باستثناء
-     * 'returned' عمدًا — بيع أُعيد بالكامل لا يجب أن يُحتسَب ضمن "إجمالي
-     * المبيعات المدفوعة" في تقارير حجم المعاملات.
+     * Recompute a sale's stored paid amount and status from completed payments,
+     * payment allocations, return credits, and sale returns.
      *
      * @return array{status: string, paid_amount: float, return_credits: float, outstanding: float, return_amount: float}
      */
@@ -1718,7 +1693,17 @@ class AccountingService
              WHERE tenant_id = ? AND sale_id = ? AND status = 'completed' AND COALESCE(is_draft, 0) = 0"
         );
         $paidStmt->execute([$tenantId, $saleId]);
-        $totalPaid = round((float) $paidStmt->fetchColumn(), 2);
+        $directPaid = (float) $paidStmt->fetchColumn();
+
+        $allocatedPaidStmt = $this->db->prepare(
+            "SELECT COALESCE(SUM(cpa.allocated_amount), 0)
+             FROM customer_payment_allocations cpa
+             JOIN payments p ON p.id = cpa.payment_id AND p.tenant_id = cpa.tenant_id
+             WHERE cpa.tenant_id = ? AND cpa.sale_id = ?
+               AND p.status = 'completed' AND COALESCE(p.is_draft, 0) = 0"
+        );
+        $allocatedPaidStmt->execute([$tenantId, $saleId]);
+        $totalPaid = round($directPaid + (float) $allocatedPaidStmt->fetchColumn(), 2);
 
         $creditStmt = $this->db->prepare(
             "SELECT COALESCE(SUM(allocated_amount), 0) FROM return_credit_allocations
@@ -1806,7 +1791,7 @@ class AccountingService
 
     // ─── postDebtPaymentJournalEntry ──────────────────────────────────────────
     /**
-     * Single Source of Truth لقيد تحصيل دين عميل (debt_payment).
+     * Single Source of Truth لقيد تحصيل دفعة عميل مرتبطة بسجل payment.
      *
      *   Dr. سيولة (صندوق/بنك)   ← liquidityAccountId
      *   Cr. حساب العميل          ← customerAccountId
@@ -1830,11 +1815,16 @@ class AccountingService
         string $paymentDate,
         int    $paymentMethodId,
         ?int   $userId       = null,
-        ?int   $costCenterId = null
+        ?int   $costCenterId = null,
+        ?int   $paymentId    = null,
+        ?string $idempotencyKey = null
     ): int {
         $amount = round($amount, 2);
         if ($amount <= 0) {
             throw new \Exception('مبلغ الدفع غير صالح.');
+        }
+        if ($paymentId === null || $paymentId <= 0) {
+            throw new \Exception('يجب إنشاء سجل الدفعة قبل ترحيل قيدها.');
         }
 
         $liquidityAccountId = $this->resolveLiquidityAccount($paymentMethodId, $tenantId);
@@ -1842,10 +1832,16 @@ class AccountingService
             throw new \Exception('طريقة الدفع آجلة (credit) — لا سطر سيولة مطلوب.');
         }
 
+        // Equal-value payments on the same date are separate operations unless the caller retries the same key.
+        $paymentIdentity = $idempotencyKey !== null && trim($idempotencyKey) !== ''
+            ? trim($idempotencyKey)
+            : bin2hex(random_bytes(32));
+        $journalIdempotencyKey = 'customer_payment_' . $customerId . '_' . hash('sha256', $paymentIdentity);
+
         $journalEntryId = $this->postJournalEntry(
             $tenantId,
-            'debt_payment',
-            $customerId,
+            'customer_payment',
+            $paymentId,
             "تحصيل دفعة من العميل #{$customerId} بقيمة {$amount}",
             [
                 ['account_id' => $liquidityAccountId,  'debit' => $amount, 'credit' => 0,      'description' => 'إيداع بالصندوق'],
@@ -1854,7 +1850,7 @@ class AccountingService
             substr($paymentDate, 0, 10) ?: date('Y-m-d'),
             $userId,
             $costCenterId,
-            'payment_' . $customerId . '_' . md5($paymentDate . '_' . $amount . '_' . $paymentMethodId . '_' . ($userId ?? 0))
+            $journalIdempotencyKey
         );
 
         if (!$journalEntryId) {
@@ -2041,106 +2037,117 @@ class AccountingService
         $paidAmount     = round($paidAmount, 2);
         $grossAmount    = round($netTotalAmount + $taxAmount, 2);
 
-        if ($paidAmount > $grossAmount + 0.01) {
-            throw new \Exception("المبلغ المدفوع ({$paidAmount}) أكبر من إجمالي الفاتورة ({$grossAmount}) — يرجى مراجعة البيانات.");
-        }
-        $paidAmount = min($paidAmount, $grossAmount);
+        // ── GUARD: منع الترحيل المزدوج ────────────────────────────────────────────
+        // يتحقق أولاً من وجود قيد لهذه الفاتورة. إذا وُجد، يُخزَّن ID القيد في
+        // $journalEntryId ويُتجاوز بناء $lines وإنشاء القيد. التنفيذ يستمر دائماً
+        // إلى كود ربط inventory_transactions لضمان اكتمال الربط حتى عند إعادة المحاولة.
+        $existingJeStmt = $this->db->prepare("
+            SELECT id FROM journal_entries
+            WHERE tenant_id = ? AND reference_type = 'sale' AND reference_id = ?
+            LIMIT 1
+        ");
+        $existingJeStmt->execute([$tenantId, $saleId]);
+        $existingJeId = $existingJeStmt->fetchColumn();
 
-        $stmtSale = $this->db->prepare("SELECT branch_id FROM sales WHERE id = ? AND tenant_id = ? LIMIT 1");
-        $stmtSale->execute([$saleId, $tenantId]);
-        $branchId = (int) $stmtSale->fetchColumn();
-
-        if ($costCenterId === null && $branchId > 0) {
-            $costCenterId = $this->resolveCostCenterForService($tenantId, $userId, null, $branchId);
-        }
-
-        $lines = [];
-
-        // سطر 1: إيراد المبيعات (دائن)
-        $lines[] = ['account_id' => $salesAccountId, 'debit' => 0, 'credit' => $netTotalAmount, 'description' => "إيراد مبيعات فاتورة رقم #{$saleId}"];
-
-        // سطر 2: COGS
-        try {
-            $cogsAmount = (float) (new CostingService($this->db))->computeCOGSForSale($tenantId, $saleId, $saleDate);
-        } catch (\Throwable $e) {
-            $cogsStmt = $this->db->prepare("SELECT COALESCE(SUM(si.quantity * si.purchase_price), 0) FROM sales_items si INNER JOIN sales s ON s.id = si.sale_id AND s.tenant_id = si.tenant_id WHERE si.sale_id = ? AND si.tenant_id = ?");
-            $cogsStmt->execute([$saleId, $tenantId]);
-            $cogsAmount = (float) $cogsStmt->fetchColumn();
-        }
-        if ($cogsAmount > 0.0) {
-            $cogsAccountId      = $this->resolveAccountId($tenantId, 'cogs_account_id', '5103');
-            $inventoryAccountId = $this->resolveInventoryAccountForBranch(
-                $tenantId,
-                $branchId > 0 ? $branchId : null
-            );
-            if ($cogsAccountId && $inventoryAccountId) {
-                $lines[] = ['account_id' => $cogsAccountId,      'debit' => $cogsAmount, 'credit' => 0,           'description' => "تكلفة البضاعة المباعة لفاتورة #{$saleId}"];
-                $lines[] = ['account_id' => $inventoryAccountId, 'debit' => 0,           'credit' => $cogsAmount, 'description' => "خفض المخزون لفاتورة #{$saleId}"];
+        if ($existingJeId !== false && (int) $existingJeId > 0) {
+            $journalEntryId = (int) $existingJeId;
+        } else {
+            if ($paidAmount > $grossAmount + 0.01) {
+                throw new \Exception("المبلغ المدفوع ({$paidAmount}) أكبر من إجمالي الفاتورة ({$grossAmount}) — يرجى مراجعة البيانات.");
             }
-        }
+            $paidAmount = min($paidAmount, $grossAmount);
 
-        // سطر 3: ضريبة المخرجات (دائن)
-        if ($taxAmount > 0) {
-            $vatAccountId = $this->resolveAccountId($tenantId, 'vat.output_account_id', '2202')
-                ?? $this->resolveAccountId($tenantId, 'vat_payable', '2202');
-            if ($vatAccountId) {
-                $lines[] = ['account_id' => $vatAccountId, 'debit' => 0, 'credit' => $taxAmount, 'description' => "ضريبة المخرجات لفاتورة رقم #{$saleId}"];
+            $stmtSale = $this->db->prepare("SELECT branch_id FROM sales WHERE id = ? AND tenant_id = ? LIMIT 1");
+            $stmtSale->execute([$saleId, $tenantId]);
+            $branchId = (int) $stmtSale->fetchColumn();
+
+            if ($costCenterId === null && $branchId > 0) {
+                $costCenterId = $this->resolveCostCenterForService($tenantId, $userId, null, $branchId);
             }
-        }
 
-        // سطر 4: السيولة (مدين)
-        if ($paidAmount > 0 && $paymentMethodId) {
-            $liquidityAccountId = $this->resolveLiquidityAccount($paymentMethodId, $tenantId);
-            if ($liquidityAccountId !== null) {
-                $lines[] = ['account_id' => $liquidityAccountId, 'debit' => $paidAmount, 'credit' => 0, 'description' => "تحصيل من فاتورة رقم #{$saleId}"];
-            }
-        }
+            $lines = [];
 
-        // ذمم العملاء: لا تُنشأ في البيع النقدي الكامل بدون عميل.
-        // البيع الجزئي/الآجل يتطلب عميلاً فعلياً حتى لا نسجل ذمة مجهولة.
-        $isFullyPaid = $paidAmount >= $grossAmount - 0.01;
-        if (!$customerId && !$isFullyPaid) {
-            throw new \Exception('يجب تحديد عميل للبيع الآجل أو البيع غير المسدد بالكامل.');
-        }
+            // سطر 1: إيراد المبيعات (دائن)
+            $lines[] = ['account_id' => $salesAccountId, 'debit' => 0, 'credit' => $netTotalAmount, 'description' => "إيراد مبيعات فاتورة رقم #{$saleId}"];
 
-        if ($customerId && $grossAmount > 0) {
-            $arAccountId = $this->resolveAccountId($tenantId, 'ar_account', '1101');
-            if (!$arAccountId) {
-                throw new \Exception('حساب ذمم العملاء غير معرّف. يرجى التحقق من إعدادات الحسابات (ar_account).');
-            }
-            if (!$customerAccountId) {
-                $custStmt = $this->db->prepare("SELECT account_id FROM customers WHERE id = ? AND tenant_id = ?");
-                $custStmt->execute([$customerId, $tenantId]);
-                $fetched = $custStmt->fetchColumn();
-                if ($fetched) {
-                    $arAccountId = (int) $fetched;
+            // سطر 2: COGS
+            $cogsAmount = (float) (new CostingService($this->db))
+                ->computeCOGSForSale($tenantId, $saleId, $saleDate);
+            if ($cogsAmount > 0.0) {
+                $cogsAccountId      = $this->resolveAccountId($tenantId, 'cogs_account_id', '5103');
+                $inventoryAccountId = $this->resolveInventoryAccountForBranch(
+                    $tenantId,
+                    $branchId > 0 ? $branchId : null
+                );
+                if ($cogsAccountId && $inventoryAccountId) {
+                    $lines[] = ['account_id' => $cogsAccountId,      'debit' => $cogsAmount, 'credit' => 0,           'description' => "تكلفة البضاعة المباعة لفاتورة #{$saleId}"];
+                    $lines[] = ['account_id' => $inventoryAccountId, 'debit' => 0,           'credit' => $cogsAmount, 'description' => "خفض المخزون لفاتورة #{$saleId}"];
                 }
-            } else {
-                $arAccountId = (int) $customerAccountId;
             }
-            $lines[] = ['account_id' => $arAccountId, 'debit' => $grossAmount, 'credit' => 0, 'description' => "دين على العميل لفاتورة رقم #{$saleId}"];
-            if ($paidAmount > 0) {
-                $lines[] = ['account_id' => $arAccountId, 'debit' => 0, 'credit' => $paidAmount, 'description' => "تسوية دفعة أولى من العميل لفاتورة رقم #{$saleId}"];
+
+            // سطر 3: ضريبة المخرجات (دائن)
+            if ($taxAmount > 0) {
+                $vatAccountId = $this->resolveAccountId($tenantId, 'vat.output_account_id', '2202')
+                    ?? $this->resolveAccountId($tenantId, 'vat_payable', '2202');
+                if ($vatAccountId) {
+                    $lines[] = ['account_id' => $vatAccountId, 'debit' => 0, 'credit' => $taxAmount, 'description' => "ضريبة المخرجات لفاتورة رقم #{$saleId}"];
+                }
+            }
+
+            // سطر 4: السيولة (مدين)
+            if ($paidAmount > 0 && $paymentMethodId) {
+                $liquidityAccountId = $this->resolveLiquidityAccount($paymentMethodId, $tenantId);
+                if ($liquidityAccountId !== null) {
+                    $lines[] = ['account_id' => $liquidityAccountId, 'debit' => $paidAmount, 'credit' => 0, 'description' => "تحصيل من فاتورة رقم #{$saleId}"];
+                }
+            }
+
+            // ذمم العملاء: لا تُنشأ في البيع النقدي الكامل بدون عميل.
+            $isFullyPaid = $paidAmount >= $grossAmount - 0.01;
+            if (!$customerId && !$isFullyPaid) {
+                throw new \Exception('يجب تحديد عميل للبيع الآجل أو البيع غير المسدد بالكامل.');
+            }
+
+            if ($customerId && $grossAmount > 0) {
+                $arAccountId = $this->resolveAccountId($tenantId, 'ar_account', '1101');
+                if (!$arAccountId) {
+                    throw new \Exception('حساب ذمم العملاء غير معرّف. يرجى التحقق من إعدادات الحسابات (ar_account).');
+                }
+                if (!$customerAccountId) {
+                    $custStmt = $this->db->prepare("SELECT account_id FROM customers WHERE id = ? AND tenant_id = ?");
+                    $custStmt->execute([$customerId, $tenantId]);
+                    $fetched = $custStmt->fetchColumn();
+                    if ($fetched) {
+                        $arAccountId = (int) $fetched;
+                    }
+                } else {
+                    $arAccountId = (int) $customerAccountId;
+                }
+                $lines[] = ['account_id' => $arAccountId, 'debit' => $grossAmount, 'credit' => 0, 'description' => "دين على العميل لفاتورة رقم #{$saleId}"];
+                if ($paidAmount > 0) {
+                    $lines[] = ['account_id' => $arAccountId, 'debit' => 0, 'credit' => $paidAmount, 'description' => "تسوية دفعة أولى من العميل لفاتورة رقم #{$saleId}"];
+                }
+            }
+
+            $entryDate      = substr($saleDate, 0, 10) ?: date('Y-m-d');
+            $journalEntryId = $this->postJournalEntry(
+                $tenantId,
+                'sale',
+                $saleId,
+                "قيد فاتورة بيع رقم #{$saleId}",
+                $lines,
+                $entryDate,
+                $userId,
+                $costCenterId,
+                'sale_je_' . $saleId
+            );
+
+            if (!$journalEntryId) {
+                throw new \Exception('فشل إنشاء القيد المحاسبي عبر الخدمة المركزية.');
             }
         }
 
-        $entryDate      = substr($saleDate, 0, 10) ?: date('Y-m-d');
-        $journalEntryId = $this->postJournalEntry(
-            $tenantId,
-            'sale',
-            $saleId,
-            "قيد فاتورة بيع رقم #{$saleId}",
-            $lines,
-            $entryDate,
-            $userId,
-            $costCenterId,
-            'sale_' . $saleId . '_' . md5($saleDate)
-        );
-
-        if (!$journalEntryId) {
-            throw new \Exception('فشل إنشاء القيد المحاسبي عبر الخدمة المركزية.');
-        }
-
+        // ── ربط حركات المخزون بالقيد (يُنفَّذ دائماً — سواء كان القيد جديداً أو موجوداً) ──
         // Link all stock movements for this sale to the posted journal entry.
         // Any database failure propagates to SaleCreationService's transaction,
         // so the sale cannot commit in a partially linked state.

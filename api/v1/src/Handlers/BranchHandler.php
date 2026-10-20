@@ -12,12 +12,10 @@ use App\Services\MonologHandler;
 use App\Services\AccountManagementService;
 
 /**
- * BranchHandler
+ * Handles branch listing, lookup, creation, updates, and soft deletion.
  *
- * Branch CRUD + list-with-aggregates.
- * Inventory reports   → BranchInventoryReportHandler
- * Stock adjustments   → StockAdjustmentHandler
- * Stock transfers     → StockTransferHandler
+ * Branch account and cost-center setup uses AccountManagementService and PDO;
+ * app/routes/branches.php applies branch permissions and delegates inventory operations.
  */
 class BranchHandler extends BaseHandler
 {
@@ -27,13 +25,7 @@ class BranchHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('branch');
     }
 
-    // =========================================================================
-    // LIST
-    // =========================================================================
-
-    /**
-     * قائمة الفروع مع مجاميع المخزون الأساسية
-     */
+    /** List active tenant branches with stock quantity, value, and low-stock aggregates. */
     public function listWithAggregates(Request $request, Response $response, array $args): Response
     {
         try {
@@ -63,7 +55,7 @@ class BranchHandler extends BaseHandler
                 GROUP BY b.id, b.name, b.location, b.phone, b.email,
                          b.description, b.active, b.account_id, b.cost_center_id,
                          b.created_at, b.updated_at
-                ORDER BY b.name ASC
+                ORDER BY b.created_at ASC, b.id ASC
             ";
 
             $stmt = $this->db->prepare($sql);
@@ -75,38 +67,7 @@ class BranchHandler extends BaseHandler
         }
     }
 
-    // =========================================================================
-    // GET
-    // =========================================================================
-
-    public function getBranchById(Request $request, Response $response, array $args): Response
-    {
-        try {
-            $tenantId = $this->extractTenantId($request);
-            $branchId = (int) $args['id'];
-
-            $stmt = $this->db->prepare(
-                "SELECT id, name, location, phone, email, description, active, account_id, cost_center_id, created_at, updated_at
-                 FROM branches
-                 WHERE id = ? AND tenant_id = ?"
-            );
-            $stmt->execute([$branchId, $tenantId]);
-            $branch = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$branch) {
-                return $this->errorResponse($response, 'Branch not found.', 404);
-            }
-            return $this->successResponse($response, $branch, 200);
-        } catch (\Throwable $e) {
-            $this->logger->error('خطأ في جلب بيانات الفرع: ' . $e->getMessage());
-            return $this->errorResponse($response, 'فشل في جلب بيانات الفرع', 400);
-        }
-    }
-
-    // =========================================================================
-    // CREATE
-    // =========================================================================
-
+    /** Create a branch with an inventory account and optional cost center in one transaction. */
     public function createBranch(Request $request, Response $response, array $args): Response
     {
         try {
@@ -131,7 +92,7 @@ class BranchHandler extends BaseHandler
 
             $this->db->beginTransaction();
 
-            // إنشاء حساب مخزون فرعي تلقائياً تحت 1301
+            // Provision the branch inventory account under parent account 1301.
             $accountMgmt  = new AccountManagementService($this->db);
             $newAccountId = $accountMgmt->createBranchAccount($name, $tenantId, $location);
             if (!$newAccountId) {
@@ -143,7 +104,7 @@ class BranchHandler extends BaseHandler
             $stmtGetCode->execute([$newAccountId, $tenantId]);
             $newCode = $stmtGetCode->fetchColumn();
 
-            // إنشاء مركز تكلفة أو إعادة استخدام موجود
+            // Reuse a tenant cost center with the branch name or create one.
             $newCostCenterId = null;
             try {
                 $stmtFindCc = $this->db->prepare("SELECT id FROM cost_centers WHERE tenant_id = ? AND name = ? LIMIT 1");
@@ -190,10 +151,7 @@ class BranchHandler extends BaseHandler
         }
     }
 
-    // =========================================================================
-    // UPDATE
-    // =========================================================================
-
+    /** Update supplied branch fields and synchronize the linked account name when renamed. */
     public function updateBranch(Request $request, Response $response, array $args): Response
     {
         try {
@@ -256,7 +214,6 @@ class BranchHandler extends BaseHandler
             $this->db->prepare("UPDATE branches SET " . implode(', ', $updates) . " WHERE id = ? AND tenant_id = ?")
                 ->execute($params);
 
-            // اسم الحساب يتزامن مع اسم الفرع
             if (isset($data['name']) && trim($data['name']) !== '' && !empty($branchRow['account_id'])) {
                 $this->db->prepare("UPDATE accounts SET name = ? WHERE id = ? AND tenant_id = ?")
                     ->execute(['مخزون - ' . trim($data['name']), (int) $branchRow['account_id'], (int) $tenantId]);
@@ -264,7 +221,6 @@ class BranchHandler extends BaseHandler
 
             $this->db->commit();
 
-            // ✅ Fetch and return the updated branch data
             $stmt = $this->db->prepare(
                 "SELECT id, name, location, phone, email, description, active, account_id, cost_center_id, created_at, updated_at
                  FROM branches
@@ -283,10 +239,7 @@ class BranchHandler extends BaseHandler
         }
     }
 
-    // =========================================================================
-    // DELETE
-    // =========================================================================
-
+    /** Soft-delete a tenant branch after preventing deletion when inventory transfers exist. */
     public function deleteBranch(Request $request, Response $response, array $args): Response
     {
         try {

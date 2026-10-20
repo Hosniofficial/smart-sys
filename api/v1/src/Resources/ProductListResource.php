@@ -5,64 +5,49 @@ declare(strict_types=1);
 namespace App\Resources;
 
 /**
- * ProductListResource - Minimal product data for inventory tables/lists
- * Returns only fields needed for display, no internal/GL fields
+ * Shapes product and branch-inventory records for product-list API responses.
  */
 class ProductListResource
 {
     /**
-     * Transform database product record to API list response
-     *
-     * @param array $product Database product record
-     * @param array $branchProduct Branch-specific inventory data (quantity, min_qty)
-     * @param array $units Product units data
-     * @param string|null $glActivationStatus GL mapping activation status (ACTIVE_IN_BRANCH, GL_POSTED, etc)
-     * @return array Formatted response for list view
+     * Return a product row with display fields, optional cost metrics, and inventory status.
+     * Branch-scoped results derive GL status from the branch mapping, not the product flag.
      */
     public static function transform(
         array $product,
         array $branchProduct,
         array $units = [],
         ?string $glActivationStatus = null,
-        bool $includeCostData = false
+        bool $includeCostData = false,
+        bool $branchScoped = false
     ): array {
         $mainUnit = self::getMainUnit($units);
         $currentQty = (int) ($branchProduct['quantity'] ?? 0);
-        // Handle both branch_products.minimum_quantity and products.min_quantity
-        // Default to 0 if not defined (consistent with ProductDetailResource)
         $minQty = (float) ($branchProduct['minimum_quantity'] ?? $product['min_quantity'] ?? 0);
 
-        // Determine GL status based on three-state logic:
-        // 1. opening_balance_posted has highest priority → posted
-        // 2. GL mapping with GL_POSTED/RECONCILED → posted
-        // 3. GL mapping with ACTIVE_IN_BRANCH → active (intermediate state)
-        // 4. Otherwise → draft
+        // Opening-balance state is only authoritative outside branch-scoped results.
         $glStatus = 'draft';
 
-        if ((bool) ($product['opening_balance_posted'] ?? false)) {
-            // Highest priority: opening balance was posted
+        if (!$branchScoped && (bool) ($product['opening_balance_posted'] ?? false)) {
             $glStatus = 'posted';
         } elseif ($glActivationStatus === 'GL_POSTED' || $glActivationStatus === 'RECONCILED') {
-            // GL mapping exists and is posted
             $glStatus = 'posted';
         } elseif ($glActivationStatus === 'ACTIVE_IN_BRANCH') {
-            // GL mapping exists and is activated but not yet reconciled/posted
-            // This is the intermediate state after user clicks "تفعيل"
             $glStatus = 'active';
         }
 
         return [
             'id'                    => (int) $product['id'],
             'name'                  => $product['name'],
-            'product_code'          => $product['product_code'],  // ← توحيد: sku → product_code
-            'sku'                   => $product['product_code'],  // ← Alias for backward compatibility
+            'product_code'          => $product['product_code'],
+            'sku'                   => $product['product_code'],
             'barcode'               => $product['barcode'],
 
             'category_id'           => $product['category_id'] ? (int) $product['category_id'] : null,
             'category_name'         => $product['category_name'] ?? null,
 
             'current_quantity'      => $currentQty,
-            'quantity'              => $currentQty,  // ← Alias for backward compatibility
+            'quantity'              => $currentQty,
             'unit_name'             => $mainUnit['name'] ?? 'قطعة',
             'unit_id'               => $mainUnit['id'] ?? null,
             'min_quantity'          => $minQty,
@@ -89,7 +74,7 @@ class ProductListResource
             'active'                => (int) ($product['active'] ?? 0),
 
             'inventory_status'      => self::calculateInventoryStatus($currentQty, $minQty, $product['product_type'] ?? 'stock'),
-            'gl_status'             => $glStatus,  // ← Uses GL mapping status if available, falls back to opening_balance_posted
+            'gl_status'             => $glStatus,
 
             'last_updated'          => $product['updated_at'] ?? $product['created_at'] ?? null,
         ];

@@ -13,14 +13,14 @@ use App\Services\BranchInventoryReconciliationService;
 use App\Services\MonologHandler;
 
 /**
- * StockTransferHandler
+ * Handles inter-branch stock transfers and their read models.
  *
- * Handles inter-branch stock transfer operations extracted from BranchHandler:
- *   - transferStock()                    — execute a stock transfer between branches
- *   - listTransfers()                    — list transfers with optional filters
- *   - getTransferById()                  — get transfer details + inventory transactions
- *   - listBranchTransfersByInventory()   — transfers for a branch from inventory_transactions
- *   - getTransferHistory()               — transfer history for a product
+ * A transfer updates source and destination stock in one transaction, records
+ * the transfer and paired inventory movements, and uses one calculated
+ * valuation throughout. ProductBranchActivationGuard validates both branch
+ * mappings; BranchInventoryReconciliationService marks both balances
+ * unreconciled. Read endpoints query transfer or inventory-transaction records.
+ * Routes and permissions are defined in app/routes/branches.php.
  */
 class StockTransferHandler extends BaseHandler
 {
@@ -30,34 +30,61 @@ class StockTransferHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('branch');
     }
 
-    // =========================================================================
-    // Public Endpoints
-    // =========================================================================
-
-    /**
-     * نقل المخزون بين الفروع
-     * POST /branches/transfer
-     */
+    /** Transfer stock between active branches and report zero-valuation transfers. */
     public function transferStock(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
         $data     = $request->getParsedBody();
+        $data     = is_array($data) ? $data : [];
         $userAttr = $request->getAttribute('user');
         $userId   = $request->getAttribute('user_id') ?? ($userAttr['id'] ?? null);
 
-        $required = ['from_branch', 'to_branch', 'product_id', 'quantity'];
-        foreach ($required as $field) {
-            if (empty($data[$field])) {
-                return $this->errorResponse($response, "حقل مطلوب مفقود: $field", 400);
-            }
+        $fromBranchId = filter_var($args['id'] ?? null, FILTER_VALIDATE_INT);
+        $toBranchId = filter_var($data['to_branch'] ?? null, FILTER_VALIDATE_INT);
+        $productId = filter_var($data['product_id'] ?? null, FILTER_VALIDATE_INT);
+        if ($fromBranchId === false || $fromBranchId <= 0) {
+            return $this->errorResponse($response, 'معرّف فرع المصدر غير صالح.', 400);
         }
+        if ($toBranchId === false || $toBranchId <= 0 || $productId === false || $productId <= 0) {
+            return $this->errorResponse($response, 'يجب تحديد فرع الهدف والمنتج بمعرّفات صحيحة.', 400);
+        }
+        if (isset($data['from_branch']) && (int) $data['from_branch'] !== $fromBranchId) {
+            return $this->errorResponse($response, 'فرع المصدر لا يطابق الفرع المحدد في المسار.', 400);
+        }
+        if ($fromBranchId === $toBranchId) {
+            return $this->errorResponse($response, 'يجب أن يختلف فرع المصدر عن فرع الهدف.', 400);
+        }
+        if (!isset($data['quantity']) || !is_numeric($data['quantity'])) {
+            return $this->errorResponse($response, 'يجب تحديد كمية نقل صالحة.', 400);
+        }
+
+        $transferQty = (float) $data['quantity'];
+        if (!is_finite($transferQty) || $transferQty <= 0) {
+            return $this->errorResponse($response, 'كمية النقل يجب أن تكون أكبر من صفر.', 400);
+        }
+
+        $data['from_branch'] = $fromBranchId;
+        $data['to_branch'] = $toBranchId;
+        $data['product_id'] = $productId;
+        $data['quantity'] = $transferQty;
 
         try {
             $this->db->beginTransaction();
 
-            // 1. التأكد من وجود كمية كافية في الفرع المصدر
-            // ── AUDIT FIX #9/#10: نقرأ quantity_cost أيضاً لحساب متوسط تكلفة
-            // الوحدة في PHP (وليس عبر تعبير SQL ذاتي المرجعية داخل نفس UPDATE).
+            \App\Services\ProductBranchActivationGuard::assertActiveForStock(
+                $this->db,
+                (int) $tenantId,
+                (int) $data['from_branch'],
+                (int) $data['product_id']
+            );
+            \App\Services\ProductBranchActivationGuard::assertActiveForStock(
+                $this->db,
+                (int) $tenantId,
+                (int) $data['to_branch'],
+                (int) $data['product_id']
+            );
+
+            // Lock the source balance and recorded value before calculating transfer cost.
             $checkStmt = $this->db->prepare(
                 "SELECT quantity, quantity_cost FROM branch_products
                  WHERE branch_id = ? AND product_id = ? AND tenant_id = ? FOR UPDATE"
@@ -73,28 +100,13 @@ class StockTransferHandler extends BaseHandler
             $transferQty      = (float) $data['quantity'];
 
             if ($sourceQtyBefore < $transferQty) {
-                throw new \Exception('الكمية المتوفرة غير كافية للنقل');
+                throw new \Exception('الكمية المتاحة غير كافية للنقل');
             }
 
-            // ── AUDIT FIX #9 (CRITICAL): كانت القيمة السابقة تُحسب داخل نفس جملة
-            // UPDATE عبر `quantity_cost / NULLIF(quantity, 0) * ?`. MySQL يقيّم
-            // إسنادات UPDATE بجدول واحد من اليسار لليمين ويسمح للإسناد الثاني بأن
-            // يرى القيمة *المُحدَّثة بالفعل* للعمود المُسنَد أولاً (quantity) — وهذا
-            // سلوك موثَّق رسمياً في دليل MySQL كمخالفة لمعيار SQL القياسي. النتيجة:
-            // كان المقام يستخدم الكمية *بعد* الخصم بدل *قبله*، فيُحسب متوسط تكلفة
-            // أعلى من الحقيقي ويُخصم مبلغ أكبر من المفروض من قيمة مخزون الفرع
-            // المصدر في كل عملية نقل تقريباً.
-            //
-            // الإصلاح: نحسب متوسط التكلفة/الوحدة والمبلغ المخصوم بالكامل في PHP
-            // باستخدام القيم المقروءة *قبل* أي تعديل، ثم نمرر القيمة النهائية
-            // كرقم ثابت لجملة الـ UPDATE بدل تعبير يعيد قراءة عمود مُعدَّل للتو.
+            // Calculate unit cost from the locked pre-transfer balance.
             $unitCostAtSource = $sourceQtyBefore > 0 ? ($sourceCostBefore / $sourceQtyBefore) : 0.0;
 
-            // Fallback: إن كان الفرع المصدر بلا تكلفة مخزون مسجَّلة (مثلاً منتج جديد
-            // لم تُرحَّل له تكلفة فرعية بعد)، نرجع لنفس تسلسل fallback المستخدَم أصلاً
-            // للقيد المحاسبي (WAC على مستوى المستأجر ثم purchase_price)، بدل الاعتماد
-            // على قيمة يُرسلها الطالب في الطلب (كانت مصدر تكلفة ثالث منفصل — راجع
-            // AUDIT FIX #10 أدناه).
+            // If the source has no recorded valuation, fall back to tenant WAC then purchase price.
             if ($unitCostAtSource <= 0.0) {
                 try {
                     $unitCostAtSource = (float) (new CostingService($this->db))
@@ -111,13 +123,11 @@ class StockTransferHandler extends BaseHandler
                 }
             }
 
-            // المبلغ الفعلي المنقول = نفس المبلغ يُخصم من المصدر ويُضاف للوجهة
-            // بالضبط (بدل قيمتين مستقلتين قد تختلفان) — يضمن أن قيمة المخزون
-            // الإجمالية للمستأجر (مجموع كل الفروع) لا تتغير بمجرد النقل.
+            // Apply one rounded amount to both branches so the transfer preserves total inventory value.
             $deductedCost = round($unitCostAtSource * $transferQty, 2);
-            $deductedCost = min($deductedCost, $sourceCostBefore); // لا يمكن خصم أكثر مما هو مسجَّل فعلياً
+            $deductedCost = min($deductedCost, $sourceCostBefore);
 
-            // 2. خصم الكمية والتكلفة من الفرع المصدر — بقيم ثابتة محسوبة مسبقاً
+            // Subtract the quantity and calculated value from the source.
             $this->db->prepare(
                 "UPDATE branch_products
                  SET quantity      = quantity - ?,
@@ -131,13 +141,7 @@ class StockTransferHandler extends BaseHandler
                 (int) $data['product_id']
             );
 
-            // 3. إضافة الكمية والتكلفة إلى الفرع الوجهة
-            // ── AUDIT FIX #10 (HIGH): كانت هذه القيمة مبنية على `unit_cost` من
-            // جسم الطلب (قيمة يُرسلها الطالب، تُصبح صفراً إن لم تُرسَل) — مصدر
-            // تكلفة مستقل تماماً عن التكلفة الفعلية بالفرع المصدر (خطوة 2 أعلاه)
-            // وعن WAC المستخدَم لاحقاً في القيد المحاسبي (خطوة 7). أصبحت الآن
-            // تستخدم *نفس* $deductedCost المخصوم فعلياً من المصدر — مصدر تكلفة
-            // واحد متسق عبر: تخفيض المصدر / زيادة الوجهة / سجل الحركات / القيد.
+            // Add the same quantity and value to the destination.
             $transferUnitCost  = $unitCostAtSource;
             $transferTotalCost = $deductedCost;
             $this->db->prepare(
@@ -154,7 +158,7 @@ class StockTransferHandler extends BaseHandler
                 (int) $data['product_id']
             );
 
-            // 4. سجل عملية النقل في stock_transfers (مع batch, expiry, serial - Phase 3)
+            // Record transfer metadata.
             $this->db->prepare(
                 "INSERT INTO stock_transfers (tenant_id, from_branch, to_branch, product_id, quantity, batch_number, expiry_date, serial, notes, created_by)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -168,11 +172,7 @@ class StockTransferHandler extends BaseHandler
             ]);
             $transferId = (int) $this->db->lastInsertId();
 
-            // 5 + 6. سجل حركات المخزون (صادر + وارد)
-            // ── AUDIT FIX #10: نفس $transferUnitCost/$transferTotalCost المستخدَمة
-            // فعلياً لتحديث الفرعين أعلاه — وليس `unit_cost` من جسم الطلب (كان
-            // يُصبح صفراً إن لم يُرسله الطالب، فيُدرَج سجل حركة بتكلفة صفرية بينما
-            // القيمة الفعلية المخصومة من الفرع المصدر مبلغ حقيقي).
+            // Record paired outbound and inbound inventory movements at the transfer valuation.
             $unitId      = (int) ($data['unit_id'] ?? 1);
             $unitCost    = $transferUnitCost;
             $totalCost   = $transferTotalCost;
@@ -208,92 +208,71 @@ class StockTransferHandler extends BaseHandler
             ]);
             $transferInId = (int) $this->db->lastInsertId();
 
-            // 7. القيد المحاسبي
-            $accStmt = $this->db->prepare(
-                "SELECT id, account_id FROM branches WHERE id IN (?, ?) AND tenant_id = ?"
-            );
-            $accStmt->execute([(int) $data['from_branch'], (int) $data['to_branch'], (int) $tenantId]);
-            $accRows = $accStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            $fromAccountId = null;
-            $toAccountId   = null;
-            foreach ($accRows as $r) {
-                if ((int) $r['id'] === (int) $data['from_branch']) {
-                    $fromAccountId = $r['account_id'] ? (int) $r['account_id'] : null;
-                }
-                if ((int) $r['id'] === (int) $data['to_branch']) {
-                    $toAccountId   = $r['account_id'] ? (int) $r['account_id'] : null;
-                }
-            }
-
             $warnings = null;
-
-            if ($fromAccountId && $toAccountId) {
-                // ── AUDIT FIX #10: كان يُعاد حساب WAC مستقل هنا على مستوى
-                // المستأجر بالكامل (CostingService), وهي قيمة ثالثة منفصلة عن
-                // التكلفة المخصومة فعلياً من الفرع المصدر (خطوة 2) وعن تكلفة سجل
-                // الحركات (خطوة 5+6) — فكانت الثلاثة تظهر أرقاماً مختلفة لنفس
-                // النقل الواحد. القيد الآن يستخدم بالضبط $deductedCost نفسها،
-                // فيتطابق مع ما نقص من مخزون الفرع المصدر فعلياً.
-                $amount = $deductedCost;
-
-                if ($amount > 0) {
-                    $desc = 'نقل مخزون من مخزن #' . (int) $data['from_branch']
-                          . ' إلى مخزن #' . (int) $data['to_branch']
-                          . ' - منتج #' . (int) $data['product_id']
-                          . ' - كمية ' . (float) $data['quantity'];
-
-                    $journalEntryId = $this->accounting->postJournalEntry(
-                        (int) $tenantId,
-                        'stock_transfer',
-                        $transferId,
-                        $desc,
-                        [
-                            ['account_id' => $toAccountId,   'debit' => $amount, 'credit' => 0,       'description' => 'نقل مخزون وارد'],
-                            ['account_id' => $fromAccountId, 'debit' => 0,       'credit' => $amount, 'description' => 'نقل مخزون صادر'],
-                        ],
-                        date('Y-m-d'),
-                        $userId,
-                        null
+            $amount = $deductedCost;
+            if ($amount > 0) {
+                $fromAccountId = $this->accounting->resolveInventoryAccountForBranch(
+                    (int) $tenantId,
+                    (int) $data['from_branch']
+                );
+                $toAccountId = $this->accounting->resolveInventoryAccountForBranch(
+                    (int) $tenantId,
+                    (int) $data['to_branch']
+                );
+                if ($fromAccountId === null || $toAccountId === null) {
+                    throw new \DomainException(
+                        'تعذر تحديد حساب المخزون لأحد الفرعين؛ لم يتم تنفيذ نقل المخزون.'
                     );
+                }
 
-                    if ($journalEntryId) {
-                        $this->db->prepare(
-                            "UPDATE inventory_transactions
-                             SET journal_entry_id = ?
-                             WHERE tenant_id = ? AND reference_type = 'transfer' AND reference_id = ?"
-                        )->execute([$journalEntryId, (int) $tenantId, $transferId]);
-                    } else {
-                        // 🔴 إصلاح: كانت هذه الحالة تحديداً (حسابات موجودة + مبلغ صحيح لكن
-                        // postJournalEntry فشل داخلياً — مثل فترة محاسبية مغلقة أو خطأ قاعدة
-                        // بيانات) لا تُنتج أي تحذير إطلاقاً، لا في الـ log ولا في الاستجابة —
-                        // كان النقل ينجح بصمت تام دون أي أثر لفشل الترحيل المحاسبي.
-                        $this->logger->error('[StockTransfer] postJournalEntry returned null despite valid accounts/amount.', [
-                            'from_branch' => $data['from_branch'], 'to_branch' => $data['to_branch'],
-                            'product_id'  => $data['product_id'],  'amount'    => $amount,
-                        ]);
-                        $warnings = ['journal_entry_skipped' => true, 'reason' => 'posting_failed'];
-                    }
-                } else {
-                    $this->logger->warning('[StockTransfer] Zero amount — journal entry skipped.', [
-                        'from_branch' => $data['from_branch'], 'to_branch' => $data['to_branch'],
-                        'product_id'  => $data['product_id'],  'quantity'  => $data['quantity'],
-                    ]);
-                    $warnings = ['journal_entry_skipped' => true, 'reason' => 'zero_amount'];
+                $desc = 'نقل مخزون من مخزن #' . (int) $data['from_branch']
+                      . ' إلى مخزن #' . (int) $data['to_branch']
+                      . ' - منتج #' . (int) $data['product_id']
+                      . ' - كمية ' . (float) $data['quantity'];
+
+                $journalEntryId = $this->accounting->postJournalEntry(
+                    (int) $tenantId,
+                    'stock_transfer',
+                    $transferId,
+                    $desc,
+                    [
+                        ['account_id' => $toAccountId,   'debit' => $amount, 'credit' => 0,       'description' => 'نقل مخزون وارد'],
+                        ['account_id' => $fromAccountId, 'debit' => 0,       'credit' => $amount, 'description' => 'نقل مخزون صادر'],
+                    ],
+                    date('Y-m-d'),
+                    $userId,
+                    null
+                );
+
+                if ($journalEntryId === null) {
+                    throw new \RuntimeException(
+                        'تعذر ترحيل قيد نقل المخزون؛ تم إلغاء النقل بالكامل.'
+                    );
+                }
+
+                $linkStmt = $this->db->prepare(
+                    "UPDATE inventory_transactions
+                     SET journal_entry_id = ?
+                     WHERE tenant_id = ? AND reference_type = 'transfer' AND reference_id = ?"
+                );
+                $linkStmt->execute([$journalEntryId, (int) $tenantId, $transferId]);
+                if ($linkStmt->rowCount() !== 2) {
+                    throw new \RuntimeException(
+                        'تعذر ربط حركتي المخزون بقيد النقل؛ تم إلغاء النقل بالكامل.'
+                    );
                 }
             } else {
-                $this->logger->warning('[StockTransfer] Missing branch account_id — journal entry skipped.', [
-                    'from_branch' => $data['from_branch'], 'to_branch' => $data['to_branch'],
+                $this->logger->warning('[StockTransfer] Zero valuation; no journal entry is required.', [
+                    'from_branch' => $data['from_branch'],
+                    'to_branch' => $data['to_branch'],
+                    'product_id' => $data['product_id'],
+                    'quantity' => $data['quantity'],
                 ]);
-                $warnings = ['journal_entry_skipped' => true, 'reason' => 'missing_branch_account'];
+                $warnings = ['journal_entry_skipped' => true, 'reason' => 'zero_amount'];
             }
 
             $this->db->commit();
 
-            // ⚠️ إصلاح: كانت التحذيرات الثلاثة أعلاه تُسجَّل في الـ log فقط ولا تصل أبداً
-            // للاستجابة نفسها — لا سبيل لأي واجهة أو محاسب لمعرفة أن النقل لم يُرحَّل للـ GL
-            // دون تفتيش سجلات الخادم مباشرة. أصبحت الآن تظهر في response['warnings']، بنفس
-            // نمط StockAdjustmentHandler الذي يفعل هذا بشكل صحيح فعلاً.
             $responsePayload = [
                 'status'  => 'success',
                 'message' => 'تم نقل المخزون بنجاح',
@@ -313,13 +292,15 @@ class StockTransferHandler extends BaseHandler
                 $this->db->rollBack();
             }
             $this->logger->error('فشل نقل المخزون: ' . $e->getMessage());
-            return $this->errorResponse($response, 'فشل نقل المخزون', 400);
+            return $this->errorResponse(
+                $response,
+                $e instanceof \DomainException ? $e->getMessage() : 'فشل نقل المخزون',
+                $e instanceof \DomainException ? 422 : 400
+            );
         }
     }
 
-    /**
-     * قائمة عمليات نقل المخزون مع فلاتر اختيارية
-     */
+    /** List tenant transfers with optional branch, product, and date filters. */
     public function listTransfers(Request $request, Response $response, array $args): Response
     {
         try {
@@ -381,9 +362,7 @@ class StockTransferHandler extends BaseHandler
         }
     }
 
-    /**
-     * تفاصيل عملية نقل واحدة
-     */
+    /** Return one transfer and its paired inventory-transaction records. */
     public function getTransferById(Request $request, Response $response, array $args): Response
     {
         try {
@@ -428,9 +407,7 @@ class StockTransferHandler extends BaseHandler
         }
     }
 
-    /**
-     * تحويلات فرع من جدول inventory_transactions (transfer_in / transfer_out)
-     */
+    /** List transfer movements that involve the requested branch. */
     public function listBranchTransfersByInventory(Request $request, Response $response, array $args): Response
     {
         try {
@@ -464,32 +441,4 @@ class StockTransferHandler extends BaseHandler
         }
     }
 
-    /**
-     * تاريخ نقل منتج معين عبر الفروع
-     */
-    public function getTransferHistory(Request $request, Response $response, array $args): Response
-    {
-        $tenantId  = $this->extractTenantId($request);
-        $productId = $args['id'];
-
-        try {
-            $stmt = $this->db->prepare("
-                SELECT t.*,
-                       w1.name AS from_branch_name,
-                       w2.name AS to_branch_name,
-                       u.name  AS created_by_name
-                FROM stock_transfers t
-                LEFT JOIN branches w1 ON t.from_branch = w1.id
-                LEFT JOIN branches w2 ON t.to_branch   = w2.id
-                LEFT JOIN users u     ON t.created_by  = u.id
-                WHERE t.product_id = ? AND t.tenant_id = ?
-                ORDER BY t.created_at DESC
-            ");
-            $stmt->execute([$productId, $tenantId]);
-            return $this->successResponse($response, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [], 200);
-        } catch (\Throwable $e) {
-            $this->logger->error('خطأ في جلب تاريخ النقل: ' . $e->getMessage());
-            return $this->errorResponse($response, 'فشل في جلب تاريخ النقل', 500);
-        }
-    }
 }

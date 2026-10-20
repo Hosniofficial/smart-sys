@@ -9,7 +9,14 @@ use Exception;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
+use App\Utils\SuperAdminHelper;
 
+/**
+ * Lists and manages tenant point-of-sale terminals.
+ *
+ * PDO handles terminal and branch persistence; BaseHandler resolves tenant and
+ * request context, while SuperAdminHelper applies the handler-level admin check.
+ */
 class TerminalsHandler extends BaseHandler
 {
     public function __construct(PDO $db)
@@ -18,10 +25,7 @@ class TerminalsHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('terminals');
     }
 
-    /**
-     * GET /terminals
-     * إرجاع قائمة الترمينالات الخاصة بالمستأجر الحالي مع دعم التصفية بالمخزن والحالة
-     */
+    /** List tenant terminals with optional branch and status filters. */
     public function list(Request $request, Response $response): Response
     {
         try {
@@ -101,10 +105,7 @@ class TerminalsHandler extends BaseHandler
         }
     }
 
-    /**
-     * POST /terminals
-     * إنشاء ترمينال جديد للمستأجر الحالي (صلاحيات المدير/الأدمن فقط)
-     */
+    /** Create a terminal after checking tenant ownership and administrator access. */
     public function create(Request $request, Response $response): Response
     {
         try {
@@ -124,7 +125,7 @@ class TerminalsHandler extends BaseHandler
                 'role_id' => $roleId
             ]);
 
-            if (!in_array((int) $roleId, [1, 2], true)) {
+            if (!SuperAdminHelper::isAdminOrAbove(is_array($user) ? $user : null)) {
                 $this->logger->warning('Terminal creation access denied - insufficient permissions', [
                     'tenant_id' => $tenantId,
                     'user_id' => $userId,
@@ -296,10 +297,7 @@ class TerminalsHandler extends BaseHandler
         }
     }
 
-    /**
-     * PUT /terminals/{id}
-     * تعديل بيانات ترمينال (الاسم، الحالة، الفرع) — مكافئ لـ Update Workstation في Oracle MICROS
-     */
+    /** Update a tenant terminal's name, status, or branch. */
     public function update(Request $request, Response $response, array $args): Response
     {
         try {
@@ -312,7 +310,7 @@ class TerminalsHandler extends BaseHandler
             $userId   = is_array($user) ? ($user['id'] ?? null) : null;
             $roleId   = is_array($user) ? ($user['role_id'] ?? null) : null;
 
-            if (!in_array((int)$roleId, [1, 2], true)) {
+            if (!SuperAdminHelper::isAdminOrAbove(is_array($user) ? $user : null)) {
                 return $this->errorResponse($response, 'ليست لديك صلاحية لتعديل أجهزة نقطة البيع.', 403);
             }
 

@@ -13,9 +13,7 @@ use App\Services\BalanceCalculationService;
 use App\Services\MonologHandler;
 
 /**
- * CashVoucherService
- *
- * Business logic for cash vouchers extracted from CashVouchersHandler.
+ * Creates and reverses tenant-scoped cash vouchers and their linked accounting, payment, and cash records.
  */
 class CashVoucherService
 {
@@ -41,16 +39,42 @@ class CashVoucherService
     // =========================================================================
 
     /**
-     * Create a cash voucher — full atomic flow.
-     * @throws \Exception on validation or DB error
+     * Persist the voucher, journal entry, cash transaction, and any linked payment in one transaction.
+     *
+     * @throws \Throwable when validation or persistence fails
      */
     public function createVoucher(array $data, ?int $sessionId = null): array
     {
         $saleId     = $data['sale_id']          ?? null;
         $purchaseId = $data['purchase_id']       ?? null;
+        $requestHash = !empty($data['idempotency_key'])
+            ? $this->getVoucherRequestHash($data)
+            : null;
 
-        $this->db->beginTransaction();
+        // Propagate session_id into $data so postToJournal() can use it
+        // for the cash-negative-intraday check in LiquidityPolicyService
+        if ($sessionId !== null) {
+            $data['session_id'] = $sessionId;
+        }
+
+        $ownTransaction = !$this->db->inTransaction();
+        if ($ownTransaction) {
+            $this->db->beginTransaction();
+        }
         try {
+            $paymentMethodId = (int) ($data['payment_method_id'] ?? 0);
+            if ($paymentMethodId <= 0) {
+                throw new \Exception('يجب تحديد طريقة الدفع قبل تسجيل السند.');
+            }
+            $linkedAccountId = $this->accounting->resolveLiquidityAccount($paymentMethodId, $this->tenantId);
+            if ($linkedAccountId === null) {
+                throw new \Exception('طريقة الدفع الآجلة لا تصلح لسند نقدي.');
+            }
+            if (!empty($data['account_id']) && (int) $data['account_id'] !== $linkedAccountId) {
+                throw new \Exception('الحساب المحدد في السند لا يطابق الحساب المرتبط بطريقة الدفع.');
+            }
+            $data['account_id'] = $linkedAccountId;
+
             $journalEntryId = $this->postToJournal($data, null);
             if (!$journalEntryId) {
                 throw new \Exception('Failed to create journal entry.');
@@ -63,11 +87,11 @@ class CashVoucherService
                 INSERT INTO cash_vouchers (
                     tenant_id, branch_id, type, date, amount, currency,
                     customer_id, supplier_id, account_id, reference, notes,
-                    created_by, journal_entry_id, cost_center_id, idempotency_key
+                    created_by, journal_entry_id, cost_center_id, idempotency_key, request_hash
                 ) VALUES (
                     :tenant_id, :branch_id, :type, :date, :amount, :currency,
                     :customer_id, :supplier_id, :account_id, :reference, :notes,
-                    :created_by, :journal_entry_id, :cost_center_id, :idempotency_key
+                    :created_by, :journal_entry_id, :cost_center_id, :idempotency_key, :request_hash
                 )
             ");
             $stmt->execute([
@@ -86,6 +110,7 @@ class CashVoucherService
                 ':journal_entry_id' => (int) $journalEntryId,
                 ':cost_center_id'   => $data['cost_center_id'],
                 ':idempotency_key'  => $data['idempotency_key'] ?? null,
+                ':request_hash'     => $requestHash,
             ]);
 
             $voucherId = (int) $this->db->lastInsertId();
@@ -96,48 +121,22 @@ class CashVoucherService
                 WHERE id = :id AND tenant_id = :tenant_id
             ")->execute([':reference_id' => $voucherId, ':id' => (int) $journalEntryId, ':tenant_id' => $this->tenantId]);
 
-            $this->db->prepare("
-                INSERT INTO cash_transactions (
-                    tenant_id, customer_id, supplier_id, amount, type,
-                    reference_type, reference_id, payment_method_id, description,
-                    created_by, created_at, return_id, status, notes,
-                    journal_entry_id, session_id, cost_center_id
-                ) VALUES (
-                    :tenant_id, :customer_id, :supplier_id, :amount, :type,
-                    :reference_type, :reference_id, :payment_method_id, :description,
-                    :created_by, :created_at, :return_id, :status, :notes,
-                    :journal_entry_id, :session_id, :cost_center_id
-                )
-            ")->execute([
-                ':tenant_id'         => $this->tenantId,
-                ':customer_id'       => $data['customer_id'],
-                ':supplier_id'       => $data['supplier_id'],
-                ':amount'            => $data['amount'],
-                ':type'              => $this->mapVoucherTypeToCashTransactionType($data['type']),
-                ':reference_type'    => 'cash_voucher',
-                ':reference_id'      => $voucherId,
-                ':payment_method_id' => $data['payment_method_id'],
-                ':description'       => $notes,
-                ':created_by'        => $this->userId,
-                ':created_at'        => $data['date'],
-                ':return_id'         => $data['return_id'],
-                ':status'            => $data['status'] ?? 'approved',
-                ':notes'             => $notes,
-                ':journal_entry_id'  => (int) $journalEntryId,
-                ':session_id'        => $sessionId,
-                ':cost_center_id'    => $data['cost_center_id'],
-            ]);
+            $this->recordCashTransaction($voucherId, $journalEntryId, $sessionId, $data, $notes);
 
             // ── ربط بالفاتورة داخل نفس الـ transaction لضمان الـ atomicity ──
             // إذا فشل linkToSale/linkToPurchase يتم rollback للكل
             if ($saleId !== null && !empty($data['customer_id'])) {
                 $this->linkToSale((int) $saleId, $data, $voucherReference, (int) $journalEntryId);
+            } elseif (!empty($data['customer_id']) && in_array($data['type'], ['receipt', 'قبض'], true)) {
+                $this->linkToCustomer((int) $data['customer_id'], $data, $voucherReference, (int) $journalEntryId);
             }
             if ($purchaseId !== null && !empty($data['supplier_id'])) {
                 $this->linkToPurchase((int) $purchaseId, $data, $voucherReference, (int) $journalEntryId);
             }
 
-            $this->db->commit();
+            if ($ownTransaction) {
+                $this->db->commit();
+            }
 
             return [
                 'id'               => $voucherId,
@@ -147,10 +146,14 @@ class CashVoucherService
                 'session_id'       => $sessionId,
             ];
         } catch (\Throwable $e) {
-            if ($this->db->inTransaction()) {
+            if ($ownTransaction && $this->db->inTransaction()) {
                 try {
                     $this->db->rollBack();
-                } catch (\Throwable $rb) {
+                } catch (\Throwable $rollbackError) {
+                    $this->logger->error('Cash voucher transaction rollback failed', [
+                        'tenant_id' => $this->tenantId,
+                        'message' => $rollbackError->getMessage(),
+                    ]);
                 }
             }
             throw $e;
@@ -161,6 +164,7 @@ class CashVoucherService
     // Validation & Normalization
     // =========================================================================
 
+    /** Merge update data and normalize voucher field types and defaults. */
     public function normalizeVoucherPayload(array $data, bool $isUpdate = false, array $existing = []): array
     {
         $merged = $isUpdate ? array_merge($existing, $data) : $data;
@@ -182,6 +186,7 @@ class CashVoucherService
         return $merged;
     }
 
+    /** Return a validation message for malformed voucher fields, or null when valid. */
     public function validateVoucherPayload(array $data, bool $isUpdate = false): ?string
     {
         if (empty($data['type'])) {
@@ -208,6 +213,7 @@ class CashVoucherService
         return null;
     }
 
+    /** Enforce receipt-balance rules using the customer's posted journal activity. */
     public function validateVoucherBusinessRules(array $data, ?int $excludeVoucherId = null): void
     {
         $type   = $data['type'];
@@ -228,7 +234,7 @@ class CashVoucherService
                 $asOfDate
             );
             if ($currentBalance <= 0) {
-                throw new \Exception('لا يمكن إنشاء سند قبض لهذا العميل لأنه ليس عليه مديونية حالية (رصيده 0). استخدم سند صرف إذا كنت ترد مبلغًا للعميل.');
+                throw new \Exception('لا يمكن إنشاء سند قبض لهذا العميل لأنه لا توجد عليه مديونية حاليًا (رصيده صفر). استخدم سند صرف إذا كنت ترد مبلغًا للعميل.');
             }
             if ($amount > $currentBalance && !$excludeVoucherId) {
                 $this->logger->warning('Receipt amount exceeds current customer balance', [
@@ -239,48 +245,55 @@ class CashVoucherService
         }
     }
 
+    /** Find a voucher retry candidate within this service's tenant. */
     public function findVoucherByIdempotencyKey(string $idempotencyKey): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT id, reference FROM cash_vouchers WHERE tenant_id = ? AND idempotency_key = ? LIMIT 1"
+            "SELECT id, reference, request_hash
+             FROM cash_vouchers
+             WHERE tenant_id = ? AND idempotency_key = ?
+             LIMIT 1"
         );
         $stmt->execute([$this->tenantId, $idempotencyKey]);
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
-    public function findDuplicateVoucher(string $type, string $date, float $amount, ?int $customerId, ?int $supplierId): ?int
+    /** Hash the normalized business fields used to identify an idempotent request. */
+    public function getVoucherRequestHash(array $data): string
     {
-        $sql   = "SELECT id FROM cash_vouchers WHERE tenant_id = :t AND type = :type AND date = :date
-                    AND amount = :amount AND created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)";
-        $binds = [':t' => $this->tenantId, ':type' => $type, ':date' => $date, ':amount' => $amount];
-
-        $sql .= $customerId === null ? " AND customer_id IS NULL" : " AND customer_id = :customer_id";
-        if ($customerId !== null) {
-            $binds[':customer_id'] = $customerId;
+        $fingerprint = [];
+        foreach ([
+            'type', 'date', 'amount', 'currency', 'customer_id', 'supplier_id',
+            'expense_account_id', 'branch_id', 'payment_method_id',
+            'cost_center_id', 'return_id', 'purchase_id', 'sale_id', 'notes',
+        ] as $field) {
+            $fingerprint[$field] = $data[$field] ?? null;
         }
 
-        $sql .= $supplierId === null ? " AND supplier_id IS NULL" : " AND supplier_id = :supplier_id";
-        if ($supplierId !== null) {
-            $binds[':supplier_id'] = $supplierId;
+        $json = json_encode(
+            $fingerprint,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION
+        );
+        if ($json === false) {
+            throw new \InvalidArgumentException('تعذر التحقق من بصمة طلب السند.');
         }
 
-        $sql .= " LIMIT 1";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($binds);
-        $id = $stmt->fetchColumn();
-        return $id ? (int) $id : null;
+        return hash('sha256', $json);
     }
 
+    /** Build the display reference from the voucher date and journal-entry ID. */
     public function generateVoucherReference(string $date, int $journalEntryId): string
     {
         return 'CV-' . date('Ymd', strtotime($date)) . '-' . $journalEntryId;
     }
 
+    /** Map receipt/payment voucher types to the cash transaction income/expense values. */
     public function mapVoucherTypeToCashTransactionType(string $type): string
     {
         return ($type === 'قبض' || $type === 'receipt') ? 'income' : 'expense';
     }
 
+    /** Reverse the linked journal entry, refusing legacy reversals without a consistent link. */
     public function reverseJournalEntryByVoucherIdIfNeeded(int $voucherId): void
     {
         $stmt = $this->db->prepare(
@@ -289,74 +302,35 @@ class CashVoucherService
         $stmt->execute([$voucherId, $this->tenantId]);
         $journalEntryId = (int) $stmt->fetchColumn();
         if ($journalEntryId <= 0) {
-            return;
+            throw new \RuntimeException('لا يمكن إلغاء سند دون قيد محاسبي مرتبط.');
         }
 
-        $chk = $this->db->prepare(
-            "SELECT id FROM journal_entries WHERE tenant_id = ? AND reference_type = 'reversal' AND reference_id = ? LIMIT 1"
+        $original = $this->db->prepare(
+            'SELECT status, reversal_of FROM journal_entries WHERE id = ? AND tenant_id = ? LIMIT 1'
         );
-        $chk->execute([$this->tenantId, $journalEntryId]);
-        if ($chk->fetchColumn()) {
-            return;
+        $original->execute([$journalEntryId, $this->tenantId]);
+        $originalEntry = $original->fetch(PDO::FETCH_ASSOC);
+        if (!$originalEntry) {
+            throw new \RuntimeException('القيد المحاسبي المرتبط بالسند غير موجود.');
         }
 
-        $this->reverseJournalEntryByVoucherId($voucherId);
+        $legacyReversal = $this->db->prepare(
+            "SELECT id FROM journal_entries
+             WHERE tenant_id = ? AND reference_type = 'reversal' AND reference_id = ?
+             LIMIT 1"
+        );
+        $legacyReversal->execute([$this->tenantId, $journalEntryId]);
+        if ($legacyReversal->fetchColumn() &&
+            ($originalEntry['status'] !== 'reversed' || (int) ($originalEntry['reversal_of'] ?? 0) <= 0)) {
+            throw new \DomainException(
+                'للسند قيد عكس قديم غير مرتبط؛ يلزم تسوية محاسبية قبل تعديله أو إلغائه.'
+            );
+        }
+
+        $this->accounting->reverseJournalEntry($journalEntryId, $this->tenantId, $this->userId);
     }
 
-    public function reverseJournalEntryByVoucherId(int $voucherId): void
-    {
-        $stmtJE = $this->db->prepare("
-            SELECT * FROM journal_entries
-            WHERE reference_type = 'cash_voucher' AND reference_id = :ref_id AND tenant_id = :tenant_id
-            ORDER BY id DESC LIMIT 1
-        ");
-        $stmtJE->execute([':ref_id' => $voucherId, ':tenant_id' => $this->tenantId]);
-        $originalJE = $stmtJE->fetch(PDO::FETCH_ASSOC);
-        if (!$originalJE) {
-            $this->logger->warning('Journal entry not found for voucher reversal', ['voucher_id' => $voucherId]);
-            return;
-        }
-
-        $stmtLines = $this->db->prepare("SELECT * FROM journal_entry_lines WHERE journal_entry_id = :je_id");
-        $stmtLines->execute([':je_id' => $originalJE['id']]);
-        $originalLines = $stmtLines->fetchAll(PDO::FETCH_ASSOC);
-
-        $desc          = 'عكس قيد السند رقم ' . $voucherId . ' - بسبب التعديل/الحذف';
-        $reversalLines = [];
-        foreach ($originalLines as $line) {
-            $reversalLines[] = [
-                'account_id'  => $line['account_id'],
-                'debit'       => (float) $line['credit_amount'],
-                'credit'      => (float) $line['debit_amount'],
-                'description' => $desc,
-            ];
-        }
-
-        $reversalJeId = $this->accounting->postJournalEntry(
-            $this->tenantId,
-            'reversal',
-            (int) $originalJE['id'],
-            $desc,
-            $reversalLines,
-            date('Y-m-d'),
-            $this->userId,
-            null,
-            'reversal_' . $voucherId . '_' . time()
-        );
-
-        if ($reversalJeId) {
-            $this->logger->info('Journal entry reversal created', [
-                'original_entry_id' => $originalJE['id'],
-                'reversal_entry_id' => $reversalJeId,
-                'voucher_id'        => $voucherId,
-            ]);
-        }
-    }
-
-    // =========================================================================
-    // postToJournal — Single Source of Truth for journal entry creation
-    // =========================================================================
-
+    /** Resolve voucher accounts and post its balanced journal entry. */
     public function postToJournal(array $voucherData, ?int $voucherId): int|false
     {
         if ($voucherId) {
@@ -378,26 +352,21 @@ class CashVoucherService
         $date   = $voucherData['date']   ?? date('Y-m-d');
         $notes  = (string) ($voucherData['notes'] ?? '');
 
-        // account_id → resolveLiquidity → fallback 1001
-        $cashBankAccountId = $voucherData['account_id'] ?? null;
-        if (!$cashBankAccountId && !empty($voucherData['payment_method_id'])) {
-            try {
-                $cashBankAccountId = $this->accounting->resolveLiquidityAccount(
-                    (int) $voucherData['payment_method_id'],
-                    $this->tenantId
-                );
-            } catch (\Throwable $e) {
-                $this->logger->warning('CashVoucher: resolveLiquidityAccount failed, falling back to 1001', [
-                    'payment_method_id' => $voucherData['payment_method_id'], 'error' => $e->getMessage(),
-                ]);
-            }
+        $paymentMethodId = (int) ($voucherData['payment_method_id'] ?? 0);
+        if ($paymentMethodId <= 0) {
+            throw new \Exception('يجب تحديد طريقة الدفع قبل ترحيل السند.');
         }
-        if (!$cashBankAccountId) {
-            $cashBankAccountId = $this->getAccountIdByCode('1001');
+
+        $cashBankAccountId = $this->accounting->resolveLiquidityAccount(
+            $paymentMethodId,
+            $this->tenantId
+        );
+        if ($cashBankAccountId === null) {
+            throw new \Exception('طريقة الدفع الآجلة لا تصلح لسند نقدي.');
         }
-        if (!$cashBankAccountId) {
-            $this->logger->error('Journal entry failed - Cash/Bank account not found', ['tenant_id' => $this->tenantId]);
-            return false;
+
+        if (!empty($voucherData['account_id']) && (int) $voucherData['account_id'] !== $cashBankAccountId) {
+            throw new \Exception('الحساب المحدد في السند لا يطابق الحساب المرتبط بطريقة الدفع.');
         }
 
         $debitAccountId  = null;
@@ -428,6 +397,23 @@ class CashVoucherService
                 $description    = "سند صرف مصروفات - {$notes}";
             }
             $creditAccountId = $cashBankAccountId;
+            // ✅ LIQUIDITY VALIDATION (Phase 5): Expense voucher is an OUTFLOW operation
+            // Validate liquidity BEFORE posting journal entry
+            $liquidityPolicy = new \App\Services\LiquidityPolicyService($this->db, $this->logger);
+            $validation = $liquidityPolicy->validateLiquidityBalance(
+                tenantId: $this->tenantId,
+                paymentMethodId: $paymentMethodId,
+                debitAmount: $amount,
+                cashierSessionId: $voucherData['session_id'] ?? null
+            );
+
+            if (!$validation['allowed']) {
+                throw new \App\Exceptions\InsufficientLiquidityException(
+                    $validation['reason'],
+                    402,
+                    $validation
+                );
+            }
         } else {
             $this->logger->error('Unsupported voucher type', ['type' => $type]);
             return false;
@@ -460,7 +446,7 @@ class CashVoucherService
             return $jeId;
         } catch (\Throwable $e) {
             $this->logger->error('Error posting cash voucher journal entry', ['voucher_id' => $voucherId, 'message' => $e->getMessage()]);
-            return false;
+            throw $e;
         }
     }
 
@@ -470,25 +456,110 @@ class CashVoucherService
 
     private function linkToSale(int $saleId, array $data, string $voucherReference, int $journalEntryId): void
     {
+        $forUpdate = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+        $saleStmt = $this->db->prepare(
+            "SELECT id, customer_id, status, branch_id, net_total_amount, COALESCE(tax_amount, 0) AS tax_amount
+             FROM sales
+             WHERE id = ? AND tenant_id = ?{$forUpdate}"
+        );
+        $saleStmt->execute([$saleId, $this->tenantId]);
+        $sale = $saleStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$sale || (int) $sale['customer_id'] !== (int) $data['customer_id']) {
+            throw new \DomainException('فاتورة المبيعات المحددة غير موجودة أو لا تنتمي لهذا العميل.');
+        }
+        if (!in_array(strtolower((string) $sale['status']), [
+            'pending_payment', 'partial', 'due',
+        ], true)) {
+            throw new \DomainException('لا يمكن ربط سند قبض بفاتورة ملغاة أو غير معتمدة.');
+        }
+        if (!empty($data['branch_id']) && !empty($sale['branch_id'])
+            && (int) $data['branch_id'] !== (int) $sale['branch_id']) {
+            throw new \DomainException('لا يمكن ربط سند قبض من فرع بفاتورة تخص فرعًا آخر.');
+        }
+
+        $paidStmt = $this->db->prepare(
+            "SELECT COALESCE(SUM(CASE WHEN type = 'return_payment' THEN -amount ELSE amount END), 0)
+             FROM payments
+             WHERE tenant_id = ? AND sale_id = ? AND status = 'completed' AND COALESCE(is_draft, 0) = 0"
+        );
+        $paidStmt->execute([$this->tenantId, $saleId]);
+        $allocatedStmt = $this->db->prepare(
+            "SELECT COALESCE(SUM(cpa.allocated_amount), 0)
+             FROM customer_payment_allocations cpa
+             JOIN payments p ON p.id = cpa.payment_id AND p.tenant_id = cpa.tenant_id
+             WHERE cpa.tenant_id = ? AND cpa.sale_id = ?
+               AND p.status = 'completed' AND COALESCE(p.is_draft, 0) = 0"
+        );
+        $allocatedStmt->execute([$this->tenantId, $saleId]);
+        $returnCreditStmt = $this->db->prepare(
+            'SELECT COALESCE(SUM(allocated_amount), 0)
+             FROM return_credit_allocations WHERE tenant_id = ? AND sale_id = ?'
+        );
+        $returnCreditStmt->execute([$this->tenantId, $saleId]);
+        $outstanding = max(0.0, round(
+            (float) $sale['net_total_amount'] + (float) $sale['tax_amount']
+            - (float) $paidStmt->fetchColumn()
+            - (float) $allocatedStmt->fetchColumn()
+            - (float) $returnCreditStmt->fetchColumn(),
+            2
+        ));
+        if ((float) $data['amount'] > $outstanding + 0.01) {
+            throw new \DomainException(sprintf(
+                'مبلغ سند القبض (%.2f) يتجاوز المتبقي على الفاتورة (%.2f).',
+                (float) $data['amount'],
+                $outstanding
+            ));
+        }
+
         $currency = $this->getCompanyCurrency();
         $this->db->prepare("
             INSERT INTO payments (tenant_id, sale_id, customer_id, amount, payment_date,
-                payment_method_id, reference_number, created_by, is_draft,
+                payment_method_id, reference_number, created_by, is_draft, branch_id,
                 status, type, created_at, cost_center_id, journal_entry_id, currency)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'completed', 'voucher', NOW(), ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'completed', 'voucher', NOW(), ?, ?, ?)
         ")->execute([
             $this->tenantId, $saleId, $data['customer_id'], $data['amount'], $data['date'],
             $data['payment_method_id'], $voucherReference, $this->userId,
-            $data['cost_center_id'], $journalEntryId, $currency,
+            $data['branch_id'] ?? null, $data['cost_center_id'], $journalEntryId, $currency,
         ]);
 
-        // ── AUDIT SELF-REVIEW FIX 15-A (continued) ───────────────────────────────
-        // كانت هذه الدالة تحسب status بمنطقها المستقل الخاص (grandTotal/totalPaid
-        // فقط، بلا return_credit_allocations وبلا طرح استرداد نقدي)، وكانت
-        // الوحيدة في كامل النظام التي تكتب القيمة 'due' بدل 'pending_payment' —
-        // قيمة رابعة غير متسقة (Finding الأصلي، جدول H). الآن تستخدم نفس المصدر
-        // الموحّد المستخدَم في SalePaymentService وSaleApprovalService.
+        // Recalculate from posted payments and return-credit allocations.
         $this->accounting->recalculateSaleStatus($this->tenantId, $saleId);
+    }
+
+    private function linkToCustomer(int $customerId, array $data, string $voucherReference, int $journalEntryId): void
+    {
+        $paymentStmt = $this->db->prepare("
+            INSERT INTO payments (
+                tenant_id, customer_id, amount, payment_date, payment_method_id,
+                reference_number, created_by, is_draft, branch_id, status, type,
+                created_at, cost_center_id, journal_entry_id, currency
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 'completed', 'voucher', NOW(), ?, ?, ?)
+        ");
+        $paymentStmt->execute([
+            $this->tenantId,
+            $customerId,
+            $data['amount'],
+            $data['date'],
+            $data['payment_method_id'],
+            $voucherReference,
+            $this->userId,
+            $data['branch_id'] ?? null,
+            $data['cost_center_id'],
+            $journalEntryId,
+            $this->getCompanyCurrency(),
+        ]);
+        $paymentId = (int) $this->db->lastInsertId();
+        $saleIds = (new CustomerPaymentAllocationService($this->db))->allocatePayment(
+            $this->tenantId,
+            $customerId,
+            $paymentId,
+            (float) $data['amount'],
+            !empty($data['branch_id']) ? (int) $data['branch_id'] : null
+        );
+        foreach ($saleIds as $saleId) {
+            $this->accounting->recalculateSaleStatus($this->tenantId, $saleId);
+        }
     }
 
     private function linkToPurchase(int $purchaseId, array $data, string $voucherReference, int $journalEntryId): void
@@ -505,16 +576,50 @@ class CashVoucherService
             $data['cost_center_id'], $journalEntryId, $currency,
         ]);
 
-        // ── AUDIT SELF-REVIEW FIX 15-A (extended to purchases) ────────────────────
-        // تصحيح: 'due' هنا لم تكن قيمة خاطئة فعليًا — PurchaseService::determinePurchaseStatus()
-        // نفسها تُعرِّف 'due' كحالة "غير مسدَّدة" القياسية لنطاق المشتريات (مختلفة
-        // عمدًا عن 'pending_payment' المستخدَمة في نطاق المبيعات، وهذا سليم طالما
-        // كل نطاق متّسق داخليًا). المشكلة الحقيقية هنا كانت أن هذه الدالة تُعيد
-        // حساب totalPaid/status بمنطق مستقل مكرَّر (نسخة موازية من نفس الحساب)
-        // بدل تفويضه لـ PurchaseService::recalculateBalance() — نسختان قد تنحرفان
-        // عن بعضهما مستقبلاً إن عُدِّلت إحداهما دون الأخرى. الإصلاح هنا هو توحيد
-        // المصدر فقط، وليس تصحيح قيمة كانت خاطئة.
+        // Keep purchase paid amount and status calculations centralized.
         (new PurchaseService($this->db, $this->tenantId, $this->userId))->recalculateBalance($purchaseId);
+    }
+
+    private function recordCashTransaction(
+        int $voucherId,
+        int $journalEntryId,
+        ?int $sessionId,
+        array $data,
+        ?string $notes
+    ): void {
+        $stmt = $this->db->prepare("
+            INSERT INTO cash_transactions (
+                tenant_id, customer_id, supplier_id, amount, type,
+                reference_type, reference_id, payment_method_id, description,
+                created_by, created_at, return_id, status, notes,
+                journal_entry_id, session_id, cost_center_id, branch_id
+            ) VALUES (
+                :tenant_id, :customer_id, :supplier_id, :amount, :type,
+                :reference_type, :reference_id, :payment_method_id, :description,
+                :created_by, :created_at, :return_id, :status, :notes,
+                :journal_entry_id, :session_id, :cost_center_id, :branch_id
+            )
+        ");
+        $stmt->execute([
+            ':tenant_id'         => $this->tenantId,
+            ':customer_id'       => $data['customer_id'],
+            ':supplier_id'       => $data['supplier_id'],
+            ':amount'            => $data['amount'],
+            ':type'              => $this->mapVoucherTypeToCashTransactionType($data['type']),
+            ':reference_type'    => 'cash_voucher',
+            ':reference_id'      => $voucherId,
+            ':payment_method_id' => $data['payment_method_id'],
+            ':description'       => $notes,
+            ':created_by'        => $this->userId,
+            ':created_at'        => $data['date'],
+            ':return_id'         => $data['return_id'],
+            ':status'            => 'completed',
+            ':notes'             => $notes,
+            ':journal_entry_id'  => $journalEntryId,
+            ':session_id'        => $sessionId,
+            ':cost_center_id'    => $data['cost_center_id'],
+            ':branch_id'         => $data['branch_id'],
+        ]);
     }
 
     private function getPartyAccountId(string $type, int $partyId): ?int

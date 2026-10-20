@@ -13,8 +13,10 @@
         :breadcrumb="breadcrumb"
         title="تقرير ملخص الجلسات"
         description="تحليل أداء الورديات، التدفقات النقدية، وفروقات الخزينة اليومية"
-        :branches="[]"
-        :selectedBranch="null"
+        :branches="branches"
+        :selectedBranch="selectedBranch === 'all' ? null : selectedBranch"
+        :hasExplicitSelection="true"
+        @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
           <button @click="fetchSessions" :disabled="isLoading" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
@@ -61,10 +63,11 @@
             </div>
             <div class="space-y-1.5">
               <label class="metadata-label">الفرع / المستودع</label>
-              <select v-model="branchId" class="filter-input-v3 appearance-none font-bold">
+              <select v-if="canSelectBranch" v-model="branchId" class="filter-input-v3 appearance-none font-bold">
                 <option value="">كل الفروع</option>
                 <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
               </select>
+              <input v-else :value="branches.find(branch => String(branch.id) === String(branchId))?.name || 'فرع المستخدم'" class="filter-input-v3 font-bold" disabled />
             </div>
             <div class="space-y-1.5">
               <label class="metadata-label">الموظف (الكاشير)</label>
@@ -314,21 +317,25 @@
 // [SCRIPT SECTION REMAINS 100% IDENTICAL TO THE ORIGINAL AS PER BUSINESS LOGIC RULE]
 import { ref, computed, onMounted } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
-import { formatCurrency as utilFormatCurrency } from '@/utils/formatters';
-import { getLocalDateISO, formatDateTime as utilFormatDateTime } from '@/utils/date';
+import { formatCurrency, getLocalDateISO, formatDateTime } from '@/utils';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useSessionStore } from '@/stores/session/sessionStore';
-import { downloadCSV } from '@/utils/export';
-import { useToast } from 'vue-toastification';
-import { useBranchStore } from '@/stores/branch';
+import { downloadCSV } from '@/utils';
+import { useToast } from '@/composables/useToast';
+import { useBranchStore } from '@/stores/branch/branchStore';
+import { useBranchIsolation } from '@/composables/useBranchIsolation';
+import { useAuthStore } from '@/stores/auth/authStore';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import { useTableFilters } from '@/composables/useTableFilters';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import PageHeader from '@/components/PageHeader.vue';
 
 const toast = useToast();
+const { showToast } = toast;
 const branchStore = useBranchStore();
+const authStore = useAuthStore();
+const canSelectBranch = useBranchIsolation().isExempt;
 const sessionStore = useSessionStore();
 const { breadcrumb } = useBreadcrumb();
 const { fetchSettings } = useCompanyCurrency();
@@ -349,12 +356,25 @@ const fromDate = ref('');
 const toDate = ref('');
 const fromDateRef = ref(null);
 const toDateRef = ref(null);
-const branchId = ref('');
+const branchId = computed({
+  get: () => canSelectBranch.value
+    ? branchStore.selectedBranchId ?? ''
+    : authStore.user?.branch_id ?? '',
+  set: (value) => {
+    if (canSelectBranch.value) {
+      branchStore.setSelectedBranch(value === '' ? null : value);
+    }
+  }
+});
 const cashierId = ref('');
 const terminalId = ref('');
 const hasVariance = ref('');
 
 const branches = computed(() => branchStore.branches);
+const selectedBranch = computed({
+  get: () => branchId.value || 'all',
+  set: (value) => { branchId.value = value === 'all' ? '' : value; }
+});
 const cashiers = ref([]);
 const terminals = ref([]);
 
@@ -365,14 +385,9 @@ const paginatedSessions = computed(() => {
   return sessions.value.slice(start, end);
 });
 
-const formatCurrency = (value) => { return utilFormatCurrency(value); };
 const formatDate = (dateString) => {
   if (!dateString) return '';
   return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-};
-const formatDateTime = (dateString) => {
-  if (!dateString) return '—';
-  return new Date(dateString).toLocaleString('en-US');
 };
 const formatDuration = (start, end) => {
   if (!start || !end) return '-';
@@ -387,11 +402,11 @@ const formatDuration = (start, end) => {
 const fetchSessions = async () => {
   try {
     isLoading.value = true; error.value = null;
-    const params = { page: currentPage.value, per_page: itemsPerPage.value, from_date: fromDate.value || undefined, to_date: toDate.value || undefined, branch_id: branchId.value || undefined, cashier_id: cashierId.value || undefined, terminal_id: terminalId.value || undefined, has_variance: hasVariance.value || undefined };
+    const params = { page: filters.page.value, per_page: filters.perPage.value, from_date: fromDate.value || undefined, to_date: toDate.value || undefined, branch_id: branchId.value || undefined, cashier_id: cashierId.value || undefined, terminal_id: terminalId.value || undefined, has_variance: hasVariance.value || undefined };
     const result = await sessionStore.fetchSessions(params);
     if (result.status === 'success') { sessions.value = result.data || []; totalItems.value = result.total || sessions.value.length; }
-    else { error.value = result.message || 'فشل تحميل الجلسات'; toast.error(error.value); }
-  } catch (err) { error.value = 'حدث خطأ أثناء جلب بيانات الجلسات'; toast.error(error.value); }
+    else { error.value = result.message || 'فشل تحميل الجلسات'; showToast(error.value, 'error'); }
+  } catch (err) { error.value = 'حدث خطأ أثناء جلب بيانات الجلسات'; showToast(error.value, 'error'); }
   finally { isLoading.value = false; }
 };
 
@@ -400,8 +415,8 @@ const viewSessionDetails = async (session) => {
     isLoading.value = true;
     const result = await sessionStore.getSessionSummary(session.id);
     if (result.status === 'success') { selectedSession.value = { session: session, ...result.data }; showTransactionDetails.value = true; }
-    else { toast.error(result.message || 'فشل في تحميل تفاصيل الجلسة'); }
-  } catch (err) { toast.error('فشل في تحميل تفاصيل الجلسة'); }
+    else { showToast(result.message || 'فشل في تحميل تفاصيل الجلسة', 'error'); }
+  } catch (err) { showToast('فشل في تحميل تفاصيل الجلسة', 'error'); }
   finally { isLoading.value = false; }
 };
 
@@ -417,10 +432,10 @@ const exportSession = async (session) => {
         const fileName = `session_${session.id}_${getLocalDateISO(new Date())}.csv`;
         const csvContent = `Session ID,Date,Status,Amount\n${session.id},${session.date},${session.status},${session.amount}`;
         downloadCSV(csvContent, fileName);
-        toast.success('تم تصدير الجلسة بنجاح');
+        showToast('تم تصدير الجلسة بنجاح', 'success');
       }
     }
-  } catch (err) { toast.error('فشل في تصدير الجلسة'); }
+  } catch (err) { showToast('فشل في تصدير الجلسة', 'error'); }
   finally { isExporting.value = false; }
 };
 
@@ -435,13 +450,12 @@ const fetchDropdownData = async () => {
   try { cashiers.value = []; terminals.value = []; } catch (err) { console.error(err); }
 };
 
-const onPageChange = (page) => { if (page >= 1 && page <= filters.totalPages.value) { filters.page.value = page; fetchSessions(); } };
-
 const resetFilters = () => { fromDate.value = ''; toDate.value = ''; branchId.value = ''; cashierId.value = ''; terminalId.value = ''; hasVariance.value = ''; filters.page.value = 1; fetchSessions(); };
 
 onMounted(async () => {
   const endDate = new Date(); const startDate = new Date(); startDate.setDate(startDate.getDate() - 30);
   fromDate.value = getLocalDateISO(startDate); toDate.value = getLocalDateISO(endDate);
+  await branchStore.initialize();
   await Promise.all([fetchSessions(), fetchDropdownData()]);
 });
 </script>

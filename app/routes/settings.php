@@ -22,11 +22,14 @@ return function (RouteCollectorProxy $group, Container $container): void {
                 Permissions::SETTINGS_MANAGE,
             ], $db)->orOwner());
 
-        $group->get('/currencies/supported', [$handler, 'getSupportedCurrenciesAPI'])
+        $group->get('/currencies/rates', [$handler, 'getExchangeRatesAPI'])
             ->add(PermissionMiddleware::anyOf([
                 Permissions::SETTINGS_VIEW,
                 Permissions::SETTINGS_MANAGE,
-            ], $db));
+            ], $db)->orOwner());
+
+        $group->post('/currencies/rates/refresh', [$handler, 'refreshExchangeRatesAPI'])
+            ->add(PermissionMiddleware::require(Permissions::SETTINGS_MANAGE, $db));
 
         // Write — requires manage only
         $group->put('', [$handler, 'updateSettings'])

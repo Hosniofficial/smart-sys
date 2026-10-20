@@ -13,8 +13,10 @@
         :breadcrumb="breadcrumb"
         title="سجل التدقيق والمراقبة"
         description="تتبع كافة التغييرات، العمليات، وحركات المستخدمين داخل النظام"
-        :branches="[]"
-        :selectedBranch="null"
+        :branches="branches"
+        :selectedBranch="selectedBranch === 'all' ? null : selectedBranch"
+        :hasExplicitSelection="true"
+        @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
           <button @click="fetchLogs" :disabled="isLoading" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
@@ -319,25 +321,34 @@
 // (All imports, refs, computed properties, methods, and lifecycle hooks preserved exactly as provided)
 import { ref, computed, onMounted, watch } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import { usePaymentStore } from '@/stores/payment/paymentStore';
 import { useUserStore } from '@/stores/user/userStore';
 import { useSupplierStore } from '@/stores/supplier/supplierStore';
-import { useReportsStore } from '@/stores/reports';
+import { useReportsStore } from '@/stores/reports/reportsStore';
 import { Bar as BarChart, Doughnut as DoughnutChart } from 'vue-chartjs';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import { useTableFilters } from '@/composables/useTableFilters';
 import PageHeader from '@/components/PageHeader.vue';
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement } from 'chart.js';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';;
-import { getLocalDateISO } from '@/utils/date';
+import { getLocalDateISO } from '@/utils';
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement);
 
 const reportsStore = useReportsStore();
 const authStore = useAuthStore();
 const { breadcrumb } = useBreadcrumb();
+const branchStore = useBranchStore();
+const branches = computed(() => branchStore.branches);
+const selectedBranch = computed({
+  get: () => branchStore.selectedBranchId || 'all',
+  set: (val) => branchStore.setSelectedBranch(val === 'all' ? null : val)
+});
+onMounted(() => {
+  branchStore.fetchBranches().catch(() => {});
+});
 const paymentStore = usePaymentStore();
 const userStore = useUserStore();
 const supplierStore = useSupplierStore();
@@ -487,7 +498,7 @@ const getActionTypeClass = (a) => ({
 const fetchLogs = async () => {
     isLoading.value = true; error.value = null;
     try {
-        const payload = await reportsStore.fetchAuditLogs({ startDate: startDate.value, endDate: endDate.value, actionType: actionType.value, userId: userId.value, page: filters.page.value });
+        const payload = await reportsStore.fetchAuditLogs({ startDate: startDate.value, endDate: endDate.value, actionType: actionType.value, userId: userId.value, branchId: selectedBranch.value === 'all' ? null : selectedBranch.value, page: filters.page.value });
 
         // Response structure: payload.data = { data: [...], pagination: {...}, meta: {...} }
         const responseData = payload?.data?.data;
@@ -597,7 +608,7 @@ const fetchAndCacheData = async () => {
 };
 
 onMounted(async () => { await Promise.all([fetchLogs(), fetchAndCacheData()]); });
-watch([startDate, endDate, actionType, userId], () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(fetchLogs, 700); });
+watch([startDate, endDate, actionType, userId, selectedBranch], () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(fetchLogs, 700); });
 </script>
 
 <style scoped>

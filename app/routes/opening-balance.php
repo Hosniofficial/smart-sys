@@ -17,10 +17,8 @@ return function (RouteCollectorProxy $group, Container $container): void {
 
     $group->group('/setup/opening-balance', function (RouteCollectorProxy $group) use ($handler, $db) {
 
-        // ── Template download (read-only, view permission is sufficient) ──────
-        $group->get('/template', function (Request $request, Response $response) use ($handler) {
-            return $handler->template($request, $response);
-        })->add(PermissionMiddleware::require(Permissions::ACCOUNTING_OPENING_BALANCE, $db));
+        // NOTE: GET /template was removed — no Frontend consumer found.
+        // The handler method template() was also deleted from OpeningBalanceHandler.
 
         // ── Preview (dry-run, no data written — view permission) ─────────────
         $group->post('/preview', function (Request $request, Response $response) use ($handler) {

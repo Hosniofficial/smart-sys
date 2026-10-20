@@ -31,19 +31,13 @@
 
             <label class="metadata-label">المورّد المستهدف <span class="text-rose-500">*</span></label>
 
-            <div class="flex gap-2">
+            <select v-model="localForm.supplier_id" class="form-input-v3 font-bold" required>
 
-              <select v-model="localForm.supplier_id" class="form-input-v3 flex-grow font-bold" required>
+              <option value="">-- اختر المورد --</option>
 
-                <option value="">-- اختر المورد --</option>
+              <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
 
-                <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
-
-              </select>
-
-              <button @click="$emit('open-supplier-modal')" class="w-9 h-9 border border-slate-200 bg-white rounded-md text-indigo-600 hover:bg-indigo-50 shrink-0"><i class="fas fa-user-plus text-xs"></i></button>
-
-            </div>
+            </select>
 
           </div>
 
@@ -109,7 +103,7 @@
 
                       </select>
 
-                      <button @click="$emit('open-product-modal', index)" class="w-8 h-8 border border-slate-200 bg-white rounded-md text-blue-600 hover:bg-blue-50 shrink-0"><i class="fas fa-plus text-[10px]"></i></button>
+                      <button @click="$emit('open-product-modal', { index, branchId: localForm.branch_id })" class="w-8 h-8 border border-slate-200 bg-white rounded-md text-blue-600 hover:bg-blue-50 shrink-0"><i class="fas fa-plus text-[10px]"></i></button>
 
                     </div>
 
@@ -243,6 +237,10 @@
 
             </div>
 
+            <p v-if="isCashPayment && Number(localForm.paid_amount) > 0" class="relative z-10 rounded-md border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[10px] leading-relaxed text-amber-200">
+              سيتم تسجيل المبلغ المدفوع على نقدية فرع الاستلام. عند تفعيل جلسات الكاشير، يلزم وجود جلسة مفتوحة لهذا الفرع لإتمام الدفعة النقدية. الدفعة البنكية أو الإلكترونية تُسجل على حساب وسيلة الدفع ولا تخصم من درج النقدية.
+            </p>
+
             <p v-if="localForm.paid_amount > grandTotal" class="text-[9px] text-red-400 font-bold relative z-10">المبلغ المدفوع يتجاوز الإجمالي</p>
 
             <div v-if="remainingAmount > 0" class="flex justify-between items-center text-xs font-bold text-rose-400 pt-2 relative z-10">
@@ -310,17 +308,15 @@ const props = defineProps({
 
   isSaving: Boolean,
 
-  pendingSupplierId: { type: [Number, String, null], default: null },
-
   pendingProductAdd: { type: Object, default: null } // { index, product }
 
 });
 
-const emit = defineEmits(['close', 'save', 'open-supplier-modal', 'open-product-modal']);
+const emit = defineEmits(['close', 'save', 'open-product-modal']);
 
 const { showToast } = useToast();
 
-const { formatCurrencyLocale } = useCompanyCurrency();
+const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 
 const formatCurrency = (v) => formatCurrencyLocale(v, 2);
 
@@ -339,11 +335,21 @@ const safeInitial = () => {
 const localForm = ref(safeInitial());
 
 // تحديث localForm عند كل فتح للـ modal
-watch(() => props.show, (val) => {
-  if (val) localForm.value = safeInitial();
+watch(() => props.show, async (val) => {
+  if (val) {
+    localForm.value = safeInitial();
+    await fetchSettings();
+  }
 });
 
 const subtotal = computed(() => localForm.value.items.reduce((sum, it) => sum + (it.quantity * it.purchase_price), 0));
+
+const isCashPayment = computed(() => {
+  const method = (props.paymentMethods || []).find(
+    (item) => Number(item.id) === Number(localForm.value.payment_method_id)
+  );
+  return String(method?.kind || '').toLowerCase() === 'cash';
+});
 
 const discountAmount = computed(() => {
 
@@ -388,16 +394,6 @@ const onProductChange = (item, idx) => {
   }
 
 };
-
-watch(() => props.pendingSupplierId, (newId) => {
-
-  if (newId != null && !localForm.value.supplier_id) {
-
-    localForm.value.supplier_id = newId;
-
-  }
-
-});
 
 watch(() => props.pendingProductAdd, (val) => {
 
@@ -521,11 +517,11 @@ const handleSave = () => {
 
       unit_id: it.unit_id || 1,
 
-      batch_number: it.batch_number || '',
+      batch_number: it.batch_number || null,
 
-      expiry_date: it.expiry_date || '',
+      expiry_date: it.expiry_date || null,
 
-      serial: it.serial || '',
+      serial: it.serial || null,
 
       warehouse_id: localForm.value.branch_id
 

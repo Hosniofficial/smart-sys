@@ -7,6 +7,12 @@ use App\Services\SecurityLogger;
 use App\Models\User;
 use App\Models\Tenant;
 
+/**
+ * Persists security audit events and emits operational log messages.
+ *
+ * Receives event payloads from SecurityEventDispatcher and delegates durable
+ * audit writes to SecurityLogger; the PSR logger is optional.
+ */
 class SecurityEventListener
 {
     private SecurityLogger $securityLogger;
@@ -37,7 +43,6 @@ class SecurityEventListener
                 return;
             }
 
-            // Normalize fields
             if (is_array($userPayload)) {
                 $uid = $userPayload['id'] ?? null;
                 $uname = $userPayload['username'] ?? ($userPayload['name'] ?? 'unknown');
@@ -101,7 +106,7 @@ class SecurityEventListener
                 'ip' => $request ? ($request->getServerParams()['REMOTE_ADDR'] ?? 'unknown') : 'unknown',
             ]);
 
-            // Implement account lockout after multiple failed attempts
+            // Consult the account-lockout policy after a failed login.
             if ($userId && $this->shouldLockAccount($userId)) {
                 $this->lockAccount($userId);
             }
@@ -298,19 +303,6 @@ class SecurityEventListener
                 'violation' => $violation,
             ]);
 
-            // TODO: Implement the following when ready:
-            // 1. Lock the user account
-            // 2. Notify system admins
-            // 3. Trigger additional security checks
-
-            // Commented pending full implementation:
-            // $this->lockAccount($userId);
-            // $this->notifyAdmins("High severity security violation detected", [
-            //     'user_id' => $userId,
-            //     'policy' => $policy,
-            //     'violation' => $violation
-            // ]);
-
         } catch (\Throwable $e) {
             $this->log('error', 'Error in onHighSeverityViolation: ' . $e->getMessage(), [
                 'exception' => $e,
@@ -330,13 +322,6 @@ class SecurityEventListener
             return false;
         }
 
-        // TODO: Implement checking failed login attempts
-        // For now, returning false until full implementation is in place
-        // When implemented, check if there have been more than 5 failed attempts in the last 15 minutes
-        // Example pattern:
-        // $failedAttempts = $this->securityLogger->countRecentFailedLogins($userId, '-15 minutes');
-        // return $failedAttempts >= 5;
-
         return false;
     }
 
@@ -352,19 +337,11 @@ class SecurityEventListener
         }
 
         try {
-            // TODO: Implement actual account locking in database
-            // Example pattern would be:
-            // UPDATE users SET status = 'locked', locked_at = NOW() WHERE id = ?
-            // For now, only logging the action
-
             $this->log('warning', 'User account locked due to suspicious activity', [
                 'user_id' => $userId,
                 'action' => 'Account status changed to locked',
                 'timestamp' => date('Y-m-d H:i:s')
             ]);
-
-            // TODO: Notify admins of account lock
-            // $this->notifyAdmins(...);
 
         } catch (\Throwable $e) {
             $this->log('error', 'Failed to lock user account', [

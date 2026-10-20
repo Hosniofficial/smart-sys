@@ -7,6 +7,7 @@ namespace App\Services;
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\SMTP;
 
+/** Sends configured SMTP mail and renders subscription notification bodies. */
 class Mailer
 {
     private PHPMailer $mailer;
@@ -15,6 +16,7 @@ class Mailer
     private string $fromName = 'ERP System';
     private MonologHandler $logger;
 
+    /** Configure PHPMailer from SMTP_* environment values; sending is disabled when required values are absent. */
     public function __construct()
     {
         $this->logger = MonologHandler::getInstance('mailer');
@@ -48,11 +50,13 @@ class Mailer
         $this->mailer = $mail;
     }
 
+    /** Return whether SMTP configuration is sufficient to attempt delivery. */
     public function isEnabled(): bool
     {
         return $this->enabled;
     }
 
+    /** Send one HTML message to the non-empty recipients; return false when disabled or delivery fails. */
     public function send(array $toEmails, string $subject, string $htmlBody): bool
     {
         if (!$this->enabled) {
@@ -82,6 +86,7 @@ class Mailer
         }
     }
 
+    /** Render the reminder body, escaping all interpolated values for HTML. */
     public static function renderReminderTemplate(string $planName, string $endDate, string $upgradeUrl): string
     {
         $end = htmlspecialchars($endDate, ENT_QUOTES, 'UTF-8');
@@ -108,6 +113,7 @@ class Mailer
 HTML;
     }
 
+    /** Render the expiration body, escaping all interpolated values for HTML. */
     public static function renderExpiredTemplate(string $planName, string $endDate, string $upgradeUrl): string
     {
         $end = htmlspecialchars($endDate, ENT_QUOTES, 'UTF-8');

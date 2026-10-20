@@ -6,6 +6,9 @@ use PDO;
 use PDOException;
 use Psr\Log\LoggerInterface;
 
+/**
+ * Stores and queries security audit events using the application PDO connection.
+ */
 class SecurityEventRepository
 {
     private PDO $db;
@@ -17,9 +20,7 @@ class SecurityEventRepository
         $this->logger = $logger;
     }
 
-    /**
-     * Log a security event
-     */
+    /** Insert an event and return its ID, or null when a PDO error occurs. */
     public function logEvent(
         string $eventType,
         ?int $tenantId = null,
@@ -71,9 +72,7 @@ class SecurityEventRepository
         }
     }
 
-    /**
-     * Get security events with filtering and pagination
-     */
+    /** Fetch filtered events and pagination metadata. */
     public function getEvents(
         ?int $tenantId = null,
         ?int $userId = null,
@@ -204,9 +203,7 @@ class SecurityEventRepository
         }
     }
 
-    /**
-     * Get a single security event by ID
-     */
+    /** Fetch an event by ID, optionally scoped to a tenant. */
     public function getEventById(int $id, ?int $tenantId = null): ?array
     {
         try {
@@ -242,9 +239,7 @@ class SecurityEventRepository
         }
     }
 
-    /**
-     * Get event statistics
-     */
+    /** Aggregate event totals and the most common event types. */
     public function getStatistics(
         ?int $tenantId = null,
         ?string $dateFrom = null,
@@ -335,9 +330,7 @@ class SecurityEventRepository
         }
     }
 
-    /**
-     * Bind parameters to a prepared statement with their types
-     */
+    /** Bind named query parameters using their declared PDO types. */
     private function bindParams(\PDOStatement $stmt, array $params, array $types): void
     {
         foreach ($params as $key => $value) {
@@ -346,9 +339,7 @@ class SecurityEventRepository
         }
     }
 
-    /**
-     * Log an error message if a logger is available
-     */
+    /** Log repository errors when a logger was provided. */
     private function logError(string $message, array $context = []): void
     {
         if ($this->logger) {

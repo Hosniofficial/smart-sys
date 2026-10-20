@@ -1,6 +1,6 @@
 import { getPrintConfig } from './printConfig';
 import { esc, fmt, itemTotal, getCompanyData } from './printHelpers';
-import getLocalDateISO from '@/utils/date';
+import { getLocalDateISO } from '@/utils';
 
 export const buildThermalCompactHtml = (sale) => {
   const cfg     = getPrintConfig();

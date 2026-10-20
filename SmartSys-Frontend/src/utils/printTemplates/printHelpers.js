@@ -3,7 +3,7 @@
  * ─────────────────────────────────────────────
  * Shared utilities used by all print templates
  */
-import { getImageUrl } from '@/utils/imageHelpers';
+import { getImageUrl } from '@/utils';
 
 /**
  * Escape HTML to prevent XSS

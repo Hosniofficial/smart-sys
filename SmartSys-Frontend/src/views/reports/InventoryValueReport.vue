@@ -13,8 +13,10 @@
         :breadcrumb="{ parent: { label: 'التقارير', path: '/reports' }, current: { label: 'تحليل قيمة المخزون', path: '/reports/inventory-value' } }"
         title="تحليل قيمة المخزون"
         description="تقييم القيمة الرأسمالية للأصول المخزنية"
-        :branches="[]"
-        :selectedBranch="null"
+        :branches="branches"
+        :selectedBranch="selectedBranch === 'all' ? null : selectedBranch"
+        :hasExplicitSelection="true"
+        @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
           <div class="flex items-center gap-2">
@@ -195,12 +197,13 @@
 <script setup>
 // [بقاء المنطق البرمجي كما هو بنسبة 100%]
 import { ref, computed, onMounted, watch } from 'vue';
-import { useReportsStore } from '../../stores/reports';
+import { useReportsStore } from '@/stores/reports/reportsStore';
 import { Bar as BarChart } from 'vue-chartjs';
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from 'chart.js';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import PageHeader from '@/components/PageHeader.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 
@@ -304,7 +307,7 @@ const getRowClass = (item) => {
 const fetchInventoryValue = async () => {
     isLoading.value = true; error.value = null;
     try {
-        const resp = await reportsStore.fetchInventoryValue({ search: searchQuery.value || undefined, category_id: selectedCategory.value !== 'all' ? selectedCategory.value : undefined, valuation: valuation.value });
+        const resp = await reportsStore.fetchInventoryValue({ branchId: selectedBranch.value === 'all' ? null : selectedBranch.value, search: searchQuery.value || undefined, category_id: selectedCategory.value !== 'all' ? selectedCategory.value : undefined, valuation: valuation.value });
         const apiData = resp?.data?.data ?? resp?.data ?? resp;
         totals.value = apiData?.totals || totals.value;
         if (Array.isArray(apiData)) inventoryItems.value = apiData;
@@ -315,9 +318,18 @@ const fetchInventoryValue = async () => {
 const handleSort = (k) => { if (sortKey.value === k) sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'; else { sortKey.value = k; sortOrder.value = 'asc'; } };
 
 const { breadcrumb } = useBreadcrumb();
+const branchStore = useBranchStore();
+const branches = computed(() => branchStore.branches);
+const selectedBranch = computed({
+  get: () => branchStore.selectedBranchId || 'all',
+  set: (val) => branchStore.setSelectedBranch(val === 'all' ? null : val)
+});
+onMounted(() => {
+  branchStore.fetchBranches().catch(() => {});
+});
 
 onMounted(async () => { await Promise.all([fetchSettings(), fetchInventoryValue()]); });
-watch([searchQuery, selectedCategory, valuation], () => fetchInventoryValue());
+watch([searchQuery, selectedCategory, valuation, selectedBranch], () => fetchInventoryValue());
 </script>
 
 <style scoped>

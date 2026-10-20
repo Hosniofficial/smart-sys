@@ -38,7 +38,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import Layout from './components/Layout.vue'
+import Layout from './components/layout/Layout.vue'
 import GlobalLoader from './components/ui/GlobalLoader.vue'
 import GlobalToasts from './components/ui/GlobalToasts.vue'
 import AlertService from './services/AlertService'

@@ -11,8 +11,8 @@
       <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
-        title="توزيع المخزون"
-        description="تخصيص الكميات عبر الفروع أو الاستيراد من ملفات البيانات الخارجية."
+        title="التوزيع الجماعي"
+        description="وزّع كميات الأصناف على الفروع دفعة واحدة، أو استورد بيانات التوزيع من ملفات خارجية."
         :branches="[]"
         :selectedBranch="null"
       >
@@ -87,7 +87,10 @@
 
             <!-- Search Dropdown: Professional Elevation -->
             <transition name="dropdown">
-              <div v-if="showDropdown && products.length" id="product-dropdown" role="listbox" class="absolute z-50 mt-2 w-full bg-white border border-slate-200 rounded-lg shadow-2xl max-h-72 overflow-auto py-2 animate-fadeIn">
+              <div v-if="showDropdown && (isSearchingProducts || productSearchError || products.length || productSearch.trim())" id="product-dropdown" role="listbox" :aria-busy="isSearchingProducts" class="absolute z-50 mt-2 w-full bg-white border border-slate-200 rounded-lg shadow-2xl max-h-72 overflow-auto py-2 animate-fadeIn">
+                <div v-if="isSearchingProducts" role="status" class="px-6 py-4 text-xs font-bold text-slate-500">جارٍ البحث عن المنتجات...</div>
+                <div v-else-if="productSearchError" role="alert" class="px-6 py-4 text-xs font-bold text-rose-600">{{ productSearchError }}</div>
+                <div v-else-if="!products.length" role="status" class="px-6 py-4 text-xs font-bold text-slate-400">لا توجد منتجات مطابقة.</div>
                 <div v-for="(p, index) in products" :key="p.id" :data-dropdown-item="index" role="option" @mousedown.prevent="selectProduct(p)" class="px-6 py-3 cursor-pointer hover:bg-blue-50 transition-colors flex items-center justify-between border-b border-slate-50 last:border-0">
                   <div class="min-w-0 flex-1">
                     <span class="font-bold text-slate-800 text-sm block truncate">{{ p.name }}</span>
@@ -301,7 +304,7 @@
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useToast } from '@/composables/useToast';
-import { useBranchStore } from '@/stores/branch';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import { useProductStore } from '@/stores/product/productStore';
 import { useBulkAdjustmentStore } from '@/stores/bulk/bulkAdjustmentStore';
 import AlertService from '@/services/AlertService';
@@ -323,9 +326,12 @@ const totalQuantity = computed(() => rows.value.reduce((sum, row) => sum + (Numb
 // Product Search Logic
 const productSearch = ref('');
 const products = ref([]);
+const productSearchError = ref('');
+const isSearchingProducts = ref(false);
 const selectedProduct = ref(null);
 const showDropdown = ref(false);
 let searchTimeout;
+let productSearchRequestId = 0;
 
 // Watch for search changes to close dropdown when cleared
 watch(productSearch, (val) => {
@@ -333,11 +339,23 @@ watch(productSearch, (val) => {
 });
 
 const selectProduct = (p) => {
-  selectedProduct.value = p;
+  selectedProduct.value = {
+    ...p,
+    stock: Number(p.stock ?? p.current_quantity ?? p.quantity ?? 0),
+  };
   productSearch.value = p.name;
   showDropdown.value = false;
 };
-const clearProduct = () => { selectedProduct.value = null; productSearch.value = ''; percentageCache.clear(); };
+const clearProduct = () => {
+  selectedProduct.value = null;
+  productSearch.value = '';
+  clearTimeout(searchTimeout);
+  productSearchRequestId += 1;
+  products.value = [];
+  productSearchError.value = '';
+  isSearchingProducts.value = false;
+  percentageCache.clear();
+};
 const handleSearchKeydown = (e) => {
   if (e.key === 'ArrowDown') {
     e.preventDefault();
@@ -347,31 +365,39 @@ const handleSearchKeydown = (e) => {
     showDropdown.value = false;
   }
 };
-const handleDropdownKeydown = (e, product, index) => {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    selectProduct(product);
-  } else if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    const nextItem = document.querySelector(`[data-dropdown-item="${index + 1}"]`);
-    if (nextItem) nextItem.focus();
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    const prevItem = document.querySelector(`[data-dropdown-item="${index - 1}"]`);
-    if (prevItem) prevItem.focus();
-  } else if (e.key === 'Escape') {
-    showDropdown.value = false;
-    document.querySelector('input[role="combobox"]')?.focus();
-  }
-};
 const debouncedSearch = () => {
   showDropdown.value = true;
   clearTimeout(searchTimeout);
+  productSearchError.value = '';
+  const query = productSearch.value.trim();
+  const requestId = ++productSearchRequestId;
+  isSearchingProducts.value = Boolean(query);
+  products.value = [];
+  if (!query) {
+    return;
+  }
+
   searchTimeout = setTimeout(async () => {
+    if (requestId !== productSearchRequestId) return;
     try {
-      const result = await bulkAdjustmentStore.searchProducts(productSearch.value || '');
-      products.value = result.status === 'success' ? result.data : [];
-    } catch { products.value = []; }
+      const result = await bulkAdjustmentStore.searchProducts(query);
+      if (requestId !== productSearchRequestId) return;
+      if (result.status === 'success') {
+        products.value = result.data;
+      } else {
+        products.value = [];
+        productSearchError.value = result.message || 'تعذر البحث عن المنتجات.';
+      }
+    } catch (error) {
+      if (requestId !== productSearchRequestId) return;
+      console.error('Product search failed:', error);
+      products.value = [];
+      productSearchError.value = error?.message || 'تعذر البحث عن المنتجات.';
+    } finally {
+      if (requestId === productSearchRequestId) {
+        isSearchingProducts.value = false;
+      }
+    }
   }, 300);
 };
 
@@ -396,7 +422,7 @@ const submitBulk = async () => {
   
   // Stock validation - prevent exceeding available stock
   if (totalQuantity.value > (selectedProduct.value.stock || 0)) {
-    await AlertService.warning('الكمية الإجمالية تتجاوز المخزون المتاح', 'خطأ');
+    await AlertService.warning('الكمية الإجمالية المطلوب توزيعها تتجاوز المخزون المتاح.', 'خطأ');
     return;
   }
   
@@ -514,10 +540,18 @@ onMounted(async () => {
   const pid = route.query.product_id ? Number(route.query.product_id) : null;
   if (pid) {
     try {
-      const res = await bulkAdjustmentStore.searchProducts(String(pid));
-      const found = res.status === 'success' && res.data.find(p => p.id === pid);
+      const branchId = Number(branchStore.selectedBranchId);
+      const res = await productStore.fetchProducts({
+        branchId: Number.isInteger(branchId) && branchId > 0 ? branchId : undefined,
+        force: true,
+      });
+      const found = res.status === 'success'
+        && res.data.find(product => String(product.id) === String(pid));
       if (found) selectProduct(found);
-    } catch {}
+    } catch (error) {
+      console.error('Failed to load the requested distribution product:', error);
+      showToast(error?.message || 'تعذر تحميل المنتج المحدد للتوزيع', 'error');
+    }
   }
 });
 </script>

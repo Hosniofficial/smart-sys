@@ -112,7 +112,7 @@
 // [المنطق البرمجي لم يتغير بتاتاً - تم الحفاظ عليه بنسبة 100%]
 import { ref, watch, computed } from 'vue';
 import { useToast } from '@/composables/useToast';
-import { useBranchStore } from '@/stores/branch';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import LoadingButton from '@/components/ui/LoadingButton.vue'
 
 const props = defineProps({
@@ -136,7 +136,11 @@ const serverErrors = ref({});
 
 watch(() => props.branch, (newVal) => {
   if (newVal) {
-    form.value = { ...newVal, is_active: newVal.is_active == 1 };
+    const activeStatus = newVal.is_active ?? newVal.active;
+    form.value = {
+      ...newVal,
+      is_active: activeStatus === true || activeStatus === 1 || activeStatus === '1'
+    };
   } else {
     form.value = { id: null, name: '', location: '', phone: '', email: '', is_active: true };
   }

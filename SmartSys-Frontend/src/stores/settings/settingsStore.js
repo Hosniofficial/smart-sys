@@ -193,39 +193,6 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   };
 
-  // ─── testPrinter ──────────────────────────────────────────────────────────
-  /**
-   * @param {{ printer: string, type: 'invoice' | 'kitchen' }} payload
-   */
-  const testPrinter = async ({ printer, type }) => {
-    loading.value = true;
-    error.value = null;
-    
-    try {
-      const response = await apiClient.post('/settings/test-printer', {
-        printer,
-        type,
-      });
-      
-      const apiStatus = response?.data?.status;
-      return {
-        status: apiStatus === 'success' ? 'success' : 'error',
-        data: response?.data ?? {},
-        message: response?.data?.message
-      };
-    } catch (err) {
-      console.error('testPrinter failed:', err);
-      error.value = err.response?.data?.message || err.message;
-      return {
-        status: 'error',
-        data: null,
-        message: err.response?.data?.message || err.message
-      };
-    } finally {
-      loading.value = false;
-    }
-  };
-
   // ─── fetchTaxSettings ─────────────────────────────────────────────────────
   const fetchTaxSettings = async ({ force = false } = {}) => {
     return await fetchSettings({ force });
@@ -248,14 +215,20 @@ export const useSettingsStore = defineStore('settings', () => {
     );
   });
 
-  const tax = computed(() => ({
-    enabled: settings.value['tax.tax_enabled'] === '1' ||
-             settings.value['tax.tax_enabled'] === 1   ||
-             settings.value['tax.tax_enabled'] === true,
-    rate:    parseFloat(settings.value['tax.tax_rate']) || 0,
-    name:    settings.value['tax.tax_name'] || 'ضريبة القيمة المضافة',
-    number:  settings.value['tax.tax_number'] || '',
-  }));
+  const tax = computed(() => {
+    // Source of truth is tax.* (written by Setup wizard and our fixed saveInvoiceSettings).
+    // Fallback to company.tax_* to stay compatible with any older rows still in that namespace.
+    const enabled = settings.value['tax.tax_enabled'] ?? settings.value['company.tax_enabled'];
+    const rate    = settings.value['tax.tax_rate']    ?? settings.value['company.tax_rate'];
+    const name    = settings.value['tax.tax_name']    ?? settings.value['company.tax_name'];
+    const number  = settings.value['tax.tax_number']  ?? settings.value['company.tax_number'];
+    return {
+      enabled: enabled === '1' || enabled === 1 || enabled === true,
+      rate:    parseFloat(rate) || 0,
+      name:    name   || 'ضريبة القيمة المضافة',
+      number:  number || '',
+    };
+  });
 
   const invoice = computed(() => {
     const prefix = 'invoice.';
@@ -303,7 +276,6 @@ export const useSettingsStore = defineStore('settings', () => {
     updateSetting,
     updateSettings,
     uploadLogo,
-    testPrinter,
     clearCache,
 
     // Computed selectors

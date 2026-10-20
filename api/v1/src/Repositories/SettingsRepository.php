@@ -25,7 +25,7 @@ use PDO;
  * Usage:
  *   $repo = new SettingsRepository($db);
  *   $currency = $repo->get($tenantId, 'company.currency', 'EGP');
- *   $enabled  = $repo->getBool($tenantId, 'pos.sessions.enabled', true);
+ *   $enabled  = $repo->getBool($tenantId, 'pos.sessions.enabled', false);
  */
 class SettingsRepository
 {

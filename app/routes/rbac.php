@@ -32,27 +32,5 @@ return function (RouteCollectorProxy $group, Container $container): void {
         // ── Roles ─────────────────────────────────────────────────────────────
         $group->get('/roles', [$handler, 'getRoles'])
             ->add(PermissionMiddleware::require(Permissions::ROLE_VIEW, $db));
-
-        $group->post('/roles', [$handler, 'createRole'])
-            ->add(PermissionMiddleware::require(Permissions::ROLE_CREATE, $db));
-
-        $group->put('/roles/{id}', [$handler, 'updateRole'])
-            ->add(PermissionMiddleware::require(Permissions::ROLE_EDIT, $db));
-
-        $group->delete('/roles/{id}', [$handler, 'deleteRole'])
-            ->add(PermissionMiddleware::require(Permissions::ROLE_DELETE, $db));
-
-        // ── Permissions ───────────────────────────────────────────────────────
-        $group->get('/permissions', [$handler, 'getPermissions'])
-            ->add(PermissionMiddleware::require(Permissions::PERMISSION_VIEW, $db));
-
-        $group->post('/permissions', [$handler, 'createPermission'])
-            ->add(PermissionMiddleware::require(Permissions::PERMISSION_ASSIGN, $db));
-
-        $group->put('/permissions/{id}', [$handler, 'updatePermission'])
-            ->add(PermissionMiddleware::require(Permissions::PERMISSION_ASSIGN, $db));
-
-        $group->delete('/permissions/{id}', [$handler, 'deletePermission'])
-            ->add(PermissionMiddleware::require(Permissions::PERMISSION_ASSIGN, $db));
     });
 };

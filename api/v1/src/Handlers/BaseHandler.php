@@ -13,9 +13,16 @@ use App\Services\ServiceFactory;
 use App\Traits\AuthorizesRequests;
 use App\Utils\RequestHelper;
 use App\Repositories\SettingsRepository;
+use App\Utils\SuperAdminHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
+/**
+ * Shared request context, response, authorization, session, cost-center, and transaction helpers.
+ *
+ * Subclasses receive PDO access and lazy-loaded accounting, settings, audit, service,
+ * and transaction dependencies.
+ */
 class BaseHandler
 {
     use AuthorizesRequests;
@@ -93,14 +100,13 @@ class BaseHandler
         };
     }
 
+    /** Raise the standard branch-access denial used by branch-scoped helpers. */
     protected function throwUnauthorizedBranch(): void
     {
         throw new \Exception('branch_id not permitted for your account', 403);
     }
 
-    /**
-     * تعيين قيمة tenantId باستخدام extractTenantId الموحد
-     */
+    /** Set the handler's tenant context from the authenticated request. */
     protected function setTenantId(Request $request): void
     {
         $tenantId = $this->extractTenantId($request);
@@ -111,9 +117,7 @@ class BaseHandler
         $this->tenantId = (int) $tenantId;
     }
 
-    /**
-     * تعيين قيمة tenantId باستخدام extractTenantId الموحد
-     */
+    /** Validate database availability and tenant context, then return tenant and user IDs. */
     protected function requireTenantContext(Request $request): array
     {
         $this->validateAuth();
@@ -133,11 +137,9 @@ class BaseHandler
     }
 
     /**
-     * Simple tenant ID extraction and validation
-     * Returns tenant ID or throws exception
+     * Return the authenticated tenant ID or throw when it is missing.
      *
-     * @return int Validated tenant ID
-     * @throws \Exception If tenant ID is missing
+     * @throws \Exception If the request has no tenant context.
      */
     protected function requireTenantId(Request $request, Response $response): ?int
     {
@@ -149,24 +151,9 @@ class BaseHandler
     }
 
     /**
-     * Build filtered SQL WHERE clause and bindings
-     * Automatically adds tenant_id filter
+     * Build a tenant-scoped WHERE clause from caller-defined filter columns and bindings.
      *
-     * Usage:
-     * $filters = $this->buildFilteredQuery($tenantId, [
-     *     'event_type' => 'event_type',      // filter_key => db_column
-     *     'level' => 'level',
-     *     'date_from' => ['timestamp', '>='],  // with operator
-     *     'date_to' => ['timestamp', '<=']
-     * ], $params);
-     *
-     * $sql = "SELECT * FROM audit_log WHERE {$filters['where']}";
-     * $stmt->execute($filters['bindings']);
-     *
-     * @param int $tenantId Tenant ID for isolation
-     * @param array $allowedFilters Map of filter_key => column_name or [column, operator]
-     * @param array $params Query parameters from request
-     * @return array ['where' => string, 'bindings' => array]
+     * @return array{where: string, bindings: array}
      */
     protected function buildFilteredQuery(int $tenantId, array $allowedFilters, array $params): array
     {
@@ -196,9 +183,7 @@ class BaseHandler
         ];
     }
 
-    /**
-     * قراءة قيمة إعداد واحدة من جدول settings
-     */
+    /** Read one tenant setting, or return null when no database is available. */
     protected function getSetting(int $tenantId, string $key): ?string
     {
         if ($this->db) {
@@ -208,8 +193,24 @@ class BaseHandler
     }
 
     /**
-     * قراءة إعداد منطقي (boolean) بقيمة افتراضية
+     * Resolve date filters using the tenant's configured calendar timezone.
+     *
+     * @return array{0: string, 1: string}
      */
+    protected function resolveTenantDateRange(
+        int $tenantId,
+        ?string $start,
+        ?string $end,
+        int $defaultDaysBack = 30
+    ): array {
+        $timezone = $this->getSetting($tenantId, 'app.timezone')
+            ?? $this->getSetting($tenantId, 'company.timezone')
+            ?? date_default_timezone_get();
+
+        return \App\Services\DateRangeResolver::resolve($start, $end, $defaultDaysBack, $timezone);
+    }
+
+    /** Read a boolean tenant setting with the supplied fallback. */
     protected function getBoolSetting(int $tenantId, string $key, bool $default = false): bool
     {
         if ($this->db) {
@@ -218,18 +219,13 @@ class BaseHandler
         return $default;
     }
 
-    /**
-     * هل نظام جلسات الكاشير مفعّل؟
-    * المفتاح: pos.sessions.enabled (افتراضي: false — الجلسات اختيارية وتُفعّل صراحةً)
-     */
+    /** Check whether the tenant has enabled cashier sessions; the default is disabled. */
     protected function isSessionsEnabled(int $tenantId): bool
     {
         return $this->getBoolSetting($tenantId, 'pos.sessions.enabled', false);
     }
 
-    /**
-     * تحديد ما إذا كانت طريقة الدفع نقدية بالاعتماد على payment_methods.kind فقط.
-     */
+    /** Check whether a tenant payment method is explicitly classified as cash. */
     protected function isCashMethod(int $paymentMethodId, ?int $tenantId = null): bool
     {
         if (!$this->db) {
@@ -250,16 +246,14 @@ class BaseHandler
             $kind = $stmt->fetchColumn();
             $kind = $kind ? strtolower((string) $kind) : null;
 
-            return in_array($kind, ['cash', 'check', 'bank_transfer'], true);
+            return $kind === 'cash';
         } catch (Throwable $e) {
             $this->logger->warning('isCashMethod error', ['error' => $e->getMessage()]);
             return false;
         }
     }
 
-    /**
-     * Returns a JSON response using PSR-7
-     */
+    /** Serialize a JSON response and optionally log error-shaped payloads. */
     protected function jsonResponse(
         Response $response,
         $data,
@@ -293,9 +287,7 @@ class BaseHandler
             ->withHeader('Content-Type', 'application/json')
             ->withStatus($status);
     }
-
-
-
+    /** Build the standard error payload and pass it through jsonResponse(). */
     protected function errorResponse(
         Response $response,
         string $message,
@@ -310,6 +302,7 @@ class BaseHandler
         return $this->jsonResponse($response, $data, $status, true);
     }
 
+    /** Build the standard success payload without error logging. */
     protected function successResponse(
         Response $response,
         array|null $data = [],
@@ -323,7 +316,7 @@ class BaseHandler
 
 
 
-
+    /** Ensure a database connection is present; request authentication is handled upstream. */
     protected function validateAuth(): bool
     {
         if (!$this->db) {
@@ -333,18 +326,14 @@ class BaseHandler
         return true;
     }
 
-    /**
-     * Extract tenant ID from JWT only (security measure)
-     */
+    /** Read the tenant ID attached to the request by authentication middleware. */
     protected function extractTenantId(Request $request): ?int
     {
         $tenantId = $request->getAttribute('tenant_id');
         return is_numeric($tenantId) ? (int) $tenantId : null;
     }
 
-    /**
-     * Centralized validation with JSON parsing and error collection
-     */
+    /** Return the parsed request body after checking required fields. */
     protected function extractAndValidateRequestData(Request $request, array $requiredFields = []): array
     {
         $data = $request->getParsedBody();
@@ -366,31 +355,23 @@ class BaseHandler
         return $data;
     }
 
-    /**
-     * Extract and set current user context from request
-     * This is used by audit logging to capture the user_id
-     */
+    /** Copy the authenticated request user into handler context for audit logging. */
     protected function setUserContext(Request $request): void
     {
         $user = $request->getAttribute('user');
         if (is_array($user) && isset($user['id'])) {
-            // Store user context for audit logging
             if (!isset($this->currentUser)) {
                 $this->currentUser = $user;
             }
         }
     }
 
-    /**
-     * استخراج معرف المستخدم (الكاشير) من الـ JWT المرفق في الطلب
-     * وتخزين سياق المستخدم لـ audit logging
-     */
+    /** Return the authenticated user ID and retain the user context for audit logging. */
     protected function extractUserId(Request $request): ?int
     {
         $user = $request->getAttribute('user');
 
         if (is_array($user)) {
-            // Store user context for audit logging (if not already set)
             if (!isset($this->currentUser)) {
                 $this->currentUser = $user;
             }
@@ -400,9 +381,7 @@ class BaseHandler
         return null;
     }
 
-    /**
-     * إيجاد جلسة كاشير مفتوحة حسب المستأجر والمخزن والكاشير.
-     */
+    /** Find the latest open cashier session for a tenant, branch, and optional cashier. */
     protected function findOpenCashierSession(int $tenantId, int $branchId, ?int $cashierId = null): ?int
     {
         if (!$this->db) {
@@ -445,9 +424,7 @@ class BaseHandler
         return $sid ? (int) $sid : null;
     }
 
-    /**
-     * فرض وجود جلسة كاشير مفتوحة
-     */
+    /** Require an open cashier session and return its ID. */
     protected function requireOpenCashierSession(int $tenantId, int $branchId, ?int $cashierId = null): int
     {
         $sid = $this->findOpenCashierSession($tenantId, $branchId, $cashierId);
@@ -459,9 +436,7 @@ class BaseHandler
         return $sid;
     }
 
-    /**
-     * تحقق مما إذا كان المستخدم الحالي مُعفى من شرط جلسة الكاشير المفتوحة.
-     */
+    /** Check manager, user, and role exemptions from the cashier-session requirement. */
     protected function isCashierSessionExempt(Request $request): bool
     {
         try {
@@ -469,7 +444,7 @@ class BaseHandler
             $tenantId = $this->extractTenantId($request);
             $userId = null;
             $roles = [];
-            $roleId = null;
+            $userData = is_array($user) ? $user : null;
 
             if (is_array($user)) {
                 $userId = isset($user['id']) ? (int) $user['id'] : null;
@@ -480,9 +455,6 @@ class BaseHandler
                     $roles = [$user['role']];
                 }
 
-                if (isset($user['role_id'])) {
-                    $roleId = (int) $user['role_id'];
-                }
             }
 
             if (!$tenantId) {
@@ -491,15 +463,15 @@ class BaseHandler
 
             $allowManagerOverride = $this->getBoolSetting($tenantId, 'pos.sessions.allow_manager_override', true);
 
-            foreach ($roles as $r) {
-                $r = strtolower((string) $r);
-                if ($allowManagerOverride && in_array($r, ['admin', 'administrator', 'manager', 'owner', 'superadmin'], true)) {
-                    return true;
-                }
+            if ($allowManagerOverride && SuperAdminHelper::isAdminOrAbove($userData)) {
+                return true;
             }
 
-            if ($allowManagerOverride && $roleId === 1) {
-                return true;
+            foreach ($roles as $r) {
+                $r = strtolower((string) $r);
+                if ($allowManagerOverride && in_array($r, ['admin', 'manager'], true)) {
+                    return true;
+                }
             }
 
             if (!$this->db) {
@@ -556,9 +528,7 @@ class BaseHandler
         }
     }
 
-    /**
-     * Resolve cost_center_id automatically
-     */
+    /** Authorize the requested branch, then resolve its cost center through CostCenterService. */
     protected function resolveCostCenterId(Request $request): ?int
     {
         try {
@@ -643,7 +613,6 @@ class BaseHandler
                             $this->throwUnauthorizedBranch();
                         }
                     } catch (\PDOException $e) {
-                        // Only PDOException from missing table is expected; ignore
                         $this->logger->debug('ACL table may not exist yet', [
                             'error' => $e->getMessage()
                         ]);
@@ -651,30 +620,10 @@ class BaseHandler
                 }
             }
 
-            // 🎯 توحيد معماري: كانت هذه الدالة تحتوي من هنا نسخة رابعة كاملة ومستقلة من
-            // خوارزمية حل مركز التكلفة (branch → cost_center، ثم user's branch → cost_center،
-            // ثم إعداد افتراضي) — منفصلة تماماً عن App\Services\CostCenter\CostCenterService
-            // وعن AccountingService::resolveCostCenterForService. وبما أن applyDefaultCostCenter
-            // (التي تستدعي هذه الدالة) تُستدعى فعلياً من SalesHandler وPurchasesHandler و
-            // ReturnsHandler وCashVouchersHandler وJournalEntriesHandler *قبل* وصول البيانات
-            // لأي من تلك الخدمتين، كانت هذه هي الخوارزمية الفعلية الحاكمة عملياً في معظم
-            // النظام — بينما التوحيد السابق بين CostCenterService وAccountingService كان
-            // يعالج طبقة ثانوية نادراً ما تُستدعى فعلياً (لأن القيمة تصل إليها مملوءة مسبقاً).
-            //
-            // فحص التفويض (authorization) أعلاه يبقى هنا لأنه فعلاً مسؤولية طبقة HTTP/الصلاحيات
-            // ولا علاقة له بمنطق "أي مركز تكلفة يخص هذا الفرع" — لكن الحل الفعلي أصبح يُفوَّض
-            // بالكامل لنفس المحرك الموحّد بدل إعادة كتابته بـ SQL منفصل هنا.
-            //
-            // ⚠️ فرق سلوك مقصود: النسخة القديمة هنا لم يكن بها fallback "أول مركز تكلفة متاح"
-            // (كانت تُرجع null مباشرة إذا فشل الفرع + فرع المستخدم + الإعداد الافتراضي).
-            // التفويض لـ CostCenterService يضيف هذا الـ fallback تلقائياً (نفس سلوك كل باقي
-            // النظام الآن) — تحسين في المرونة، وليس مجرد توحيد شكلي.
             try {
                 $costCenterService = new \App\Services\CostCenter\CostCenterService($this->db, 'base_handler');
                 return $costCenterService->resolve($tenantId, $userId, null, $branchId);
             } catch (Throwable $e) {
-                // نفس السلوك التاريخي لهذه الدالة تحديداً: إرجاع null بدل رفع استثناء عند
-                // تعذّر الحل الكامل (خلافاً لـ CostCenterService وحدها التي تفضّل الاستثناء).
                 $this->logger->debug('resolveCostCenterId: CostCenterService resolution failed, returning NULL', [
                     'tenant_id' => $tenantId,
                     'branch_id' => $branchId,
@@ -692,9 +641,7 @@ class BaseHandler
         }
     }
 
-    /**
-     * Apply default cost_center_id into payload if not provided
-     */
+    /** Add the resolved cost center only when the payload does not already provide one. */
     protected function applyDefaultCostCenter(array &$payload, Request $request): void
     {
         if (isset($payload['cost_center_id']) && $payload['cost_center_id'] !== null && $payload['cost_center_id'] !== '') {
@@ -707,9 +654,7 @@ class BaseHandler
         }
     }
 
-    /**
-     * Execute an atomic database operation
-     */
+    /** Run a callback in a PDO transaction, committing on success and rolling back on failure. */
     protected function executeAtomicOperation(callable $operation, string $operationName = 'Database Operation'): mixed
     {
         if (!$this->db) {
@@ -731,9 +676,7 @@ class BaseHandler
         }
     }
 
-    /**
-     * Execute operation with validation checks before transaction
-     */
+    /** Run validators before passing the operation to executeAtomicOperation(). */
     protected function executeWithValidation(
         callable $operation,
         array $validators = [],
@@ -746,9 +689,7 @@ class BaseHandler
         return $this->executeAtomicOperation($operation, $operationName);
     }
 
-    /**
-     * Log critical security events
-     */
+    /** Persist only high- and critical-severity events with the current request context. */
     protected function logSecurityEvent(string $eventType, string $severity, string $message, array $context = []): void
     {
         $allowedSeverities = ['high', 'critical'];
@@ -803,9 +744,7 @@ class BaseHandler
         }
     }
 
-    /**
-     * دالة helper آمنة للـ transactions
-     */
+    /** Execute a callback through the shared TransactionManager. */
     protected function executeTransaction(callable $callback, string $operationName = '', array $context = []): mixed
     {
         if (!$this->db) {

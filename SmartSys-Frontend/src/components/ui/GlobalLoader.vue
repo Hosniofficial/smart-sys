@@ -8,7 +8,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useUiStore } from '../../stores/ui'
+import { useUiStore } from '@/stores/ui/uiStore'
 import BaseSpinner from './BaseSpinner.vue'
 
 const ui = useUiStore()

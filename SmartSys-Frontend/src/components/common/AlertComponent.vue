@@ -55,11 +55,11 @@
                 <h3 class="text-sm font-bold text-slate-900 leading-snug" v-if="title">
                   {{ title }}
                 </h3>
-                <span :class="badgeTypeClass" class="px-1.5 py-0.2 rounded text-[9px] font-bold font-mono uppercase tracking-wider border">
-                  {{ type }}
+                <span v-if="type !== 'confirm'" :class="badgeTypeClass" class="px-1.5 py-0.2 rounded text-[9px] font-bold tracking-wider border">
+                  {{ typeLabel }}
                 </span>
               </div>
-              <p class="text-xs text-slate-500 font-medium leading-relaxed" v-if="message">
+              <p class="text-xs text-slate-500 font-medium leading-relaxed whitespace-pre-line" v-if="message">
                 {{ message }}
               </p>
             </div>
@@ -177,6 +177,13 @@ const confirmButtonClass = computed(() => {
 const cancelButtonClass = computed(() => {
   return ''
 })
+
+const typeLabel = computed(() => ({
+  success: 'نجاح',
+  warning: 'تحذير',
+  error: 'خطأ',
+  info: 'معلومات'
+}[props.type] || ''))
 
 const badgeTypeClass = computed(() => {
   switch (props.type) {

@@ -5,28 +5,13 @@ declare(strict_types=1);
 namespace App\Services;
 
 /**
- * LabelService
- *
- * Centralises all human-readable label translations used across handlers.
- * Replaces the duplicated refLabel() / statusLabel() private methods that
- * existed independently in SalesHandler, PurchasesHandler, ReturnsHandler,
- * PaymentsHandler, and AccountStatementHandler.
+ * Maps transaction reference types and statuses to Arabic or English labels.
  */
 class LabelService
 {
-    // -------------------------------------------------------------------------
-    // Reference-type labels
-    // -------------------------------------------------------------------------
-
     /**
-     * Maps a transaction reference type to a localised display label.
-     *
-     * Supported types:
-     *   sale, purchase, sales_return, purchase_return,
-     *   receipt, payment, return_payment
-     *
-     * @param string|null $type   e.g. 'sale', 'purchase_return'
-     * @param string      $locale 'ar' (default) or 'en'
+     * Translate a reference type; null/empty values return an empty label.
+     * Only the exact locale 'ar' selects Arabic; other values select English.
      */
     public static function refLabel(?string $type, string $locale = 'ar'): string
     {
@@ -42,12 +27,15 @@ class LabelService
             'purchase'              => 'فاتورة شراء',
             'purchases'             => 'فاتورة شراء',
             'sales_return'          => 'إشعار دائن - مرتجع بيع',
-            'sale_return'           => 'إشعار دائن - مرتجع بيع',  // ← Alias for journal_entries reference_type
+            'sale_return'           => 'إشعار دائن - مرتجع بيع',
             'return_sale'           => 'إشعار دائن - مرتجع بيع',
             'return'                => 'إشعار دائن',
             'purchase_return'       => 'إشعار مدين - مرتجع مشتريات',
             'return_purchase'       => 'إشعار مدين - مرتجع مشتريات',
             'receipt'               => 'سند قبض',
+            'customer_payment'     => 'سند قبض',
+            'customer_payment_reclassification' => 'تصحيح ترحيل سند قبض',
+            'debt_payment'         => 'سند قبض',
             'payment'               => 'سند دفع',
             'return_payment'        => 'صرف مرتجع للعميل',
             'refund'                => 'سند صرف',
@@ -63,12 +51,15 @@ class LabelService
             'purchase'              => 'Purchase Invoice',
             'purchases'             => 'Purchase Invoice',
             'sales_return'          => 'Credit Note - Sales Return',
-            'sale_return'           => 'Credit Note - Sales Return',  // ← Alias for journal_entries reference_type
+            'sale_return'           => 'Credit Note - Sales Return',
             'return_sale'           => 'Credit Note - Sales Return',
             'return'                => 'Credit Note',
             'purchase_return'       => 'Debit Note - Purchase Return',
             'return_purchase'       => 'Debit Note - Purchase Return',
             'receipt'               => 'Receipt',
+            'customer_payment'     => 'Receipt',
+            'customer_payment_reclassification' => 'Receipt Posting Correction',
+            'debt_payment'         => 'Receipt',
             'payment'               => 'Payment',
             'return_payment'        => 'Customer Return Refund',
             'refund'                => 'Refund',
@@ -83,20 +74,9 @@ class LabelService
         return $map[$t] ?? ($locale === 'ar' ? 'مرجع' : 'Reference');
     }
 
-    // -------------------------------------------------------------------------
-    // Status labels
-    // -------------------------------------------------------------------------
-
     /**
-     * Maps a transaction/invoice status code to a localised display label.
-     *
-     * Supported codes:
-     *   paid, partially_paid, partial, unpaid, pending, pending_payment,
-     *   posted, draft, canceled, cancelled, rejected, completed,
-     *   due, returned
-     *
-     * @param string|null $code   e.g. 'paid', 'partially_paid'
-     * @param string      $locale 'ar' (default) or 'en'
+     * Translate a status code; null/empty values return an empty label.
+     * Only the exact locale 'ar' selects Arabic; other values select English.
      */
     public static function statusLabel(?string $code, string $locale = 'ar'): string
     {

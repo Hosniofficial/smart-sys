@@ -64,26 +64,38 @@ final class BranchInventoryReconciliationTest extends TestCase
         BranchInventoryReconciliationService::markUnreconciled($this->db, 1, 10, 100);
     }
 
-    public function testSalesDeleteSaleUnreconcilesAfterQuantityOnlyRestoration(): void
+    public function testSalesDeleteSaleRestoresQuantityAndCostAndUnreconcilesStock(): void
     {
         $source = file_get_contents(dirname(__DIR__, 2) . '/api/v1/src/Services/SalesService.php');
         self::assertNotFalse($source);
         self::assertSame(1, preg_match(
-            '/UPDATE branch_products\\s+SET quantity = quantity \\+ \\?\\s+WHERE product_id = \\? AND branch_id = \\? AND tenant_id = \\?".*?BranchInventoryReconciliationService::markUnreconciled\\(/s',
+            '/UPDATE branch_products\\s+SET quantity = quantity \\+ \\?,\\s+quantity_cost = quantity_cost \\+ \\?.*?BranchInventoryReconciliationService::markUnreconciled\\(/s',
             $source
         ));
+        self::assertStringContainsString("si.quantity, si.conversion_factor, si.purchase_price", $source);
 
         $this->db->beginTransaction();
-        $this->db->exec('UPDATE branch_products SET quantity = quantity + 1 WHERE tenant_id = 1 AND branch_id = 10 AND product_id = 100');
+        $this->db->exec('UPDATE branch_products SET quantity = quantity + 1, quantity_cost = quantity_cost + 100 WHERE tenant_id = 1 AND branch_id = 10 AND product_id = 100');
         BranchInventoryReconciliationService::markUnreconciled($this->db, 1, 10, 100);
 
         self::assertSame(0, (int) $this->readFlag(100));
         self::assertSame(5.0, (float) $this->readQuantity(100));
-        self::assertSame(400.0, (float) $this->readQuantityCost(100));
+        self::assertSame(500.0, (float) $this->readQuantityCost(100));
         $this->db->rollBack();
     }
 
-    public function testAllApprovedStockMutationEntryPointsCallTheGuard(): void
+    public function testSaleCancellationDoesNotRequireCurrentBranchActivation(): void
+    {
+        $source = file_get_contents(dirname(__DIR__, 2) . '/api/v1/src/Services/SalesService.php');
+        self::assertNotFalse($source);
+        self::assertStringNotContainsString('ProductBranchActivationGuard::assertActiveForStock(', $source);
+        self::assertStringContainsString("COALESCE(p.product_type, 'stock') AS product_type", $source);
+        self::assertStringContainsString('لا يمكن إلغاء فاتورة عليها مبلغ مدفوع', $source);
+        self::assertStringContainsString('لا يمكن إلغاء فاتورة مرتبطة بمرتجع أو بتسوية رصيد', $source);
+        self::assertStringContainsString('DELETE FROM payments WHERE tenant_id = ? AND sale_id = ? AND is_draft = 1', $source);
+    }
+
+    public function testStockMutationEntryPointsUpdateReconciliationState(): void
     {
         self::assertSame(1, $this->countGuardCalls('api/v1/src/Services/PurchaseService.php'));
         self::assertSame(1, $this->countGuardCalls('api/v1/src/Services/SaleCreationService.php'));
@@ -91,7 +103,7 @@ final class BranchInventoryReconciliationTest extends TestCase
         self::assertSame(2, $this->countGuardCalls('api/v1/src/Handlers/StockTransferHandler.php'));
         self::assertSame(1, $this->countGuardCalls('api/v1/src/Services/SaleApprovalService.php'));
         self::assertSame(1, $this->countGuardCalls('api/v1/src/Services/SalesService.php'));
-        self::assertSame(5, $this->countGuardCalls('api/v1/src/Handlers/StockAdjustmentHandler.php'));
+        self::assertSame(3, $this->countGuardCalls('api/v1/src/Handlers/StockAdjustmentHandler.php'));
     }
 
     public function testOpeningBalanceKeepsReconciledStateOnlyAfterJournalPosts(): void

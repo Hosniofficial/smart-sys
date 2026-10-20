@@ -10,7 +10,6 @@ export const useCatalogStore = defineStore('catalog', () => {
   const TTL = {
     categories: 5 * 60 * 1000,      // 5 minutes
     units: 10 * 60 * 1000,          // 10 minutes (rarely changes)
-    taxes: 15 * 60 * 1000,          // 15 minutes (rarely changes)
   };
 
   // State
@@ -21,10 +20,6 @@ export const useCatalogStore = defineStore('catalog', () => {
   const units = ref([]);
   const unitsFetchedAt = ref(0);
   const unitsInFlight = ref(null);
-
-  const taxes = ref([]);
-  const taxesFetchedAt = ref(0);
-  const taxesInFlight = ref(null);
 
   // Helpers
   const isFresh = (fetchedAt, ttl) => !!fetchedAt && (nowMs() - fetchedAt) < ttl;
@@ -105,30 +100,6 @@ export const useCatalogStore = defineStore('catalog', () => {
     }
   };
 
-  // Taxes (global)
-  const fetchTaxes = async ({ force = false } = {}) => {
-    if (!force && isFresh(taxesFetchedAt.value, TTL.taxes) && Array.isArray(taxes.value) && taxes.value.length) {
-      return taxes.value;
-    }
-
-    if (!force && taxesInFlight.value) return await taxesInFlight.value;
-
-    const promise = (async () => {
-      try {
-        const res = await apiClient.get('/taxes');
-        const list = normalizeArray(res);
-        taxes.value = Array.isArray(list) ? list : [];
-        taxesFetchedAt.value = nowMs();
-        return taxes.value;
-      } finally {
-        taxesInFlight.value = null;
-      }
-    })();
-
-    taxesInFlight.value = promise;
-    return await promise;
-  };
-
   // Computed helpers
   const getCategoriesForBranch = (branchId) => {
     const bid = branchId == null || branchId === '' ? null : String(branchId);
@@ -147,22 +118,17 @@ export const useCatalogStore = defineStore('catalog', () => {
     unitsFetchedAt.value = 0;
     unitsInFlight.value = null;
 
-    taxes.value = [];
-    taxesFetchedAt.value = 0;
-    taxesInFlight.value = null;
   };
 
   return {
     // State
     categoriesByBranch,
     units,
-    taxes,
 
     // Actions
     fetchCategories,
     fetchProducts,
     fetchUnits,
-    fetchTaxes,
     clear,
 
     // Computed helpers

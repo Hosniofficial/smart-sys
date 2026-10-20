@@ -28,7 +28,7 @@ class Database {
             $this->tenant_id = $_SESSION['user']['tenant_id'] ?? null;
 
         } catch (PDOException $e) {
-            die('Database connection failed: ' . $e->getMessage());
+            throw new RuntimeException('Database connection failed.', 0, $e);
         }
     }
 

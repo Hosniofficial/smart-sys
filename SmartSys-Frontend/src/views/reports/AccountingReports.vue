@@ -13,8 +13,10 @@
         :breadcrumb="{ parent: { label: 'التقارير', path: '/reports' }, current: { label: 'التقارير المالية والمحاسبية', path: '/reports/accounting' } }"
         title="التقارير المالية والمحاسبية"
         description="موازين المراجعة والقوائم الختامية • IAS/IFRS Compliant"
-        :branches="[]"
-        :selectedBranch="null"
+        :branches="branches"
+        :selectedBranch="selectedBranch === 'all' ? null : selectedBranch"
+        :hasExplicitSelection="true"
+        @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
           <button @click="loadAll" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
@@ -414,14 +416,24 @@
 
 <script setup>
 // [SCRIPT SECTION REMAINS 100% IDENTICAL AS PER THE CRITICAL BUSINESS LOGIC RULE]
-import { ref, onMounted } from 'vue'
-import { useReportsStore } from '@/stores/reports'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useReportsStore } from '@/stores/reports/reportsStore'
 import { useAccountStore } from '@/stores/account/accountStore'
+import { useBranchStore } from '@/stores/branch/branchStore';
 
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
 
 const { breadcrumb } = useBreadcrumb();
+const branchStore = useBranchStore();
+const branches = computed(() => branchStore.branches);
+const selectedBranch = computed({
+  get: () => branchStore.selectedBranchId || 'all',
+  set: (val) => branchStore.setSelectedBranch(val === 'all' ? null : val)
+});
+onMounted(() => {
+  branchStore.fetchBranches().catch(() => {});
+});
 const reportsStore = useReportsStore();
 const accountStore = useAccountStore();
 
@@ -447,11 +459,12 @@ function fmt(n) {
 }
 
 async function loadAll() {
+  const branchId = selectedBranch.value === 'all' ? null : selectedBranch.value
   try {
     const [tb, is, bs] = await Promise.allSettled([
-      reportsStore.fetchTrialBalance(filters.value.start, filters.value.end),
-      reportsStore.fetchIncomeStatement(filters.value.start, filters.value.end),
-      reportsStore.fetchBalanceSheet(filters.value.asOf)
+      reportsStore.fetchTrialBalance(filters.value.start, filters.value.end, branchId),
+      reportsStore.fetchIncomeStatement(filters.value.start, filters.value.end, branchId),
+      reportsStore.fetchBalanceSheet(filters.value.asOf, branchId)
     ])
 
     trialBalance.value = tb.status === 'fulfilled' && tb.value.status === 'success'
@@ -466,7 +479,7 @@ async function loadAll() {
       : { asset: [], liability: [], equity: [] }
 
     if (filters.value.ledgerAccountId) {
-      const lgResult = await reportsStore.fetchLedger(filters.value.ledgerAccountId, filters.value.start, filters.value.end)
+      const lgResult = await reportsStore.fetchLedger(filters.value.ledgerAccountId, filters.value.start, filters.value.end, branchId)
       ledger.value = lgResult.status === 'success' ? (lgResult.data || { opening_balance: 0, lines: [] }) : { opening_balance: 0, lines: [] }
     } else {
       ledger.value = { opening_balance: 0, lines: [] }
@@ -487,7 +500,7 @@ async function loadAccounts() {
 
 async function loadCoverage() {
   try {
-    const result = await reportsStore.fetchBranchAccountCoverage()
+    const result = await reportsStore.fetchBranchAccountCoverage(selectedBranch.value === 'all' ? null : selectedBranch.value)
     coverage.value = result.status === 'success' ? result.data : null
   } catch (e) { coverage.value = null; console.error(e); }
 }
@@ -496,7 +509,7 @@ async function loadArAging() {
   loadingArAging.value = true
   provisionResult.value = null
   try {
-    const result = await reportsStore.fetchArAging(arAgingAsOf.value || null)
+    const result = await reportsStore.fetchArAging(arAgingAsOf.value || null, selectedBranch.value === 'all' ? null : selectedBranch.value)
     arAgingData.value = result.status === 'success' ? result.data : null
   } catch (e) { arAgingData.value = null; console.error(e); }
   finally { loadingArAging.value = false }
@@ -519,7 +532,7 @@ async function postProvision() {
 async function loadCashFlow() {
   loadingCashFlow.value = true
   try {
-    const result = await reportsStore.fetchCashFlow(filters.value.start, filters.value.end)
+    const result = await reportsStore.fetchCashFlow(filters.value.start, filters.value.end, selectedBranch.value === 'all' ? null : selectedBranch.value)
     cashFlowData.value = result.status === 'success' ? result.data : null
   } catch (e) { cashFlowData.value = null; console.error(e); }
   finally { loadingCashFlow.value = false }
@@ -528,7 +541,7 @@ async function loadCashFlow() {
 async function loadNrv() {
   loadingNrv.value = true
   try {
-    const result = await reportsStore.fetchNrvReport()
+    const result = await reportsStore.fetchNrvReport(selectedBranch.value === 'all' ? null : selectedBranch.value)
     nrvData.value = result.status === 'success' ? result.data : null
   } catch (e) { nrvData.value = null; console.error(e); }
   finally { loadingNrv.value = false }
@@ -539,7 +552,7 @@ async function postWriteDown() {
   postingWriteDown.value = true
   writeDownResult.value = null
   try {
-    const result = await reportsStore.postNrvWriteDown()
+    const result = await reportsStore.postNrvWriteDown(selectedBranch.value === 'all' ? null : selectedBranch.value)
     writeDownResult.value = result
     if (result.status === 'success') {
       await loadNrv()
@@ -557,6 +570,14 @@ onMounted(async () => {
     loadNrv(),
     loadArAging()
   ])
+})
+
+watch(selectedBranch, () => {
+  loadAll()
+  loadCoverage()
+  loadCashFlow()
+  loadNrv()
+  loadArAging()
 })
 </script>
 

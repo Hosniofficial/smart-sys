@@ -11,16 +11,7 @@ use App\Services\MonologHandler;
 use DateTime;
 
 /**
- * BalanceCalculationService
- *
- * Unified service for all balance calculations across the system.
- * Consolidates 4 different balance calculation patterns into single source of truth.
- *
- * Patterns unified:
- * 1. Journal Entry Balance (Debit - Credit) - for parties (customers, suppliers)
- * 2. Accounts Table Balance (debit_balance - credit_balance) - account master balance
- * 3. Transaction Running Balance - for transaction history
- * 4. Amount Due Balance (total - paid) - for documents
+ * Calculates ledger, transaction-history, and document balances for tenant-scoped records.
  */
 class BalanceCalculationService
 {
@@ -77,7 +68,7 @@ class BalanceCalculationService
                 JOIN journal_entries je ON jel.journal_entry_id = je.id
                 WHERE jel.account_id = ?
                   AND je.tenant_id = ?
-                  AND (je.status IS NULL OR je.status = 'posted')
+                  AND (je.status IS NULL OR je.status IN ('posted', 'reversed'))
                   {$dateFilter}
             ";
 
@@ -171,11 +162,13 @@ class BalanceCalculationService
                 FROM journal_entry_lines jel
                 JOIN journal_entries je ON jel.journal_entry_id = je.id
                 WHERE jel.account_id = ? AND jel.tenant_id = ?
+                  AND je.tenant_id = ?
+                  AND (je.status IS NULL OR je.status IN ('posted', 'reversed'))
                 ORDER BY jel.created_at ASC, jel.id ASC
             ";
 
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute([$accountId, $tenantId]);
+            $stmt->execute([$accountId, $tenantId, $tenantId]);
             $allTransactions = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             // Calculate running balance
@@ -208,59 +201,30 @@ class BalanceCalculationService
     }
 
     /**
-     * Get amount due balance for documents (total amount - paid amount)
-     *
-     * Used by: PurchasesHandler for purchase balance calculations
-     * Calculates outstanding/due balance for transaction documents
-     *
-     * @param string $documentType - 'purchase', 'sale', or other document type
-     * @param int $documentId - Document ID (purchase_id, sale_id, etc.)
-     * @param int $tenantId - Tenant ID
-     * @return float - Amount due (total - paid)
-     */
-    /**
-     * الاستعلام الفرعي الموحّد لحساب paid_amount الفعلي لفاتورة بيع من جدول payments
-     * مباشرة، بدل الثقة بالعمود المخزَّن sales.paid_amount.
-     *
-     * 🎯 سبب هذا التغيير: الكود الأصلي في AccountStatementHandler يحتوي تعليقاً صريحاً من
-     * الفريق يشكّك في دقة هذا العمود: "s.paid_amount might not be updated correctly" —
-     * ولذلك كانت إحدى دوال ذلك الملف (getCustomerSalesOnly) تحسبه من SUM(payments) فعلياً
-     * منذ البداية، بينما هذه الخدمة (BalanceCalculationService) كانت تثق بالعمود المخزَّن
-     * مباشرة. بدل \"تسوية\" الخلاف بجعل الدالة الأكثر حذراً تثق بالعمود (تراجع)، تم تعميم
-     * النمط الأكثر أماناً والمُثبَت هنا بدله ليصبح هو المرجع الوحيد.
-     *
-     * ⚠️ يُطبَّق على sales فقط، وليس purchases — لا يوجد تعليق أو دليل مماثل يشكك في
-     * purchases.paid_amount في أي مكان بالكود راجعته، فلم أُغيّره تجنباً لتخمين غير مبني
-     * على دليل (بنفس المنهجية المُتَّبعة طوال هذه المراجعة).
-     *
-     * ── AUDIT FIX (ownership review) ─────────────────────────────────────────
-     * كانت هذه الدالة تستخدم اصطلاحاً مختلفاً تمامًا عن اصطلاح "صافي المدفوعات"
-     * (netting) المُستخدَم بالفعل في 3 مواضع منفصلة داخل SalesHandler نفسه (القائمة،
-     * التفاصيل، وdynamic_status) — كانت تستبعد صفوف استرداد الدفعات
-     * (payments.return_id IS NOT NULL) بالكامل من الحساب بدل طرحها، فتُظهر فاتورة
-     * استُرِدَّ منها نقد فعلي وكأن كامل المبلغ الأصلي ما زال "محصَّلاً" دون أي أثر
-     * لخروج النقد لاحقاً. مثال: بيع 500، دُفِع بالكامل، ثم مرتجع بقيمة 100 برد نقدي
-     * فعلي للعميل — الاصطلاح القديم هنا كان يُبقي المدفوع=500 (يتجاهل الاسترداد
-     * تمامًا)، بينما SalesHandler وAccountingService::recalculateSaleStatus (بعد
-     * إصلاحات هذه الجلسة) يحسبانه 400 (صافي بعد الاسترداد) — انحراف حقيقي داخل نفس
-     * الجولة من الحسابات (المبلغ المستحق في كشف حساب العميل كان يبدو أقل من الحقيقي
-     * بمقدار كل استرداد نقدي مرتبط بفاتورة). تم توحيد الاصطلاح هنا مع الأغلبية
-     * (SalesHandler، الوحدة الأساسية التي يتعامل معها المستخدم مباشرة) بدل العكس.
-     *
-     * @param string $tableAlias الاسم المستعار للجدول في الاستعلام المستدعي (غالباً 't')
+     * Build the net completed-payment expression for a sales row, including allocated receipts and refunds.
      */
     private function salePaidAmountSubquery(string $tableAlias): string
     {
-        return "(SELECT COALESCE(SUM(
+        return "((SELECT COALESCE(SUM(
                      CASE WHEN pm.type = 'return_payment' THEN -pm.amount ELSE pm.amount END
                  ), 0)
                  FROM payments pm
                  WHERE pm.sale_id = {$tableAlias}.id
                    AND pm.tenant_id = {$tableAlias}.tenant_id
                    AND pm.is_draft = 0
-                   AND pm.status = 'completed')";
+                   AND pm.status = 'completed')
+                 + (SELECT COALESCE(SUM(cpa.allocated_amount), 0)
+                    FROM customer_payment_allocations cpa
+                    JOIN payments ap ON ap.id = cpa.payment_id AND ap.tenant_id = cpa.tenant_id
+                    WHERE cpa.sale_id = {$tableAlias}.id
+                      AND cpa.tenant_id = {$tableAlias}.tenant_id
+                      AND ap.is_draft = 0
+                      AND ap.status = 'completed'))";
     }
 
+    /**
+     * Calculate one document's outstanding amount after payments and applicable credits.
+     */
     public function getAmountDueBalance(
         string $documentType,
         int $documentId,
@@ -269,15 +233,6 @@ class BalanceCalculationService
         try {
             $documentType = strtolower($documentType);
 
-            // Map document types to appropriate tables and columns.
-            // ⚠️ إصلاح (ownership review): التعليق القديم هنا ادّعى أن 'total_amount' في
-            // purchases مبلغ *قبل* الضريبة — تحققتُ من كود الإنشاء الفعلي
-            // (PurchasesHandler::create → calculatePurchaseTotals) وهذا غير صحيح:
-            // purchases.total_amount = net_total، وnet_total = totalAfterDiscount +
-            // taxAmount بالفعل (شامل الضريبة). لذلك taxCol=null الآن لـ purchase (راجع
-            // تعليق الإصلاح الكامل عند تعريف mapping أدناه). هذا يخص purchases فقط؛
-            // sales.net_total_amount يبقى صحيحًا كما هو (قبل الضريبة عمدًا، tax_amount
-            // عمود منفصل يُضاف).
             $mapping = [
                 'purchase' => [
                     'table' => 'purchases',
@@ -294,7 +249,14 @@ class BalanceCalculationService
                     // رفض ائتمان مورد سدَّد بالكامل فعليًا، أو تقارير "مستحق
                     // للموردين" مبالغ فيها بشكل منهجي عبر كل فاتورة شراء تقريبًا.
                     'taxCol' => null,
-                    'paidCol' => 'paid_amount'
+                    'paidExpr' => "(SELECT COALESCE(SUM(
+                        CASE WHEN pm.type = 'payment_for_return' THEN -pm.amount ELSE pm.amount END
+                    ), 0) FROM payments pm
+                    WHERE pm.purchase_id = t.id AND pm.tenant_id = t.tenant_id
+                      AND pm.is_draft = 0 AND pm.status = 'completed')",
+                    'creditsSubquery' => "(SELECT COALESCE(SUM(r.grand_total), 0) FROM returns r
+                        WHERE r.purchase_id = t.id AND r.tenant_id = t.tenant_id
+                          AND r.return_type = 'purchase')"
                 ],
                 'sale' => [
                     'table' => 'sales',
@@ -400,7 +362,14 @@ class BalanceCalculationService
                     // full evidence trail (purchases.total_amount is already
                     // tax-inclusive at creation time).
                     'taxCol' => null,
-                    'paidCol' => 'paid_amount',
+                    'paidExpr' => "(SELECT COALESCE(SUM(
+                        CASE WHEN pm.type = 'payment_for_return' THEN -pm.amount ELSE pm.amount END
+                    ), 0) FROM payments pm
+                    WHERE pm.purchase_id = t.id AND pm.tenant_id = t.tenant_id
+                      AND pm.is_draft = 0 AND pm.status = 'completed')",
+                    'creditsSubquery' => "(SELECT COALESCE(SUM(r.grand_total), 0) FROM returns r
+                        WHERE r.purchase_id = t.id AND r.tenant_id = t.tenant_id
+                          AND r.return_type = 'purchase')",
                     'partyCol' => 'supplier_id'
                 ],
                 'sale' => [
@@ -419,12 +388,16 @@ class BalanceCalculationService
 
             $config = $mapping[$documentType];
             $table = $config['table'];
-            $totalExpr = "(COALESCE(t.{$config['totalCol']}, 0) + COALESCE(t.{$config['taxCol']}, 0))";
-            $paidCol = $config['paidCol'];
+            $totalExpr = !empty($config['taxCol'])
+                ? "(COALESCE(t.{$config['totalCol']}, 0) + COALESCE(t.{$config['taxCol']}, 0))"
+                : "COALESCE(t.{$config['totalCol']}, 0)";
+            $paidExpr = !empty($config['paidExpr'])
+                ? "COALESCE({$config['paidExpr']}, 0)"
+                : "COALESCE(t.{$config['paidCol']}, 0)";
             $creditsExpr = !empty($config['creditsSubquery']) ? " - {$config['creditsSubquery']}" : '';
 
             $sql = "
-                SELECT COALESCE(SUM({$totalExpr} - COALESCE(t.{$paidCol}, 0){$creditsExpr}), 0) AS total_due
+                SELECT COALESCE(SUM(GREATEST({$totalExpr} - {$paidExpr}{$creditsExpr}, 0)), 0) AS total_due
                 FROM {$table} t
                 WHERE t.tenant_id = ?
             ";
@@ -718,9 +691,7 @@ class BalanceCalculationService
         bool $includeReturns = true
     ): float {
         try {
-            // ⚠️ نفس إصلاح tax_amount المُطبَّق في باقي الدوال: total_amount في purchases
-            // مبلغ صافٍ قبل الضريبة (مؤكَّد من كود الإدخال)، والإجمالي الحقيقي المستحق
-            // للمورد = total_amount + tax_amount.
+            // Purchase creation stores a tax-inclusive total_amount; this aggregate also adds tax_amount.
             $sql = "
                 SELECT COALESCE(SUM(
                     (COALESCE(total_amount, 0) + COALESCE(tax_amount, 0)) - COALESCE(paid_amount, 0)

@@ -200,11 +200,13 @@ export const useInventoryStore = defineStore('inventory', () => {
    */
   const adjustStock = async (payload) => {
     try {
-      const response = await apiClient.post('/inventory/adjust', payload);
+      const branchId = payload?.branch_id ?? payload?.branchId;
+      if (!branchId) throw new Error('Branch ID is required for stock adjustment');
+
+      const response = await apiClient.post(`/branches/${branchId}/adjustments`, payload);
 
       // clear cache for affected product and branch so it fetches from API
       const productId = payload?.product_id ?? payload?.productId;
-      const branchId  = payload?.branch_id  ?? payload?.branchId;
 
       // ✅ تحديث تلقائي للكميات — امسح cache المنتجات عند التسويات
       const productStore = useProductStore();

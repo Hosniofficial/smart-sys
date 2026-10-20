@@ -216,15 +216,12 @@
 // [SCRIPT SECTION REMAINS 100% IDENTICAL AS PER THE CRITICAL BUSINESS LOGIC RULE]
 import { ref, computed, onMounted } from 'vue'
 import { useToast } from '@/composables/useToast'
-import { useBranchStore } from '@/stores/branch'
+import { useBranchStore } from '@/stores/branch/branchStore'
 import { useTerminalStore } from '@/stores/terminal/terminalStore'
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
-import { useBreadcrumb } from '@/composables/useBreadcrumb';
-import PageHeader from '@/components/PageHeader.vue';
 
 const { showToast } = useToast()
-const { breadcrumb } = useBreadcrumb();
 const branchStore = useBranchStore()
 const terminalStore = useTerminalStore()
 const branches = computed(() => branchStore.branches)

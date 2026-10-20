@@ -11,11 +11,11 @@
       <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
-        title="إدارة المرتجعات"
-        description="مراجعة وتدقيق عمليات الإرجاع للمبيعات والمشتريات."
+        title="سجل المرتجعات"
+        description="راجع مرتجعات المبيعات والمشتريات، وتابع تفاصيل عمليات الإرجاع وحالتها."
         :branches="branches"
         :selectedBranch="selectedBranch"
-        :hasExplicitSelection="hasExplicitBranchSelection"
+        branch-selection-mode="optional"
         @branch-changed="onBranchChange"
       >
         <template #controls>
@@ -34,7 +34,7 @@
       <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
         <div v-for="kpi in [
           { label: 'عدد المرتجعات', val: kpiCount, icon: 'fa-clipboard-list', color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'إجمالي القيمة', val: formatPrice(kpiSum), icon: 'fa-file-invoice-dollar', color: 'text-rose-600', bg: 'bg-rose-50' },
+          { label: 'إجمالي قيمة المرتجعات', val: formatPrice(kpiSum), icon: 'fa-file-invoice-dollar', color: 'text-rose-600', bg: 'bg-rose-50' },
           { label: 'إجمالي الضريبة', val: formatPrice(kpiTax || 0), icon: 'fa-percent', color: 'text-indigo-600', bg: 'bg-indigo-50', show: kpiTax != null },
           { label: 'إجمالي الخصومات', val: formatPrice(kpiDiscount || 0), icon: 'fa-tags', color: 'text-amber-600', bg: 'bg-amber-50', show: kpiDiscount != null }
         ].filter(k => k.show !== false)" :key="kpi.label" class="bg-white border border-slate-200 p-5 rounded-xl flex items-center justify-between group hover:border-slate-300 transition-all shadow-sm">
@@ -124,22 +124,26 @@
             <thead>
               <tr class="bg-slate-50 border-b border-slate-200">
                 <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">رقم المرتجع</th>
-                <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">رقم الفاتورة</th>
-                <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">التاريخ</th>
-                <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">القيمة</th>
+                <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">الفاتورة الأصلية</th>
+                <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">تاريخ المرتجع</th>
+                <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">عدد الأصناف</th>
+                <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">إجمالي المرتجع</th>
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">النوع</th>
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">إجراءات</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
               <template v-if="isLoadingReturns">
-                <tr v-for="n in 5" :key="n" class="animate-pulse"><td v-for="m in 6" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td></tr>
+                <tr v-for="n in 5" :key="n" class="animate-pulse"><td v-for="m in 7" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td></tr>
               </template>
-              <tr v-else-if="!rows.length"><td colspan="6" class="py-20 text-center text-slate-300"><i class="fas fa-box-open text-3xl mb-4 opacity-20"></i><p class="text-xs font-bold uppercase tracking-widest">لا توجد فواتير مرتجعات حتى الآن</p></td></tr>
+              <tr v-else-if="!rows.length"><td colspan="7" class="py-20 text-center text-slate-300"><i class="fas fa-box-open text-3xl mb-4 opacity-20"></i><p class="text-xs font-bold uppercase tracking-widest">لا توجد فواتير مرتجعات حتى الآن</p></td></tr>
               <tr v-for="r in rows" :key="r.id" class="hover:bg-rose-50/10 transition-all group">
                 <td class="px-6 py-4 text-xs font-bold text-slate-900 font-mono tracking-wider">{{ r.return_number || ('RET-' + String(r.id).padStart(4, '0')) }}</td>
                 <td class="px-4 py-4 text-xs font-bold text-slate-400 font-mono">{{ r.invoice_number || '-' }}</td>
-                <td class="px-4 py-4 text-[10px] font-mono text-slate-400">{{ formatDate(r.return_date || r.created_at) }}</td>
+                <td class="px-4 py-4 text-[10px] font-mono text-slate-400 whitespace-nowrap">{{ formatReturnDateTime(r.return_date, r.created_at) }}</td>
+                <td class="px-4 py-4 text-center">
+                  <span class="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{{ Number(r.items_count || 0) }}</span>
+                </td>
                 <td class="px-4 py-4 text-xs font-bold text-rose-600">{{ formatPrice(r.grand_total || r.total_amount || r.total || 0) }}</td>
                 <td class="px-4 py-4 text-center">
                   <span :class="[type === 'sales' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100']" class="px-2 py-0.5 rounded text-[9px] font-bold border">
@@ -169,70 +173,101 @@
     </div>
 
     <!-- Details Modal -->
-    <BaseModal :show="showDetailsModal && !!selectedReturn" @close="showDetailsModal = false" maxWidth="3xl">
-      <template #header>
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 bg-rose-600 rounded-lg flex items-center justify-center text-white text-xs"><i class="fas fa-undo-alt"></i></div>
-          <h3 class="text-sm font-bold text-slate-900 uppercase">تفاصيل المرتجع {{ selectedReturn?.return_number || ('RET-' + String(selectedReturn?.id).padStart(4, '0')) }}</h3>
-        </div>
-      </template>
+    <HistoryDetailsModal
+      :show="showDetailsModal && !!selectedReturn"
+      @close="showDetailsModal = false"
+      :title="`تفاصيل المرتجع ${selectedReturn?.return_number || ('RET-' + String(selectedReturn?.id).padStart(4, '0'))}`"
+      icon="fas fa-undo"
+    >
 
-      <div class="space-y-8">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <div v-for="info in [
-            { l: 'فاتورة مرتبطة', v: selectedReturn?.invoice_number || '-' },
-            { l: 'الطرف المعني', v: type === 'sales' ? (selectedReturn?.customer_name || selectedReturn?.customer || '-') : (selectedReturn?.supplier_name || selectedReturn?.supplier || '-') },
-            { l: 'الحالة', v: selectedReturn?.status || selectedReturn?.state || '-', c: 'text-blue-600 font-bold' },
-            { l: 'التاريخ', v: formatDate(selectedReturn?.return_date || selectedReturn?.created_at) },
-            { l: 'إجمالي القيمة', v: formatPrice(selectedReturn?.grand_total || selectedReturn?.total_amount || selectedReturn?.total || 0), c: 'text-rose-600 font-bold' }
-          ]" :key="info.l" class="space-y-1">
-            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{{ info.l }}</p>
-            <p :class="[info.c || 'text-slate-800', 'text-xs font-bold']">{{ info.v }}</p>
+      <div class="space-y-6">
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+          <div v-for="info in returnDetailFacts" :key="info.l" class="min-w-0 space-y-1 rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-2">
+            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">{{ info.l }}</p>
+            <p class="break-words text-[11px] font-bold leading-4 text-slate-800">{{ info.v }}</p>
           </div>
         </div>
 
-        <div v-if="selectedReturn?.notes || selectedReturn?.remarks" class="p-4 rounded-lg bg-slate-50 border border-slate-100 text-xs text-slate-500 italic">{{ selectedReturn?.notes || selectedReturn?.remarks }}</div>
-
-        <div class="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
+        <div class="overflow-x-auto rounded-xl border border-slate-100 shadow-sm">
           <table class="w-full text-right text-xs">
-            <thead><tr class="bg-slate-50 border-b border-slate-100"><th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">الصنف</th><th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase text-center">الكمية</th><th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">السعر</th><th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">الإجمالي</th></tr></thead>
-            <tbody class="divide-y divide-slate-50">
-              <tr v-for="item in selectedReturn?.items" :key="item.id || item.product_id">
-                <td class="px-4 py-3 font-bold text-slate-800">{{ item.product_name || item.name || 'منتج غير معروف' }}</td>
-                <td class="px-4 py-3 text-center font-bold text-slate-500">{{ item.quantity || item.qty || '-' }}</td>
-                <td class="px-4 py-3 font-bold text-slate-700">{{ formatPrice(item.sale_price || item.unit_price || item.price || 0) }}</td>
-                <td class="px-4 py-3 font-bold text-slate-900">{{ formatPrice(item.total || item.net_total || item.amount || 0) }}</td>
+            <thead><tr class="bg-slate-50 border-b border-slate-100 font-bold text-slate-400 uppercase"><th class="px-4 py-3">الصنف</th><th class="px-4 py-3 text-center">الكمية</th><th class="px-4 py-3 text-center">سعر الوحدة</th><th class="px-4 py-3 text-left">الإجمالي</th></tr></thead>
+            <tbody class="divide-y divide-slate-50 font-medium">
+              <tr v-for="item in returnItems" :key="item.id || item.product_id">
+                <td class="px-4 py-3">
+                  <p class="font-bold text-slate-800">{{ item.product_name || item.name || 'منتج غير معروف' }}</p>
+                  <p v-if="item.product_code" class="text-[9px] text-slate-400 font-mono">{{ item.product_code }}</p>
+                </td>
+                <td class="px-4 py-3 text-center font-bold text-slate-500">{{ item.quantity ?? item.qty ?? '-' }}</td>
+                <td class="px-4 py-3 text-center text-slate-700 font-mono">{{ formatPrice(returnItemUnitPrice(item)) }}</td>
+                <td class="px-4 py-3 text-left font-bold font-mono">{{ formatPrice(returnItemTotal(item)) }}</td>
               </tr>
             </tbody>
           </table>
         </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">التفصيل المالي</p>
+            <div class="flex justify-between text-xs font-bold text-slate-500">
+              <span>إجمالي المرتجع</span>
+              <span class="font-mono text-slate-900">{{ formatPrice(selectedReturn?.grand_total ?? selectedReturn?.total_amount ?? selectedReturn?.total ?? 0) }}</span>
+            </div>
+            <div v-if="Number(selectedReturn?.tax_amount) > 0" class="flex justify-between text-xs font-bold text-slate-500">
+              <span>الضريبة</span>
+              <span class="font-mono text-indigo-600">{{ formatPrice(selectedReturn?.tax_amount) }}</span>
+            </div>
+            <div v-if="Number(selectedReturn?.discount_value ?? selectedReturn?.discount_amount) > 0" class="flex justify-between text-xs font-bold text-slate-500">
+              <span>الخصم</span>
+              <span class="font-mono text-rose-500">- {{ formatPrice(selectedReturn?.discount_value ?? selectedReturn?.discount_amount) }}</span>
+            </div>
+            <div v-if="returnOffsetAmount > 0" class="flex justify-between text-xs font-bold text-slate-500">
+              <span>المبلغ المُقاصّ</span>
+              <span class="font-mono text-slate-700">{{ formatPrice(returnOffsetAmount) }}</span>
+            </div>
+            <div v-if="returnCashRefundAmount > 0" class="flex justify-between text-xs font-bold text-slate-500">
+              <span>{{ Number(selectedReturn?.is_cash) === 1 ? 'المبلغ المسترد نقدًا' : 'المبلغ المسترد' }}</span>
+              <span class="font-mono text-emerald-600">{{ formatPrice(returnCashRefundAmount) }}</span>
+            </div>
+            <div class="flex justify-between text-xs font-bold border-t border-slate-200 pt-2">
+              <span class="text-slate-700">صافي التسوية</span>
+              <span class="font-mono text-slate-900">{{ formatPrice(returnNetSettlementAmount) }}</span>
+            </div>
+          </div>
+          <div v-if="selectedReturn?.notes || selectedReturn?.remarks" class="p-4 bg-amber-50 border border-amber-100 rounded-xl">
+            <p class="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-2">سبب الإرجاع</p>
+            <p class="text-xs text-amber-800 whitespace-pre-wrap">{{ selectedReturn?.notes || selectedReturn?.remarks }}</p>
+          </div>
+        </div>
       </div>
 
       <template #footer>
-        <button @click="showDetailsModal = false" class="px-6 h-9 bg-slate-900 text-white rounded-md text-xs font-bold transition-all hover:bg-slate-800">إغلاق</button>
+        <div dir="rtl" class="mr-auto flex flex-row-reverse flex-wrap items-center gap-3">
+          <button @click="printReturnDetails" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-indigo-600 px-5 text-xs font-bold text-white shadow-lg shadow-indigo-900/20"><i class="fas fa-print"></i> طباعة المرتجع</button>
+          <button @click="showDetailsModal = false" class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500 transition-colors hover:text-slate-800">إغلاق</button>
+        </div>
       </template>
-    </BaseModal>
+    </HistoryDetailsModal>
 
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
-import BaseModal from '@/components/BaseModal.vue';
+import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
 import { useRoute } from 'vue-router';
 import { useHistoryFilters } from '@/composables/useHistoryFilters';
 import { useLoader } from '@/composables/useLoader';
 import { useToast } from '@/composables/useToast';
-import { useSessionExemption } from '@/composables/useCashierSessionGuard';
 import { useBranchIsolation } from '@/composables/useBranchIsolation';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import { useCustomerStore } from '@/stores/customer/customerStore';
 import { useSupplierStore } from '@/stores/supplier/supplierStore';
 import { useReturnStore } from '@/stores/return/returnStore';
-import { useBootstrapStore } from '@/stores/bootstrap';
+import { useBootstrapStore } from '@/stores/bootstrap/bootstrapStore';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
+import { printDocument } from '@/utils';
+import { buildReturnHtml } from '@/utils/printTemplates';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
@@ -240,9 +275,7 @@ import PageHeader from '@/components/PageHeader.vue';
 const { showLoader, hideLoader } = useLoader();
 const { showToast } = useToast();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
-const { isExempt, ensureLoaded: ensureExemptionLoaded } = useSessionExemption();
 const { breadcrumb } = useBreadcrumb();
-const authStore = useAuthStore();
 const branchStore = useBranchStore();
 const branchIsolation = useBranchIsolation();
 const customerStore = useCustomerStore();
@@ -268,22 +301,15 @@ const dateFromRef = ref(null);
 const dateToRef = ref(null);
 
 const branches = computed(() => branchStore.branches);
+const isExempt = branchIsolation.isExempt;
 const selectedBranch = computed({
   get: () => branchStore.selectedBranchId,
   set: (val) => branchStore.setSelectedBranch(val)
 });
-
-// ✅ يتحقق من ما إذا كان المستخدم اختار فرع بشكل صريح من الـ dropdown
-// لا يكفي فحص localStorage لأن fetchBranches() يكتب default branch فيه تلقائياً
-// لذلك نتتبع الاختيار اليدوي بـ flag منفصل
-const userChoseBranch = ref(localStorage.getItem('selectedBranchId') !== null && localStorage.getItem('selectedBranchId') !== 'all');
-
-const hasExplicitBranchSelection = computed(() => userChoseBranch.value && branchStore.selectedBranchId !== null);
+const hasExplicitBranchSelection = computed(() => selectedBranch.value !== null);
 
 const onBranchChange = (newBranchId) => {
   branchStore.setSelectedBranch(newBranchId);
-  // إذا اختار المستخدم فرعاً محدداً (وليس 'all'/null) — سجّل الاختيار
-  userChoseBranch.value = (newBranchId !== null && newBranchId !== '' && newBranchId !== 'all');
   filters.page.value = 1;
   fetchReturns(true);  // ✅ force=true
 };
@@ -318,6 +344,111 @@ const totalPages = computed(() => Math.max(1, Math.ceil((filters.total.value || 
 
 const formatPrice = (amount) => formatCurrencyLocale(amount, 2);
 const formatDate = (date) => date ? new Date(date).toLocaleDateString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+const formatDateTime = (date) => date ? new Date(date).toLocaleString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+const formatReturnDateTime = (returnDate, createdAt) => {
+  const dateValue = String(returnDate || createdAt || '');
+  if (!dateValue) return '';
+  const datePart = dateValue.slice(0, 10);
+  const directTime = dateValue.match(/[T ](\d{2}:\d{2}(?::\d{2})?)/)?.[1];
+  const createdTime = String(createdAt || '').match(/[T ](\d{2}:\d{2}(?::\d{2})?)/)?.[1];
+  const time = directTime || createdTime;
+  if (!time) return formatDate(datePart);
+  const normalizedTime = time.length === 5 ? `${time}:00` : time;
+  const date = new Date(`${datePart}T${normalizedTime}`);
+  return Number.isNaN(date.getTime())
+    ? formatDate(datePart)
+    : date.toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+const isPurchaseReturn = computed(() => {
+  const returnType = String(selectedReturn.value?.return_type || selectedReturn.value?.type || '').toLowerCase();
+  return type.value === 'purchases'
+    || returnType === 'purchase'
+    || returnType === 'purchase_return'
+    || selectedReturn.value?.return_type_label?.includes('مشتريات');
+});
+const returnPartyName = computed(() => {
+  const item = selectedReturn.value;
+  if (!item) return '-';
+  const partyName = [
+    item.party_name,
+    isPurchaseReturn.value ? item.supplier_name : item.customer_name,
+    isPurchaseReturn.value ? item.supplier?.name : item.customer?.name
+  ].find((name) => {
+    const normalizedName = String(name ?? '').trim();
+    return normalizedName && !['-', '—', 'null', 'undefined'].includes(normalizedName.toLowerCase());
+  });
+  return partyName || (isPurchaseReturn.value ? '-' : 'عميل نقدي');
+});
+const returnItems = computed(() => {
+  const items = selectedReturn.value?.items || selectedReturn.value?.return_items || [];
+  return Array.isArray(items) ? items : [];
+});
+const returnCashRefundAmount = computed(() => Math.max(
+  0,
+  Number(selectedReturn.value?.cash_refund_amount ?? selectedReturn.value?.paid_amount ?? 0)
+));
+const returnOffsetAmount = computed(() => Math.max(0, Number(selectedReturn.value?.offset_amount ?? 0)));
+const returnNetSettlementAmount = computed(() => Number(
+  selectedReturn.value?.net_settlement_amount ?? (returnCashRefundAmount.value + returnOffsetAmount.value)
+));
+const returnRefundChannel = computed(() => {
+  if (Number(selectedReturn.value?.is_cash) === 1) return 'نقدًا';
+  const method = String(selectedReturn.value?.refund_method || '').toLowerCase();
+  const labels = {
+    cash: 'نقدًا',
+    bank: 'تحويل بنكي',
+    bank_transfer: 'تحويل بنكي',
+    card: 'بطاقة ائتمان',
+    wallet: 'محفظة إلكترونية',
+    credit: 'رصيد آجل',
+    other: 'طريقة دفع أخرى'
+  };
+  const label = labels[method];
+  return label ? `عبر ${label}` : 'عبر طريقة الدفع';
+});
+const returnSettlementLabel = computed(() => {
+  const hasCashRefund = returnCashRefundAmount.value > 0.005;
+  const hasOffset = returnOffsetAmount.value > 0.005;
+  const total = Number(selectedReturn.value?.grand_total ?? selectedReturn.value?.total_amount ?? selectedReturn.value?.total ?? 0);
+  const fullySettled = total > 0 && Math.abs(returnCashRefundAmount.value + returnOffsetAmount.value - total) <= 0.01;
+  const channel = returnRefundChannel.value;
+
+  if (hasOffset && hasCashRefund) {
+    return isPurchaseReturn.value
+      ? `مقاصة مع حساب المورد ثم استرداد المتبقي ${channel}`
+      : `مقاصة مع رصيد العميل ثم رد المتبقي ${channel}`;
+  }
+  if (hasCashRefund) {
+    const extent = fullySettled ? 'كامل' : 'جزئي';
+    if (returnRefundChannel.value === 'نقدًا') {
+      return isPurchaseReturn.value ? `استرداد نقدي ${extent}` : `رد نقدي ${extent}`;
+    }
+    return isPurchaseReturn.value ? `استرداد ${extent} ${channel}` : `رد ${extent} ${channel}`;
+  }
+  if (hasOffset) {
+    if (isPurchaseReturn.value) return fullySettled ? 'تسوية كاملة على حساب المورد' : 'تسوية جزئية على حساب المورد';
+    return fullySettled ? 'إضافة كامل المبلغ إلى رصيد العميل' : 'إضافة جزئية إلى رصيد العميل';
+  }
+  return 'لا توجد تسوية مالية مسجلة';
+});
+const returnDetailFacts = computed(() => [
+  { l: isPurchaseReturn.value ? 'المورد' : 'العميل', v: returnPartyName.value },
+  { l: 'الفاتورة الأصلية', v: selectedReturn.value?.original_invoice_number || selectedReturn.value?.invoice_number || 'غير محدد' },
+  { l: 'تاريخ المرتجع', v: formatReturnDateTime(selectedReturn.value?.return_date, selectedReturn.value?.created_at) },
+  { l: 'الفرع', v: selectedReturn.value?.branch_name || branches.value.find(branch => String(branch.id) === String(selectedReturn.value?.branch_id))?.name || '-' },
+  { l: 'الكاشير', v: selectedReturn.value?.created_by_name || 'النظام' },
+  { l: 'نوع العملية', v: selectedReturn.value?.return_type_label || (isPurchaseReturn.value ? 'مرتجع مشتريات' : 'مرتجع مبيعات') },
+  { l: 'طريقة التسوية', v: returnSettlementLabel.value }
+]);
+const returnItemUnitPrice = (item) => Number(item.unit_price ?? item.sale_price ?? item.price ?? 0);
+const returnItemTotal = (item) => {
+  const explicitTotal = item.subtotal ?? item.total ?? item.net_total ?? item.amount;
+  if (explicitTotal !== null && explicitTotal !== undefined && explicitTotal !== '') {
+    return Number(explicitTotal) || 0;
+  }
+  const quantity = Number(item.quantity ?? item.qty ?? 0);
+  return quantity * returnItemUnitPrice(item);
+};
 
 let returnsAbortCtrl = null;
 
@@ -334,7 +465,6 @@ const fetchReturns = async (forceRefresh = false) => {
     }
     const params = { ...filters.getApiParams({ type: type.value, partyId: filters.customerFilter.value || undefined, force: forceRefresh }), branchId: branchId };
     
-    // ✅ Log: تحقق من القيم قبل الإرسال
     console.log('[fetchReturns] API Call params:', {
       branchId,
       selectedBranchId: branchStore.selectedBranchId,
@@ -369,7 +499,10 @@ const viewReturnDetails = async (returnRow) => {
   try {
     const response = await returnStore.fetchReturnDetails(returnRow.id, type.value, { signal: currentCtrl.signal });
     if (currentCtrl !== detailsAbortCtrl.value) return;
-    if (response?.status === 'success') { selectedReturn.value = response.data || response; showDetailsModal.value = true; }
+    if (response?.status === 'success') {
+      selectedReturn.value = { ...returnRow, ...(response.data || response) };
+      showDetailsModal.value = true;
+    }
     else showToast('فشل في تحميل تفاصيل المرتجع', 'error');
   } catch (e) {
     if (e?.name !== 'AbortError' && e?.name !== 'CanceledError' && e?.code !== 'ERR_CANCELED') {
@@ -378,17 +511,19 @@ const viewReturnDetails = async (returnRow) => {
   } finally { if (currentCtrl === detailsAbortCtrl.value) isLoadingDetails.value = false; hideLoader(); }
 };
 
+const printReturnDetails = async () => {
+  if (!selectedReturn.value) return;
+  await printDocument(buildReturnHtml(selectedReturn.value));
+};
+
 let searchDebounceTimer = null;
-// isMounting flag: يمنع الـ watches من إطلاق fetchReturns() أثناء onMounted
-// لأن تحميل البيانات (customers, branches, etc.) يُغيّر reactive values فيُطلق الـ watch مبكراً
 let isMounting = true;
 
 watch(filters.searchQuery, () => { 
   if (isMounting) return;
   clearTimeout(searchDebounceTimer); filters.page.value = 1; searchDebounceTimer = setTimeout(fetchReturns, 400); 
 });
-// selectedBranch مُزال من الـ watch — تغيير الفرع يُعالج عبر onBranchChange() مباشرة
-// إبقاؤه هنا يُسبب race condition: fetchBranches() تُغيّر selectedBranchId أثناء onMounted فيُطلق watch مبكراً
+
 watch([filters.customerFilter, type, filters.dateFrom, filters.dateTo], () => { 
   if (isMounting) return;
   filters.page.value = 1; fetchReturns(); 
@@ -406,18 +541,14 @@ onMounted(async () => {
     if (data.customers) customerStore.customers = data.customers;
     if (data.suppliers) supplierStore.suppliers = data.suppliers;
     if (data.branches && isExempt.value) branchStore.setBranches(data.branches);
-    await Promise.all([fetchSettings(), ensureExemptionLoaded()]);
+    await fetchSettings();
   } catch {
-    await Promise.all([fetchSettings(), ensureExemptionLoaded()]);
+    await fetchSettings();
     if (isExempt.value) await branchStore.fetchBranches().catch(() => {});
     await customerStore.fetchCustomers().catch(() => {});
     await supplierStore.fetchSuppliers().catch(() => {});
   }
   
-  // ✅ FIX: تهيئة/استعادة branch context قبل أول API call
-  // سجّل ما إذا كان المستخدم اختار فرعاً في جلسة سابقة (قبل fetchBranches يكتب default)
-  const hadPriorBranchChoice = localStorage.getItem('selectedBranchId') !== null 
-                                && localStorage.getItem('selectedBranchId') !== 'all';
   try {
     branchStore.loadFromStorage();
     if (!branchStore.branches || branchStore.branches.length === 0) {
@@ -428,34 +559,6 @@ onMounted(async () => {
     showToast('فشل في تحميل قائمة الفروع', 'error');
     return;
   }
-  // بعد fetchBranches: أعد تعيين الـ flag بما كان موجوداً قبل الكتابة
-  // لأن fetchBranches() قد تكتب selectedBranchId في localStorage تلقائياً
-  userChoseBranch.value = hadPriorBranchChoice;
-  
-  // الخطوة 2: التحقق من أن selectedBranchId جاهز فعلياً
-  let resolvedBranchId = branchStore.selectedBranchId;
-  if (!isExempt.value) {
-    // للمستخدم غير exempt: استخدم getRequiredBranchId()
-    try {
-      resolvedBranchId = branchIsolation.getRequiredBranchId();
-    } catch (err) {
-      console.error('[ReturnsHistory] Failed to resolve branch ID:', err);
-      showToast(err.message || 'لم يتم تعيين الفرع', 'error');
-      return;
-    }
-  }
-  
-  // الخطوة 3: Log واضح قبل أول API call
-  const selectedBranchName = branchStore.selectedBranch?.name || null;
-  console.log('[ReturnsHistory] Before first API call:', {
-    selectedBranchId: branchStore.selectedBranchId,
-    selectedBranch: selectedBranchName,
-    isExempt: isExempt.value,
-    resolvedBranchId,
-    branchesCount: branchStore.branches.length
-  });
-  
-  // الآن آمن للاستدعاء — رفع الـ flag أولاً
   isMounting = false;
   await new Promise(resolve => setTimeout(resolve, 100));
   fetchReturns();
@@ -467,25 +570,60 @@ onUnmounted(() => { if (returnsAbortCtrl) returnsAbortCtrl.abort(); if (searchDe
 </script>
 
 <style scoped>
-@keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+/* Animations */
+@keyframes loading {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
 
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.98) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Form Inputs */
 .filter-input {
   @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-rose-500/10 focus:border-rose-500 outline-none transition-all;
 }
 
+/* Pagination */
 .pagination-btn-v2 {
   @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
 }
 
-.custom-scroll::-webkit-scrollbar { width: 5px; }
-.custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
+/* Scrollbar */
+.custom-scroll::-webkit-scrollbar {
+  width: 5px;
+}
 
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+.custom-scroll::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full;
+}
 
-.slide-down-enter-active, .slide-down-leave-active { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-.slide-down-enter-from, .slide-down-leave-to { opacity: 0; transform: translateY(-10px); }
+/* Transition Classes */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
 
-@keyframes modalIn { from { opacity: 0; transform: scale(0.98) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-.animate-modalIn { animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+/* Animation Classes */
+.animate-modalIn {
+  animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
 </style>

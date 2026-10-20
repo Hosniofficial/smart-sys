@@ -11,8 +11,10 @@ use Psr\Http\Server\RequestHandlerInterface;
 use Slim\Psr7\Response;
 use App\Utils\SuperAdminHelper;
 
+/** Restricts a route group to platform-scoped super-admin identities. */
 class SuperAdminMiddleware implements MiddlewareInterface
 {
+    /** Reject requests without a verified platform super-admin identity. */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $user = $request->getAttribute('user');

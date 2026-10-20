@@ -22,9 +22,6 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->get('/purchase', [$handler, 'listPurchase'])
             ->add(PermissionMiddleware::require(Permissions::RETURN_VIEW, $db));
 
-        $group->get('/details/{id:\d+}', [$handler, 'getReturnDetails'])
-            ->add(PermissionMiddleware::require(Permissions::RETURN_VIEW, $db));
-
         $group->get('/sale/{id:\d+}', [$handler, 'getSale'])
             ->add(PermissionMiddleware::require(Permissions::RETURN_VIEW, $db));
 

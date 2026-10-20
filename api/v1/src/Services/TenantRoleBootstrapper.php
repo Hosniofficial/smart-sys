@@ -7,15 +7,12 @@ namespace App\Services;
 use PDO;
 
 /**
- * Creates tenant-owned, editable copies of operational role templates.
- *
- * The global manager/branch_manager and finance_officer records are templates
- * only. Tenant users receive tenant-scoped roles so their administrator can
- * safely edit permissions without changing another tenant's access.
+ * Legacy helper used only by migration 006 to preserve historical migration
+ * behavior. Runtime tenant provisioning must use the shared global roles.
  */
 final class TenantRoleBootstrapper
 {
-    public static function ensureDefaults(PDO $pdo, int $tenantId): array
+    public static function ensureDefaultsForMigration006(PDO $pdo, int $tenantId): array
     {
         if ($tenantId <= 0) {
             throw new \InvalidArgumentException('A valid tenant ID is required.');
@@ -83,8 +80,11 @@ final class TenantRoleBootstrapper
             "SELECT DISTINCT rp.permission_id
              FROM role_permissions rp
              JOIN roles template ON template.id = rp.role_id
+             JOIN permissions p ON p.id = rp.permission_id
              WHERE template.tenant_id IS NULL
-               AND LOWER(template.name) IN ({$placeholders})"
+               AND LOWER(template.name) IN ({$placeholders})
+               AND rp.tenant_id IS NULL
+               AND p.tenant_id IS NULL"
         );
         $stmt->execute(array_map('strtolower', $templateNames));
         self::insertPermissionIds($pdo, $targetRoleId, $stmt->fetchAll(PDO::FETCH_COLUMN));

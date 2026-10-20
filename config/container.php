@@ -9,19 +9,16 @@ use App\Handlers\AdminSubscriptionHandler;
 use App\Handlers\AdvancedReportsHandler;
 use App\Handlers\AnalyticsHandler;
 use App\Handlers\AuditHandler;
-use App\Handlers\AuditTrailHandler;
 use App\Handlers\AuthHandler;
 use App\Handlers\BootstrapHandler;
 use App\Handlers\BranchHandler;
 use App\Handlers\BranchInventoryReportHandler;
 use App\Handlers\CategoriesHandler;
 use App\Handlers\CustomersHandler;
-use App\Handlers\DocumentManagementHandler;
 use App\Handlers\EmailVerificationHandler;
 use App\Handlers\InventoryAnalyticsHandler;
 use App\Handlers\InventoryHandler;
 use App\Handlers\OpeningBalanceHandler;
-use App\Handlers\PaymentIntegrationHandler;
 use App\Handlers\PaymentMethodsHandler;
 use App\Handlers\PaymentsHandler;
 use App\Handlers\PosAnalyticsHandler;
@@ -67,6 +64,8 @@ use App\Services\CashVoucherService;
 use App\Services\SaleApprovalService;
 use App\Services\SalePaymentService;
 use App\Services\SecurityEventDispatcher;
+use App\Services\AuthSessionService;
+use App\Services\UserSessionService;
 use App\Services\SecurityLogger;
 use App\Services\ServiceFactory;
 use DI\Container;
@@ -189,40 +188,38 @@ return function (): Container {
     JwtAuthMiddleware::class => function (
         JwtBlacklistService $blacklistService,
         SecurityLogger $securityLogger,
-        Container $container
+        Container $container,
+        UserSessionService $userSessionService
     ) {
-        return new JwtAuthMiddleware($blacklistService, $securityLogger, $container);
+        return new JwtAuthMiddleware($blacklistService, $securityLogger, $container, $userSessionService);
     },
+
+    AuthSessionService::class => fn(PDO $pdo) => new AuthSessionService($pdo),
+    UserSessionService::class => fn(PDO $pdo) => new UserSessionService($pdo),
 
     AuthHandler::class => function (
         PDO $pdo,
         JwtBlacklistService $blacklistService,
         SecurityLogger $securityLogger,
-        SecurityEventDispatcher $eventDispatcher
+        AuthSessionService $authSession
     ) {
         return new AuthHandler(
             $pdo,
             $blacklistService,
             $securityLogger,
-            $eventDispatcher
+            $authSession
         );
     },
 
     ProductsHandler::class => fn(PDO $pdo) => new ProductsHandler($pdo),
     SalesHandler::class => fn(PDO $pdo) => new SalesHandler($pdo),
 
-    UsersHandler::class => function (
-        PDO $pdo,
-        SecurityLogger $securityLogger,
-        SecurityEventDispatcher $eventDispatcher
-    ) {
-        return new UsersHandler($pdo, $securityLogger, $eventDispatcher);
-    },
+    UsersHandler::class => fn(PDO $pdo, SecurityLogger $securityLogger) =>
+        new UsersHandler($pdo, $securityLogger),
 
     StrictSubscriptionHandler::class => fn(PDO $pdo) => new StrictSubscriptionHandler($pdo),
     SubscriptionHandler::class => fn(PDO $pdo) => new SubscriptionHandler($pdo),
     EmailVerificationHandler::class => fn(PDO $pdo) => new EmailVerificationHandler($pdo),
-    AuditTrailHandler::class => fn(PDO $pdo) => new AuditTrailHandler($pdo),
     PurchasesHandler::class => fn(PDO $pdo) => new PurchasesHandler($pdo),
 
     ReturnsHandler::class => function (PDO $pdo) {
@@ -256,14 +253,12 @@ return function (): Container {
     AdvancedReportsHandler::class => fn(PDO $pdo) => new AdvancedReportsHandler($pdo),
     CustomersHandler::class => fn(PDO $pdo) => new CustomersHandler($pdo),
     SuppliersHandler::class => fn(PDO $pdo) => new SuppliersHandler($pdo),
-    PaymentIntegrationHandler::class => fn(PDO $pdo) => new PaymentIntegrationHandler($pdo),
     PaymentsHandler::class => fn(PDO $pdo) => new PaymentsHandler($pdo),
     PaymentMethodsHandler::class => fn(PDO $pdo) => new PaymentMethodsHandler($pdo),
     App\Handlers\NotificationHandler::class => fn(PDO $pdo) => new App\Handlers\NotificationHandler($pdo),
-    DocumentManagementHandler::class => fn(PDO $pdo) => new DocumentManagementHandler($pdo),
     App\Handlers\CashVouchersHandler::class => fn(PDO $pdo) => new App\Handlers\CashVouchersHandler($pdo),
+    App\Handlers\CostCentersHandler::class => fn(PDO $pdo) => new App\Handlers\CostCentersHandler($pdo),
     CashVoucherService::class              => fn(PDO $pdo) => new CashVoucherService($pdo, 0), // tenantId resolved per-request
-    App\Handlers\JournalEntriesHandler::class => fn(PDO $pdo) => new App\Handlers\JournalEntriesHandler($pdo),
     AccountStatementHandler::class => fn(PDO $pdo) => new AccountStatementHandler($pdo),
     SessionsHandler::class         => fn(PDO $pdo) => new SessionsHandler($pdo),
     CashierSessionService::class   => fn(PDO $pdo) => new CashierSessionService($pdo),

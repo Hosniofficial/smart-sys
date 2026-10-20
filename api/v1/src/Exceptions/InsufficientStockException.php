@@ -2,11 +2,7 @@
 
 namespace App\Exceptions;
 
-/**
- * استثناء يُرمى عند محاولة البيع بكمية تتجاوز المخزون المتوفر
- *
- * يحتوي على بيانات إضافية تساعد الواجهة الأمامية على التعامل مع الخطأ بذكاء
- */
+/** Stock shortfall carrying product and quantity details for API error responses. */
 class InsufficientStockException extends \Exception
 {
     public readonly int $productId;
@@ -25,9 +21,6 @@ class InsufficientStockException extends \Exception
         $this->requestedQty = $requestedQty;
     }
 
-    /**
-     * تحويل الاستثناء إلى مصفوفة للإرجاع عبر API
-     */
     public function toArray(): array
     {
         return [

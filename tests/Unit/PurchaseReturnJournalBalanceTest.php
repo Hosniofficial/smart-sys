@@ -3,30 +3,30 @@
 declare(strict_types=1);
 
 use App\Services\AccountingService;
-
 use PHPUnit\Framework\TestCase;
 
 final class PurchaseReturnJournalBalanceTest extends TestCase
 {
-    public function testFullyRefundedPurchaseReturnBalances(): void
+    public function testCashModeReturnPostsBalancedCashAndInventoryLines(): void
     {
-        $this->assertPurchaseReturnBalances(10000.0, 10000.0, 0.0);
+        $this->assertPurchaseReturnBalances('cash', 10000.0, 0.0, 10000.0);
     }
 
-    public function testPartiallyRefundedPurchaseReturnBalances(): void
+    public function testAutoModeOffsetsSupplierPayableAndRefundsRemainder(): void
     {
-        $this->assertPurchaseReturnBalances(10000.0, 4000.0, 6000.0);
+        $this->assertPurchaseReturnBalances('auto', 7000.0, 3000.0, 7000.0);
     }
 
-    public function testUnrefundedPurchaseReturnBalancesOnSupplierAccount(): void
+    public function testCreditNoteModeLeavesFullAmountOnSupplierAccount(): void
     {
-        $this->assertPurchaseReturnBalances(10000.0, 0.0, 10000.0);
+        $this->assertPurchaseReturnBalances('credit_note', 0.0, 10000.0, 0.0);
     }
 
     private function assertPurchaseReturnBalances(
-        float $returnAmount,
-        float $refundedAmount,
-        float $expectedSupplierDebit
+        string $refundMode,
+        float $paidAmount,
+        float $supplierDebit,
+        float $cashDebit
     ): void {
         $db = $this->database();
         $service = new AccountingService($db);
@@ -38,41 +38,43 @@ final class PurchaseReturnJournalBalanceTest extends TestCase
             returnNumber: 'PR-TEST-001',
             returnType: 'purchase',
             partyId: 2,
-            totalAmount: $returnAmount,
-            paidAmount: $refundedAmount,
+            totalAmount: 10000.0,
+            paidAmount: $paidAmount,
             paymentMethodId: 1,
             taxAmount: 0.0,
             userId: 1,
+            refundMode: $refundMode,
             costCenterId: 1
         );
 
         self::assertGreaterThan(0, $journalEntryId);
-
         $stmt = $db->prepare(
             'SELECT account_id, debit_amount, credit_amount
-             FROM journal_entry_lines
-             WHERE journal_entry_id = ? AND tenant_id = ?'
+             FROM journal_entry_lines WHERE journal_entry_id = ? AND tenant_id = ?'
         );
         $stmt->execute([$journalEntryId, 3]);
-        $lines = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $lines = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $totalDebit = array_sum(array_map(static fn(array $line): float => (float) $line['debit_amount'], $lines));
         $totalCredit = array_sum(array_map(static fn(array $line): float => (float) $line['credit_amount'], $lines));
+        self::assertEqualsWithDelta($totalDebit, $totalCredit, 0.001);
+        self::assertEqualsWithDelta(10000.0, $totalCredit, 0.001);
 
-        self::assertEqualsWithDelta($returnAmount, $totalDebit, 0.001);
-        self::assertEqualsWithDelta($returnAmount, $totalCredit, 0.001);
-
-        $debitsByAccount = [];
-        $creditsByAccount = [];
+        $accountDebits = [];
+        $accountCredits = [];
         foreach ($lines as $line) {
             $accountId = (int) $line['account_id'];
-            $debitsByAccount[$accountId] = ($debitsByAccount[$accountId] ?? 0.0) + (float) $line['debit_amount'];
-            $creditsByAccount[$accountId] = ($creditsByAccount[$accountId] ?? 0.0) + (float) $line['credit_amount'];
+            $accountDebits[$accountId] = ($accountDebits[$accountId] ?? 0.0) + (float) $line['debit_amount'];
+            $accountCredits[$accountId] = ($accountCredits[$accountId] ?? 0.0) + (float) $line['credit_amount'];
         }
+        self::assertEqualsWithDelta($supplierDebit, $accountDebits[73] ?? 0.0, 0.001);
+        self::assertEqualsWithDelta($cashDebit, $accountDebits[50] ?? 0.0, 0.001);
+        self::assertEqualsWithDelta(10000.0, $accountCredits[72] ?? 0.0, 0.001);
 
-        self::assertEqualsWithDelta($returnAmount, $creditsByAccount[72] ?? 0.0, 0.001, 'Inventory must be credited for the returned goods.');
-        self::assertEqualsWithDelta($expectedSupplierDebit, $debitsByAccount[73] ?? 0.0, 0.001, 'Unrefunded amount must remain as a debit supplier balance.');
-        self::assertEqualsWithDelta($refundedAmount, $debitsByAccount[50] ?? 0.0, 0.001, 'Cash/bank refund received must be debited.');
+        $entry = $db->query('SELECT status FROM journal_entries WHERE id = ' . (int) $journalEntryId)->fetchColumn();
+        self::assertSame('posted', $entry);
+        $linkedEntryId = $db->query('SELECT journal_entry_id FROM inventory_transactions WHERE id = 1')->fetchColumn();
+        self::assertSame((string) $journalEntryId, (string) $linkedEntryId);
     }
 
     private function database(): PDO
@@ -103,13 +105,14 @@ final class PurchaseReturnJournalBalanceTest extends TestCase
         )');
 
         $db->exec("INSERT INTO accounts (id, tenant_id, code) VALUES
-            (50, 3, '1001'), (72, 3, '1301-0001'), (73, 3, '21010001'),
-            (2101, 3, '2101'), (5002, 3, '5002'), (5103, 3, '5103')");
-        $db->exec("INSERT INTO branches (id, tenant_id, account_id) VALUES (4, 3, 72)");
-        $db->exec("INSERT INTO suppliers (id, tenant_id, account_id) VALUES (2, 3, 73)");
+            (50, 3, '1001'), (72, 3, '1301-0001'), (73, 3, '2101-S'),
+            (2101, 3, '2101'), (5002, 3, '5002'), (2201, 3, '2201'), (2202, 3, '2202')");
+        $db->exec('INSERT INTO branches (id, tenant_id, account_id) VALUES (4, 3, 72)');
+        $db->exec('INSERT INTO suppliers (id, tenant_id, account_id) VALUES (2, 3, 73)');
         $db->exec("INSERT INTO payment_methods (id, tenant_id, kind, account_id) VALUES (1, 3, 'cash', 50)");
-        $db->exec("INSERT INTO returns (id, tenant_id, branch_id) VALUES (1, 3, 4)");
-        $db->exec("INSERT INTO inventory_transactions (tenant_id, reference_type, reference_id) VALUES (3, 'return', 1)");
+        $db->exec('INSERT INTO returns (id, tenant_id, branch_id) VALUES (1, 3, 4)');
+        $db->exec("INSERT INTO inventory_transactions (id, tenant_id, reference_type, reference_id)
+            VALUES (1, 3, 'return', 1)");
 
         return $db;
     }

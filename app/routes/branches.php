@@ -44,9 +44,6 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->get('/reports/inventory/movements', [$reportH, 'inventoryMovementsReport'])
             ->add(PermissionMiddleware::require(Permissions::REPORT_INVENTORY, $db));
 
-        $group->get('/reports/inventory/movements/export', [$reportH, 'inventoryMovementsExport'])
-            ->add(PermissionMiddleware::require(Permissions::REPORT_INVENTORY, $db));
-
         $group->get('/reports/account-coverage', [$reportH, 'branchesAccountCoverage'])
             ->add(PermissionMiddleware::require(Permissions::ACCOUNTING_VIEW, $db));
 
@@ -58,30 +55,15 @@ return function (RouteCollectorProxy $group, Container $container): void {
             ->add(PermissionMiddleware::require(Permissions::INVENTORY_ADJUST, $db));
 
         // ── Variable routes AFTER ─────────────────────────────────────────
-        $group->get('/{id}', [$handler, 'getBranchById'])
-            ->add(PermissionMiddleware::require(Permissions::BRANCH_VIEW, $db));
-
         $group->get('/{id}/stock', [$reportH, 'getBranchStock'])
-            ->add(PermissionMiddleware::require(Permissions::INVENTORY_VIEW, $db));
-
-        $group->get('/{id}/inventory/low-stock', [$reportH, 'getLowStockItems'])
             ->add(PermissionMiddleware::require(Permissions::INVENTORY_VIEW, $db));
 
         $group->get('/{id}/transfers', [$transferH, 'listBranchTransfersByInventory'])
             ->add(PermissionMiddleware::require(Permissions::INVENTORY_VIEW, $db));
 
-        $group->get('/{id}/transfers/history/{productId}', [$transferH, 'getTransferHistory'])
-            ->add(PermissionMiddleware::require(Permissions::INVENTORY_VIEW, $db));
-
         $group->post('/{id}/transfer', function (Request $request, Response $response, array $args) use ($transferH) {
             return $transferH->transferStock($request, $response, $args);
         })->add(PermissionMiddleware::require(Permissions::INVENTORY_TRANSFER, $db));
-
-        $group->post('/{id}/inventory', [$adjustH, 'upsertInventoryItem'])
-            ->add(PermissionMiddleware::require(Permissions::INVENTORY_ADJUST, $db));
-
-        $group->put('/{id}/inventory/{productId}', [$adjustH, 'upsertInventoryItem'])
-            ->add(PermissionMiddleware::require(Permissions::INVENTORY_ADJUST, $db));
 
         $group->post('/{id}/adjustments', [$adjustH, 'adjustStockQuantity'])
             ->add(PermissionMiddleware::require(Permissions::INVENTORY_ADJUST, $db));

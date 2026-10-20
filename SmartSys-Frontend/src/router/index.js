@@ -1,10 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Login from '../components/Login.vue'
+import Login from '../views/auth/Login.vue'
 
 // ⚠️ DO NOT call useAuthStore() or useSubscriptionStore() at module level here.
 // Stores must only be accessed inside navigation guards (after app.use(pinia)).
 // Importing the factory functions is fine — calling them is not.
-import { useAuthStore } from '../stores/auth'
+import { useAuthStore } from '@/stores/auth/authStore'
 import { useSubscriptionStore } from '@/stores/subscriptions/subscriptionStore'
 import { checkAccessForPath } from '@/config/menuConfig'
 import apiClient from '@/config/axios'
@@ -43,7 +43,7 @@ const routes = [
   {
     path: '/setup',
     name: 'Setup',
-    component: () => import('../views/Setup.vue'),
+    component: () => import('../views/setup/Setup.vue'),
     meta: { 
       requiresAuth: true, 
       requiresOwner: true,
@@ -57,15 +57,15 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
-    path: '/admin-dashboard',
+    path: '/dashboard',
     name: 'AdminDashboard',
-    component: () => import('../views/Dashboard.vue'),
+    component: () => import('../views/dashboards/Dashboard.vue'),
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
-    path: '/cashier-dashboard',
+    path: '/cashier',
     name: 'CashierDashboard',
-    component: () => import('../views/CashierDashboard.vue'),
+    component: () => import('../views/dashboards/CashierDashboard.vue'),
     meta: { requiresAuth: true }
   },
   {
@@ -75,7 +75,7 @@ const routes = [
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
-    path: '/sales/point',
+    path: '/sales/pos',
     name: 'SalesPoint',
     component: () => import('../views/sales/SalesPoint.vue'),
     meta: { 
@@ -106,9 +106,9 @@ const routes = [
     }
   },
   {
-    path: '/sales/returns',
+    path: '/returns',
     name: 'ReturnsManagement',
-    component: () => import('../views/sales/ReturnsManagement.vue'),
+    component: () => import('../views/returns/ReturnsManagement.vue'),
     meta: { 
       requiresAuth: true
     }
@@ -207,7 +207,7 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
-    path: '/admin/users',
+    path: '/users',
     name: 'UserManagement',
     component: () => import('../views/admin/UserManagement.vue'),
     meta: { 
@@ -239,11 +239,11 @@ const routes = [
   {
     path: '/upgrade',
     name: 'Upgrade',
-    component: () => import('../views/Upgrade.vue'),
+    component: () => import('../views/errors/Upgrade.vue'),
     meta: { requiresAuth: true, allowExpired: true }
   },
   {
-    path: '/admin/payment-methods',
+    path: '/payment-methods',
     name: 'PaymentMethodsKindAdmin',
     component: () => import('../views/admin/PaymentMethodsKind.vue'),
     meta: { 
@@ -254,7 +254,7 @@ const routes = [
   {
     path: '/admin/subscriptions',
     name: 'AdminSubscriptions',
-    component: () => import('../views/admin/Subscriptions.vue'),
+    component: () => import('../views/superadmin/Subscriptions.vue'),
     meta: { 
       requiresAuth: true, 
       requiresSuperAdmin: true
@@ -263,7 +263,7 @@ const routes = [
   {
     path: '/admin/plans',
     name: 'AdminPlans',
-    component: () => import('../views/admin/Plans.vue'),
+    component: () => import('../views/superadmin/Plans.vue'),
     meta: { 
       requiresAuth: true, 
       requiresSuperAdmin: true
@@ -272,13 +272,13 @@ const routes = [
   {
     path: '/profile',
     name: 'Profile',
-    component: () => import('../views/admin/Profile.vue'),
+    component: () => import('../views/profile/Profile.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/forbidden',
     name: 'Forbidden',
-    component: () => import('../views/Forbidden.vue'),
+    component: () => import('../views/errors/Forbidden.vue'),
     meta: { requiresAuth: false }
   },
   {
@@ -362,6 +362,12 @@ const routes = [
     }
   },
   {
+    path: '/repairs',
+    name: 'RepairOrders',
+    component: () => import('../views/repairs/RepairOrders.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/warranty/new',
     redirect: { path: '/warranty' }
   },
@@ -382,7 +388,7 @@ const routes = [
     }
   },
   {
-    path: '/setup/opening-balance',
+    path: '/opening-balance',
     name: 'OpeningBalance',
     component: () => import('../views/setup/OpeningBalance.vue'),
     meta: { 
@@ -426,7 +432,13 @@ const routes = [
     }
   },
   {
-    path: '/admin/data-integrity',
+    path: '/accounting/owner-contributions',
+    name: 'OwnerContributions',
+    component: () => import('../views/accounting/OwnerContributions.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
+    path: '/data-integrity',
     name: 'DataIntegrity',
     component: () => import('../views/admin/DataIntegrity.vue'),
     meta: { 
@@ -443,7 +455,7 @@ const routes = [
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
-    component: () => import('../views/NotFound.vue'),
+    component: () => import('../views/errors/NotFound.vue'),
     meta: { requiresAuth: false }
   }
 ]
@@ -489,7 +501,7 @@ router.beforeEach(async (to, from, next) => {
       if (hasStoredSession) {
         const restored = await authStore2.checkAuthStatus();
         if (restored && authStore2.isAuthenticated) {
-          return next(authStore2.isAdmin ? '/admin-dashboard' : '/cashier-dashboard');
+          return next(authStore2.isAdmin ? '/dashboard' : '/cashier');
         }
       }
     }
@@ -563,7 +575,7 @@ router.beforeEach(async (to, from, next) => {
   const isSpecialRoute = specialRoutes.includes(to.path) || to.name === 'NotFound'
   
   if (requiresGuest && authStore.isAuthenticated) {
-    next(authStore.isAdmin ? '/admin-dashboard' : '/cashier-dashboard');
+    next(authStore.isAdmin ? '/dashboard' : '/cashier');
   } else if (requiresSuperAdmin && !authStore.isSuperAdmin) {
     next({ path: '/forbidden', query: { reason: 'super_admin' } });
   } else if (requiresAdmin && !authStore.isAdmin) {
@@ -619,7 +631,9 @@ router.beforeEach(async (to, from, next) => {
     if (!hasExplicitMeta && !isSpecialRoute) {
       const user = {
         role: authStore.user?.role || 'employee',
-        permissions: authStore.user?.permissions || []
+        permissions: authStore.user?.permissions || [],
+        tenant_id: authStore.user?.tenant_id,
+        is_owner: authStore.user?.is_owner
       }
       const hasAccess = checkAccessForPath(to.path, user)
       if (!hasAccess) {
@@ -638,4 +652,3 @@ router.beforeEach(async (to, from, next) => {
 });
 
 export default router;
-

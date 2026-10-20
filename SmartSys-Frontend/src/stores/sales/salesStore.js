@@ -53,7 +53,7 @@ export const useSalesStore = defineStore('sales', () => {
     force         = false,
   } = {}) => {
     try {
-      const cacheKey = `${branchId || 'all'}_${page}_${perPage}_${status || 'all'}_${customerId || 'all'}_${dateFrom || 'all'}_${dateTo || 'all'}`;
+      const cacheKey = `${branchId || 'all'}_${page}_${perPage}_${status || 'all'}_${customerId || 'all'}_${dateFrom || 'all'}_${dateTo || 'all'}_totals-${includeTotals ? 'yes' : 'no'}`;
       const cached   = salesList.value[cacheKey];
       const cachedAt = salesListFetchedAt.value[cacheKey];
 
@@ -291,6 +291,78 @@ export const useSalesStore = defineStore('sales', () => {
     }
   };
 
+  const addSalePayment = async (payload, idempotencyKey) => {
+    try {
+      const response = await apiClient.post('/sales/add-payment', payload, {
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+      });
+
+      if (payload?.sale_id) {
+        const cacheKey = String(payload.sale_id);
+        delete detailsCache.value[cacheKey];
+        delete detailsCacheFetchedAt.value[cacheKey];
+      }
+      clearSalesListCache();
+      useStatementStore().clearCustomerCache();
+
+      return {
+        status: response?.data?.status || 'success',
+        data: response?.data?.data ?? response?.data,
+      };
+    } catch (error) {
+      console.error('addSalePayment failed:', error);
+      return {
+        status: 'error',
+        data: null,
+        httpStatus: Number(error?.response?.status || 0),
+        message: error?.response?.data?.message || error.message || 'Payment failed',
+      };
+    }
+  };
+
+  const voidSale = async (saleId, note = null) => {
+    try {
+      const response = await apiClient.delete(`/sales/${saleId}`, { data: { note } });
+      delete detailsCache.value[String(saleId)];
+      delete detailsCacheFetchedAt.value[String(saleId)];
+      clearSalesListCache();
+      clearSearchCache();
+      useStatementStore().clearCustomerCache();
+
+      return {
+        status: response?.data?.status || 'success',
+        data: response?.data?.data ?? response?.data,
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        data: null,
+        message: error?.response?.data?.message || 'تعذر إلغاء فاتورة البيع',
+      };
+    }
+  };
+
+  const updateSale = async (saleId, payload) => {
+    try {
+      const response = await apiClient.put(`/sales/${saleId}`, payload);
+      delete detailsCache.value[String(saleId)];
+      delete detailsCacheFetchedAt.value[String(saleId)];
+      clearSalesListCache();
+      clearSearchCache();
+
+      return {
+        status: response?.data?.status || 'success',
+        data: response?.data?.data ?? response?.data,
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        data: null,
+        message: error?.response?.data?.message || 'تعذر تعديل فاتورة البيع',
+      };
+    }
+  };
+
   // ─── getSaleById ──────────────────────────────────────────────────────────
   const getSaleById = (saleId) =>
     computed(() => detailsCache.value[String(saleId)]);
@@ -343,6 +415,9 @@ export const useSalesStore = defineStore('sales', () => {
     // Write Actions
     createSale,
     payDebt,
+    addSalePayment,
+    updateSale,
+    voidSale,
 
     // Cache
     clear,

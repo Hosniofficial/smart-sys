@@ -43,13 +43,6 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->post('/{id:[0-9]+}/reject', [$handler, 'reject'])
             ->add(PermissionMiddleware::require(Permissions::SALE_APPROVAL_REJECT, $db));
 
-        // Status update — requires SALE_EDIT (not freely settable to 'paid')
-        // Note: handler-level guard against setting paid/partial manually
-        // is added in Week 3. This middleware ensures only authorised users
-        // can call the endpoint at all.
-        $group->post('/{id:[0-9]+}/status', [$handler, 'updateStatus'])
-            ->add(PermissionMiddleware::require(Permissions::SALE_EDIT, $db));
-
         // Full update
         $group->put('/{id:[0-9]+}', [$handler, 'update'])
             ->add(PermissionMiddleware::require(Permissions::SALE_EDIT, $db));

@@ -6,6 +6,9 @@ use PDO;
 use Throwable;
 use App\Services\MonologHandler;
 
+/**
+ * Coordinates a PDO transaction across nested callback executions and logs outcomes.
+ */
 class TransactionManager
 {
     private PDO $pdo;
@@ -40,28 +43,14 @@ class TransactionManager
 
         try {
             $result = $callback();
-            $this->depth--;
-
-            if ($this->depth === 0) {
-                $this->pdo->commit();
-                $duration = round((microtime(true) - $startTime) * 1000, 2);
-                $this->logger->info("Transaction committed: $operationName", array_merge($context, [
-                    'duration_ms' => $duration,
-                    'status' => 'success'
-                ]));
-            }
-
-            return $result;
         } catch (Throwable $e) {
             $this->depth--;
 
             if ($this->depth === 0) {
-                $this->pdo->rollBack();
+                $this->rollBackIfActive($operationName, $context);
                 $duration = round((microtime(true) - $startTime) * 1000, 2);
 
-                // Business rule violations (validation errors, not-found, etc.)
-                // are expected — log as warning without stack trace to reduce noise.
-                // Only unexpected errors (PDOException, RuntimeException, etc.) get ERROR + trace.
+                // Business rule violations are expected; log unexpected failures with a trace.
                 $isExpected = $e instanceof \Exception
                     && !($e instanceof \PDOException)
                     && !($e instanceof \RuntimeException);
@@ -82,6 +71,50 @@ class TransactionManager
             }
 
             throw $e;
+        }
+
+        $this->depth--;
+
+        if ($this->depth === 0) {
+            try {
+                $this->pdo->commit();
+            } catch (Throwable $e) {
+                $this->rollBackIfActive($operationName, $context);
+                $duration = round((microtime(true) - $startTime) * 1000, 2);
+                $this->logger->error("Transaction commit failed: $operationName", array_merge($context, [
+                    'duration_ms' => $duration,
+                    'error' => $e->getMessage(),
+                    'code' => $e->getCode(),
+                    'trace' => $e->getTraceAsString(),
+                ]));
+
+                throw $e;
+            }
+
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+            $this->logger->info("Transaction committed: $operationName", array_merge($context, [
+                'duration_ms' => $duration,
+                'status' => 'success'
+            ]));
+        }
+
+        return $result;
+    }
+
+    private function rollBackIfActive(string $operationName, array $context): void
+    {
+        try {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            } else {
+                $this->logger->warning("Transaction already closed before rollback: $operationName", $context);
+            }
+        } catch (Throwable $rollbackError) {
+            $this->logger->error("Transaction rollback failed: $operationName", array_merge($context, [
+                'error' => $rollbackError->getMessage(),
+                'code' => $rollbackError->getCode(),
+                'trace' => $rollbackError->getTraceAsString(),
+            ]));
         }
     }
 

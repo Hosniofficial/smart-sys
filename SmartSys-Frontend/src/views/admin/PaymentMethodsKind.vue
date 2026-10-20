@@ -11,8 +11,8 @@
       <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
-        title="إدارة وسائل التحصيل"
-        description="تعريف وتصنيف طرق الدفع المتاحة في النظام وربطها محاسبياً بشجرة الحسابات."
+        title="إدارة طرق الدفع"
+        description="أضف طرق الدفع المتاحة في النظام، ونظّمها، واربط كل طريقة بالحساب المحاسبي المناسب."
         :branches="[]"
         :selectedBranch="null"
       >
@@ -81,6 +81,7 @@
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">الوسيلة / الطريقة</th>
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">التصنيف التقني</th>
                 <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">الربط مع GL</th>
+                <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">حدود الرصيد</th>
                 <th class="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">التحكم</th>
               </tr>
             </thead>
@@ -88,13 +89,13 @@
               <!-- Loading State -->
               <template v-if="loading && !methods.length">
                 <tr v-for="n in 5" :key="n" class="animate-pulse">
-                  <td v-for="m in 5" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
+                  <td v-for="m in 6" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                 </tr>
               </template>
               
               <!-- Empty State -->
               <tr v-else-if="methods.length === 0">
-                <td colspan="5" class="py-24 text-center text-slate-300">
+                <td colspan="6" class="py-24 text-center text-slate-300">
                    <i class="fas fa-credit-card text-3xl mb-4 opacity-20"></i>
                    <p class="text-xs font-bold uppercase tracking-widest">لا توجد طرق دفع معرفة</p>
                 </td>
@@ -134,6 +135,20 @@
                       </span>
                     </div>
                   </div>
+                </td>
+                <td class="px-4 py-3 min-w-[180px]">
+                  <div v-if="m._kind === 'bank'" class="space-y-1">
+                    <label class="text-[9px] text-slate-400 font-bold">حد السحب على المكشوف</label>
+                    <input v-model.number="m._overdraft_limit" type="number" min="0" step="0.01" class="filter-input-v3 h-8" placeholder="0 = ممنوع" />
+                  </div>
+                  <div v-else-if="m._kind === 'wallet'" class="space-y-1.5">
+                    <select v-model="m._wallet_type" class="filter-input-v3 h-8 text-[10px]">
+                      <option value="prepaid">مسبقة الدفع</option>
+                      <option value="postpaid">لاحقة الدفع</option>
+                    </select>
+                    <input v-if="m._wallet_type === 'postpaid'" v-model.number="m._credit_limit" type="number" min="0.01" step="0.01" class="filter-input-v3 h-8" placeholder="حد الائتمان" />
+                  </div>
+                  <span v-else class="text-[9px] text-slate-400">{{ m._kind === 'cash' ? 'السالب من إعداد POS والجلسة' : 'لا يسمح بالسالب' }}</span>
                 </td>
                 <td class="px-8 py-4 text-center">
                   <button @click="saveMethod(m)" :disabled="m._saving" class="h-8 px-5 rounded-md bg-blue-600 text-white text-[10px] font-bold uppercase shadow-sm hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 mx-auto">
@@ -193,6 +208,20 @@
                     <input v-model="form.payment_terms" type="text" class="filter-input-v2 h-10" placeholder="مثال: فوري، 30 يوم..." />
                  </div>
 
+                  <div v-if="form.kind === 'bank'" class="space-y-1.5">
+                    <label class="metadata-label">حد السحب على المكشوف</label>
+                    <input v-model.number="form.overdraft_limit" type="number" min="0" step="0.01" class="filter-input-v2 h-10" placeholder="0 = منع السالب" />
+                  </div>
+
+                  <div v-if="form.kind === 'wallet'" class="space-y-3">
+                    <label class="metadata-label">سياسة المحفظة</label>
+                    <select v-model="form.wallet_type" class="filter-input-v2 h-10">
+                     <option value="prepaid">مسبقة الدفع</option>
+                     <option value="postpaid">لاحقة الدفع</option>
+                    </select>
+                    <input v-if="form.wallet_type === 'postpaid'" v-model.number="form.credit_limit" type="number" min="0.01" step="0.01" class="filter-input-v2 h-10" placeholder="حد الائتمان" />
+                  </div>
+
                  <div class="p-6 bg-slate-50 border border-slate-200 rounded-xl space-y-5">
                     <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-slate-200 pb-3">
                       <i class="fas fa-link text-blue-500"></i>
@@ -250,7 +279,7 @@ const accounts = ref([]);
 const lastRefreshed = ref('');
 const kinds = ['cash','bank','card','credit','wallet','other'];
 
-const form = ref({ name: '', kind: 'cash', description: '', payment_terms: '', account_id: null });
+const form = ref({ name: '', kind: 'cash', description: '', payment_terms: '', account_id: null, overdraft_limit: null, wallet_type: 'prepaid', credit_limit: null });
 const creating = ref(false);
 const showCreate = ref(false);
 const accountsLoading = ref(false);
@@ -296,6 +325,9 @@ async function load() {
       ...x,
       _kind: (x.kind || 'other').toLowerCase(),
       _account_id: x.account_id ? Number(x.account_id) : null,
+      _overdraft_limit: x.overdraft_limit == null ? null : Number(x.overdraft_limit),
+      _wallet_type: x.wallet_type || 'prepaid',
+      _credit_limit: x.credit_limit == null ? null : Number(x.credit_limit),
       _saving: false,
     }));
     lastRefreshed.value = new Date().toLocaleString();
@@ -310,7 +342,11 @@ async function saveMethod(m) {
   if (!m || !m.id) return;
   m._saving = true;
   try {
-    const result = await paymentStore.updatePaymentMethodKind(m.id, m._kind, m._account_id ?? null);
+    const result = await paymentStore.updatePaymentMethodKind(m.id, m._kind, m._account_id ?? null, {
+      overdraft_limit: m._overdraft_limit,
+      wallet_type: m._wallet_type,
+      credit_limit: m._credit_limit,
+    });
     if (result.status !== 'success') {
       error.value = result.message;
     } else {
@@ -325,7 +361,7 @@ async function saveMethod(m) {
 }
 
 function resetForm() {
-  form.value = { name: '', kind: 'cash', description: '', payment_terms: '', account_id: null };
+  form.value = { name: '', kind: 'cash', description: '', payment_terms: '', account_id: null, overdraft_limit: null, wallet_type: 'prepaid', credit_limit: null };
 }
 
 async function create() {

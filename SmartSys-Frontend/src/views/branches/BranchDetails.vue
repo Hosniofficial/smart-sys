@@ -1,238 +1,301 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
-    
+
     <!-- Top Progress Bar -->
-    <div 
-      v-if="isLoading || isGLLoading || isTransfersLoading || isStockTransfersLoading || isActivatingBranch || isPostingBranch" 
+    <div
+      v-if="isLoading || isGLLoading || isTransfersLoading || isStockTransfersLoading || isActivatingBranch || isPostingBranch"
       class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]"
     >
       <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
     </div>
 
-    <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8 animate-fadeIn">
-      
-      <!-- Top Navigation & Back Button -->
-      <div class="flex items-center justify-between">
-        <button 
-          @click="router.back()" 
-          class="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm active:scale-95 group"
-        >
-          <i class="fas fa-arrow-right text-[10px] group-hover:-translate-x-1 transition-transform"></i>
-          <span>العودة لقائمة الفروع</span>
-        </button>
-      </div>
+    <div class="max-w-[1800px] mx-auto p-4 lg:p-8 space-y-8 animate-fadeIn">
 
       <!-- Loading Skeleton State -->
       <div v-if="isLoading" class="space-y-6">
-        <div class="bg-white border border-slate-200 rounded-xl p-8 h-36 animate-pulse"></div>
-        <div class="grid grid-cols-1 gap-4">
-          <div class="h-10 bg-slate-100 rounded-lg w-72 mx-auto animate-pulse"></div>
-          <div v-for="i in 3" :key="i" class="h-20 bg-white border border-slate-200 rounded-xl animate-pulse"></div>
+        <div class="bg-white border border-slate-200 rounded-xl p-8 h-28 animate-pulse"></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div v-for="i in 4" :key="i" class="h-24 bg-white border border-slate-200 rounded-xl animate-pulse"></div>
         </div>
+        <div class="h-96 bg-white border border-slate-200 rounded-xl animate-pulse"></div>
       </div>
 
       <!-- Error State -->
-      <div v-else-if="error" class="py-16 text-center px-6 bg-white border border-slate-200 rounded-xl shadow-sm max-w-md mx-auto animate-fadeIn">
+      <div v-else-if="error" class="py-24 text-center px-6 bg-white border border-slate-200 rounded-xl shadow-sm max-w-md mx-auto animate-fadeIn">
         <div class="w-12 h-12 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-sm">
           <i class="fas fa-triangle-exclamation text-base"></i>
         </div>
-        <h3 class="text-base font-bold text-slate-900">حدث خطأ في جلب بيانات الفرع</h3>
+        <h3 class="text-sm font-bold text-slate-900">حدث خطأ أثناء تحميل بيانات الفرع</h3>
         <p class="text-xs text-slate-500 mt-1 font-medium leading-relaxed">{{ error }}</p>
-        <button 
-          @click="fetchBranch" 
+        <button
+          @click="fetchBranch"
           class="mt-5 h-9 px-6 bg-slate-900 text-white rounded-md text-xs font-bold shadow-sm hover:bg-black active:scale-95 transition-all"
         >
           إعادة المحاولة
         </button>
       </div>
 
-      <!-- Main Branch Data View -->
-      <div v-else-if="branch" class="space-y-6">
-        
-        <!-- Branch Profile Header Banner -->
-        <div class="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div class="flex items-center gap-4">
-            <div class="w-14 h-14 bg-slate-900 text-white rounded-xl flex items-center justify-center text-xl shadow-sm shrink-0">
-              <i class="fas fa-building"></i>
+      <!-- Main Branch View -->
+      <div v-else-if="branch" class="space-y-8">
+
+        <!-- Page Header -->
+        <PageHeader
+          :breadcrumb="breadcrumb"
+          :title="branch.name"
+          description="تفاصيل التشغيل، إدارة المخزون، والقيود المحاسبية الخاصة بالفرع."
+          :branches="[]"
+          :selected-branch="branchId"
+        >
+          <template #controls>
+            <div class="flex items-center gap-2">
+              <router-link
+                :to="{ path: '/inventory', query: { branch_id: branchId } }"
+                class="h-9 px-4 rounded-md bg-blue-600 text-white text-xs font-bold shadow-sm hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-2"
+              >
+                <i class="fas fa-boxes-stacked text-[10px]"></i>
+                <span>الرقابة المخزنية</span>
+              </router-link>
+              <router-link
+                :to="{ path: '/branches/bulk-distribution', query: { branch_id: branchId } }"
+                class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold transition-all flex items-center gap-2 shadow-sm hover:bg-slate-50 active:scale-95"
+              >
+                <i class="fas fa-share-nodes text-blue-600 text-xs"></i>
+                <span>التوزيع الجماعي</span>
+              </router-link>
+              <button
+                type="button"
+                @click="openBranchEditModal"
+                class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold transition-all flex items-center gap-2 shadow-sm hover:bg-slate-50 active:scale-95"
+              >
+                <i class="fas fa-edit text-slate-500 text-[10px]"></i>
+                <span>تعديل بيانات الفرع</span>
+              </button>
             </div>
-            <div class="space-y-1">
-              <div class="flex items-center gap-3">
-                <h1 class="text-xl font-bold text-slate-900 tracking-tight">{{ branch.name }}</h1>
-                <span 
-                  :class="[(branch.active === 1 || branch.active === true) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200']" 
-                  class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-bold border"
-                >
-                  <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
-                  {{ (branch.active === 1 || branch.active === true) ? 'نشط الآن' : 'معطل' }}
-                </span>
-              </div>
-              <div class="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-500">
-                <span class="flex items-center gap-1.5"><i class="fas fa-map-marker-alt text-slate-400 text-[11px]"></i> {{ branch.location || 'موقع غير محدد' }}</span>
-                <span class="text-slate-200">|</span>
-                <span class="font-mono text-slate-400">REF_ID: #{{ branch.id }}</span>
-              </div>
+          </template>
+        </PageHeader>
+
+        <!-- KPIs Overview: Stripe-inspired Data Blocks (Unified with Inventory Page) -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div v-for="kpi in [
+            { label: 'إجمالي منتجات الفرع', val: glProducts.length, icon: 'fa-boxes', color: 'text-blue-600', bg: 'bg-blue-50' },
+            { label: 'منتجات مرصودة ومفعلة', val: glProducts.filter(p => p.activation_status === 'RECONCILED' || p.activation_status === 'ACTIVE_IN_BRANCH').length, icon: 'fa-check-double', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+            { label: 'عمليات النقل المنفذة', val: transfers.length, icon: 'fa-exchange-alt', color: 'text-amber-600', bg: 'bg-amber-50' },
+            { label: 'سجلات النقل المرجعية', val: stockTransfers.length, icon: 'fa-history', color: 'text-indigo-600', bg: 'bg-indigo-50' }
+          ]" :key="kpi.label" class="bg-white border border-slate-200 p-5 rounded-xl flex items-center justify-between group hover:border-slate-300 transition-all shadow-sm">
+            <div>
+              <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{{ kpi.label }}</p>
+              <p class="text-xl font-bold text-slate-900 font-mono tracking-tighter">{{ kpi.val }}</p>
+            </div>
+            <div :class="[kpi.bg, kpi.color]" class="w-10 h-10 rounded-lg flex items-center justify-center text-sm opacity-80 group-hover:opacity-100 transition-opacity shadow-inner">
+              <i :class="['fas', kpi.icon]"></i>
             </div>
           </div>
+        </section>
 
-          <div class="flex items-center gap-2">
-            <router-link
-              :to="{ path: '/branches/bulk-distribution' }"
-              class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold transition-all flex items-center gap-2 shadow-sm hover:bg-slate-50 active:scale-95"
+        <!-- Navigation Tabs Bar Toolbar -->
+        <div class="bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div class="flex items-center gap-1.5 overflow-x-auto custom-scroll pb-1 sm:pb-0">
+            <button
+              v-for="tab in tabs"
+              :key="tab.id"
+              @click="activeTab = tab.id"
+              :class="[
+                activeTab === tab.id
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              ]"
+              class="h-9 px-4 rounded-lg text-xs font-bold transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap"
             >
-              <i class="fas fa-share-nodes text-blue-600 text-xs"></i>
-              <span>التوزيع الجماعي</span>
-            </router-link>
+              <i :class="`fas fa-${tab.icon} text-[11px]`"></i>
+              <span>{{ tab.name }}</span>
+            </button>
+          </div>
+
+          <!-- Branch Quick Metadata Indicator -->
+          <div class="flex items-center gap-3 px-2 text-xs">
+            <div class="flex items-center gap-1.5 text-slate-500 font-medium">
+              <i class="fas fa-map-marker-alt text-slate-400 text-xs"></i>
+              <span>{{ branch.location || 'موقع غير محدد' }}</span>
+            </div>
+            <span class="text-slate-200">|</span>
+            <span
+              :class="[isBranchActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200']"
+              class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-bold border"
+            >
+              <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+              {{ isBranchActive ? 'نشط' : 'غير نشط' }}
+            </span>
+            <span class="font-mono text-slate-400 text-[10px] font-bold">#{{ branch.id }}</span>
           </div>
         </div>
 
-        <!-- Navigation Tabs Bar -->
-        <div class="flex items-center gap-1 p-1 bg-slate-100/80 border border-slate-200 rounded-xl w-fit mx-auto sticky top-4 z-40 backdrop-blur-md">
-          <button
-            v-for="tab in [
-              { id: 'inventory', name: 'المخزون', icon: 'boxes' },
-              { id: 'transfers', name: 'عمليات النقل', icon: 'exchange-alt' },
-              { id: 'stock_transfers', name: 'السجل المرجعي', icon: 'history' },
-              { id: 'settings', name: 'الإعدادات', icon: 'cog' }
-            ]"
-            :key="tab.id"
-            @click="activeTab = tab.id"
-            :class="[activeTab === tab.id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-white hover:text-slate-900']"
-            class="h-8 px-4 rounded-lg text-xs font-bold transition-all flex items-center gap-2 active:scale-95"
-          >
-            <i :class="`fas fa-${tab.icon} text-[10px]`"></i>
-            <span>{{ tab.name }}</span>
-          </button>
-        </div>
+        <!-- Main Content Area -->
+        <div class="space-y-6 min-h-[500px]">
 
-        <!-- Tab Content Area -->
-        <div class="min-h-[500px]">
-          
           <!-- TAB 1: INVENTORY & GL STATUS -->
           <transition name="fade">
-            <div v-if="activeTab === 'inventory'" class="space-y-6 animate-fadeIn">
-              
+            <div v-if="activeTab === 'inventory'" class="space-y-8 animate-fadeIn">
+
               <!-- BranchInventory Component -->
-              <BranchInventory 
+              <BranchInventory
                 :branch-id="branchId"
                 @inventory-updated="handleInventoryUpdated"
               />
 
-              <!-- GL Products Section -->
-              <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                <div class="p-4 px-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                  <div class="flex items-center gap-2.5">
-                    <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
-                    <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">حالات المنتجات (GL Status)</h3>
+              <!-- GL Products Section: High-Density Table Layout -->
+              <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
+
+                <!-- Table Subheader & Filter Tabs -->
+                <div class="p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
+                  <div class="flex items-center gap-3">
+                    <div class="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+                    <div>
+                      <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">حالات المنتجات بالفرع (GL Status Matrix)</h3>
+                      <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">متابعة التفعيل وشجرة الحسابات المحاسبية</p>
+                    </div>
                   </div>
-                  <button 
-                    @click="loadBranchProductGLStatuses" 
-                    :disabled="isGLLoading" 
-                    class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all flex items-center justify-center active:scale-90"
-                    title="تحديث حالات GL"
-                  >
-                    <i class="fas fa-sync-alt text-[10px]" :class="{ 'animate-spin': isGLLoading }"></i>
-                  </button>
-                </div>
 
-                <div v-if="isGLLoading" class="p-6 space-y-3">
-                  <div v-for="i in 4" :key="i" class="flex items-center gap-4 py-2 border-b border-slate-50 animate-pulse">
-                    <div class="w-8 h-8 bg-slate-100 rounded-lg"></div>
-                    <div class="h-3 bg-slate-100 rounded w-1/4"></div>
-                    <div class="h-3 bg-slate-100 rounded w-1/4"></div>
-                  </div>
-                </div>
+                  <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-lg shadow-sm">
+                      <button
+                        v-for="status in ['DRAFT', 'ACTIVE_IN_BRANCH', 'RECONCILED']"
+                        :key="status"
+                        @click="glStatusFilter = status"
+                        :class="[
+                          glStatusFilter === status
+                            ? 'bg-slate-900 text-white shadow-sm'
+                            : 'text-slate-500 hover:bg-slate-50'
+                        ]"
+                        class="px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all"
+                      >
+                        <span v-if="status === 'DRAFT'">مسودة</span>
+                        <span v-else-if="status === 'ACTIVE_IN_BRANCH'">مفعّل</span>
+                        <span v-else>مرصود ✓</span>
+                      </button>
+                    </div>
 
-                <div v-else-if="glError" class="py-16 text-center text-rose-600 font-bold text-xs">
-                  <i class="fas fa-circle-exclamation mb-1 block text-lg"></i>
-                  {{ glError }}
-                </div>
-
-                <div v-else>
-                  <!-- Status Tabs Filter Bar -->
-                  <div class="flex items-center gap-1.5 p-3 bg-slate-50/70 border-b border-slate-100">
                     <button
-                      v-for="status in ['DRAFT', 'ACTIVE_IN_BRANCH', 'RECONCILED']"
-                      :key="status"
-                      @click="glStatusFilter = status"
-                      :class="[
-                        glStatusFilter === status ? 'bg-white border-slate-200 text-slate-900 shadow-sm' : 'bg-transparent text-slate-500 hover:bg-white hover:text-slate-700 border-transparent',
-                        'px-3 py-1.5 rounded-md border text-[11px] font-bold transition-all'
-                      ]"
+                      @click="loadBranchProductGLStatuses"
+                      :disabled="isGLLoading"
+                      class="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all flex items-center justify-center shadow-sm"
+                      title="تحديث حالات GL"
                     >
-                      <span v-if="status === 'DRAFT'" class="flex items-center gap-1.5">
-                        <i class="fas fa-file-alt text-[10px]"></i> مسودة
-                      </span>
-                      <span v-else-if="status === 'ACTIVE_IN_BRANCH'" class="flex items-center gap-1.5">
-                        <i class="fas fa-check-double text-[10px]"></i> مفعّل بالفرع
-                      </span>
-                      <span v-else class="flex items-center gap-1.5">
-                        <i class="fas fa-circle-check text-[10px]"></i> مرصود ومحاسب
-                      </span>
+                      <i class="fas fa-sync-alt text-[10px]" :class="{ 'animate-spin': isGLLoading }"></i>
                     </button>
                   </div>
-
-                  <!-- GL Products List -->
-                  <div class="divide-y divide-slate-100">
-                    <div 
-                      v-for="product in filteredGLProducts" 
-                      :key="product.product_id" 
-                      class="p-4 px-6 hover:bg-slate-50/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
-                    >
-                      <div class="space-y-1">
-                        <h4 class="text-xs font-bold text-slate-900">{{ product.product_name }}</h4>
-                        <div class="flex items-center gap-3 text-[11px] text-slate-400 font-medium">
-                          <span v-if="product.barcode" class="font-mono text-slate-500">BARCODE: {{ product.barcode }}</span>
-                          <span class="text-slate-200">|</span>
-                          <span class="font-mono">الكمية: <strong class="text-slate-700">{{ product.quantity || 0 }}</strong></span>
-                          <span class="text-slate-200">|</span>
-                          <span class="font-mono">التكلفة: <strong class="text-slate-700">{{ (product.average_cost || 0).toFixed(2) }}</strong></span>
-                        </div>
-                      </div>
-
-                      <div class="flex items-center gap-2">
-                        <span 
-                          :class="[
-                            product.activation_status === 'DRAFT' ? 'bg-slate-100 text-slate-600 border-slate-200' :
-                            product.activation_status === 'ACTIVE_IN_BRANCH' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                            'bg-emerald-50 text-emerald-600 border-emerald-100'
-                          ]"
-                          class="px-2.5 py-0.5 rounded text-[10px] font-bold font-mono border"
-                        >
-                          {{ 
-                            product.activation_status === 'DRAFT' ? 'DRAFT' :
-                            product.activation_status === 'ACTIVE_IN_BRANCH' ? 'ACTIVE' :
-                            'RECONCILED'
-                          }}
-                        </span>
-
-                        <button 
-                          v-if="product.activation_status === 'DRAFT'"
-                          @click="openBranchActivateModal(product)"
-                          class="h-8 px-3 bg-blue-600 text-white rounded-md text-xs font-bold hover:bg-blue-700 transition-all active:scale-95 shadow-sm"
-                        >
-                          <i class="fas fa-arrow-up text-[10px] ml-1"></i> تفعيل
-                        </button>
-
-                        <button 
-                          v-else-if="product.activation_status === 'ACTIVE_IN_BRANCH'"
-                          @click="openBranchOpeningBalanceModal(product)"
-                          class="h-8 px-3 bg-emerald-600 text-white rounded-md text-xs font-bold hover:bg-emerald-700 transition-all active:scale-95 shadow-sm"
-                        >
-                          <i class="fas fa-plus text-[10px] ml-1"></i> ترصيد
-                        </button>
-
-                        <span v-else class="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
-                          <i class="fas fa-check text-xs"></i> مرصود
-                        </span>
-                      </div>
-                    </div>
-
-                    <div v-if="filteredGLProducts.length === 0" class="py-16 text-center text-slate-300">
-                      <i class="fas fa-inbox text-3xl mb-2 opacity-20 block"></i>
-                      <p class="text-xs font-bold uppercase tracking-widest">لا توجد منتجات مسجلة في هذه الحالة</p>
-                    </div>
-                  </div>
                 </div>
+
+                <!-- GL High-Density Grid -->
+                <div class="overflow-x-auto">
+                  <table class="w-full text-right border-collapse">
+                    <thead>
+                      <tr class="bg-slate-50/50 border-b border-slate-200">
+                        <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">الصنف والباركود</th>
+                        <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الكمية المسجلة</th>
+                        <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">متوسط التكلفة</th>
+                        <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الحالة المحاسبية</th>
+                        <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الإجراء</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 font-medium">
+
+                      <!-- Skeletons -->
+                      <template v-if="isGLLoading">
+                        <tr v-for="i in 4" :key="i" class="animate-pulse">
+                          <td class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-48"></div></td>
+                          <td class="px-4 py-4 text-center"><div class="h-4 bg-slate-100 rounded w-12 mx-auto"></div></td>
+                          <td class="px-4 py-4 text-center"><div class="h-4 bg-slate-100 rounded w-16 mx-auto"></div></td>
+                          <td class="px-4 py-4 text-center"><div class="h-4 bg-slate-100 rounded w-20 mx-auto"></div></td>
+                          <td class="px-6 py-4 text-center"><div class="h-7 bg-slate-100 rounded w-20 mx-auto"></div></td>
+                        </tr>
+                      </template>
+
+                      <!-- Error State -->
+                      <tr v-else-if="glError">
+                        <td colspan="5" class="py-16 text-center text-rose-600 font-bold text-xs">
+                          <i class="fas fa-circle-exclamation mb-2 block text-xl"></i>
+                          {{ glError }}
+                        </td>
+                      </tr>
+
+                      <!-- Empty State -->
+                      <tr v-else-if="!filteredGLProducts.length" class="text-center">
+                        <td colspan="5" class="py-24 text-slate-300">
+                          <i class="fas fa-box-open text-3xl mb-4 opacity-20 block"></i>
+                          <p class="text-xs font-bold uppercase tracking-widest">لا توجد منتجات مسجلة في هذه الحالة</p>
+                        </td>
+                      </tr>
+
+                      <!-- Rows -->
+                      <tr v-for="product in filteredGLProducts" :key="product.product_id" class="hover:bg-blue-50/10 transition-all group">
+                        <td class="px-6 py-4">
+                          <div class="flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 border border-slate-100 group-hover:text-blue-600 transition-colors">
+                              <i class="fas fa-box text-xs"></i>
+                            </div>
+                            <div class="flex flex-col">
+                              <span class="text-xs font-bold text-slate-900 truncate max-w-[240px]">{{ product.product_name }}</span>
+                              <span class="text-[9px] font-bold text-slate-400 font-mono mt-1 uppercase tracking-widest">{{ product.barcode || product.product_code || '—' }}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td class="px-4 py-4 text-center font-mono font-bold text-xs text-slate-800">
+                          <span class="px-2 py-0.5 rounded text-[10px] bg-slate-50 border border-slate-200">
+                            {{ product.quantity || 0 }}
+                          </span>
+                        </td>
+
+                        <td class="px-4 py-4 text-center font-mono font-bold text-xs text-slate-700">
+                          {{ product.average_cost == null ? '—' : Number(product.average_cost).toFixed(2) }}
+                        </td>
+
+                        <td class="px-4 py-4 text-center">
+                          <span
+                            :class="[
+                              product.activation_status === 'DRAFT' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                              product.activation_status === 'ACTIVE_IN_BRANCH' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                              'bg-emerald-50 text-emerald-600 border-emerald-100'
+                            ]"
+                            class="px-2 py-0.5 rounded text-[9px] font-bold border font-mono"
+                          >
+                            {{
+                              product.activation_status === 'DRAFT' ? 'DRAFT' :
+                              product.activation_status === 'ACTIVE_IN_BRANCH' ? 'ACTIVE' :
+                              'RECONCILED'
+                            }}
+                          </span>
+                        </td>
+
+                        <td class="px-6 py-4 text-center">
+                          <div class="flex items-center justify-center gap-1.5">
+                            <button
+                              v-if="product.activation_status === 'DRAFT'"
+                              @click="openBranchActivateModal(product)"
+                              class="h-7 px-3 text-[10px] font-bold bg-blue-600 text-white rounded hover:bg-blue-700 active:scale-95 transition-all shadow-sm flex items-center gap-1"
+                            >
+                              <i class="fas fa-check text-[9px]"></i> تفعيل
+                            </button>
+
+                            <button
+                              v-else-if="product.activation_status === 'ACTIVE_IN_BRANCH'"
+                              @click="openBranchOpeningBalanceModal(product)"
+                              class="h-7 px-3 text-[10px] font-bold bg-amber-500 text-white rounded hover:bg-amber-600 active:scale-95 transition-all shadow-sm flex items-center gap-1"
+                            >
+                              <i class="fas fa-balance-scale text-[9px]"></i> ترحيل الرصيد الافتتاحي
+                            </button>
+
+                            <span v-else class="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                              <i class="fas fa-check-double text-xs"></i> مرصود
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+
+                    </tbody>
+                  </table>
+                </div>
+
               </div>
 
             </div>
@@ -240,441 +303,439 @@
 
           <!-- TAB 2: TRANSFERS LOG -->
           <transition name="fade">
-            <div v-if="activeTab === 'transfers'" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm animate-fadeIn">
-              <div class="p-4 px-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <div class="flex items-center gap-2">
-                  <i class="fas fa-exchange-alt text-blue-600 text-xs"></i>
-                  <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">سجل عمليات نقل المنتجات</h3>
+            <div v-if="activeTab === 'transfers'" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative animate-fadeIn">
+
+              <!-- Subheader -->
+              <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-sm shadow-inner">
+                    <i class="fas fa-exchange-alt"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">سجل عمليات نقل المنتجات</h3>
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">حركات الإرسال والاستلام بين المستودعات</p>
+                  </div>
                 </div>
+
                 <div class="flex items-center gap-2">
                   <router-link
                     :to="{ path: '/inventory', query: { branch_id: branchId, action: 'transfer' } }"
-                    class="h-8 px-3 bg-blue-600 text-white rounded-md text-xs font-bold shadow-sm hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-1.5"
+                    class="h-9 px-4 rounded-md bg-blue-600 text-white text-xs font-bold shadow-sm hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-2"
                   >
                     <i class="fas fa-plus text-[10px]"></i>
                     <span>نقل جديد</span>
                   </router-link>
-                  <button 
-                    @click="fetchTransfers" 
-                    :disabled="isTransfersLoading" 
-                    class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 transition-all active:scale-90 flex items-center justify-center"
+                  <button
+                    @click="fetchTransfers"
+                    :disabled="isTransfersLoading"
+                    class="w-9 h-9 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center shadow-sm"
                     title="تحديث السجل"
                   >
-                    <i class="fas fa-sync-alt text-[10px]" :class="{ 'animate-spin': isTransfersLoading }"></i>
+                    <i class="fas fa-sync-alt text-xs" :class="{ 'animate-spin': isTransfersLoading }"></i>
                   </button>
                 </div>
               </div>
 
-              <div v-if="isTransfersLoading" class="p-6 space-y-3">
-                <div v-for="i in 4" :key="i" class="h-4 bg-slate-100 rounded animate-pulse"></div>
-              </div>
+              <!-- High-Density Table -->
+              <div class="overflow-x-auto">
+                <table class="w-full text-right border-collapse">
+                  <thead>
+                    <tr class="bg-slate-50/50 border-b border-slate-200">
+                      <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">التاريخ والوقت</th>
+                      <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">الصنف والباركود</th>
+                      <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">المسار (من ← إلى)</th>
+                      <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الكمية</th>
+                      <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">المسؤول</th>
+                      <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">ملاحظات</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 font-medium">
 
-              <div v-else-if="transfersError" class="py-16 text-center text-rose-600 font-bold text-xs">
-                <i class="fas fa-triangle-exclamation mb-1 block text-lg"></i>
-                {{ transfersError }}
-              </div>
-
-              <div v-else>
-                <div v-if="transfers.length > 0" class="overflow-x-auto">
-                  <table class="w-full text-right border-collapse">
-                    <thead>
-                      <tr class="bg-slate-50 border-b border-slate-200">
-                        <th class="px-6 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">التاريخ والوقت</th>
-                        <th class="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">المنتج المنقول</th>
-                        <th class="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">المسار (من → إلى)</th>
-                        <th class="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الكمية</th>
-                        <th class="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">المسؤول</th>
-                        <th class="px-6 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">ملاحظات</th>
+                    <template v-if="isTransfersLoading">
+                      <tr v-for="i in 4" :key="i" class="animate-pulse">
+                        <td v-for="m in 6" :key="m" class="px-4 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                       </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 font-medium text-xs">
-                      <tr v-for="t in transfers" :key="t.id" class="hover:bg-blue-50/20 transition-all">
-                        <td class="px-6 py-3.5 font-mono text-slate-400 text-[11px]">{{ new Date(t.created_at).toLocaleString('ar-EG') }}</td>
-                        <td class="px-4 py-3.5">
-                          <div class="font-bold text-slate-900">{{ t.product_name }}</div>
-                          <span class="text-[9px] text-slate-400 font-mono block mt-0.5" v-if="t.barcode">{{ t.barcode }}</span>
-                        </td>
-                        <td class="px-4 py-3.5">
-                          <div class="flex items-center gap-2 text-xs font-bold">
-                            <span class="text-slate-600 truncate max-w-[120px]">{{ t.from_branch_name }}</span>
-                            <i class="fas fa-arrow-left text-slate-300 text-[10px]"></i>
-                            <span class="text-blue-600 truncate max-w-[120px]">{{ t.to_branch_name }}</span>
-                          </div>
-                        </td>
-                        <td class="px-4 py-3.5 text-center">
-                          <span class="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded font-mono font-bold text-slate-900 text-[11px]">
-                            {{ t.quantity }}
-                          </span>
-                        </td>
-                        <td class="px-4 py-3.5 text-slate-600">{{ t.created_by_name || '—' }}</td>
-                        <td class="px-6 py-3.5 text-slate-400 italic max-w-xs truncate" :title="t.notes">{{ t.notes || '—' }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                    </template>
 
-                <div v-else class="py-20 text-center text-slate-300">
-                  <i class="fas fa-exchange-alt text-3xl mb-2 opacity-20 block"></i>
-                  <p class="text-xs font-bold uppercase tracking-widest">لا توجد عمليات نقل مسجلة</p>
-                </div>
+                    <tr v-else-if="transfersError">
+                      <td colspan="6" class="py-16 text-center text-rose-600 font-bold text-xs">
+                        <i class="fas fa-triangle-exclamation mb-1 block text-lg"></i>
+                        {{ transfersError }}
+                      </td>
+                    </tr>
+
+                    <tr v-else-if="!transfers.length" class="text-center">
+                      <td colspan="6" class="py-24 text-slate-300">
+                        <i class="fas fa-box-open text-3xl mb-4 opacity-20 block"></i>
+                        <p class="text-xs font-bold uppercase tracking-widest">لا توجد عمليات نقل مسجلة</p>
+                      </td>
+                    </tr>
+
+                    <tr v-for="t in transfers" :key="t.id" class="hover:bg-blue-50/10 transition-all group">
+                      <td class="px-6 py-4 text-xs font-mono text-slate-400">{{ new Date(t.created_at).toLocaleString('ar-EG') }}</td>
+                      <td class="px-4 py-4">
+                        <div class="font-bold text-slate-900 text-xs">{{ t.product_name }}</div>
+                        <span class="text-[9px] text-slate-400 font-mono block mt-0.5" v-if="t.barcode">{{ t.barcode }}</span>
+                      </td>
+                      <td class="px-4 py-4">
+                        <div class="flex items-center gap-2 text-xs font-bold">
+                          <span class="text-slate-600 truncate max-w-[120px]">{{ t.from_branch_name }}</span>
+                          <i class="fas fa-arrow-left text-slate-300 text-[10px]"></i>
+                          <span class="text-blue-600 truncate max-w-[120px]">{{ t.to_branch_name }}</span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-4 text-center font-mono font-bold text-xs">
+                        <span class="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-[10px] text-slate-900">
+                          {{ t.quantity }}
+                        </span>
+                      </td>
+                      <td class="px-4 py-4 text-xs text-slate-600">{{ t.created_by_name || '—' }}</td>
+                      <td class="px-6 py-4 text-xs text-slate-400 italic max-w-xs truncate" :title="t.notes">{{ t.notes || '—' }}</td>
+                    </tr>
+
+                  </tbody>
+                </table>
               </div>
+
             </div>
           </transition>
 
           <!-- TAB 3: STOCK TRANSFERS REF TABLE -->
           <transition name="fade">
-            <div v-if="activeTab === 'stock_transfers'" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm animate-fadeIn">
-              <div class="p-4 px-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <div class="flex items-center gap-2">
-                  <i class="fas fa-history text-indigo-600 text-xs"></i>
-                  <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">السجل المرجعي للنقل (Stock Transfers)</h3>
+            <div v-if="activeTab === 'stock_transfers'" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative animate-fadeIn">
+
+              <!-- Subheader -->
+              <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center text-sm shadow-inner">
+                    <i class="fas fa-history"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">السجل المرجعي للنقل (Stock Transfers Audit)</h3>
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">التتبع المحاسبي الكامل لقيود التحويل</p>
+                  </div>
                 </div>
-                <button 
-                  @click="fetchStockTransfers" 
-                  :disabled="isStockTransfersLoading" 
-                  class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-indigo-600 transition-all flex items-center justify-center"
+
+                <button
+                  @click="fetchStockTransfers"
+                  :disabled="isStockTransfersLoading"
+                  class="w-9 h-9 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center justify-center shadow-sm"
                   title="تحديث السجلات"
                 >
-                  <i class="fas fa-sync-alt text-[10px]" :class="{ 'animate-spin': isStockTransfersLoading }"></i>
+                  <i class="fas fa-sync-alt text-xs" :class="{ 'animate-spin': isStockTransfersLoading }"></i>
                 </button>
               </div>
 
-              <div v-if="isStockTransfersLoading" class="p-6 space-y-3">
-                <div v-for="i in 4" :key="i" class="h-4 bg-slate-100 rounded animate-pulse"></div>
-              </div>
+              <!-- High-Density Table -->
+              <div class="overflow-x-auto">
+                <table class="w-full text-right border-collapse">
+                  <thead>
+                    <tr class="bg-slate-50/50 border-b border-slate-200">
+                      <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">التاريخ</th>
+                      <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">الصنف</th>
+                      <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">المسار</th>
+                      <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الكمية</th>
+                      <th class="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">المسؤول</th>
+                      <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الإجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 font-medium">
 
-              <div v-else-if="stockTransfersError" class="py-16 text-center text-rose-600 font-bold text-xs">
-                {{ stockTransfersError }}
-              </div>
-
-              <div v-else>
-                <div v-if="stockTransfers.length > 0" class="overflow-x-auto">
-                  <table class="w-full text-right border-collapse">
-                    <thead>
-                      <tr class="bg-slate-50 border-b border-slate-200">
-                        <th class="px-6 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">التاريخ</th>
-                        <th class="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">المنتج</th>
-                        <th class="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">المسار</th>
-                        <th class="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">الكمية</th>
-                        <th class="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">بواسطة</th>
-                        <th class="px-6 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center w-20">الإجراء</th>
+                    <template v-if="isStockTransfersLoading">
+                      <tr v-for="i in 4" :key="i" class="animate-pulse">
+                        <td v-for="m in 6" :key="m" class="px-4 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                       </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 font-medium text-xs">
-                      <tr v-for="t in stockTransfers" :key="t.id" class="hover:bg-blue-50/20 transition-all">
-                        <td class="px-6 py-3.5 font-mono text-slate-400 text-[11px]">{{ new Date(t.created_at).toLocaleString('ar-EG') }}</td>
-                        <td class="px-4 py-3.5 font-bold text-slate-900">{{ t.product_name }}</td>
-                        <td class="px-4 py-3.5">
-                          <div class="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
-                            <span>{{ t.from_branch_name }}</span>
-                            <i class="fas fa-chevron-left text-slate-300 text-[9px]"></i>
-                            <span class="text-indigo-600">{{ t.to_branch_name }}</span>
-                          </div>
-                        </td>
-                        <td class="px-4 py-3.5 text-center font-mono font-bold text-indigo-600">{{ t.quantity }}</td>
-                        <td class="px-4 py-3.5 text-slate-600">{{ t.created_by_name || '—' }}</td>
-                        <td class="px-6 py-3.5 text-center">
-                          <button 
-                            @click="openStockTransferDetails(t.id)" 
-                            class="w-7 h-7 rounded-md border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-all flex items-center justify-center mx-auto"
-                            title="عرض التفاصيل"
-                          >
-                            <i class="fas fa-eye text-[10px]"></i>
-                          </button>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                    </template>
 
-                <div v-else class="py-20 text-center text-slate-300">
-                  <i class="fas fa-history text-3xl mb-2 opacity-20 block"></i>
-                  <p class="text-xs font-bold uppercase tracking-widest">لا توجد سجلات مرجعية</p>
-                </div>
-              </div>
-            </div>
-          </transition>
+                    <tr v-else-if="stockTransfersError">
+                      <td colspan="6" class="py-16 text-center text-rose-600 font-bold text-xs">{{ stockTransfersError }}</td>
+                    </tr>
 
-          <!-- TAB 4: SETTINGS -->
-          <transition name="fade">
-            <div v-if="activeTab === 'settings'" class="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 max-w-2xl mx-auto shadow-sm space-y-6 animate-fadeIn">
-              <div class="flex items-center gap-3 pb-4 border-b border-slate-100">
-                <div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center text-xs">
-                  <i class="fas fa-sliders-h"></i>
-                </div>
-                <div>
-                  <h3 class="text-sm font-bold text-slate-900 uppercase">إعدادات الفرع التفضيلية</h3>
-                  <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">تخصيص سلوك وتنبيهات الفرع</p>
-                </div>
-              </div>
-              
-              <div class="space-y-4">
-                <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <div class="space-y-0.5">
-                    <h4 class="text-xs font-bold text-slate-900">حالة نشاط الفرع</h4>
-                    <p class="text-[11px] text-slate-500">عند إلغاء التفعيل، لن يظهر هذا الفرع في شاشات المبيعات أو المشتريات.</p>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" v-model="branch.is_active" class="sr-only peer">
-                    <div 
-                      @click="branch.is_active = !branch.is_active"
-                      :class="branch.is_active ? 'bg-blue-600' : 'bg-slate-300'"
-                      class="w-10 h-5 rounded-full cursor-pointer transition-colors relative"
-                    >
-                      <span
-                        :class="branch.is_active ? 'translate-x-[-1.25rem]' : 'translate-x-0'"
-                        class="absolute top-0.5 right-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
-                      ></span>
-                    </div>
-                  </label>
-                </div>
+                    <tr v-else-if="!stockTransfers.length" class="text-center">
+                      <td colspan="6" class="py-24 text-slate-300">
+                        <i class="fas fa-box-open text-3xl mb-4 opacity-20 block"></i>
+                        <p class="text-xs font-bold uppercase tracking-widest">لا توجد سجلات مرجعية</p>
+                      </td>
+                    </tr>
 
-                <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <div class="space-y-0.5">
-                    <h4 class="text-xs font-bold text-slate-900">نظام تنبيهات المخزون الحرج</h4>
-                    <p class="text-[11px] text-slate-500">إطلاق إشعارات آلية عند وصول أرصدة الأصناف إلى الحد الأدنى المحدد.</p>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" checked class="sr-only peer" ref="alertToggle" />
-                    <div 
-                      @click="alertToggle.checked = !alertToggle.checked"
-                      :class="alertToggle?.checked ? 'bg-indigo-600' : 'bg-slate-300'"
-                      class="w-10 h-5 rounded-full cursor-pointer transition-colors relative"
-                    >
-                      <span
-                        :class="alertToggle?.checked ? 'translate-x-[-1.25rem]' : 'translate-x-0'"
-                        class="absolute top-0.5 right-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
-                      ></span>
-                    </div>
-                  </label>
-                </div>
+                    <tr v-for="t in stockTransfers" :key="t.id" class="hover:bg-blue-50/10 transition-all group">
+                      <td class="px-6 py-4 text-xs font-mono text-slate-400">{{ new Date(t.created_at).toLocaleString('ar-EG') }}</td>
+                      <td class="px-4 py-4 text-xs font-bold text-slate-900">{{ t.product_name }}</td>
+                      <td class="px-4 py-4">
+                        <div class="flex items-center gap-2 text-xs font-bold">
+                          <span class="text-slate-600">{{ t.from_branch_name }}</span>
+                          <i class="fas fa-arrow-left text-slate-300 text-[10px]"></i>
+                          <span class="text-indigo-600">{{ t.to_branch_name }}</span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-4 text-center font-mono font-bold text-xs text-indigo-600">{{ t.quantity }}</td>
+                      <td class="px-4 py-4 text-xs text-slate-600">{{ t.created_by_name || '—' }}</td>
+                      <td class="px-6 py-4 text-center">
+                        <button
+                          @click="openStockTransferDetails(t.id)"
+                          class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center justify-center shadow-sm mx-auto"
+                          title="عرض التفاصيل"
+                        >
+                          <i class="fas fa-eye text-[10px]"></i>
+                        </button>
+                      </td>
+                    </tr>
+
+                  </tbody>
+                </table>
               </div>
 
-              <div class="pt-4 border-t border-slate-100 flex justify-end">
-                <button 
-                  type="button" 
-                  class="h-9 px-6 bg-slate-900 text-white rounded-md font-bold text-xs shadow-sm hover:bg-black active:scale-95 transition-all flex items-center gap-2"
-                >
-                  <i class="fas fa-save text-[10px]"></i>
-                  <span>حفظ التعديلات</span>
-                </button>
-              </div>
             </div>
           </transition>
 
         </div>
+
       </div>
 
     </div>
 
     <!-- ===== SYSTEM MODALS ===== -->
 
-    <!-- Stock Transfer Details Modal -->
-    <BaseModal :show="showStockTransferDetails" @close="showStockTransferDetails = false" maxWidth="3xl">
+    <BaseModal :show="showBranchEditModal" @close="showBranchEditModal = false" maxWidth="lg">
       <template #header>
         <div class="flex items-center gap-3">
-          <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white text-xs">
-            <i class="fas fa-file-invoice"></i>
+          <div class="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+            <i class="fas fa-edit text-xs"></i>
           </div>
           <div>
-            <h3 class="text-sm font-bold text-slate-900 uppercase">تفاصيل عملية النقل المحاسبية</h3>
-            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">سجل التتبع والقيود المخزنية المرتبطة</p>
+            <h3 class="text-sm font-bold text-slate-900">تعديل بيانات الفرع</h3>
+            <p class="text-[10px] text-slate-500 mt-0.5">{{ branch?.name }}</p>
           </div>
         </div>
       </template>
+      <BranchForm
+        v-if="branch"
+        :branch="branch"
+        @success="handleBranchEditSuccess"
+        @cancel="showBranchEditModal = false"
+      />
+    </BaseModal>
 
-      <div class="space-y-6">
-        <div v-if="isStockTransferDetailsLoading" class="grid grid-cols-2 md:grid-cols-4 gap-4 animate-pulse">
-          <div v-for="i in 4" :key="i" class="h-16 bg-slate-100 rounded-lg"></div>
+    <!-- Stock Transfer Details Modal: Unified with Details Modal in Inventory Page -->
+    <BaseModal :show="showStockTransferDetails" @close="showStockTransferDetails = false" maxWidth="4xl">
+      <template #header>
+        <h3 class="text-sm font-bold text-slate-900 uppercase">تفاصيل عملية النقل المحاسبية</h3>
+      </template>
+
+      <div v-if="isStockTransferDetailsLoading" class="py-12 flex flex-col items-center justify-center gap-4 text-slate-400">
+        <BaseSpinner size="32" color="#3b82f6" />
+        <p class="text-xs font-bold uppercase tracking-widest">جاري تحميل التفاصيل...</p>
+      </div>
+
+      <div v-else-if="stockTransferDetails" class="space-y-6">
+        <!-- Dark Primary Info Card -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div class="bg-slate-900 p-8 rounded-2xl text-white shadow-xl relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-32 h-32 bg-white/5 rounded-full -translate-x-12 -translate-y-12"></div>
+            <p class="text-[9px] font-bold text-blue-400 uppercase tracking-widest mb-3">بيانات الصنف المنقول</p>
+            <h4 class="text-2xl font-bold mb-1">{{ stockTransferDetails.product_name }}</h4>
+            <p class="text-xs font-bold text-slate-500 font-mono mb-6">{{ stockTransferDetails.barcode || '—' }}</p>
+
+            <div class="grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
+              <div>
+                <p class="text-[9px] font-bold text-slate-400 uppercase">الكمية المنقولة</p>
+                <p class="text-lg font-bold font-mono text-emerald-400">{{ stockTransferDetails.quantity }}</p>
+              </div>
+              <div>
+                <p class="text-[9px] font-bold text-slate-400 uppercase">رقم المرجع</p>
+                <p class="text-lg font-bold font-mono text-blue-400">#{{ stockTransferDetails.id }}</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 font-bold text-xs">
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-center">
+              <p class="text-[9px] font-bold text-slate-400 uppercase mb-1">من مستودع</p>
+              <p class="text-slate-800">{{ stockTransferDetails.from_branch_name }}</p>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-center">
+              <p class="text-[9px] font-bold text-slate-400 uppercase mb-1">إلى مستودع</p>
+              <p class="text-blue-600">{{ stockTransferDetails.to_branch_name }}</p>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-center">
+              <p class="text-[9px] font-bold text-slate-400 uppercase mb-1">تاريخ النقل</p>
+              <p class="text-slate-700 font-mono">{{ new Date(stockTransferDetails.created_at).toLocaleDateString('ar-EG') }}</p>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-center">
+              <p class="text-[9px] font-bold text-slate-400 uppercase mb-1">المسؤول</p>
+              <p class="text-slate-700 truncate">{{ stockTransferDetails.created_by_name || '—' }}</p>
+            </div>
+          </div>
         </div>
 
-        <template v-else-if="stockTransferDetails">
-          <!-- Quick Meta Stats -->
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
-              <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">رقم المرجع</p>
-              <p class="font-bold text-slate-900 font-mono text-sm mt-0.5">#{{ stockTransferDetails.id }}</p>
-            </div>
-            <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
-              <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">تاريخ النقل</p>
-              <p class="font-bold text-slate-800 text-xs mt-0.5 font-mono">{{ new Date(stockTransferDetails.created_at).toLocaleDateString('ar-EG') }}</p>
-            </div>
-            <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-100">
-              <p class="text-[9px] font-bold text-indigo-500 uppercase tracking-widest">الكمية المنقولة</p>
-              <p class="font-bold text-indigo-700 text-base font-mono mt-0.5">{{ stockTransferDetails.quantity }}</p>
-            </div>
-            <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
-              <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">المسؤول</p>
-              <p class="font-bold text-slate-800 text-xs mt-0.5 truncate">{{ stockTransferDetails.created_by_name || '-' }}</p>
-            </div>
+        <!-- Audit Traceability Table -->
+        <div class="space-y-3 mt-6">
+          <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">سجل الحركات المخزنية المرتبطة (Traceability)</h4>
+          <div class="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
+            <table class="w-full text-right text-xs">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase">
+                  <th class="px-4 py-3">الوقت</th>
+                  <th class="px-4 py-3">النوع التقني</th>
+                  <th class="px-4 py-3">المسار</th>
+                  <th class="px-4 py-3 text-center">الكمية</th>
+                  <th class="px-4 py-3">الملاحظات</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-50">
+                <tr v-for="it in stockTransferDetails.inventory_transactions" :key="it.id" class="hover:bg-slate-50 transition-colors font-medium">
+                  <td class="px-4 py-3 text-slate-400 font-mono">{{ new Date(it.created_at || it.movement_date).toLocaleTimeString('ar-EG') }}</td>
+                  <td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-[10px] font-bold text-slate-600 font-mono">{{ it.movement_type }}</span></td>
+                  <td class="px-4 py-3 text-slate-600">{{ it.branch_from || '-' }} ← {{ it.branch_to || '-' }}</td>
+                  <td class="px-4 py-3 text-center font-bold font-mono text-indigo-600">{{ it.quantity }}</td>
+                  <td class="px-4 py-3 text-slate-400 italic">{{ it.notes || '—' }}</td>
+                </tr>
+                <tr v-if="!(stockTransferDetails.inventory_transactions || []).length">
+                  <td colspan="5" class="py-10 text-center text-slate-300 uppercase font-bold text-[10px]">لا توجد حركات تقنية مسجلة</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-
-          <!-- Product & Route Card -->
-          <div class="bg-slate-900 p-5 rounded-xl text-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <p class="text-[9px] font-bold text-blue-400 uppercase tracking-widest">بيانات الصنف</p>
-              <h4 class="text-sm font-bold mt-0.5">{{ stockTransferDetails.product_name }}</h4>
-              <p class="text-[10px] text-slate-400 font-mono mt-0.5" v-if="stockTransferDetails.barcode">BARCODE: {{ stockTransferDetails.barcode }}</p>
-            </div>
-            <div class="flex items-center gap-3 bg-white/5 p-2.5 px-4 rounded-lg border border-white/10 text-xs">
-              <span class="font-bold text-slate-300">{{ stockTransferDetails.from_branch_name }}</span>
-              <i class="fas fa-arrow-left text-blue-400 text-[10px]"></i>
-              <span class="font-bold text-white">{{ stockTransferDetails.to_branch_name }}</span>
-            </div>
-          </div>
-
-          <!-- Audit Log Table -->
-          <div class="space-y-2">
-            <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">الحركات المخزنية المرتبطة (Audit Traceability)</h4>
-            <div class="border border-slate-200 rounded-xl overflow-hidden">
-              <table class="w-full text-right text-xs">
-                <thead>
-                  <tr class="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    <th class="px-4 py-2.5">الوقت</th>
-                    <th class="px-3 py-2.5">النوع التقني</th>
-                    <th class="px-3 py-2.5">المسار</th>
-                    <th class="px-3 py-2.5 text-center">الكمية</th>
-                    <th class="px-4 py-2.5">ملاحظات</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100 font-medium">
-                  <tr v-for="it in stockTransferDetails.inventory_transactions" :key="it.id">
-                    <td class="px-4 py-2.5 text-slate-400 font-mono text-[11px]">{{ new Date(it.created_at || it.movement_date).toLocaleTimeString('ar-EG') }}</td>
-                    <td class="px-3 py-2.5 font-mono text-[10px] text-slate-600 uppercase">{{ it.movement_type }}</td>
-                    <td class="px-3 py-2.5 text-slate-600">{{ it.branch_from || '-' }} ← {{ it.branch_to || '-' }}</td>
-                    <td class="px-3 py-2.5 text-center font-mono font-bold text-indigo-600">{{ it.quantity }}</td>
-                    <td class="px-4 py-2.5 text-slate-400 italic text-[11px]">{{ it.notes || '—' }}</td>
-                  </tr>
-                  <tr v-if="!(stockTransferDetails.inventory_transactions || []).length">
-                    <td colspan="5" class="py-6 text-center text-slate-300 uppercase tracking-widest font-bold text-xs">لا توجد حركات تقنية مسجلة</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </template>
+        </div>
       </div>
 
       <template #footer>
-        <button 
-          @click="showStockTransferDetails = false" 
-          class="px-6 h-9 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors"
-        >
-          إغلاق
-        </button>
+        <button @click="showStockTransferDetails = false" class="px-6 h-10 text-xs font-bold text-slate-500">إغلاق</button>
       </template>
     </BaseModal>
 
-    <!-- GL Activate Product Modal -->
-    <BaseModal :show="showBranchActivateModal" @close="showBranchActivateModal = false" maxWidth="md">
+    <!-- GL Activate Product Modal: Unified with GL Activate Modal in Inventory Page -->
+    <BaseModal :show="showBranchActivateModal" @close="showBranchActivateModal = false" maxWidth="md" align="center">
       <template #header>
         <div class="flex items-center gap-3">
-          <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-xs">
-            <i class="fas fa-arrow-up"></i>
-          </div>
-          <div>
-            <h3 class="text-sm font-bold text-slate-900 uppercase">تفعيل المنتج في الفرع</h3>
-            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">إتاحة البيع وربط شجرة الحسابات</p>
-          </div>
+          <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center text-white"><i class="fas fa-check-circle text-xs"></i></div>
+          <h3 class="text-sm font-bold text-slate-900 uppercase">تفعيل المنتج في الفرع</h3>
         </div>
       </template>
 
       <div class="space-y-4">
-        <p class="text-xs text-slate-600 font-medium">هل تريد اعتماد وتفعيل هذا المنتج للعمل داخل هذا الفرع؟</p>
-        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-0.5">
-          <p class="text-xs font-bold text-slate-900">{{ selectedBranchProduct?.product_name }}</p>
-          <p class="text-[10px] text-slate-400 font-mono">{{ selectedBranchProduct?.barcode }}</p>
+        <div class="p-4 bg-blue-50 rounded-xl border border-blue-100 text-blue-700">
+          <p class="text-xs font-bold flex items-start gap-2">
+            <i class="fas fa-info-circle mt-0.5 shrink-0"></i>
+            <span>سيتم إنشاء حساب محاسبي وتفعيل إمكانية بيع المنتج <strong>{{ selectedBranchProduct?.product_name }}</strong> داخل الفرع <strong>{{ branch.name }}</strong></span>
+          </p>
+        </div>
+        <div class="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+          <div class="flex justify-between items-center"><span class="text-[9px] font-bold text-slate-400 uppercase">المنتج</span><span class="text-sm font-bold text-slate-800">{{ selectedBranchProduct?.product_name }}</span></div>
+          <div class="border-t border-slate-100 pt-2 flex justify-between items-center"><span class="text-[9px] font-bold text-slate-400 uppercase">الباركود</span><span class="text-xs font-mono font-bold text-slate-600">{{ selectedBranchProduct?.barcode || '—' }}</span></div>
+          <div class="border-t border-slate-100 pt-2 flex justify-between items-center"><span class="text-[9px] font-bold text-slate-400 uppercase">الفرع</span><span class="text-sm font-bold text-slate-800">{{ branch.name }}</span></div>
         </div>
       </div>
 
       <template #footer>
-        <button @click="showBranchActivateModal = false" class="px-6 h-9 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">
-          إلغاء
-        </button>
-        <button 
-          @click="activateBranchProduct" 
-          :disabled="isActivatingBranch" 
-          class="px-6 h-9 rounded-md bg-blue-600 text-white text-xs font-bold shadow-sm hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
+        <button @click="showBranchActivateModal = false" class="flex-1 h-10 text-xs font-bold text-slate-500">إلغاء</button>
+        <button
+          @click="activateBranchProduct"
+          :disabled="isActivatingBranch"
+          class="flex-2 h-10 bg-blue-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 flex items-center justify-center gap-2 px-8 disabled:opacity-50"
         >
           <BaseSpinner v-if="isActivatingBranch" size="14" color="#fff" />
-          <span>تأكيد التفعيل</span>
+          <i v-else class="fas fa-check text-xs"></i>
+          <span>تفعيل الآن</span>
         </button>
       </template>
     </BaseModal>
 
-    <!-- GL Opening Balance Modal -->
-    <BaseModal :show="showBranchOpeningBalanceModal" @close="showBranchOpeningBalanceModal = false" maxWidth="md">
+    <!-- GL Opening Balance Modal: Unified with Opening Balance Modal in Inventory Page -->
+    <BaseModal :show="showBranchOpeningBalanceModal" @close="showBranchOpeningBalanceModal = false" maxWidth="md" align="center">
       <template #header>
         <div class="flex items-center gap-3">
-          <div class="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white text-xs">
-            <i class="fas fa-plus"></i>
-          </div>
+          <div class="w-9 h-9 bg-emerald-600 rounded-lg flex items-center justify-center text-white"><i class="fas fa-balance-scale text-xs"></i></div>
+          <h3 class="text-sm font-bold text-slate-900 uppercase">الرصيد الافتتاحي للفرع</h3>
+        </div>
+      </template>
+
+      <form @submit.prevent="handleBranchOpeningBalanceSubmit" class="space-y-6">
+        <div class="p-4 bg-slate-900 rounded-xl text-white flex justify-between items-center shadow-inner">
           <div>
-            <h3 class="text-sm font-bold text-slate-900 uppercase">ترصيد الرصيد الافتتاحي</h3>
-            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">تثبيت الكمية والتكلفة الأولية في الدفاتر</p>
+            <p class="text-[9px] font-bold text-slate-400 uppercase mb-1">الصنف</p>
+            <p class="text-sm font-bold">{{ selectedBranchProduct?.product_name }}</p>
+            <span class="text-[10px] font-mono text-slate-400">{{ selectedBranchProduct?.barcode }}</span>
+          </div>
+          <div class="text-left">
+            <p class="text-[9px] font-bold text-slate-400 uppercase mb-1">الفرع</p>
+            <p class="text-xs font-bold text-emerald-400">{{ branch.name }}</p>
           </div>
         </div>
-      </template>
 
-      <div class="space-y-3.5">
-        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-0.5">
-          <p class="text-xs font-bold text-slate-900">{{ selectedBranchProduct?.product_name }}</p>
-          <p class="text-[10px] text-slate-400 font-mono">{{ selectedBranchProduct?.barcode }}</p>
+        <div class="space-y-1.5">
+          <label class="metadata-label">الكمية الافتتاحية</label>
+          <input
+            v-model.number="branchObQuantity"
+            type="number"
+            min="0"
+            step="0.01"
+            class="h-14 w-full bg-white border-2 border-slate-100 rounded-xl px-4 text-2xl font-bold text-center text-emerald-600 outline-none focus:border-emerald-500 transition-all"
+            placeholder="0"
+            required
+          />
         </div>
 
         <div class="space-y-1.5">
-          <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">الكمية الافتتاحية</label>
-          <input v-model.number="branchObQuantity" type="number" step="0.01" min="0" placeholder="0.00" class="filter-input font-mono">
+          <label class="metadata-label">سعر التكلفة (الوحدة)</label>
+          <input
+            v-model.number="branchObUnitCost"
+            type="number"
+            min="0"
+            step="0.01"
+            class="h-14 w-full bg-white border-2 border-slate-100 rounded-xl px-4 text-2xl font-bold text-center text-emerald-600 outline-none focus:border-emerald-500 transition-all"
+            placeholder="0.00"
+            required
+          />
         </div>
 
-        <div class="space-y-1.5">
-          <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">سعر الوحدة (التكلفة)</label>
-          <input v-model.number="branchObUnitCost" type="number" step="0.01" min="0" placeholder="0.00" class="filter-input font-mono">
+        <div class="p-4 bg-emerald-50 rounded-xl border border-emerald-100 flex justify-between items-center">
+          <span class="text-[9px] font-bold text-emerald-600 uppercase">الإجمالي المالي:</span>
+          <span class="text-xl font-bold text-emerald-700 font-mono">{{ (branchObQuantity * branchObUnitCost).toFixed(2) }}</span>
         </div>
 
-        <div class="p-3 bg-emerald-50 border border-emerald-100 rounded-lg flex items-center justify-between text-xs font-mono">
-          <span class="text-[10px] font-bold text-emerald-800 uppercase">الإجمالي المالي:</span>
-          <span class="text-sm font-bold text-emerald-700">{{ (branchObQuantity * branchObUnitCost).toFixed(2) }}</span>
+        <div class="p-4 bg-blue-50 rounded-xl border border-blue-100 text-blue-700">
+          <p class="text-xs font-bold flex items-start gap-2">
+            <i class="fas fa-info-circle mt-0.5 shrink-0"></i>
+            <span>سيتم إنشاء قيد محاسبي افتتاحي وإثبات الرصيد في الدفاتر تلقائيًا.</span>
+          </p>
         </div>
-      </div>
 
-      <template #footer>
-        <button @click="showBranchOpeningBalanceModal = false" class="px-6 h-9 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">
-          إلغاء
-        </button>
-        <button 
-          @click="handleBranchOpeningBalanceSubmit" 
-          :disabled="isPostingBranch || !branchObQuantity || !branchObUnitCost" 
-          class="px-6 h-9 rounded-md bg-emerald-600 text-white text-xs font-bold shadow-sm hover:bg-emerald-700 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          <BaseSpinner v-if="isPostingBranch" size="14" color="#fff" />
-          <span>تأكيد الترصيد</span>
-        </button>
-      </template>
+        <div class="flex gap-3 pt-2">
+          <button type="button" @click="showBranchOpeningBalanceModal = false" class="flex-1 h-10 text-xs font-bold text-slate-500">إلغاء</button>
+          <button
+            type="submit"
+            :disabled="isPostingBranch || !branchObQuantity || !branchObUnitCost"
+            class="flex-2 h-10 bg-emerald-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-emerald-900/20 active:scale-95 flex items-center justify-center gap-2 px-8 disabled:opacity-50"
+          >
+            <BaseSpinner v-if="isPostingBranch" size="14" color="#fff" />
+            <i v-else class="fas fa-check text-xs"></i>
+            <span>ترحيل الرصيد الافتتاحي</span>
+          </button>
+        </div>
+      </form>
     </BaseModal>
 
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, defineEmits, watch } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
+import PageHeader from '@/components/PageHeader.vue';
 import BaseModal from '@/components/BaseModal.vue';
-import { useRoute, useRouter } from 'vue-router';
-import getLocalDateISO from '@/utils/date';
+import BranchForm from '@/components/BranchForm.vue';
+import { useRoute } from 'vue-router';
+import { getLocalDateISO } from '@/utils';
 import { useToast } from '@/composables/useToast';
 import BranchInventory from '@/components/branch/BranchInventory.vue';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
-import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import { useProductStore } from '@/stores/product/productStore';
+import apiClient from '@/config/axios';
 
 // --- Services & Router ---
 const route = useRoute();
-const router = useRouter();
 const { showToast } = useToast();
-const emit = defineEmits(['inventory-updated']);
-const authStore = useAuthStore();
 const branchStore = useBranchStore();
 const productStore = useProductStore();
 
@@ -684,12 +745,28 @@ const isLoading = ref(true);
 const error = ref(null);
 const activeTab = ref('inventory');
 const branchId = parseInt(route.params.id);
+const showBranchEditModal = ref(false);
+const breadcrumb = computed(() => ({
+  parent: { label: 'الفروع', path: '/branches' },
+  current: { label: branch.value?.name || 'تفاصيل الفرع' }
+}));
+const isBranchActive = computed(() =>
+  branch.value?.active === 1
+  || branch.value?.active === true
+  || branch.value?.is_active === 1
+  || branch.value?.is_active === true
+);
+const tabs = [
+  { id: 'inventory', name: 'المخزون والربط المحاسبي', icon: 'boxes' },
+  { id: 'transfers', name: 'عمليات النقل', icon: 'exchange-alt' },
+  { id: 'stock_transfers', name: 'السجل المرجعي', icon: 'history' }
+];
 
 // GL Products Data & Modals (محفوظ كاملاً)
 const glProducts = ref([]);
 const isGLLoading = ref(false);
 const glError = ref(null);
-const glStatusFilter = ref('DRAFT');
+const glStatusFilter = ref('ACTIVE_IN_BRANCH');
 const showBranchActivateModal = ref(false);
 const showBranchOpeningBalanceModal = ref(false);
 const selectedBranchProduct = ref(null);
@@ -780,14 +857,14 @@ const handleBranchOpeningBalanceSubmit = async () => {
       entry_date: getLocalDateISO()
     });
     if (res.status === 'success') {
-      showToast('تم الترصيد بنجاح', 'success');
+      showToast('تم ترحيل الرصيد بنجاح', 'success');
       showBranchOpeningBalanceModal.value = false;
       await loadBranchProductGLStatuses();
     } else {
-      showToast(res.message || 'فشل الترصيد', 'error');
+      showToast(res.message || 'فشل ترحيل الرصيد', 'error');
     }
   } catch (err) {
-    showToast(err.response?.data?.message || 'فشل الترصيد', 'error');
+    showToast(err.response?.data?.message || 'فشل ترحيل الرصيد', 'error');
   } finally {
     isPostingBranch.value = false;
   }
@@ -813,31 +890,33 @@ const fetchBranch = async (branchesData) => {
   }
 };
 
-const fetchTransfers = async (branchesData) => {
+const fetchTransfers = async () => {
   if (!branchId) return;
   isTransfersLoading.value = true;
   transfersError.value = null;
   try {
-    const list = branchesData ?? await branchStore.fetchBranches();
-    const branchData = list?.find(b => b.id === branchId);
-    transfers.value = branchData?.transfers || [];
+    const response = await apiClient.get(`/branches/${branchId}/transfers`);
+    const data = response?.data?.data ?? response?.data ?? [];
+    transfers.value = Array.isArray(data) ? data : (data?.items || []);
   } catch (err) {
-    transfersError.value = err.message || 'حدث خطأ أثناء جلب سجل عمليات النقل';
+    transfersError.value = err.response?.data?.message || err.message || 'حدث خطأ أثناء جلب سجل عمليات النقل';
   } finally {
     isTransfersLoading.value = false;
   }
 };
 
-const fetchStockTransfers = async (branchesData) => {
+const fetchStockTransfers = async () => {
   if (!branchId) return;
   isStockTransfersLoading.value = true;
   stockTransfersError.value = null;
   try {
-    const list = branchesData ?? await branchStore.fetchBranches();
-    const branchData = list?.find(b => b.id === branchId);
-    stockTransfers.value = branchData?.stock_transfers || [];
+    const response = await apiClient.get('/branches/transfers', {
+      params: { branch_id: branchId },
+    });
+    const data = response?.data?.data ?? response?.data ?? [];
+    stockTransfers.value = Array.isArray(data) ? data : (data?.items || []);
   } catch (err) {
-    stockTransfersError.value = err.message || 'حدث خطأ أثناء جلب عمليات النقل المرجعية';
+    stockTransfersError.value = err.response?.data?.message || err.message || 'حدث خطأ أثناء جلب عمليات النقل المرجعية';
   } finally {
     isStockTransfersLoading.value = false;
   }
@@ -849,11 +928,10 @@ const openStockTransferDetails = async (id) => {
   stockTransferDetails.value = null;
   showStockTransferDetails.value = true;
   try {
-    const branches = await branchStore.fetchBranches();
-    const branchData = branches?.find(b => b.id === branchId);
-    stockTransferDetails.value = branchData?.stock_transfers?.find(t => t.id === id) || null;
+    const response = await apiClient.get(`/branches/transfers/${id}`);
+    stockTransferDetails.value = response?.data?.data ?? response?.data ?? null;
   } catch (err) {
-    showToast(err.message || 'حدث خطأ أثناء جلب التفاصيل', 'error');
+    showToast(err.response?.data?.message || err.message || 'حدث خطأ أثناء جلب التفاصيل', 'error');
   } finally {
     isStockTransferDetailsLoading.value = false;
   }
@@ -862,6 +940,16 @@ const openStockTransferDetails = async (id) => {
 // --- Handlers (PRESERVED) ---
 const handleInventoryUpdated = () => {
   showToast('تم تحديث المخزون بنجاح', 'success');
+};
+
+const openBranchEditModal = () => {
+  showBranchEditModal.value = true;
+};
+
+const handleBranchEditSuccess = () => {
+  showBranchEditModal.value = false;
+  const updatedBranch = branchStore.branches.find(item => String(item.id) === String(branchId));
+  if (updatedBranch) branch.value = updatedBranch;
 };
 
 // --- Watchers & Lifecycle ---
@@ -880,8 +968,8 @@ onMounted(async () => {
   const branchesData = await branchStore.fetchBranches();
   await Promise.all([
     fetchBranch(branchesData),
-    fetchTransfers(branchesData),
-    fetchStockTransfers(branchesData),
+    fetchTransfers(),
+    fetchStockTransfers(),
     loadBranchProductGLStatuses(),
   ]);
 });
@@ -898,15 +986,26 @@ watch(activeTab, (tab) => {
   100% { transform: translateX(-100%); }
 }
 
-.filter-input {
+.filter-input-v2 {
   @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
+}
+
+.metadata-label {
+  @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1;
+}
+
+.pagination-btn-v2 {
+  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
 }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
 
-.animate-fadeIn { animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.animate-fadeIn { animation: fadeIn 0.4s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+@keyframes modalIn { from { opacity: 0; transform: scale(0.98) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+.animate-modalIn { animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }

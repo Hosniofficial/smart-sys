@@ -13,8 +13,10 @@
         :breadcrumb="{ parent: { label: 'التقارير', path: '/reports' }, current: { label: 'تقرير الصرف والقبض', path: '/reports/cash-vouchers' } }"
         title="تقرير الصرف والقبض"
         description="تحليل السيولة والتدفقات النقدية اللحظية"
-        :branches="[]"
-        :selectedBranch="null"
+        :branches="canSelectBranch ? branches : []"
+        :selectedBranch="selectedBranch === 'all' ? null : selectedBranch"
+        branch-selection-mode="optional"
+        @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
           <button @click="fetchReport" :disabled="isLoading" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
@@ -25,6 +27,10 @@
           </button>
         </template>
       </PageHeader>
+
+      <div v-if="error" role="alert" class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+        {{ error }}
+      </div>
 
       <main class="space-y-8">
 
@@ -167,15 +173,18 @@
 <script setup>
 // [بقاء المنطق البرمجي كما هو بنسبة 100%]
 import { ref, computed, onMounted, watch } from 'vue';
-import { useReportsStore } from '../../stores/reports';
+import { useReportsStore } from '@/stores/reports/reportsStore';
 import { Chart as ChartJS, Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement } from 'chart.js';
 import { Line as LineChart } from 'vue-chartjs';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
-import { getLocalDateISO } from '@/utils/date';
+import { getLocalDateISO } from '@/utils';
 import { useVoucherStore } from '@/stores/voucher/voucherStore';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
+import { useBranchStore } from '@/stores/branch/branchStore';
+import { useBranchIsolation } from '@/composables/useBranchIsolation';
+import { useAuthStore } from '@/stores/auth/authStore';
 import PageHeader from '@/components/PageHeader.vue';
 
 // --- Logic Initialization (STRICTLY PRESERVED) ---
@@ -183,6 +192,19 @@ ChartJS.register(Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale
 
 const reportsStore = useReportsStore();
 const { breadcrumb } = useBreadcrumb();
+const branchStore = useBranchStore();
+const authStore = useAuthStore();
+const branchIsolation = useBranchIsolation();
+const canSelectBranch = branchIsolation.isExempt;
+const branches = computed(() => branchStore.branches);
+const selectedBranch = computed({
+  get: () => canSelectBranch.value
+    ? branchStore.selectedBranchId ?? 'all'
+    : String(authStore.user?.branch_id || 'all'),
+  set: (val) => {
+    if (canSelectBranch.value) branchStore.setSelectedBranch(val === 'all' ? null : val);
+  }
+});
 const voucherStore = useVoucherStore();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const isLoading = ref(true);
@@ -195,6 +217,7 @@ const endDateRef = ref(null);
 const voucherType = ref('all'); 
 const search = ref('');
 let debounceTimer = null;
+let isReportInitialized = false;
 
 const vouchers = ref([]);
 
@@ -209,8 +232,11 @@ const summary = computed(() => {
 
 const fetchReport = async () => {
   isLoading.value = true; error.value = null;
+  const branchId = selectedBranch.value !== 'all' ? selectedBranch.value : null;
+
   try {
     const list = await voucherStore.fetchVouchersList({ 
+      branchId,
       type: voucherType.value !== 'all' ? voucherType.value : undefined,
       dateFrom: startDate.value,
       dateTo: endDate.value,
@@ -218,7 +244,7 @@ const fetchReport = async () => {
     });
     vouchers.value = Array.isArray(list) ? list : [];
   } catch (e) {
-    error.value = 'حدث خطأ أثناء تحميل البيانات';
+    error.value = e?.response?.data?.message || e?.message || 'حدث خطأ أثناء تحميل البيانات';
   } finally {
     isLoading.value = false;
   }
@@ -229,12 +255,17 @@ const formatDate = (v) => v ? new Date(v).toLocaleDateString('en-US') : '';
 const voucherTypeLabel = (t) => (t === 'receipt' || t === 'قبض') ? 'سند قبض' : 'سند صرف';
 const voucherTypeClass = (t) => (t === 'receipt' || t === 'قبض') ? 'text-emerald-600 border-emerald-100 bg-emerald-50' : 'text-rose-600 border-rose-100 bg-rose-50';
 
-watch([startDate, endDate, voucherType, search], () => {
+watch([startDate, endDate, voucherType, search, selectedBranch], () => {
+  if (!isReportInitialized) return;
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(fetchReport, 500);
 });
 
-onMounted(async () => { await Promise.all([fetchSettings(), fetchReport()]); });
+onMounted(async () => {
+  await branchStore.initialize();
+  isReportInitialized = true;
+  await Promise.all([fetchSettings(), fetchReport()]);
+});
 </script>
 
 <style scoped>

@@ -14,6 +14,13 @@ use App\Security\Permissions;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
+/**
+ * Handles product catalog operations and tenant inventory queries.
+ *
+ * Uses PDO, pagination, product resources, and purchase-price permission checks.
+ * app/routes/inventory.php exposes the stock, batch, movement, summary, and
+ * alert endpoints; product CRUD routes are handled separately.
+ */
 class InventoryHandler extends BaseHandler
 {
     public function __construct(PDO $db)
@@ -22,6 +29,7 @@ class InventoryHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('inventory');
     }
 
+    /** List tenant products with optional search/category filters and stock/unit data. */
     public function list(Request $request, Response $response): Response
     {
         try {
@@ -38,7 +46,6 @@ class InventoryHandler extends BaseHandler
                 ? (int) $queryParams['branch_id']
                 : null;
 
-            // Build products query with proper JOINs
             $query = "
                 SELECT
                     p.*,
@@ -76,7 +83,6 @@ class InventoryHandler extends BaseHandler
             $stmt->execute();
             $products = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            // Get branch inventory data for each product
             $branchProducts = [];
             if (!empty($products)) {
                 $productIds = array_column($products, 'id');
@@ -109,7 +115,6 @@ class InventoryHandler extends BaseHandler
                 }
             }
 
-            // Get units for each product
             $allUnits = [];
             if (!empty($products)) {
                 $productIds = array_column($products, 'id');
@@ -141,7 +146,6 @@ class InventoryHandler extends BaseHandler
                 }
             }
 
-            // Transform products using ProductListResource
             $includeCostData = $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW);
             $transformedProducts = [];
             foreach ($products as $product) {
@@ -155,7 +159,6 @@ class InventoryHandler extends BaseHandler
                 );
             }
 
-            // Count total
             $countQuery = "
                 SELECT COUNT(*)
                 FROM products p
@@ -196,6 +199,7 @@ class InventoryHandler extends BaseHandler
         }
     }
 
+    /** Fetch one tenant product with aggregate stock and unit data. */
     public function get(Request $request, Response $response, array $args): Response
     {
         try {
@@ -209,7 +213,6 @@ class InventoryHandler extends BaseHandler
                 return $this->errorResponse($response, 'Product ID is required', 400);
             }
 
-            // Get product details
             $stmt = $this->db->prepare("
                 SELECT
                     p.*,
@@ -225,7 +228,6 @@ class InventoryHandler extends BaseHandler
                 return $this->errorResponse($response, 'المنتج غير موجود', 404);
             }
 
-            // Get branch inventory data (total across all branches)
             $stmt = $this->db->prepare("
                 SELECT
                     product_id,
@@ -239,7 +241,6 @@ class InventoryHandler extends BaseHandler
             $stmt->execute([$id, (int) $tenantId]);
             $branchProduct = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-            // Get all units for the product
             $stmt = $this->db->prepare("
                 SELECT
                     pu.unit_id,
@@ -255,7 +256,6 @@ class InventoryHandler extends BaseHandler
             $stmt->execute([$id, (int) $tenantId]);
             $units = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            // Transform using ProductDetailResource
             $transformedProduct = ProductDetailResource::transform(
                 $product,
                 $branchProduct,
@@ -276,6 +276,7 @@ class InventoryHandler extends BaseHandler
         }
     }
 
+    /** Create a product and its main unit in one database transaction. */
     public function create(Request $request, Response $response): Response
     {
         try {
@@ -390,7 +391,7 @@ class InventoryHandler extends BaseHandler
 
             $productId = (int) $this->db->lastInsertId();
 
-            // ── Auto-generate SKU based on product ID ───────────────────────
+            // Use the generated product ID to create a stable default SKU.
             $sku = 'PRD-' . str_pad((string) $productId, 6, '0', STR_PAD_LEFT);
             $this->db->prepare("
                 UPDATE products 
@@ -460,6 +461,7 @@ class InventoryHandler extends BaseHandler
         }
     }
 
+    /** Update tenant product fields and synchronize its main unit when changed. */
     public function update(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -498,7 +500,6 @@ class InventoryHandler extends BaseHandler
         ]);
 
         try {
-            // ── Validate SKU uniqueness if provided ────────────────────────
             if (isset($data['product_code']) && $data['product_code'] !== '') {
                 $skuStmt = $this->db->prepare("
                     SELECT COUNT(*) FROM products
@@ -642,6 +643,7 @@ class InventoryHandler extends BaseHandler
         }
     }
 
+    /** Delete a product only when it has no opening-balance posting or linked activity. */
     public function delete(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -657,7 +659,6 @@ class InventoryHandler extends BaseHandler
         }
 
         try {
-            // ── Check if product has posted opening balance ──────────────
             $postedStmt = $this->db->prepare("
                 SELECT opening_balance_posted 
                 FROM products 
@@ -669,7 +670,7 @@ class InventoryHandler extends BaseHandler
             if ($product && (int) ($product['opening_balance_posted'] ?? 0) === 1) {
                 return $this->errorResponse(
                     $response,
-                    'لا يمكن حذف منتج تم ترصيد رصيده الافتتاحي. يرجى عمل قيد عكسي أولاً من خلال صفحة المحاسبة.',
+                    'لا يمكن حذف منتج تم ترحيل رصيده الافتتاحي حفاظًا على سجل المخزون والمحاسبة. استخدم إجراء عكس الرصيد الافتتاحي من إدارة المخزون إذا استوفى شروط العكس؛ ويظل سجل المنتج محفوظًا بعد العكس.',
                     409
                 );
             }
@@ -691,13 +692,30 @@ class InventoryHandler extends BaseHandler
                           ON p.id = pi.purchase_id
                          AND p.tenant_id = pi.tenant_id
                         WHERE pi.product_id = ? AND pi.tenant_id = ?
-                    ) AS purchases_count
+                    ) AS purchases_count,
+                    (
+                        SELECT COUNT(*)
+                        FROM inventory_transactions it
+                        WHERE it.product_id = ?
+                    ) AS inventory_transactions_count
             ");
-            $stmt->execute([$id, (int) $tenantId, $id, (int) $tenantId]);
-            $counts = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['sales_count' => 0, 'purchases_count' => 0];
+            $stmt->execute([$id, (int) $tenantId, $id, (int) $tenantId, $id]);
+            $counts = $stmt->fetch(PDO::FETCH_ASSOC) ?: [
+                'sales_count' => 0,
+                'purchases_count' => 0,
+                'inventory_transactions_count' => 0,
+            ];
 
-            if ((int) $counts['sales_count'] > 0 || (int) $counts['purchases_count'] > 0) {
-                return $this->errorResponse($response, 'لا يمكن حذف المنتج لوجود عمليات بيع أو شراء مرتبطة به', 409);
+            if (
+                (int) $counts['sales_count'] > 0
+                || (int) $counts['purchases_count'] > 0
+                || (int) $counts['inventory_transactions_count'] > 0
+            ) {
+                return $this->errorResponse(
+                    $response,
+                    'لا يمكن حذف المنتج لوجود سجل حركات مخزون أو عمليات مرتبطة به؛ احتفظ بسجل المنتج ولا تحذفه.',
+                    409
+                );
             }
 
             $this->db->beginTransaction();
@@ -768,6 +786,7 @@ class InventoryHandler extends BaseHandler
         }
     }
 
+    /** List active tenant products with optional branch stock and unit data. */
     public function listActive(Request $request, Response $response): Response
     {
         $this->validateAuth();
@@ -783,7 +802,6 @@ class InventoryHandler extends BaseHandler
                 ? (int) $queryParams['branch_id']
                 : null;
 
-            // Get all active products
             $query = "
                 SELECT p.*
                 FROM products p
@@ -799,7 +817,6 @@ class InventoryHandler extends BaseHandler
                 return $this->successResponse($response, [], 200);
             }
 
-            // Batch fetch branch products and units
             $productIds = array_column($products, 'id');
 
             $branchQuery = "
@@ -832,7 +849,6 @@ class InventoryHandler extends BaseHandler
                 $branchProducts[$pid] = $bp;
             }
 
-            // Batch fetch units
             $unitsQuery = "
                 SELECT
                     pu.product_id,
@@ -861,7 +877,6 @@ class InventoryHandler extends BaseHandler
                 $allUnits[$pid][] = $unit;
             }
 
-            // Transform using ProductListResource
             $includeCostData = $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW);
             $transformedProducts = [];
             foreach ($products as $product) {
@@ -886,9 +901,7 @@ class InventoryHandler extends BaseHandler
         }
     }
 
-    /**
-     * Get available batches and serials for a product in a branch
-     */
+    /** List positive batch balances and serials available for the requested product and branch. */
     public function getBatches(Request $request, Response $response, array $args): Response
     {
         $this->validateAuth();
@@ -970,9 +983,7 @@ class InventoryHandler extends BaseHandler
         }
     }
 
-    /**
-     * Get stock levels with low stock status
-     */
+    /** Return tenant-wide aggregate stock and low-stock status by active product. */
     public function getStock(Request $request, Response $response): Response
     {
         try {
@@ -1019,9 +1030,7 @@ class InventoryHandler extends BaseHandler
         }
     }
 
-    /**
-     * Get inventory movements history
-     */
+    /** Return tenant inventory movements, optionally filtered by product and branch. */
     public function getMovements(Request $request, Response $response): Response
     {
         try {
@@ -1078,10 +1087,7 @@ class InventoryHandler extends BaseHandler
         }
     }
 
-    /**
-     * Get inventory summary KPIs (total products, value, low stock, expiring soon)
-     * Optional query param: branch_id (integer) — omit for all branches
-     */
+    /** Return product-count, valuation, and stock-level KPIs, optionally for one branch. */
     public function getSummary(Request $request, Response $response): Response
     {
         try {
@@ -1094,7 +1100,6 @@ class InventoryHandler extends BaseHandler
             $branchId    = isset($queryParams['branch_id']) && $queryParams['branch_id'] !== ''
                            ? (int) $queryParams['branch_id'] : null;
 
-            // ── 1. Counts from branch_products ───────────────────────────────
             $joinType    = $branchId ? 'INNER' : 'LEFT';
             $branchFilter = $branchId ? 'AND bp.branch_id = ?' : '';
 
@@ -1130,22 +1135,7 @@ class InventoryHandler extends BaseHandler
             $countStmt->execute($countParams);
             $countRow = $countStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-            // ── 2. Total value from branch_products (actual inventory) ───
-            // NOTE 1: Changed from GL balance to actual inventory to avoid stale GL values
-            // when products are deleted without proper GL reversals.
-            //
-            // ⚠️ تحديث: كان هذا الموضع يتجنّب quantity_cost عمداً بحجّة أنه "قديم/غير محدَّث
-            // إلا عند الرصيد الافتتاحي فقط". تم التحقق من هذا الادعاء فعلياً بتتبّع كل نقاط
-            // الكتابة على quantity_cost في النظام: هو مُحدَّث فعلاً في المشتريات والمبيعات
-            // والمرتجعات ونقل المخزون — لكن اكتشفنا أن مساري التسوية الجماعية في
-            // StockAdjustmentHandler (bulkAdjustments وbulkAdjustmentsCsv) كانا فعلاً
-            // يُحدِّثان quantity فقط ويتجاهلان quantity_cost، ما يؤكد صحة القلق الأصلي لكن
-            // لسبب قابل للإصلاح تحديداً، لا كعيب جوهري في quantity_cost نفسه. تم إصلاح
-          // هذين المسارين (راجع StockAdjustmentHandler.php)، وبالتالي أصبح quantity_cost
-            // موثوقاً الآن — ويُستخدم هنا بنفس الأولوية المُطبَّقة في
-            // BranchInventoryReportHandler.php لإزالة التعارض بين الملفين على نفس القيمة.
-            // ⚠️ يعتمد هذا على نشر إصلاحات StockAdjustmentHandler.php معاً؛ إن نُشر هذا
-            // التعديل بمفرده دون تلك الإصلاحات، يبقى الانحراف القديم قائماً جزئياً.
+            // Prefer recorded inventory cost; fall back to quantity × purchase price.
             if ($branchId) {
                 $valueSql = "
                     SELECT COALESCE(SUM(COALESCE(bp.quantity_cost, bp.quantity * p.purchase_price)), 0) AS total_value
@@ -1192,48 +1182,4 @@ class InventoryHandler extends BaseHandler
         }
     }
 
-    /**
-     * Get low stock alerts
-     */
-    public function getAlerts(Request $request, Response $response): Response
-    {
-        try {
-            $tenantId = $this->extractTenantId($request);
-            if (!$tenantId) {
-                return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-            }
-
-            $query = "
-                SELECT
-                    p.id,
-                    p.name,
-                    p.barcode,
-                    COALESCE(SUM(wp.quantity), 0) AS quantity,
-                    p.min_quantity,
-                    c.name AS category_name
-                FROM products p
-                LEFT JOIN categories c ON p.category_id = c.id
-                LEFT JOIN branch_products wp
-                    ON p.id = wp.product_id
-                   AND wp.tenant_id = p.tenant_id
-                WHERE p.active = 1 AND p.tenant_id = ?
-                GROUP BY p.id, p.name, p.barcode, p.min_quantity, c.name
-                HAVING COALESCE(SUM(wp.quantity), 0) <= p.min_quantity
-                ORDER BY quantity ASC
-            ";
-
-            $stmt = $this->db->prepare($query);
-            $stmt->execute([(int) $tenantId]);
-            $alerts = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            return $this->successResponse($response, $alerts, 200);
-        } catch (\Throwable $e) {
-            $this->logger->error('Error getting stock alerts', [
-                'error' => $e->getMessage(),
-                'tenant_id' => $tenantId ?? null
-            ]);
-
-            return $this->errorResponse($response, 'فشل في جلب تنبيهات المخزون', 400);
-        }
-    }
 }

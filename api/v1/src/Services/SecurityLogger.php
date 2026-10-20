@@ -9,6 +9,12 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Log\LoggerInterface;
 use App\Utils\RequestHelper;
 
+/**
+ * Adapts authentication and security events to SecurityEventRepository records.
+ *
+ * Optional configuration gates selected event categories; an optional PSR
+ * logger receives errors that escape the repository.
+ */
 class SecurityLogger
 {
     private SecurityEventRepository $eventRepository;
@@ -30,6 +36,7 @@ class SecurityLogger
         $this->logger = $logger;
     }
 
+    /** Persist an event after applying the configured category gates. */
     public function log(
         string $action,
         string $status = 'success',
@@ -59,7 +66,6 @@ class SecurityLogger
                 $severity = $this->determineSeverity($action, $status);
             }
 
-            // Log the event using the repository
             $eventId = $this->eventRepository->logEvent(
                 $action,
                 $tenantId,
@@ -146,10 +152,7 @@ class SecurityLogger
         );
     }
 
-    /**
-     * Unified Security Event Logging Method
-     * Signature: logSecurityEvent(eventType, level, description, details, userId, tenantId)
-     */
+    /** Map a generic severity and description into the repository event format. */
     public function logSecurityEvent(
         string $eventType,
         string $level = 'info',
@@ -172,10 +175,8 @@ class SecurityLogger
                 ]
             );
 
-            // Map generic severity levels to enum values in database
             $enumLevel = $this->mapSeverityToEnum($level);
 
-            // Determine status from level
             $status = in_array($enumLevel, ['critical', 'error', 'high']) ? 'failed' : 'success';
 
             return $this->log(
@@ -196,10 +197,7 @@ class SecurityLogger
         }
     }
 
-    /**
-     * Legacy logSecurityEvent for backward compatibility
-     * Use the new unified signature when possible
-     */
+    /** Compatibility adapter for the earlier security-event call signature. */
     public function logSecurityEventLegacy(
         string $event,
         array $eventDetails = [],
@@ -234,9 +232,7 @@ class SecurityLogger
         return RequestHelper::getClientIp($request);
     }
 
-    /**
-     * Log an error message if a logger is available
-     */
+    /** Log a failure when a PSR logger was supplied. */
     private function logError(string $message, array $context = []): void
     {
         if ($this->logger) {
@@ -244,10 +240,7 @@ class SecurityLogger
         }
     }
 
-    /**
-     * Map generic severity levels to database enum values
-     * Database only accepts: low, medium, high, critical
-     */
+    /** Map application severity labels to the repository's severity values. */
     private function mapSeverityToEnum(string $severity): string
     {
         $mapping = [
@@ -266,17 +259,13 @@ class SecurityLogger
         return $mapping[strtolower($severity)] ?? 'low';
     }
 
-    /**
-     * Get the event repository instance
-     */
+    /** Expose the configured repository for existing callers. */
     public function getEventRepository(): SecurityEventRepository
     {
         return $this->eventRepository;
     }
 
-    /**
-     * Determine the severity level based on event type and status
-     */
+    /** Infer a severity label from the event name and result. */
     private function determineSeverity(string $eventType, string $status): string
     {
         // Default to info if we can't determine a better severity

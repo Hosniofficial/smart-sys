@@ -7,6 +7,7 @@ namespace App\Traits;
 use App\Exceptions\ForbiddenException;
 use App\Handlers\RBACHandler;
 use App\Security\Permissions;
+use App\Utils\SuperAdminHelper;
 use PDO;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -40,8 +41,6 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  */
 trait AuthorizesRequests
 {
-    private const SUPER_ADMIN_ROLE_ID = 1;
-
     /**
      * Assert the current user has the given permission.
      * Throws ForbiddenException (→ 403) if not.
@@ -95,14 +94,11 @@ trait AuthorizesRequests
     {
         $user   = $request->getAttribute('user');
         $userId = is_array($user) ? (int) ($user['id'] ?? 0) : 0;
-        $roleId = is_array($user) ? (int) ($user['role_id'] ?? 0) : 0;
-
         if ($userId === 0) {
             return false;
         }
 
-        // super_admin bypasses all checks
-        if ($roleId === self::SUPER_ADMIN_ROLE_ID) {
+        if (SuperAdminHelper::is(is_array($user) ? $user : null)) {
             return true;
         }
 

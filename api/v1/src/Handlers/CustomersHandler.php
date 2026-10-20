@@ -6,37 +6,38 @@ namespace App\Handlers;
 
 use PDO;
 use App\Services\MonologHandler;
-use App\Services\BalanceCalculationService;
 use App\Services\CostCenter\CostCenterService;
 use App\Services\AccountManagementService;
 use App\Services\CurrencyService;
+use App\Services\CustomerPaymentAllocationService;
 use App\Handlers\AuditHandler;
 use App\Repositories\SaleRepository;
 use App\Repositories\PaymentRepository;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
+/**
+ * Handles customer CRUD, account statements, and payments.
+ *
+ * Inherits contact-account utilities from BaseContactHandler. Payment creation
+ * also coordinates accounting, cashier sessions, cost centers, currency,
+ * idempotency, and FIFO invoice allocation; app/routes/customers.php applies
+ * endpoint permissions.
+ */
 class CustomersHandler extends BaseContactHandler
 {
     protected string $contactType = 'customer';
     private CostCenterService $costCenterService;
-    private BalanceCalculationService $balanceCalcService;
 
     public function __construct(PDO $db)
     {
         parent::__construct($db);
         $this->logger = MonologHandler::getInstance('customers');
         $this->costCenterService = new CostCenterService($db);
-        $this->balanceCalcService = new BalanceCalculationService($db);
     }
 
     /**
-     * Note: listMissingAccounts() and ensureAccount() inherited from BaseContactHandler
-     * ملاحظة: الدوال listMissingAccounts() و ensureAccount() موروثة من BaseContactHandler
-     */
-
-    /**
-     * Returns detailed account statement for a customer by delegating to AccountStatementHandler.
+     * Resolve the customer's account and delegate statement generation.
      */
     public function getStatement(Request $request, Response $response, array $args): Response
     {
@@ -105,6 +106,7 @@ class CustomersHandler extends BaseContactHandler
         }
     }
 
+    /** Write customer activity to the application log and audit trail. */
     private function logAction(string $action, array $details = []): void
     {
         try {
@@ -135,15 +137,13 @@ class CustomersHandler extends BaseContactHandler
         }
     }
 
+    /** Resolve the tenant's configured currency for payment records. */
     private function getCompanyCurrency(int $tenantId): string
     {
         return (new CurrencyService($this->db))->getCompanyCurrency($tenantId);
     }
 
-    /**
-     * Retrieves all active customers for a specific tenant, with their correct balance.
-     * The balance is calculated from the journal entries linked to the customer's specific account.
-     */
+    /** List active tenant customers, optionally filtered by branch, with ledger balances. */
     public function getCustomers(Request $request, Response $response): Response
     {
         try {
@@ -219,9 +219,7 @@ class CustomersHandler extends BaseContactHandler
         }
     }
 
-    /**
-     * Retrieves a single customer by ID with balance.
-     */
+    /** Fetch a tenant customer with its ledger balance and approved sales returns total. */
     public function getCustomer(Request $request, Response $response, array $args): Response
     {
         $id = isset($args['id']) ? (int) $args['id'] : 0;
@@ -282,9 +280,7 @@ class CustomersHandler extends BaseContactHandler
         }
     }
 
-    /**
-     * Creates a new customer and its corresponding sub-account in the chart of accounts.
-     */
+    /** Create a customer and its accounting sub-account in one transaction. */
     public function createCustomer(Request $request, Response $response): Response
     {
         try {
@@ -312,7 +308,6 @@ class CustomersHandler extends BaseContactHandler
 
             $this->db->beginTransaction();
 
-            // Use single source of truth: AccountManagementService::createPartyAccount()
             $accountMgmt = new AccountManagementService($this->db);
             $accountId = $accountMgmt->createPartyAccount('customer', (string) $data['name'], (int) $tenantId);
             if (!$accountId) {
@@ -412,10 +407,7 @@ class CustomersHandler extends BaseContactHandler
         }
     }
 
-    /**
-     * Updates an existing customer's information.
-     * Note: This function does not handle updates to the linked account.
-     */
+    /** Replace the customer's contact and branch fields; the linked account is unchanged. */
     public function updateCustomer(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -513,9 +505,7 @@ class CustomersHandler extends BaseContactHandler
         }
     }
 
-    /**
-     * Deletes a customer and its associated sub-account, only if there are no active transactions.
-     */
+    /** Delete the customer and sub-account only when no journal lines reference the account. */
     public function deleteCustomer(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -561,7 +551,12 @@ class CustomersHandler extends BaseContactHandler
             $count = (int) $stmt->fetchColumn();
 
             if ($count > 0) {
-                throw new \Exception('لا يمكن حذف العميل لوجود معاملات نشطة مرتبطة به');
+                $this->db->rollBack();
+                return $this->errorResponse(
+                    $response,
+                    'لا يمكن حذف العميل لوجود حركات محاسبية مرتبطة به. سدّد الرصيد المستحق إن وُجد، ثم عطّل العميل بدلًا من حذفه للحفاظ على السجل المالي.',
+                    409
+                );
             }
 
             $stmt = $this->db->prepare("
@@ -623,169 +618,10 @@ class CustomersHandler extends BaseContactHandler
     }
 
     /**
-     * Retrieves all transactions for a specific customer based on their sub-account.
-     */
-    public function getTransactions(Request $request, Response $response, array $args): Response
-    {
-        $id = isset($args['id']) ? (int) $args['id'] : 0;
-        $tenantId = $this->extractTenantId($request);
-
-        if (!$tenantId) {
-            return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-        }
-
-        if ($id <= 0) {
-            return $this->errorResponse($response, 'مطلوب رقم العميل', 400);
-        }
-
-        try {
-            // Resolve customer's dedicated AR account
-            $stmt = $this->db->prepare("
-                SELECT account_id FROM customers WHERE id = :id AND tenant_id = :tenant_id
-            ");
-            $stmt->execute([':id' => $id, ':tenant_id' => $tenantId]);
-            $customerAccountId = $stmt->fetchColumn();
-
-            if (!$customerAccountId) {
-                return $this->errorResponse($response, 'لم يتم العثور على حساب العميل', 404);
-            }
-
-            // Read from the AR ledger — now fully correct because:
-            // • SalesService always writes Dr grossAmount + Cr paidAmount to customer AR
-            // • ReturnsHandler always writes Cr grandTotal + Dr paidAmount to customer AR
-            $transactionRows = $this->balanceCalcService->getTransactionHistoryWithRunningBalance(
-                $customerAccountId,
-                $tenantId,
-                'customer'
-            );
-
-            if (empty($transactionRows)) {
-                return $this->successResponse($response, [], 200);
-            }
-
-            // Enrich with human-readable reference numbers
-            $journalIds   = array_column($transactionRows, 'journal_entry_id');
-            $placeholders = implode(',', array_fill(0, count($journalIds), '?'));
-
-            $refStmt = $this->db->prepare("
-                SELECT je.id,
-                       je.reference_type,
-                       je.reference_id,
-                       COALESCE(s.invoice_number, cv.reference, r.return_number) AS reference_number,
-                       je.description
-                FROM journal_entries je
-                LEFT JOIN sales        s  ON je.reference_type = 'sale'         AND je.reference_id = s.id  AND s.tenant_id  = ?
-                LEFT JOIN cash_vouchers cv ON je.reference_type = 'cash_voucher' AND je.reference_id = cv.id AND cv.tenant_id = ?
-                LEFT JOIN returns      r  ON je.reference_type IN ('return', 'sale_return', 'purchase_return')
-                    AND je.reference_id = r.id
-                    AND r.tenant_id  = ?
-                    AND (
-                        je.reference_type = 'return'
-                        OR (je.reference_type = 'sale_return'     AND r.return_type = 'sale')
-                        OR (je.reference_type = 'purchase_return' AND r.return_type = 'purchase')
-                    )
-                WHERE je.id IN ({$placeholders})
-            ");
-            $refStmt->execute(array_merge([$tenantId, $tenantId, $tenantId], $journalIds));
-            $refData = [];
-            foreach ($refStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-                $refData[$row['id']] = $row;
-            }
-
-            $result = [];
-            foreach ($transactionRows as $row) {
-                $jeId        = $row['journal_entry_id'];
-                $refType     = $refData[$jeId]['reference_type'] ?? '';
-                $refId       = $refData[$jeId]['reference_id']   ?? 0;
-                $refNumber   = $refData[$jeId]['reference_number'] ?? null;
-                $description = $refData[$jeId]['description']     ?? ($row['description'] ?? '');
-                $debit       = (float)$row['debit_amount'];
-                $credit      = (float)$row['credit_amount'];
-
-                switch ($refType) {
-                    case 'sale':
-                        if ($debit > 0) {
-                            $type        = 'فاتورة مبيعات';
-                            $description = 'دين على العميل لفاتورة رقم ' . ($refNumber ?: $refId);
-                        } else {
-                            // Check if it's a full or partial payment
-                            $type        = 'دفعة';
-                            $description = 'دفعة على فاتورة رقم ' . ($refNumber ?: $refId);
-                        }
-                        break;
-
-                    case 'sale_payment':
-                    case 'cash_voucher':
-                        $type        = 'سند قبض';
-                        $description = 'سداد من العميل - ' . ($refNumber ?: ('رقم ' . $refId));
-                        break;
-
-                    case 'return':
-                        if ($credit > 0) {
-                            $type        = 'إشعار دائن';
-                            $description = 'إشعار دائن (مرتجع) رقم ' . ($refNumber ?: $refId);
-                        } else {
-                            $type        = 'استرجاع نقدي';
-                            $description = 'استرداد قيمة مرتجع للعميل رقم ' . ($refNumber ?: $refId);
-                        }
-                        break;
-
-                    case 'sale_return':
-                        if ($credit > 0) {
-                            $type        = 'إشعار دائن';
-                            $description = 'إشعار دائن (مرتجع بيع) رقم ' . ($refNumber ?: $refId);
-                        } else {
-                            $type        = 'استرجاع نقدي';
-                            $description = 'استرداد قيمة مرتجع بيع للعميل رقم ' . ($refNumber ?: $refId);
-                        }
-                        break;
-
-                    case 'purchase_return':
-                        if ($credit > 0) {
-                            $type        = 'مرتجع مشتريات';
-                            $description = 'إشعار دائن لمرتجع مشتريات رقم ' . ($refNumber ?: $refId);
-                        } else {
-                            $type        = 'استرجاع مشتريات';
-                            $description = 'استرجاع نقدي لمرتجع شراء رقم ' . ($refNumber ?: $refId);
-                        }
-                        break;
-
-                    case 'reversal':
-                        $type        = 'عكس قيد';
-                        $description = 'عكس قيد رقم ' . $refId;
-                        break;
-
-                    default:
-                        $type = $refType ?: 'أخرى';
-                        break;
-                }
-
-                $result[] = [
-                    'id'            => $row['id'],
-                    'date'          => $row['created_at'],
-                    'type'          => $type,
-                    'debit_amount'  => number_format($debit, 2, '.', ''),
-                    'credit_amount' => number_format($credit, 2, '.', ''),
-                    'description'   => $description,
-                    'reference'     => $refNumber ?: $refId,
-                    'balance'       => $row['running_balance'],
-                ];
-            }
-
-            return $this->successResponse($response, $result, 200);
-        } catch (\Throwable $e) {
-            $this->logger->error('Transaction Fetch Error', [
-                'message'     => $e->getMessage(),
-                'tenant_id'   => $tenantId,
-                'customer_id' => $id,
-            ]);
-
-            return $this->errorResponse($response, 'فشل في جلب المعاملات', 500);
-        }
-    }
-
-    /**
-     * Add payment to customer (without requiring a specific sale)
+     * Record a customer payment, optionally linked to a sale.
+     *
+     * The operation posts the accounting entry, allocates unlinked payments to
+     * open sales, and records cash-session activity when the payment is cash.
      */
     public function addPayment(Request $request, Response $response, array $args = []): Response
     {
@@ -802,9 +638,78 @@ class CustomersHandler extends BaseContactHandler
         $data = $request->getParsedBody();
         $data = is_array($data) ? $data : [];
 
+        $idempotencyKey = trim($request->getHeaderLine('Idempotency-Key'));
+        if (strlen($idempotencyKey) > 128) {
+            return $this->errorResponse($response, 'مفتاح منع التكرار أطول من الحد المسموح.', 400);
+        }
+
         foreach (['amount', 'payment_method_id'] as $field) {
             if (!isset($data[$field]) || $data[$field] === '') {
                 return $this->errorResponse($response, "حقل مطلوب: {$field}", 400);
+            }
+        }
+        if (
+            !is_scalar($data['amount'])
+            || !is_numeric($data['amount'])
+            || !is_scalar($data['payment_method_id'])
+            || !is_numeric($data['payment_method_id'])
+            || (isset($data['payment_date']) && !is_scalar($data['payment_date']))
+            || (isset($data['reference_number']) && !is_scalar($data['reference_number']))
+            || (isset($data['notes']) && !is_scalar($data['notes']))
+            || (isset($data['branch_id']) && $data['branch_id'] !== '' && (!is_scalar($data['branch_id']) || !is_numeric($data['branch_id'])))
+            || (isset($data['sale_id']) && $data['sale_id'] !== '' && (!is_scalar($data['sale_id']) || !is_numeric($data['sale_id'])))
+            || (isset($data['cost_center_id']) && $data['cost_center_id'] !== '' && (!is_scalar($data['cost_center_id']) || !is_numeric($data['cost_center_id'])))
+        ) {
+            return $this->errorResponse($response, 'بيانات الدفعة غير صالحة.', 400);
+        }
+
+        $amount = (float) $data['amount'];
+        if (!is_finite($amount) || $amount <= 0) {
+            return $this->errorResponse($response, 'قيمة الدفعة يجب أن تكون أكبر من صفر.', 400);
+        }
+        $amount = round($amount, 2);
+        if ($amount <= 0) {
+            return $this->errorResponse($response, 'قيمة الدفعة يجب أن تكون أكبر من صفر بعد التقريب.', 400);
+        }
+        $paymentMethodId = (int) $data['payment_method_id'];
+        if ($paymentMethodId <= 0) {
+            return $this->errorResponse($response, 'طريقة الدفع غير صالحة.', 400);
+        }
+        $paymentDate = (string) ($data['payment_date'] ?? date('Y-m-d'));
+        $branchId = !empty($data['branch_id']) ? (int) $data['branch_id'] : null;
+        $saleId = !empty($data['sale_id']) ? (int) $data['sale_id'] : null;
+        $referenceNumber = isset($data['reference_number'])
+            ? (string) $data['reference_number']
+            : 'CP-' . date('ymdHis');
+        $notes = (string) ($data['notes'] ?? '');
+
+        $fingerprintJson = json_encode([
+            'customer_id' => $customerId,
+            'amount' => $amount,
+            'payment_date' => $paymentDate,
+            'payment_method_id' => $paymentMethodId,
+            'branch_id' => $branchId,
+            'sale_id' => $saleId,
+            'cost_center_id' => isset($data['cost_center_id']) ? (int) $data['cost_center_id'] : null,
+            'reference_number' => isset($data['reference_number']) ? (string) $data['reference_number'] : null,
+            'notes' => $notes,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($fingerprintJson === false) {
+            return $this->errorResponse($response, 'بيانات الدفعة غير صالحة.', 400);
+        }
+        $requestFingerprint = hash('sha256', $fingerprintJson);
+
+        $idempotency = $idempotencyKey !== ''
+            ? new \App\Services\IdempotencyService($this->db)
+            : null;
+        if ($idempotency !== null) {
+            $cached = $idempotency->checkStrict((int) $tenantId, $idempotencyKey);
+            if ($cached !== null) {
+                if (!hash_equals($requestFingerprint, (string) ($cached['_request_fingerprint'] ?? ''))) {
+                    return $this->errorResponse($response, 'مفتاح منع التكرار مستخدم لبيانات دفعة مختلفة.', 409);
+                }
+                unset($cached['_request_fingerprint']);
+                return $this->jsonResponse($response, $cached, 200);
             }
         }
 
@@ -820,12 +725,6 @@ class CustomersHandler extends BaseContactHandler
             return $this->errorResponse($response, 'لم يتم العثور على العميل', 404);
         }
 
-        $amount = (float) $data['amount'];
-        if ($amount <= 0) {
-            return $this->errorResponse($response, 'قيمة الدفعة يجب أن تكون أكبر من صفر', 400);
-        }
-
-        $saleId = !empty($data['sale_id']) ? (int) $data['sale_id'] : null;
         if ($saleId !== null) {
             $stmtChk = $this->db->prepare(
                 "SELECT id FROM sales WHERE id = ? AND customer_id = ? AND tenant_id = ? LIMIT 1"
@@ -836,25 +735,62 @@ class CustomersHandler extends BaseContactHandler
             }
         }
 
-        $paymentDate = $data['payment_date'] ?? date('Y-m-d');
-        $paymentMethodId = (int) $data['payment_method_id'];
-        $referenceNumber = $data['reference_number'] ?? ('CP-' . date('ymdHis'));
-        $userId = $this->extractUserId($request);
-        $branchId = $data['branch_id'] ?? null;
+        $userId          = $this->extractUserId($request);
+        $idempotencyLockName = $idempotency !== null
+            && $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql'
+            ? 'smartsys_payment:' . substr(hash('sha256', (int) $tenantId . ':' . $idempotencyKey), 0, 40)
+            : null;
+        $idempotencyLockAcquired = false;
 
         try {
+            if ($idempotencyLockName !== null) {
+                $lock = $this->db->prepare('SELECT GET_LOCK(?, 10)');
+                $lock->execute([$idempotencyLockName]);
+                if ((int) $lock->fetchColumn() !== 1) {
+                    throw new \RuntimeException('تعذر حجز مفتاح منع التكرار للدفعة.');
+                }
+                $idempotencyLockAcquired = true;
+            }
+
             $this->db->beginTransaction();
+            if ($idempotency !== null) {
+                $cached = $idempotency->claimStrict(
+                    (int) $tenantId,
+                    $idempotencyKey,
+                    $requestFingerprint
+                );
+                if ($cached !== null) {
+                    $cachedFingerprint = $cached['_request_fingerprint'] ?? null;
+                    $matches = is_string($cachedFingerprint)
+                        && hash_equals($requestFingerprint, $cachedFingerprint)
+                        && empty($cached['_processing']);
+                    $this->db->commit();
+                    if (!$matches) {
+                        return $this->errorResponse($response, 'مفتاح منع التكرار مستخدم لبيانات دفعة مختلفة.', 409);
+                    }
+                    unset($cached['_request_fingerprint']);
+                    return $this->jsonResponse($response, $cached, 200);
+                }
+            }
+
+            $forUpdate = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+            $customerLock = $this->db->prepare(
+                "SELECT id FROM customers WHERE id = ? AND tenant_id = ? LIMIT 1{$forUpdate}"
+            );
+            $customerLock->execute([$customerId, $tenantId]);
+            if (!$customerLock->fetchColumn()) {
+                throw new \App\Exceptions\NotFoundException('لم يتم العثور على العميل');
+            }
 
             $isSessionsEnabled = $this->isSessionsEnabled((int) $tenantId);
-            $isExempt = $this->isCashierSessionExempt($request);
-            $isCash = $this->isCashMethod($paymentMethodId, (int) $tenantId);
-            $sessionId = null;
+            $isExempt          = $this->isCashierSessionExempt($request);
+            $isCash            = $this->isCashMethod($paymentMethodId, (int) $tenantId);
+            $sessionId         = null;
 
             if ($isSessionsEnabled && $isCash && $amount > 0 && !$isExempt) {
                 if (!$branchId) {
                     throw new \Exception('يجب تحديد المخزن لإتمام الدفعة النقدية للكاشير.');
                 }
-
                 $sessionId = $this->requireOpenCashierSession(
                     (int) $tenantId,
                     (int) $branchId,
@@ -869,11 +805,12 @@ class CustomersHandler extends BaseContactHandler
                     (int) $tenantId,
                     $userId ? (int) $userId : null,
                     isset($data['cost_center_id']) ? (int) $data['cost_center_id'] : null,
-                    // فرع الدفعة نفسه (كان متاحاً في $branchId أعلاه ولم يكن يُمرَّر) —
-                    // بدونه كانت الدفعة تُنسب لمركز تكلفة فرع المستخدم بدل فرع نقطة البيع الفعلية.
                     $branchId ? (int) $branchId : null
                 );
             } catch (\Exception $e) {
+                if ($this->db->inTransaction()) {
+                    $this->db->rollBack();
+                }
                 return $this->errorResponse(
                     $response,
                     'لا توجد مراكز تكلفة. يرجى إنشاء مركز تكلفة واحد على الأقل.',
@@ -881,8 +818,27 @@ class CustomersHandler extends BaseContactHandler
                 );
             }
 
-            $currency = $this->getCompanyCurrency((int)$tenantId);
-            $stmt = $this->db->prepare("
+            // The posting method and payment type depend on whether a sale is selected.
+            $paymentType = $saleId !== null ? 'sale' : 'customer';
+            $currency    = $this->getCompanyCurrency((int) $tenantId);
+
+            $insertPayment = function (?int $journalEntryId) use (
+                $tenantId,
+                $customerId,
+                $saleId,
+                $branchId,
+                $amount,
+                $paymentDate,
+                $paymentMethodId,
+                $referenceNumber,
+                $notes,
+                $userId,
+                $paymentType,
+                $costCenterId,
+                $currency,
+                $sessionId
+            ): int {
+                $stmt = $this->db->prepare("
                 INSERT INTO payments (
                     tenant_id,
                     customer_id,
@@ -891,127 +847,212 @@ class CustomersHandler extends BaseContactHandler
                     payment_date,
                     payment_method_id,
                     reference_number,
+                    notes,
                     created_by,
                     is_draft,
                     status,
                     type,
                     created_at,
                     cost_center_id,
-                    currency
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'completed', 'customer', NOW(), ?, ?)
+                    currency,
+                    session_id,
+                    branch_id,
+                    journal_entry_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'completed', ?, NOW(), ?, ?, ?, ?, ?)
             ");
-            $stmt->execute([
-                (int) $tenantId,
-                $customerId,
-                $saleId,
-                $amount,
-                $paymentDate,
-                $paymentMethodId,
-                $referenceNumber,
-                $userId,
-                $costCenterId,
-                $currency
-            ]);
+                $stmt->execute([
+                    (int) $tenantId,
+                    $customerId,
+                    $saleId,
+                    $amount,
+                    $paymentDate,
+                    $paymentMethodId,
+                    $referenceNumber,
+                    $notes,
+                    $userId,
+                    $paymentType,
+                    $costCenterId,
+                    $currency,
+                    $sessionId,
+                    $branchId,
+                    $journalEntryId,
+                ]);
 
-            $paymentId = (int) $this->db->lastInsertId();
-            // ✅ Single Source of Truth: resolveLiquidityAccount يتعامل مع cash/bank/card/wallet/credit
-            $liquidityAccountId = $this->accounting->resolveLiquidityAccount($paymentMethodId, (int) $tenantId);
+                return (int) $this->db->lastInsertId();
+            };
 
-            if ($liquidityAccountId === null) {
-                throw new \Exception('طريقة الدفع آجلة (credit) — لا سطر سيولة مطلوب لهذه الدفعة.');
+            if ($saleId !== null) {
+                $paymentId = $insertPayment(null);
+                if ($paymentId <= 0) {
+                    throw new \Exception('فشل إنشاء سجل دفعة العميل.');
+                }
+
+                $jeId = $this->accounting->postSalePaymentJournalEntry(
+                    (int) $tenantId,
+                    $saleId,
+                    $paymentId,
+                    $amount,
+                    $paymentDate,
+                    $paymentMethodId,
+                    $userId,
+                    $costCenterId,
+                    $idempotencyKey !== '' ? $idempotencyKey : null
+                );
+                $this->db->prepare(
+                    'UPDATE payments SET journal_entry_id = ? WHERE id = ? AND tenant_id = ?'
+                )->execute([$jeId, $paymentId, (int) $tenantId]);
+            } else {
+                $customerAccountId = $customer['account_id'] ?? null;
+                if (!$customerAccountId) {
+                    throw new \Exception('لم يتم العثور على حساب العميل.');
+                }
+
+                $paymentId = $insertPayment(null);
+                if ($paymentId <= 0) {
+                    throw new \Exception('فشل إنشاء سجل دفعة العميل.');
+                }
+
+                $jeId = $this->accounting->postDebtPaymentJournalEntry(
+                    (int) $tenantId,
+                    $customerId,
+                    (int) $customerAccountId,
+                    $amount,
+                    $paymentDate,
+                    $paymentMethodId,
+                    $userId,
+                    $costCenterId,
+                    $paymentId,
+                    $idempotencyKey !== '' ? $idempotencyKey : null
+                );
+                $this->db->prepare(
+                    'UPDATE payments SET journal_entry_id = ? WHERE id = ? AND tenant_id = ?'
+                )->execute([$jeId, $paymentId, (int) $tenantId]);
             }
-
-            $customerAccountId = $customer['account_id'] ?? null;
-            if (!$customerAccountId) {
-                throw new \Exception('لم يتم العثور على حساب العميل.');
-            }
-
-            $jeId = $this->accounting->postPayment(
-                (int) $tenantId,
-                $paymentId,
-                $amount,
-                'customer_payment',
-                null,
-                null,
-                null,
-                $userId,
-                $costCenterId,
-                $liquidityAccountId,
-                (int) $customerAccountId,
-                'دفعة عميل - ' . $customer['name']
-            );
 
             if (!$jeId) {
                 throw new \Exception('فشل في تسجيل القيد المحاسبي للدفعة.');
             }
 
-            if ($sessionId) {
-                $stmt = $this->db->prepare("
-                    UPDATE payments
-                    SET session_id = ?
-                    WHERE id = ? AND tenant_id = ?
-                ");
-                $stmt->execute([$sessionId, $paymentId, (int) $tenantId]);
+            $allocationSaleIds = [];
+            if ($saleId === null) {
+                $allocationSaleIds = (new CustomerPaymentAllocationService($this->db))->allocatePayment(
+                    (int) $tenantId,
+                    $customerId,
+                    $paymentId,
+                    $amount,
+                    $branchId ? (int) $branchId : null
+                );
+            }
+
+            // Keep cash-session and liquidity reports aligned with cash payments.
+            if ($isCash) {
+                $refType = $saleId !== null ? 'sale' : 'debt_payment';
+                $refId   = $saleId !== null ? $saleId : $paymentId;
+                $this->db->prepare("
+                    INSERT INTO cash_transactions (
+                        customer_id, amount, type,
+                        reference_type, reference_id,
+                        payment_method_id, created_by, created_at,
+                        tenant_id, status,
+                        session_id, cost_center_id, journal_entry_id
+                    ) VALUES (?, ?, 'income', ?, ?, ?, ?, NOW(), ?, 'completed', ?, ?, ?)
+                ")->execute([
+                    $customerId, $amount,
+                    $refType, $refId,
+                    $paymentMethodId, $userId,
+                    (int) $tenantId,
+                    $sessionId, $costCenterId, $jeId,
+                ]);
+            }
+
+            if ($saleId !== null) {
+                $statusResult = $this->accounting->recalculateSaleStatus((int) $tenantId, $saleId);
+            }
+            foreach ($allocationSaleIds as $allocatedSaleId) {
+                $this->accounting->recalculateSaleStatus((int) $tenantId, $allocatedSaleId);
+            }
+
+            $responseData = [
+                'status' => 'success',
+                'message' => 'تم تسجيل الدفعة بنجاح',
+                'data' => [
+                    'payment_id' => $paymentId,
+                    'journal_entry_id' => $jeId,
+                    'customer_id' => $customerId,
+                    'amount' => $amount,
+                    'sale_id' => $saleId,
+                    'allocated_sale_ids' => $allocationSaleIds,
+                    'reference_number' => $referenceNumber,
+                    'notes' => $notes,
+                ],
+            ];
+            if ($idempotency !== null) {
+                $cachedResponse = $responseData;
+                $cachedResponse['_request_fingerprint'] = $requestFingerprint;
+                $idempotency->storeStrict((int) $tenantId, $idempotencyKey, $paymentId, $cachedResponse);
             }
 
             $this->db->commit();
 
-            if ($saleId !== null) {
-                $saleRepo   = new SaleRepository($this->db);
-                $payRepo    = new PaymentRepository($this->db);
-                $totalPaid  = $payRepo->getTotalPaidForSale($saleId, $tenantId);
-                $grandTotal = $saleRepo->getGrandTotal($saleId, $tenantId);
-                $newStatus  = $grandTotal <= 0 ? 'paid' : ($totalPaid <= 0 ? 'due' : ($totalPaid >= $grandTotal ? 'paid' : 'partial'));
-                $saleRepo->updateBalance($saleId, $tenantId, $totalPaid, $newStatus);
-            }
-
             try {
-                $audit = $this->audit;
-                $audit->logAction(
+                $this->audit->logAction(
                     'customer_payment_added',
                     'customers',
                     $customerId,
                     [
-                        'tenant_id' => (int) $tenantId,
-                        'user_id' => $userId ?? null,
-                        'branch_id' => $branchId ?? null,
-                        'session_id' => $sessionId ?? null,
-                        'customer_id' => $customerId,
-                        'payment_id' => $paymentId,
-                        'amount' => $amount,
-                        'payment_method_id' => $paymentMethodId,
-                        'payment_date' => $paymentDate
+                        'tenant_id'          => (int) $tenantId,
+                        'user_id'            => $userId ?? null,
+                        'branch_id'          => $branchId ?? null,
+                        'session_id'         => $sessionId ?? null,
+                        'customer_id'        => $customerId,
+                        'sale_id'            => $saleId,
+                        'payment_id'         => $paymentId,
+                        'amount'             => $amount,
+                        'payment_method_id'  => $paymentMethodId,
+                        'payment_date'       => $paymentDate,
+                        'journal_entry_id'   => $jeId,
+                        'payment_type'       => $paymentType,
                     ],
                     (int) $tenantId,
                     $userId
                 );
             } catch (\Throwable $e) {
-                // Log audit failure but don't fail the payment
                 $this->logger->warning('Failed to log audit trail for customer payment', [
-                    'payment_id' => $paymentId,
+                    'payment_id'  => $paymentId,
                     'customer_id' => $customerId,
-                    'error' => $e->getMessage()
+                    'error'       => $e->getMessage()
                 ]);
             }
 
-            return $this->successResponse($response, [
-                'payment_id' => $paymentId,
-                'journal_entry_id' => $jeId,
-                'customer_id' => $customerId,
-                'amount' => $amount
-            ], 201);
+            return $this->jsonResponse($response, $responseData, 201);
+
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
             }
-
             $this->logger->error('Customer payment failed', [
-                'message' => $e->getMessage(),
-                'tenant_id' => $tenantId,
-                'customer_id' => $customerId
+                'message'     => $e->getMessage(),
+                'tenant_id'   => $tenantId,
+                'customer_id' => $customerId,
             ]);
-
-            return $this->errorResponse($response, 'فشل تسجيل الدفعة', 500);
+            return $this->errorResponse($response, 'فشل تسجيل الدفعة: ' . $e->getMessage(), 500);
+        } finally {
+            if ($idempotencyLockAcquired && $idempotencyLockName !== null) {
+                try {
+                    $release = $this->db->prepare('SELECT RELEASE_LOCK(?)');
+                    $release->execute([$idempotencyLockName]);
+                    if ((int) $release->fetchColumn() !== 1) {
+                        $this->logger->warning('Failed to release customer payment idempotency lock', [
+                            'tenant_id' => $tenantId,
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    $this->logger->warning('Failed to release customer payment idempotency lock', [
+                        'tenant_id' => $tenantId,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
     }
 }

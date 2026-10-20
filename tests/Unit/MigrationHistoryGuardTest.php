@@ -14,6 +14,8 @@ final class MigrationHistoryGuardTest extends TestCase
         '003_insert_core_data',
         '004_add_accounting_period_close_override',
         '005_allow_optional_opening_snapshot_mapping',
+        '006_tenant_scoped_operational_roles',
+        '007_add_purchase_request_idempotency',
     ];
 
     public function testAllowsAnEmptyDatabaseToBootstrapItsLedger(): void

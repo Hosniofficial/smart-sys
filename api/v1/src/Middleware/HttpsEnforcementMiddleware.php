@@ -11,10 +11,7 @@ use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 use Slim\Psr7\Response as SlimResponse;
 
 /**
- * HTTPS Enforcement Middleware
- *
- * Redirects all HTTP requests to HTTPS in production
- * Adds HSTS headers for secure connections
+ * Redirects eligible HTTP requests to HTTPS and adds HSTS to HTTPS responses.
  */
 class HttpsEnforcementMiddleware implements MiddlewareInterface
 {
@@ -36,23 +33,21 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
         ];
     }
 
+    /** Enforce HTTPS before dispatch, unless disabled or the request is excluded. */
     public function process(Request $request, RequestHandler $handler): Response
     {
         $scheme = $request->getUri()->getScheme();
         $path = $request->getUri()->getPath();
         $host = $request->getUri()->getHost();
 
-        // Skip HTTPS enforcement for excluded paths
         if ($this->isPathExcluded($path)) {
             return $handler->handle($request);
         }
 
-        // Skip HTTPS enforcement for localhost (development)
         if (in_array($host, ['localhost', '127.0.0.1', '0.0.0.0'])) {
             return $handler->handle($request);
         }
 
-        // Redirect HTTP → HTTPS without executing the handler first
         if ($this->enabled && $this->redirectToHttps && $scheme === 'http') {
             $httpsUri = $request->getUri()->withScheme('https')->withPort(null);
             return (new SlimResponse())
@@ -60,15 +55,9 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
                 ->withHeader('Location', (string)$httpsUri);
         }
 
-        // Process request
         $response = $handler->handle($request);
 
-        // Add HSTS header for HTTPS connections only
         if ($scheme === 'https') {
-            // Strict-Transport-Security header
-            // max-age: 1 year (31536000 seconds)
-            // includeSubDomains: apply to all subdomains
-            // preload: opt-in to HSTS preload list
             $response = $response->withHeader(
                 'Strict-Transport-Security',
                 'max-age=31536000; includeSubDomains; preload'
@@ -78,9 +67,7 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
         return $response;
     }
 
-    /**
-     * Check if path should be excluded from HTTPS enforcement
-     */
+    /** Return whether the path matches an excluded prefix. */
     private function isPathExcluded(string $path): bool
     {
         foreach ($this->excludePaths as $excludePath) {

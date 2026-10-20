@@ -149,6 +149,8 @@
 
               <div v-if="customerSalesLoading" class="text-xs text-slate-400 font-bold py-2 flex items-center justify-center h-14">جاري تحميل الفواتير...</div>
 
+              <p v-else-if="customerSalesError" class="text-xs text-rose-600 font-bold py-2">{{ customerSalesError }}</p>
+
               <select v-else v-model="localForm.sale_id" class="form-input-v3 h-14 font-bold">
 
                 <option :value="null">— بدون ربط —</option>
@@ -276,7 +278,6 @@
             variant="primary"
             loaderType="dots"
             type="submit"
-            @click="handleSubmit"
             class="px-10 h-10"
           />
 
@@ -292,7 +293,7 @@
 
 import { ref, computed, watch } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
-
+import BaseSpinner from '@/components/ui/BaseSpinner.vue';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 import { useToast } from '@/composables/useToast';
@@ -357,15 +358,21 @@ const customerSales = ref([]);
 
 const customerSalesLoading = ref(false);
 
+const customerSalesError = ref('');
+
 const customerPendingSales = computed(() =>
 
   customerSales.value.filter(s => {
 
     const remaining = s.remaining_balance ?? (s.net_total_amount - (s.actual_paid_amount || s.paid_amount || 0));
 
-    const status = s.dynamic_status || s.status;
+    const allowedStatuses = ['pending_payment', 'partial', 'due'];
+    const status = String(s.status || '').toLowerCase();
+    const dynamicStatus = String(s.dynamic_status || s.status || '').toLowerCase();
 
-    return remaining > 0 && !['paid', 'settled', 'closed_by_return', 'returned', 'settled_by_return'].includes(status);
+    return remaining > 0
+      && allowedStatuses.includes(status)
+      && allowedStatuses.includes(dynamicStatus);
 
   })
 
@@ -374,6 +381,7 @@ const customerPendingSales = computed(() =>
 const loadCustomerSales = async (customerId) => {
 
   customerSales.value = [];
+  customerSalesError.value = '';
 
   if (!customerId) return;
 
@@ -381,25 +389,21 @@ const loadCustomerSales = async (customerId) => {
 
   try {
 
-    const res = await salesStore.fetchSalesList({ customerId, perPage: 100, force: true });
-
+    const res = await salesStore.fetchSalesList({
+      customerId,
+      branchId: localForm.value.branch_id || undefined,
+      perPage: 100,
+      force: true
+    });
+    if (res?.status !== 'success') {
+      throw new Error(res?.message || 'تعذر تحميل فواتير العميل.');
+    }
     customerSales.value = res?.data?.items || [];
 
-    const pending = customerPendingSales.value;
-
-    if (pending.length === 1 && !localForm.value.sale_id) {
-
-      localForm.value.sale_id = pending[0].id;
-
-      showToast(`تم ربط الفاتورة "${pending[0].invoice_number}" تلقائياً`, 'info');
-
-    } else if (pending.length > 1 && !localForm.value.sale_id) {
-
-      showToast(`يوجد ${pending.length} فاتورة مستحقة - اختر الفاتورة المراد ربطها`, 'warning');
-
-    }
-
-  } catch { customerSales.value = []; }
+  } catch (error) {
+    customerSales.value = [];
+    customerSalesError.value = error?.message || 'تعذر تحميل فواتير العميل.';
+  }
 
   finally { customerSalesLoading.value = false; }
 
@@ -407,7 +411,7 @@ const loadCustomerSales = async (customerId) => {
 
 watch(
 
-  [() => localForm.value.customer_id, () => localForm.value.type],
+  [() => localForm.value.customer_id, () => localForm.value.type, () => localForm.value.branch_id],
 
   ([custId, type]) => {
 

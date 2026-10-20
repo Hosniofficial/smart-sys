@@ -10,16 +10,21 @@ use Throwable;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
+use App\Utils\SuperAdminHelper;
 use App\Services\CashierSessionService;
 use App\Services\SessionDeniedException;
 use App\Utils\RequestHelper;
 use App\Utils\PaginationHelper;
 
 /**
- * SessionsHandler
+ * Handles cashier-session lifecycle and reporting endpoints.
  *
- * Thin HTTP handler for cashier session endpoints.
- * All business logic delegated to CashierSessionService.
+ * Lifecycle and individual-session summaries use CashierSessionService. Current,
+ * list, and daily-summary reads query PDO directly; batch summaries validate
+ * branch access before delegating bulk construction to the service. Tenant scope
+ * comes from request context; list and daily-summary branch access is resolved
+ * against user context, and actions use the BaseHandler audit logger.
+ * Routes are registered in app/routes/sessions.php.
  */
 class SessionsHandler extends BaseHandler
 {
@@ -28,10 +33,6 @@ class SessionsHandler extends BaseHandler
         parent::__construct($db);
         $this->logger = MonologHandler::getInstance('sessions');
     }
-
-    // =========================================================================
-    // Helpers
-    // =========================================================================
 
     private function sessionService(): CashierSessionService
     {
@@ -54,10 +55,7 @@ class SessionsHandler extends BaseHandler
         }
     }
 
-    // =========================================================================
-    // POST /sessions/open
-    // =========================================================================
-
+    /** Open a cashier session through the domain service and audit the result. */
     public function open(Request $request, Response $response): Response
     {
         $tenantId  = null;
@@ -78,7 +76,8 @@ class SessionsHandler extends BaseHandler
                 (int) $tenantId,
                 $data,
                 $jwtUserId ? (int)$jwtUserId : null,
-                $jwtRoleId ? (int)$jwtRoleId : null
+                $jwtRoleId ? (int)$jwtRoleId : null,
+                SuperAdminHelper::isAdminOrAbove(is_array($user) ? $user : null)
             );
 
             $this->logAction((int)$tenantId, 'pos_session_opened', [
@@ -106,10 +105,7 @@ class SessionsHandler extends BaseHandler
         }
     }
 
-    // =========================================================================
-    // POST /sessions/close  OR  POST /sessions/{id}/close
-    // =========================================================================
-
+    /** Close a session and return its cash reconciliation summary. */
     public function close(Request $request, Response $response, array $args = []): Response
     {
         try {
@@ -179,10 +175,7 @@ class SessionsHandler extends BaseHandler
         }
     }
 
-    // =========================================================================
-    // GET /sessions/current
-    // =========================================================================
-
+    /** Return the open session matching the supplied cashier, branch, or device filters. */
     public function current(Request $request, Response $response): Response
     {
         try {
@@ -235,10 +228,7 @@ class SessionsHandler extends BaseHandler
         }
     }
 
-    // =========================================================================
-    // GET /sessions
-    // =========================================================================
-
+    /** Return paginated sessions and cash KPIs for the resolved tenant/branch scope. */
     public function listSessions(Request $request, Response $response): Response
     {
         try {
@@ -249,7 +239,19 @@ class SessionsHandler extends BaseHandler
 
             $q           = $request->getQueryParams();
             $status      = $q['status']       ?? null;
-            $branchId    = $q['branch_id']    ?? null;
+            $branchScope = $this->resolveBranchScope(
+                $request,
+                (int) $tenantId,
+                $q['branch_id'] ?? null
+            );
+            if (isset($branchScope['error'])) {
+                return $this->errorResponse(
+                    $response,
+                    $branchScope['error'],
+                    $branchScope['status']
+                );
+            }
+            $branchId    = $branchScope['branch_id'];
             $cashierId   = $q['cashier_id']   ?? null;
             $sessionType = $q['session_type'] ?? null;
             $device      = $q['device']       ?? $q['device_name'] ?? null;
@@ -262,7 +264,6 @@ class SessionsHandler extends BaseHandler
                                 : (in_array($hasVarianceRaw, ['no','false','0'], true) ? 'no' : null);
             [$page, $limit, $offset] = PaginationHelper::fromArray($q, 20, 100);
 
-            // ─── Use LEFT JOIN for cash_transactions to avoid repeated correlated subqueries ───
             $baseSql = "
                 FROM cashier_sessions cs
                 LEFT JOIN users u  ON cs.cashier_id = u.id  AND u.tenant_id  = cs.tenant_id
@@ -273,7 +274,7 @@ class SessionsHandler extends BaseHandler
                         COALESCE(SUM(CASE WHEN type IN ('income','return_receipt','sale','deposit')              THEN amount ELSE 0 END), 0) AS cash_in,
                         COALESCE(SUM(CASE WHEN type IN ('expense','return_payment','purchase','withdrawal')      THEN amount ELSE 0 END), 0) AS cash_out
                     FROM cash_transactions
-                    WHERE tenant_id = ?
+                    WHERE tenant_id = ? AND COALESCE(status, '') <> 'cancelled'
                     GROUP BY session_id
                 ) ct ON ct.session_id = cs.id
                 WHERE cs.tenant_id = ?
@@ -317,7 +318,6 @@ class SessionsHandler extends BaseHandler
                 }
             }
 
-            // ─── Main list query ──────────────────────────────────────────────────────────
             $selectFields = "
                 cs.*,
                 u.name  AS cashier_name,
@@ -350,12 +350,10 @@ class SessionsHandler extends BaseHandler
             }
             unset($item);
 
-            // ─── Total count ──────────────────────────────────────────────────────────────
             $countStmt = $this->db->prepare("SELECT COUNT(*) $baseSql");
             $countStmt->execute($params);
             $total = (int) $countStmt->fetchColumn();
 
-            // ─── KPI aggregation over full filtered set (not just current page) ──────────
             $kpiSql = "
                 SELECT
                     COUNT(*) AS total_sessions,
@@ -389,10 +387,7 @@ class SessionsHandler extends BaseHandler
         }
     }
 
-    // =========================================================================
-    // GET /sessions/{id}/summary
-    // =========================================================================
-
+    /** Return a session summary after checking tenant and branch access. */
     public function summary(Request $request, Response $response, array $args): Response
     {
         try {
@@ -411,6 +406,12 @@ class SessionsHandler extends BaseHandler
             if (!$summary['session']) {
                 return $this->errorResponse($response, 'لم يتم العثور على الجلسة.', 404);
             }
+            if (!$this->canAccessSessionBranch(
+                $request,
+                (int) ($summary['session']['branch_id'] ?? 0)
+            )) {
+                return $this->errorResponse($response, 'لم يتم العثور على الجلسة.', 404);
+            }
 
             return $this->successResponse($response, $summary, 200);
         } catch (Exception $e) {
@@ -419,138 +420,83 @@ class SessionsHandler extends BaseHandler
         }
     }
 
-    // =========================================================================
-    // GET /sessions/summary  (daily list with variance filter)
-    // =========================================================================
+    private function resolveBranchScope(
+        Request $request,
+        int $tenantId,
+        mixed $requestedBranchId
+    ): array {
+        $user = $request->getAttribute('user');
+        $user = is_array($user) ? $user : null;
+        $branchId = null;
 
-    public function dailySummary(Request $request, Response $response): Response
+        if ($requestedBranchId !== null && $requestedBranchId !== '') {
+            $branchId = filter_var(
+                $requestedBranchId,
+                FILTER_VALIDATE_INT,
+                ['options' => ['min_range' => 1]]
+            );
+            if ($branchId === false) {
+                return ['error' => 'معرف الفرع غير صالح.', 'status' => 400];
+            }
+        }
+
+        if (!$this->canViewAllBranches($user)) {
+            $userBranchId = (int) ($user['branch_id'] ?? 0);
+            if ($userBranchId <= 0) {
+                return ['error' => 'لم يتم تعيين فرع لحسابك.', 'status' => 403];
+            }
+            if ($branchId !== null && (int) $branchId !== $userBranchId) {
+                return ['error' => 'غير مصرح لك بعرض بيانات هذا الفرع.', 'status' => 403];
+            }
+            $branchId = $userBranchId;
+        }
+
+        if ($branchId !== null) {
+            $branchStmt = $this->db->prepare(
+                'SELECT 1 FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1'
+            );
+            $branchStmt->execute([(int) $branchId, $tenantId]);
+            if (!$branchStmt->fetchColumn()) {
+                return ['error' => 'الفرع المحدد غير موجود.', 'status' => 404];
+            }
+        }
+
+        return ['branch_id' => $branchId === null ? null : (int) $branchId];
+    }
+
+    /** Managers and administrators can query across branches. */
+    private function canViewAllBranches(?array $user): bool
     {
-        try {
-            $tenantId = $request->getAttribute('tenant_id');
-            if (!$tenantId) {
-                return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-            }
-
-            $query = $request->getQueryParams();
-
-            $varianceSql = "
-                cs.opening_cash_amount
-                + COALESCE((SELECT SUM(amount) FROM cash_transactions WHERE tenant_id = cs.tenant_id AND session_id = cs.id AND type IN ('income','return_receipt','sale','deposit')),0)
-                - COALESCE((SELECT SUM(amount) FROM cash_transactions WHERE tenant_id = cs.tenant_id AND session_id = cs.id AND type IN ('expense','return_payment','purchase','withdrawal')),0)
-            ";
-
-            $sql = "
-                SELECT cs.id, DATE(cs.start_time) AS session_date,
-                       cs.start_time, cs.end_time, cs.status, cs.session_type,
-                       cs.opening_cash_amount, cs.closing_cash_amount, cs.variance_reason,
-                       cs.branch_id, b.name AS branch_name,
-                       cs.terminal_id, t.name AS terminal_name,
-                       cs.cashier_id, u.name AS cashier_name, u2.name AS closed_by_name,
-                       cs.device_name,
-                       ($varianceSql) AS expected_cash,
-                       cs.closing_cash_amount AS actual_cash,
-                       cs.closing_cash_amount - ($varianceSql) AS variance_amount
-                FROM cashier_sessions cs
-                LEFT JOIN branches b  ON cs.branch_id   = b.id  AND b.tenant_id  = cs.tenant_id
-                LEFT JOIN terminals t ON cs.terminal_id = t.id  AND t.tenant_id  = cs.tenant_id
-                LEFT JOIN users u     ON cs.cashier_id  = u.id  AND u.tenant_id  = cs.tenant_id
-                LEFT JOIN users u2    ON cs.closed_by   = u2.id AND u2.tenant_id = cs.tenant_id
-                WHERE cs.tenant_id = ?
-            ";
-            $params     = [$tenantId];
-            $countSql   = "SELECT COUNT(*) FROM cashier_sessions cs WHERE cs.tenant_id = ?";
-            $countParams = [$tenantId];
-
-            $this->applyDailySummaryFilters($query, $sql, $params, $countSql, $countParams);
-
-            [$page, $limit, $offset] = PaginationHelper::fromArray($query, 50, 100);
-            $sql    .= " ORDER BY cs.start_time DESC LIMIT ? OFFSET ?";
-            $params[] = $limit;
-            $params[] = $offset;
-
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
-            $sessions = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            $countStmt = $this->db->prepare($countSql);
-            $countStmt->execute($countParams);
-            $total = (int)$countStmt->fetchColumn();
-
-            return $this->successResponse($response, [
-                'items' => $sessions, 'total' => $total,
-                'page' => $page, 'limit' => $limit,
-                'total_pages' => (int)ceil($total / $limit),
-            ], 200);
-        } catch (Exception $e) {
-            $this->logger->error('Daily summary failed', ['message' => $e->getMessage()]);
-            return $this->errorResponse($response, 'فشل في إنشاء الملخص اليومي', 400);
+        if ($user === null) {
+            return false;
         }
+
+        $roles = [];
+        if (isset($user['roles']) && is_array($user['roles'])) {
+            $roles = array_map(
+                static fn ($role): string => strtolower((string) $role),
+                $user['roles']
+            );
+        } elseif (isset($user['role']) && is_string($user['role'])) {
+            $roles = [strtolower($user['role'])];
+        }
+
+        return SuperAdminHelper::isAdminOrAbove($user)
+            || in_array('manager', $roles, true);
     }
 
-    // =========================================================================
-    // Private Helpers
-    // =========================================================================
+    private function canAccessSessionBranch(Request $request, int $branchId): bool
+    {
+        $user = $request->getAttribute('user');
+        $user = is_array($user) ? $user : null;
+        if ($this->canViewAllBranches($user)) {
+            return true;
+        }
 
-    private function applyDailySummaryFilters(
-        array  $query,
-        string &$sql,
-        array  &$params,
-        string &$countSql,
-        array  &$countParams
-    ): void {
-        if (!empty($query['from_date'])) {
-            $clause = " AND cs.start_time >= ?";
-            $val = $query['from_date'] . ' 00:00:00';
-            $sql .= $clause;
-            $params[] = $val;
-            $countSql .= $clause;
-            $countParams[] = $val;
-        }
-        if (!empty($query['to_date'])) {
-            $nd = date('Y-m-d', strtotime($query['to_date'] . ' +1 day'));
-            $clause = " AND cs.start_time < ?";
-            $val = $nd . ' 00:00:00';
-            $sql .= $clause;
-            $params[] = $val;
-            $countSql .= $clause;
-            $countParams[] = $val;
-        }
-        foreach (['branch_id' => 'cs.branch_id', 'cashier_id' => 'cs.cashier_id', 'terminal_id' => 'cs.terminal_id'] as $qKey => $col) {
-            if (!empty($query[$qKey])) {
-                $clause = " AND $col = ?";
-                $val = $query[$qKey];
-                $sql .= $clause;
-                $params[] = $val;
-                $countSql .= $clause;
-                $countParams[] = $val;
-            }
-        }
-        if (isset($query['has_variance'])) {
-            // Normalize variance filter: accept 'yes'/'true'/'1' and 'no'/'false'/'0'
-            $hasVarianceRaw = $query['has_variance'];
-            $hasVariance    = in_array($hasVarianceRaw, ['yes', 'true', '1', 1, true], true)
-                                ? 'yes'
-                                : (in_array($hasVarianceRaw, ['no', 'false', '0', 0, false], true) ? 'no' : null);
-
-            if ($hasVariance !== null) {
-                $varianceInner = "cs.closing_cash_amount - (cs.opening_cash_amount
-                    + COALESCE((SELECT SUM(amount) FROM cash_transactions WHERE tenant_id=cs.tenant_id AND session_id=cs.id AND type IN ('income','return_receipt','sale','deposit')),0)
-                    - COALESCE((SELECT SUM(amount) FROM cash_transactions WHERE tenant_id=cs.tenant_id AND session_id=cs.id AND type IN ('expense','return_payment','purchase','withdrawal')),0))";
-                if ($hasVariance === 'yes') {
-                    $clause = " AND cs.closing_cash_amount IS NOT NULL AND ABS($varianceInner) > 0.01";
-                } else {
-                    $clause = " AND (cs.closing_cash_amount IS NULL OR ABS($varianceInner) <= 0.01)";
-                }
-                $sql .= $clause;
-                $countSql .= $clause;
-            }
-        }
+        return $branchId > 0 && $branchId === (int) ($user['branch_id'] ?? 0);
     }
 
-    // =========================================================================
-    // POST /sessions/batch-summaries  (🆕 BATCH ENDPOINT - Fixes N+1 Problem)
-    // =========================================================================
-
+    /** Return up to 100 session summaries after tenant and branch access checks. */
     public function batchSummaries(Request $request, Response $response): Response
     {
         try {
@@ -559,7 +505,6 @@ class SessionsHandler extends BaseHandler
                 return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
             }
 
-            // Get session IDs from request body
             $data = $request->getParsedBody() ?? [];
             $sessionIds = $data['session_ids'] ?? [];
 
@@ -567,12 +512,10 @@ class SessionsHandler extends BaseHandler
                 return $this->errorResponse($response, 'مطلوب قائمة معرفات الجلسات (session_ids).', 400);
             }
 
-            // Limit to 100 sessions per request to prevent abuse
             if (count($sessionIds) > 100) {
                 return $this->errorResponse($response, 'يمكن طلب ملخصات لـ 100 جلسة كحد أقصى فقط.', 400);
             }
 
-            // Cast to integers and filter
             $sessionIds = array_unique(array_map(
                 fn($id) => (int)$id,
                 array_filter($sessionIds, fn($id) => !empty($id))
@@ -581,8 +524,28 @@ class SessionsHandler extends BaseHandler
             if (count($sessionIds) === 0) {
                 return $this->successResponse($response, [], 200);
             }
+            $user = $request->getAttribute('user');
+            $user = is_array($user) ? $user : null;
+            if (!$this->canViewAllBranches($user)) {
+                $userBranchId = (int) ($user['branch_id'] ?? 0);
+                if ($userBranchId <= 0) {
+                    return $this->errorResponse($response, 'لم يتم تعيين فرع لحسابك.', 403);
+                }
+                $placeholders = implode(',', array_fill(0, count($sessionIds), '?'));
+                $accessStmt = $this->db->prepare(
+                    "SELECT COUNT(DISTINCT id)
+                     FROM cashier_sessions
+                     WHERE tenant_id = ? AND branch_id = ? AND id IN ({$placeholders})"
+                );
+                $accessStmt->execute(array_merge(
+                    [(int) $tenantId, $userBranchId],
+                    $sessionIds
+                ));
+                if ((int) $accessStmt->fetchColumn() !== count($sessionIds)) {
+                    return $this->errorResponse($response, 'غير مصرح لك بعرض بعض الجلسات المطلوبة.', 404);
+                }
+            }
 
-            // 🚀 Use bulk query method - reduces DB queries from N×4 to ~4 total
             $summaries = $this->sessionService()->buildBulkSessionSummaries((int)$tenantId, $sessionIds);
 
             return $this->successResponse($response, $summaries, 200);

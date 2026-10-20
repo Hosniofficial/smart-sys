@@ -288,6 +288,51 @@ export const useProductStore = defineStore('product', () => {
     }
   };
 
+  const fetchActiveOpeningBalances = async (branchId) => {
+    try {
+      if (!branchId) throw new Error('Branch ID is required');
+      const response = await apiClient.get('/product-branch/opening-balances', {
+        params: { branch_id: String(branchId) },
+      });
+      const data = response?.data?.data || response?.data || {};
+      return {
+        status: response?.data?.status === 'success' ? 'success' : 'error',
+        data: data.opening_balances || [],
+        message: response?.data?.message,
+      };
+    } catch (error) {
+      console.error('fetchActiveOpeningBalances failed:', error);
+      return {
+        status: 'error',
+        data: [],
+        message: error.response?.data?.message || error.message,
+      };
+    }
+  };
+
+  const reverseOpeningBalance = async ({ productId, branchId } = {}) => {
+    try {
+      if (!productId || !branchId) throw new Error('Product ID and branch ID are required');
+      const response = await apiClient.post('/product-branch/opening-balance/reverse', {
+        product_id: Number(productId),
+        branch_id: Number(branchId),
+      });
+      invalidateCacheForBranch(branchId);
+      return {
+        status: response?.data?.status === 'success' ? 'success' : 'error',
+        data: response?.data?.data || response?.data || {},
+        message: response?.data?.message,
+      };
+    } catch (error) {
+      console.error('reverseOpeningBalance failed:', error);
+      return {
+        status: 'error',
+        data: null,
+        message: error.response?.data?.message || error.message,
+      };
+    }
+  };
+
   // ─── deleteProduct ────────────────────────────────────────────────────────
   /**
    * يحذف منتج ويمسح كل الـ cache المرتبط بيه
@@ -511,6 +556,8 @@ export const useProductStore = defineStore('product', () => {
     // Write Actions
     activateProductInBranch,
     postOpeningBalance,
+    fetchActiveOpeningBalances,
+    reverseOpeningBalance,
     deleteProduct,
     createProduct,
 

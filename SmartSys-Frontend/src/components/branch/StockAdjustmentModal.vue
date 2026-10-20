@@ -1,14 +1,15 @@
 <template>
-  <div
-    v-if="modelValue"
-    class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm font-sans antialiased text-slate-900"
-    @click.self="closeModal"
-  >
+  <Teleport to="body">
     <div
-      class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200 animate-modalIn flex flex-col text-right"
-      dir="rtl"
-      @click.stop
+      v-if="modelValue"
+      class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm font-sans antialiased text-slate-900"
+      @click.self="closeModal"
     >
+      <div
+        class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-hidden border border-slate-200 animate-modalIn flex flex-col text-right"
+        dir="rtl"
+        @click.stop
+      >
       
       <!-- Modal Header -->
       <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
@@ -17,8 +18,8 @@
             <i class="fas fa-sliders"></i>
           </div>
           <div>
-            <h3 class="text-sm font-bold text-slate-900 uppercase">تسوية رصيد المخزون</h3>
-            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">تعديل يدوي للكميات المتوفرة حالياً</p>
+            <h3 class="text-sm font-bold text-slate-900 uppercase">تسوية المخزون</h3>
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">تعديل يدوي للكميات في المخزون</p>
           </div>
         </div>
         <button
@@ -31,7 +32,7 @@
       </div>
 
       <!-- Modal Body -->
-      <form @submit.prevent="handleSubmit" class="p-6 space-y-5 overflow-y-auto custom-scroll max-h-[75vh]">
+      <form @submit.prevent="handleSubmit" class="flex-1 min-h-0 p-6 space-y-5 overflow-y-auto custom-scroll">
         
         <!-- Product Summary Profile -->
         <div v-if="product" class="bg-slate-900 text-white p-4 rounded-xl shadow-sm space-y-3 relative overflow-hidden">
@@ -73,7 +74,7 @@
             >
               <input type="radio" v-model="adjustmentType" value="add" class="sr-only">
               <i class="fas fa-plus text-[10px]"></i>
-              <span>إضافة وارد (+ رصيد)</span>
+              <span>إضافة كمية للمخزون (+)</span>
             </label>
 
             <label
@@ -168,8 +169,9 @@
         </button>
       </div>
 
+      </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <script setup>
@@ -219,9 +221,9 @@ const calculateNewQuantity = () => {
 const validate = () => {
   errors.value = {};
   let isValid = true;
-  if (!form.value.quantity || form.value.quantity <= 0) { errors.quantity = 'يجب إدخال كمية صحيحة'; isValid = false; }
-  else if (adjustmentType.value === 'remove' && form.value.quantity > props.product.quantity) { errors.quantity = 'الكمية المطلوبة أكبر من المتوفرة'; isValid = false; }
-  if (!form.value.reason) { errors.reason = 'يجب تحديد السبب'; isValid = false; }
+  if (!form.value.quantity || form.value.quantity <= 0) { errors.value.quantity = 'يجب إدخال كمية صحيحة'; isValid = false; }
+  else if (adjustmentType.value === 'remove' && form.value.quantity > props.product.quantity) { errors.value.quantity = 'الكمية المطلوب خصمها أكبر من الكمية المتاحة.'; isValid = false; }
+  if (!form.value.reason) { errors.value.reason = 'يجب تحديد السبب'; isValid = false; }
   return isValid;
 };
 

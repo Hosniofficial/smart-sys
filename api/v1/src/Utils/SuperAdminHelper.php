@@ -9,16 +9,8 @@ namespace App\Utils;
  *
  * Single source of truth for super-admin identity checks.
  *
- * Problem solved:
- *   The codebase had 6 different ways to detect a super-admin:
- *     - PermissionMiddleware  → role_id === 1  (SUPER_ADMIN_ROLE_ID constant)
- *     - SubscriptionMiddleware → role === 'super_admin'  (string)
- *     - SuperAdminMiddleware   → role !== 'super_admin'  (string)
- *     - AdminSettingsHandler   → in_array(role, ['super_admin','admin'])
- *     - RBACHandler            → in_array(role, ['super_admin','admin'])
- *     - UsersHandler           → role_id === 1  (hardcoded)
- *
- *   A change to the role name or ID in one place would silently break others.
+ * Platform identity is determined by both the canonical role and explicit
+ * platform scope. Tenant owners/admins remain tenant-scoped administrators.
  *
  * Usage:
  *   use App\Utils\SuperAdminHelper;
@@ -34,14 +26,11 @@ final class SuperAdminHelper
     /** The canonical role string stored in the users table. */
     public const SUPER_ADMIN_ROLE = 'super_admin';
 
-    /** Role strings that are considered "admin or above". */
-    private const ADMIN_ROLES = ['super_admin', 'admin'];
-
     /**
      * Returns true if the given user payload represents a super-admin.
      *
-     * Accepts both role_id (int) and role (string) checks so that
-     * callers do not need to know which column is populated.
+     * Accepts role_id (int) or role (string), but requires an explicit platform
+     * scope so tenant users cannot inherit platform identity from a stale role.
      *
      * @param array|null $user  Associative array from JWT / request attribute.
      *                          Expected keys: 'role_id' (int) and/or 'role' (string).
@@ -52,17 +41,17 @@ final class SuperAdminHelper
             return false;
         }
 
-        // Check by role_id (most reliable — not affected by string casing)
-        if (isset($user['role_id']) && (int) $user['role_id'] === self::SUPER_ADMIN_ROLE_ID) {
-            return true;
+        if (!array_key_exists('tenant_id', $user)) {
+            return false;
         }
 
-        // Check by role string (case-insensitive for safety)
-        if (isset($user['role']) && strtolower((string) $user['role']) === self::SUPER_ADMIN_ROLE) {
-            return true;
+        $tenantId = $user['tenant_id'];
+        if ($tenantId !== null && (int) $tenantId !== 0) {
+            return false;
         }
 
-        return false;
+        return (isset($user['role_id']) && (int) $user['role_id'] === self::SUPER_ADMIN_ROLE_ID)
+            || (isset($user['role']) && strtolower((string) $user['role']) === self::SUPER_ADMIN_ROLE);
     }
 
     /**
@@ -82,15 +71,16 @@ final class SuperAdminHelper
             return true;
         }
 
-        if (isset($user['role']) && in_array(strtolower((string) $user['role']), self::ADMIN_ROLES, true)) {
-            return true;
+        if (!isset($user['tenant_id']) || (int) $user['tenant_id'] <= 0) {
+            return false;
         }
 
-        return false;
+        return (!empty($user['is_owner']) && (int) $user['is_owner'] === 1)
+            || (isset($user['role']) && strtolower((string) $user['role']) === 'admin');
     }
 
     /**
-     * Returns true if the user is NOT a super-admin.
+     * Returns true if the user is not a platform super-admin.
      * Convenience inverse used by SuperAdminMiddleware.
      *
      * @param array|null $user

@@ -5,44 +5,19 @@ declare(strict_types=1);
 namespace App\Services;
 
 use PDO;
+use PDOException;
 
 /**
- * IdempotencyService — prevents double-submission of payment requests.
+ * Reads and stores tenant-scoped cached responses for idempotency keys.
  *
- * How it works:
- *   1. Client sends `Idempotency-Key: <uuid>` header with every payment POST.
- *   2. Before processing, the handler calls `check()`.
- *      - If the key is new → proceed, then call `store()` with the result.
- *      - If the key exists and is not expired → return the cached response.
- *   3. Keys expire after 24 hours (configurable).
- *
- * Usage in a handler:
- *
- *   $idem = new IdempotencyService($this->db);
- *   $key  = $request->getHeaderLine('Idempotency-Key');
- *
- *   if ($key !== '') {
- *       $cached = $idem->check($tenantId, $key);
- *       if ($cached !== null) {
- *           // Return cached response — same result, no side effects
- *           return $this->jsonResponse($response, $cached, 200);
- *       }
- *   }
- *
- *   // ... process payment ...
- *   $result = [...];
- *
- *   if ($key !== '') {
- *       $idem->store($tenantId, $key, $paymentId, $result);
- *   }
- *
- *   return $this->successResponse($response, $result, 201);
+ * Best-effort methods suppress lookup/write failures; strict methods propagate them.
+ * Callers coordinate request fingerprints and transaction boundaries.
  */
 class IdempotencyService
 {
     private PDO $db;
 
-    /** TTL in seconds (default: 24 hours) */
+    /** Cache lifetime in seconds. */
     private int $ttl;
     private MonologHandler $logger;
 
@@ -53,11 +28,7 @@ class IdempotencyService
         $this->logger = MonologHandler::getInstance('idempotency');
     }
 
-    /**
-     * Check if a key has already been processed.
-     *
-     * @return array|null  The cached response data, or null if key is new/expired.
-     */
+    /** Best-effort lookup; returns null for missing, expired, malformed, or unreadable records. */
     public function check(int $tenantId, string $key): ?array
     {
         if ($key === '') {
@@ -84,19 +55,131 @@ class IdempotencyService
             return is_array($decoded) ? $decoded : null;
 
         } catch (\Throwable $e) {
-            // On DB error, fail open (allow processing) — better than blocking
             return null;
         }
     }
 
+    /** Lookup a cached response and propagate database or decoding failures. */
+    public function checkStrict(int $tenantId, string $key): ?array
+    {
+        if ($key === '') {
+            return null;
+        }
+
+        $stmt = $this->db->prepare("
+            SELECT response_json
+            FROM payment_idempotency_keys
+            WHERE tenant_id = ? AND idempotency_key = ? AND expires_at > NOW()
+            LIMIT 1
+        ");
+        $stmt->execute([$tenantId, $key]);
+        $responseJson = $stmt->fetchColumn();
+        if ($responseJson === false || $responseJson === null || $responseJson === '') {
+            return null;
+        }
+
+        $decoded = json_decode((string) $responseJson, true);
+        if (!is_array($decoded)) {
+            throw new \RuntimeException('تعذر قراءة نتيجة طلب الدفعة السابق.');
+        }
+
+        return $decoded;
+    }
+
     /**
-     * Store the result of a successfully processed request.
+     * Atomically claim a key inside the caller's transaction.
      *
-     * @param int    $tenantId
-     * @param string $key        The Idempotency-Key from the request header
-     * @param int    $paymentId  The created payment record ID
-     * @param array  $response   The response data to cache
+     * Returns null when this transaction inserted the reservation; otherwise returns
+     * the response already stored for the key after acquiring its row lock.
      */
+    public function claimStrict(int $tenantId, string $key, string $requestFingerprint): ?array
+    {
+        if ($key === '') {
+            return null;
+        }
+        if (!$this->db->inTransaction()) {
+            throw new \LogicException('Idempotency keys must be claimed inside the operation transaction.');
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $existingExpiry = $this->db->prepare(
+            'SELECT expires_at
+             FROM payment_idempotency_keys
+             WHERE tenant_id = ? AND idempotency_key = ?
+             LIMIT 1'
+        );
+        $existingExpiry->execute([$tenantId, $key]);
+        $expiresAt = $existingExpiry->fetchColumn();
+        if ($expiresAt !== false && (string) $expiresAt <= $now) {
+            $this->db->prepare(
+                'DELETE FROM payment_idempotency_keys
+                 WHERE tenant_id = ? AND idempotency_key = ? AND expires_at <= ?'
+            )->execute([$tenantId, $key, $now]);
+        }
+
+        $reservation = json_encode([
+            '_request_fingerprint' => $requestFingerprint,
+            '_processing' => true,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($reservation === false) {
+            throw new \RuntimeException('تعذر حجز مفتاح منع التكرار.');
+        }
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            try {
+                $stmt = $this->db->prepare(
+                    'INSERT INTO payment_idempotency_keys
+                        (tenant_id, idempotency_key, payment_id, response_json, expires_at)
+                     VALUES (?, ?, 0, ?, ?)'
+                );
+                $stmt->execute([
+                    $tenantId,
+                    $key,
+                    $reservation,
+                    date('Y-m-d H:i:s', time() + $this->ttl),
+                ]);
+                return null;
+            } catch (PDOException $e) {
+                if ((string) $e->getCode() !== '23000') {
+                    throw $e;
+                }
+
+                $forUpdate = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql'
+                    ? ' FOR UPDATE'
+                    : '';
+                $stmt = $this->db->prepare(
+                    "SELECT response_json, expires_at
+                     FROM payment_idempotency_keys
+                     WHERE tenant_id = ? AND idempotency_key = ?
+                     LIMIT 1{$forUpdate}"
+                );
+                $stmt->execute([$tenantId, $key]);
+                $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$existing) {
+                    throw $e;
+                }
+
+                if ((string) $existing['expires_at'] <= $now) {
+                    $this->db->prepare(
+                        'DELETE FROM payment_idempotency_keys
+                         WHERE tenant_id = ? AND idempotency_key = ? AND expires_at <= ?'
+                    )->execute([$tenantId, $key, $now]);
+                    continue;
+                }
+
+                $decoded = json_decode((string) $existing['response_json'], true);
+                if (!is_array($decoded)) {
+                    throw new \RuntimeException('تعذر قراءة نتيجة طلب الدفعة السابق.');
+                }
+
+                return $decoded;
+            }
+        }
+
+        throw new \RuntimeException('تعذر حجز مفتاح منع التكرار بعد انتهاء السجل السابق.');
+    }
+
+    /** Best-effort response storage; logs and suppresses persistence failures. */
     public function store(int $tenantId, string $key, int $paymentId, array $response): void
     {
         if ($key === '') {
@@ -104,26 +187,8 @@ class IdempotencyService
         }
 
         try {
-            $expiresAt = date('Y-m-d H:i:s', time() + $this->ttl);
-
-            $stmt = $this->db->prepare("
-                INSERT INTO payment_idempotency_keys
-                    (tenant_id, idempotency_key, payment_id, response_json, expires_at)
-                VALUES (?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE
-                    payment_id    = VALUES(payment_id),
-                    response_json = VALUES(response_json),
-                    expires_at    = VALUES(expires_at)
-            ");
-            $stmt->execute([
-                $tenantId,
-                $key,
-                $paymentId,
-                json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                $expiresAt,
-            ]);
+            $this->storeStrict($tenantId, $key, $paymentId, $response);
         } catch (\Throwable $e) {
-            // Non-fatal — log but don't block the response
             $this->logger->error('[IdempotencyService] Failed to store key', [
                 'message' => $e->getMessage()
             ]);
@@ -131,10 +196,43 @@ class IdempotencyService
     }
 
     /**
-     * Purge expired keys (run periodically via cron).
+     * Persist a cached response and propagate encoding or database errors.
      *
-     * @return int Number of rows deleted
+     * The caller must include this write in the transaction for the financial operation.
      */
+    public function storeStrict(int $tenantId, string $key, int $paymentId, array $response): void
+    {
+        if ($key === '') {
+            return;
+        }
+
+        $responseJson = json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($responseJson === false) {
+            throw new \RuntimeException('تعذر حفظ نتيجة طلب الدفعة لإعادة المحاولة بأمان.');
+        }
+
+        $expiresAt = date('Y-m-d H:i:s', time() + $this->ttl);
+        $driver = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $upsert = $driver === 'sqlite'
+            ? "ON CONFLICT (tenant_id, idempotency_key) DO UPDATE SET
+                   payment_id = excluded.payment_id,
+                   response_json = excluded.response_json,
+                   expires_at = excluded.expires_at"
+            : "ON DUPLICATE KEY UPDATE
+                   payment_id = VALUES(payment_id),
+                   response_json = VALUES(response_json),
+                   expires_at = VALUES(expires_at)";
+
+        $stmt = $this->db->prepare("
+            INSERT INTO payment_idempotency_keys
+                (tenant_id, idempotency_key, payment_id, response_json, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+            {$upsert}
+        ");
+        $stmt->execute([$tenantId, $key, $paymentId, $responseJson, $expiresAt]);
+    }
+
+    /** Delete expired records; returns zero if the database operation fails. */
     public function purgeExpired(): int
     {
         try {

@@ -11,6 +11,13 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
 
+/**
+ * Builds tenant-scoped financial and receivables reports from journal, sales, and inventory data.
+ *
+ * Provides trial balance, ledger, income statement, balance sheet, receivables aging,
+ * cash-flow categorization, and inventory NRV reports; posting operations delegate
+ * journal creation to AccountingService.
+ */
 class AccountingReportsHandler extends BaseHandler
 {
     public function __construct(PDO $db)
@@ -19,6 +26,7 @@ class AccountingReportsHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('accounting_reports');
     }
 
+    /** Return debit, credit, and net balances by account for the selected date and branch scope. */
     public function trialBalance(Request $request, Response $response): Response
     {
         $tenantId = null;
@@ -28,8 +36,14 @@ class AccountingReportsHandler extends BaseHandler
             if (!$tenantId) {
                 return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
             }
+            try {
+                $branchId = $this->resolveBranchId($request, (int) $tenantId);
+            } catch (\InvalidArgumentException $e) {
+                return $this->errorResponse($response, $e->getMessage(), 400);
+            }
+            $branchFilter = $this->journalEntryBranchFilter($branchId);
 
-            [$startDateTime, $endExclusive] = $this->resolveDateRange($request);
+            [$startDateTime, $endExclusive] = $this->resolveDateRange($request, (int) $tenantId);
 
             $sql = "
                 SELECT
@@ -58,6 +72,7 @@ class AccountingReportsHandler extends BaseHandler
                    AND je.tenant_id = a.tenant_id
                    AND (? IS NULL OR je.entry_date >= ?)
                    AND (? IS NULL OR je.entry_date < ?)
+                   {$branchFilter}
                 WHERE a.tenant_id = ?
                 GROUP BY a.id, a.code, a.name, a.type
                 ORDER BY a.code ASC
@@ -65,10 +80,10 @@ class AccountingReportsHandler extends BaseHandler
 
             $stmt = $this->db->prepare($sql);
             $stmt->execute([
-                $startDateTime,  // check IS NULL
-                $startDateTime,  // >= start_date
-                $endExclusive,   // check IS NULL
-                $endExclusive,   // < end_exclusive
+                $startDateTime,
+                $startDateTime,
+                $endExclusive,
+                $endExclusive,
                 $tenantId
             ]);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -90,6 +105,8 @@ class AccountingReportsHandler extends BaseHandler
                     'end_date' => $endExclusive ? (new DateTimeImmutable($endExclusive))->modify('-1 day')->format('Y-m-d') : null
                 ]
             ], 200);
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($response, $e->getMessage(), 400);
         } catch (Throwable $e) {
             $this->logger->error('Trial balance error', [
                 'error' => $e->getMessage(),
@@ -100,6 +117,7 @@ class AccountingReportsHandler extends BaseHandler
         }
     }
 
+    /** Return an account's journal lines with opening, running, and closing balances. */
     public function ledger(Request $request, Response $response, array $args = []): Response
     {
         $tenantId = null;
@@ -110,12 +128,18 @@ class AccountingReportsHandler extends BaseHandler
             if (!$tenantId) {
                 return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
             }
+            try {
+                $branchId = $this->resolveBranchId($request, (int) $tenantId);
+            } catch (\InvalidArgumentException $e) {
+                return $this->errorResponse($response, $e->getMessage(), 400);
+            }
+            $branchFilter = $this->journalEntryBranchFilter($branchId);
 
             if ($accountId <= 0) {
                 return $this->errorResponse($response, 'مطلوب معرف الحساب (Account ID).', 400);
             }
 
-            [$startDateTime, $endExclusive] = $this->resolveDateRange($request);
+            [$startDateTime, $endExclusive] = $this->resolveDateRange($request, (int) $tenantId);
 
             $accountStmt = $this->db->prepare("
                 SELECT id, code, name, type
@@ -143,6 +167,7 @@ class AccountingReportsHandler extends BaseHandler
                     WHERE jel.tenant_id = ?
                       AND jel.account_id = ?
                       AND je.entry_date < ?
+                      {$branchFilter}
                 ");
                 $openingStmt->execute([$tenantId, $accountId, $startDateTime]);
                 $openingBalance = (float) $openingStmt->fetchColumn();
@@ -163,6 +188,7 @@ class AccountingReportsHandler extends BaseHandler
                   AND jel.account_id = ?
                   AND (? IS NULL OR je.entry_date >= ?)
                   AND (? IS NULL OR je.entry_date < ?)
+                  {$branchFilter}
                 ORDER BY je.entry_date ASC, je.id ASC, jel.id ASC
             ";
 
@@ -200,6 +226,8 @@ class AccountingReportsHandler extends BaseHandler
                     'end_date' => $endExclusive ? (new DateTimeImmutable($endExclusive))->modify('-1 day')->format('Y-m-d') : null
                 ]
             ], 200);
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($response, $e->getMessage(), 400);
         } catch (Throwable $e) {
             $this->logger->error('Ledger error', [
                 'error' => $e->getMessage(),
@@ -211,6 +239,7 @@ class AccountingReportsHandler extends BaseHandler
         }
     }
 
+    /** Summarize revenue, expenses, and net income for the selected period. */
     public function incomeStatement(Request $request, Response $response): Response
     {
         $tenantId = null;
@@ -220,14 +249,20 @@ class AccountingReportsHandler extends BaseHandler
             if (!$tenantId) {
                 return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
             }
+            try {
+                $branchId = $this->resolveBranchId($request, (int) $tenantId);
+            } catch (\InvalidArgumentException $e) {
+                return $this->errorResponse($response, $e->getMessage(), 400);
+            }
+            $branchFilter = $this->journalEntryBranchFilter($branchId);
 
-            [$startDateTime, $endExclusive] = $this->resolveDateRange($request);
+            [$startDateTime, $endExclusive] = $this->resolveDateRange($request, (int) $tenantId);
 
             $sql = "
                 SELECT
                     a.type,
-                    COALESCE(SUM(COALESCE(jel.debit_amount, 0)), 0) AS total_debit,
-                    COALESCE(SUM(COALESCE(jel.credit_amount, 0)), 0) AS total_credit
+                    COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN COALESCE(jel.debit_amount, 0) ELSE 0 END), 0) AS total_debit,
+                    COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN COALESCE(jel.credit_amount, 0) ELSE 0 END), 0) AS total_credit
                 FROM accounts a
                 LEFT JOIN journal_entry_lines jel
                     ON jel.account_id = a.id
@@ -237,6 +272,7 @@ class AccountingReportsHandler extends BaseHandler
                    AND je.tenant_id = a.tenant_id
                    AND (? IS NULL OR je.entry_date >= ?)
                    AND (? IS NULL OR je.entry_date < ?)
+                   {$branchFilter}
                 WHERE a.tenant_id = ?
                   AND a.type IN ('revenue', 'expense')
                 GROUP BY a.type
@@ -244,10 +280,10 @@ class AccountingReportsHandler extends BaseHandler
 
             $stmt = $this->db->prepare($sql);
             $stmt->execute([
-                $startDateTime,  // check IS NULL
-                $startDateTime,  // >= start_date
-                $endExclusive,   // check IS NULL
-                $endExclusive,   // < end_exclusive
+                $startDateTime,
+                $startDateTime,
+                $endExclusive,
+                $endExclusive,
                 $tenantId
             ]);
 
@@ -279,6 +315,8 @@ class AccountingReportsHandler extends BaseHandler
                     'end_date' => $endExclusive ? (new DateTimeImmutable($endExclusive))->modify('-1 day')->format('Y-m-d') : null
                 ]
             ], 200);
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($response, $e->getMessage(), 400);
         } catch (Throwable $e) {
             $this->logger->error('Income statement error', [
                 'error' => $e->getMessage(),
@@ -289,6 +327,7 @@ class AccountingReportsHandler extends BaseHandler
         }
     }
 
+    /** Return asset, liability, and equity balances as of the requested date. */
     public function balanceSheet(Request $request, Response $response): Response
     {
         $tenantId = null;
@@ -298,6 +337,12 @@ class AccountingReportsHandler extends BaseHandler
             if (!$tenantId) {
                 return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
             }
+            try {
+                $branchId = $this->resolveBranchId($request, (int) $tenantId);
+            } catch (\InvalidArgumentException $e) {
+                return $this->errorResponse($response, $e->getMessage(), 400);
+            }
+            $branchFilter = $this->journalEntryBranchFilter($branchId);
 
             $qp = $request->getQueryParams();
             $asOfDate = $this->normalizeDateOnly((string) ($qp['as_of_date'] ?? date('Y-m-d')));
@@ -329,6 +374,7 @@ class AccountingReportsHandler extends BaseHandler
                     ON je.id = jel.journal_entry_id
                    AND je.tenant_id = a.tenant_id
                    AND je.entry_date < ?
+                   {$branchFilter}
                 WHERE a.tenant_id = ?
                   AND a.type IN ('asset', 'liability', 'equity')
                 GROUP BY a.id, a.code, a.name, a.type
@@ -392,7 +438,8 @@ class AccountingReportsHandler extends BaseHandler
                 WHERE a.tenant_id = ?
                   AND a.type IN ('revenue', 'expense')
                   AND je.entry_date < ?
-                  AND je.status = 'posted'
+                  AND je.status IN ('posted', 'reversed')
+                  {$branchFilter}
                 GROUP BY a.type
             ");
             $stmtResult->execute([$tenantId, $nextDay]);
@@ -433,6 +480,8 @@ class AccountingReportsHandler extends BaseHandler
                     'liabilities_and_equity' => round($totals['liability'] + $totals['equity'], 2)
                 ]
             ], 200);
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($response, $e->getMessage(), 400);
         } catch (Throwable $e) {
             $this->logger->error('Balance sheet error', [
                 'error' => $e->getMessage(),
@@ -443,26 +492,23 @@ class AccountingReportsHandler extends BaseHandler
         }
     }
 
-    private function resolveDateRange(Request $request): array
+    private function resolveDateRange(Request $request, int $tenantId): array
     {
         $qp = $request->getQueryParams();
 
         $start = isset($qp['start_date']) ? (string) $qp['start_date'] : (isset($qp['date_from']) ? (string) $qp['date_from'] : null);
         $end = isset($qp['end_date']) ? (string) $qp['end_date'] : (isset($qp['date_to']) ? (string) $qp['date_to'] : null);
 
-        $startDateTime = null;
-        $endExclusive = null;
-
-        if ($start) {
-            $startDateTime = $this->normalizeDateOnly($start) . ' 00:00:00';
+        if (!$start && !$end) {
+            return [null, null];
         }
 
-        if ($end) {
-            $endDate = new DateTimeImmutable($this->normalizeDateOnly($end));
-            $endExclusive = $endDate->modify('+1 day')->format('Y-m-d 00:00:00');
-        }
+        [$resolvedStart, $resolvedEnd] = $this->resolveTenantDateRange($tenantId, $start, $end);
 
-        return [$startDateTime, $endExclusive];
+        return [
+            $start ? $resolvedStart : null,
+            $end ? $resolvedEnd : null,
+        ];
     }
 
     private function normalizeDateOnly(string $date): string
@@ -475,11 +521,57 @@ class AccountingReportsHandler extends BaseHandler
         return $dt->format('Y-m-d');
     }
 
+    private function resolveBranchId(Request $request, int $tenantId): ?int
+    {
+        $params = $request->getQueryParams();
+        if (!isset($params['branch_id']) || $params['branch_id'] === '') {
+            return null;
+        }
+
+        $branchId = filter_var($params['branch_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($branchId === false) {
+            throw new \InvalidArgumentException('معرف الفرع غير صالح.');
+        }
+
+        $stmt = $this->db->prepare('SELECT id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1');
+        $stmt->execute([$branchId, $tenantId]);
+        if (!$stmt->fetchColumn()) {
+            throw new \InvalidArgumentException('الفرع غير موجود.');
+        }
+
+        return (int) $branchId;
+    }
+
+    private function journalEntryBranchFilter(?int $branchId): string
+    {
+        if ($branchId === null) {
+            return '';
+        }
+
+        return " AND (
+            EXISTS (SELECT 1 FROM sales s
+                WHERE s.tenant_id = je.tenant_id AND s.branch_id = {$branchId}
+                  AND (s.journal_entry_id = je.id OR (je.reference_type IN ('sale', 'cogs') AND s.id = je.reference_id)))
+            OR EXISTS (SELECT 1 FROM purchases p
+                WHERE p.tenant_id = je.tenant_id AND p.branch_id = {$branchId}
+                  AND (p.journal_entry_id = je.id OR (je.reference_type = 'purchase' AND p.id = je.reference_id)))
+            OR EXISTS (SELECT 1 FROM returns r
+                WHERE r.tenant_id = je.tenant_id AND r.branch_id = {$branchId}
+                  AND (r.journal_entry_id = je.id OR (je.reference_type IN ('return', 'sales_return', 'purchase_return') AND r.id = je.reference_id)))
+            OR EXISTS (SELECT 1 FROM cash_vouchers cv
+                WHERE cv.tenant_id = je.tenant_id AND cv.branch_id = {$branchId}
+                  AND (cv.journal_entry_id = je.id OR je.voucher_id = cv.id OR (je.reference_type = 'voucher' AND cv.id = je.reference_id)))
+            OR EXISTS (SELECT 1 FROM cash_transactions ct
+                WHERE ct.tenant_id = je.tenant_id AND ct.branch_id = {$branchId}
+                  AND (ct.journal_entry_id = je.id OR (je.reference_type = 'payment' AND ct.id = je.reference_id)))
+            OR EXISTS (SELECT 1 FROM inventory_transactions it
+                WHERE it.tenant_id = je.tenant_id AND it.journal_entry_id = je.id
+                  AND (it.branch_from = {$branchId} OR it.branch_to = {$branchId}))
+        )";
+    }
+
     // ─── AR Aging Report + Bad Debt Provision (IFRS 9) ──────────────────────
-    /**
-     * تقرير تقادم الذمم المدينة وفق IFRS 9 — مصفوفة المخصصات (Simplified Approach).
-     * GET /reports/accounting/ar-aging
-     */
+    /** Return receivables grouped into aging buckets with estimated expected credit loss. */
     public function arAgingReport(Request $request, Response $response): Response
     {
         try {
@@ -487,12 +579,17 @@ class AccountingReportsHandler extends BaseHandler
             if (!$tenantId) {
                 return $this->errorResponse($response, 'Tenant ID مطلوب', 403);
             }
+            try {
+                $branchId = $this->resolveBranchId($request, (int) $tenantId);
+            } catch (\InvalidArgumentException $e) {
+                return $this->errorResponse($response, $e->getMessage(), 400);
+            }
+            $branchClause = $branchId !== null ? ' AND s.branch_id = ' . $branchId : '';
 
             $params   = $request->getQueryParams();
             $asOf     = isset($params['as_of']) && $params['as_of'] !== ''
                 ? $params['as_of'] : date('Y-m-d');
 
-            // معدلات ECL وفق IFRS 9 Simplified Approach (مصفوفة المخصصات)
             $eclRates = [
                 'current'    => ['label' => 'جارٍ (0-30 يوم)',        'min' => 0,   'max' => 30,  'rate' => 0.01],
                 'days_31_60' => ['label' => 'متأخر 31-60 يوم',        'min' => 31,  'max' => 60,  'rate' => 0.05],
@@ -519,6 +616,7 @@ class AccountingReportsHandler extends BaseHandler
                 WHERE s.tenant_id = ?
                   AND s.status NOT IN ('cancelled','draft')
                   AND s.sale_date <= ?
+                  {$branchClause}
                 GROUP BY s.id
                 HAVING (
                     MAX(s.net_total_amount) > COALESCE(MAX(s.paid_amount), 0)
@@ -531,7 +629,6 @@ class AccountingReportsHandler extends BaseHandler
             $stmt->execute([$asOf, (int) $tenantId, $asOf]);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            // توزيع الفواتير على الشرائح
             $buckets = [];
             foreach ($eclRates as $key => $cfg) {
                 $buckets[$key] = array_merge($cfg, [
@@ -591,12 +688,7 @@ class AccountingReportsHandler extends BaseHandler
         }
     }
 
-    /**
-     * يُسجِّل قيد مخصص الديون المشكوك فيها تلقائياً (IFRS 9).
-     * Dr. مصروف الديون المشكوك فيها (5301)
-     * Cr. مخصص الديون المشكوك فيها (1202)
-     * POST /reports/accounting/ar-aging/post-provision
-     */
+    /** Post a bad-debt provision journal entry for the requested amount and date. */
     public function postBadDebtProvision(Request $request, Response $response): Response
     {
         try {
@@ -657,16 +749,7 @@ class AccountingReportsHandler extends BaseHandler
         }
     }
 
-    // ─── Cash Flow Statement (IAS 7) ─────────────────────────────────────────
-    /**
-     * قائمة التدفقات النقدية وفق IAS 7 — الطريقة المباشرة.
-     * يُتتبع كل حركة في حسابات السيولة (1001/1002/1003 أو type=cash)
-     * ويُصنَّف حسب:
-     *   operating  — عمليات التشغيل (مبيعات، مشتريات، مصروفات)
-     *   investing  — الاستثمار (أصول)
-     *   financing  — التمويل (رأس المال، قروض)
-     * GET /reports/accounting/cash-flow
-     */
+    /** Group journal activity on liquidity accounts into operating, investing, and financing sections. */
     public function cashFlow(Request $request, Response $response): Response
     {
         try {
@@ -674,10 +757,15 @@ class AccountingReportsHandler extends BaseHandler
             if (!$tenantId) {
                 return $this->errorResponse($response, 'Tenant ID مطلوب', 403);
             }
+            try {
+                $branchId = $this->resolveBranchId($request, (int) $tenantId);
+            } catch (\InvalidArgumentException $e) {
+                return $this->errorResponse($response, $e->getMessage(), 400);
+            }
+            $branchFilter = $this->journalEntryBranchFilter($branchId);
 
-            [$startDateTime, $endExclusive] = $this->resolveDateRange($request);
+            [$startDateTime, $endExclusive] = $this->resolveDateRange($request, (int) $tenantId);
 
-            // ─── تصنيف reference_type إلى أقسام ───────────────────────────
             $operatingTypes  = "'sale','payment','cogs','return','purchase','nrv_writedown','voucher','sales_return','purchase_return'";
             $investingTypes  = "'asset_purchase','asset_sale','fixed_asset'";
             $financingTypes  = "'capital','opening_balance','loan','loan_repayment','dividend'";
@@ -702,10 +790,11 @@ class AccountingReportsHandler extends BaseHandler
                 JOIN accounts a
                     ON a.id = jel.account_id AND a.tenant_id = je.tenant_id
                 WHERE je.tenant_id = ?
-                  AND je.status   = 'posted'
+                  AND je.status   IN ('posted', 'reversed')
                   AND (a.code LIKE '1001%' OR a.code LIKE '1002%' OR a.code LIKE '1003%' OR a.type = 'cash')
                   AND (? IS NULL OR je.entry_date >= ?)
                   AND (? IS NULL OR je.entry_date <  ?)
+                  {$branchFilter}
                 GROUP BY a.id, a.code, a.name, je.reference_type, category
                 ORDER BY category, je.reference_type
             ";
@@ -714,11 +803,10 @@ class AccountingReportsHandler extends BaseHandler
             $stmt->execute([
                 (int) $tenantId,
                 $startDateTime, $startDateTime,
-                $endExclusive,  $endExclusive,
+                $endExclusive, $endExclusive,
             ]);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            // ─── تجميع حسب القسم ──────────────────────────────────────────
             $sections = [
                 'operating' => ['label' => 'التدفقات النقدية من أنشطة التشغيل', 'items' => [], 'total' => 0.0],
                 'investing'  => ['label' => 'التدفقات النقدية من أنشطة الاستثمار', 'items' => [], 'total' => 0.0],
@@ -789,17 +877,14 @@ class AccountingReportsHandler extends BaseHandler
                 ],
                 'note' => 'قائمة التدفقات النقدية — الطريقة المباشرة (IAS 7). تشمل حركات الحسابات النقدية والبنكية فقط.',
             ]);
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($response, $e->getMessage(), 400);
         } catch (Throwable $e) {
             return $this->errorResponse($response, $e->getMessage(), 500);
         }
     }
 
-    // ─── NRV Report (IAS 2) ───────────────────────────────────────────────────
-    /**
-     * تقرير صافي القيمة البيعية (Net Realizable Value per IAS 2).
-     * يُظهر المنتجات التي تكلفتها الوسطى > سعر البيع، أي تستوجب تخفيضاً محاسبياً.
-     * GET /reports/accounting/nrv
-     */
+    /** List active stocked products whose average cost exceeds their current sale price. */
     public function nrvReport(Request $request, Response $response): Response
     {
         try {
@@ -863,11 +948,7 @@ class AccountingReportsHandler extends BaseHandler
         }
     }
 
-    // ─── POST NRV Write-Down Journal Entry (IAS 2) ───────────────────────────
-    /**
-     * يُنشئ قيود تخفيض قيمة المخزون تلقائياً لجميع المنتجات المُعطَّلة (IAS 2).
-     * POST /reports/accounting/nrv/post-writedown
-     */
+    /** Delegate posting of inventory NRV write-down entries to AccountingService. */
     public function postNrvWriteDown(Request $request, Response $response): Response
     {
         try {

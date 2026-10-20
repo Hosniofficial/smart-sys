@@ -14,6 +14,14 @@ use App\Resources\ProductListResource;
 use App\Resources\ProductDetailResource;
 use App\Security\Permissions;
 
+/**
+ * Handles product search, reads, CRUD operations, and unit lookup.
+ *
+ * Product and inventory records are scoped to the request tenant; list/detail
+ * responses are shaped by ProductListResource and ProductDetailResource, which
+ * also enforce purchase-cost visibility. Creation can assign branches and post
+ * opening stock through InventoryOpeningBalanceService.
+ */
 class ProductsHandler extends BaseHandler
 {
     public function __construct(PDO $db)
@@ -22,6 +30,7 @@ class ProductsHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('products');
     }
 
+    /** Search active products, limiting branch-scoped stock results to active mappings with stock. */
     public function list(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -43,33 +52,45 @@ class ProductsHandler extends BaseHandler
                 return $this->successResponse($response, [], 200);
             }
 
-            // Get matching products
             $productQuery = "
                 SELECT p.*
                 FROM products p
                 WHERE (p.name LIKE ? OR p.barcode LIKE ? OR p.product_code LIKE ?)
                   AND p.active = 1
                   AND p.tenant_id = ?
-                LIMIT 10
             ";
 
-            $stmt = $this->db->prepare($productQuery);
-            $stmt->execute(['%' . $query . '%', '%' . $query . '%', '%' . $query . '%', (int) $tenantId]);
-            $products = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            // Filter products with available quantity if branchId specified
-            if (!empty($products) && $branchId) {
-                $productIds = array_column($products, 'id');
-                $qtyQuery = "
-                    SELECT product_id FROM branch_products
-                    WHERE product_id IN (" . implode(',', array_fill(0, count($productIds), '?')) . ")
-                      AND branch_id = ? AND tenant_id = ? AND quantity > 0
+            $productParams = ['%' . $query . '%', '%' . $query . '%', '%' . $query . '%', (int) $tenantId];
+            if ($branchId) {
+                $productQuery .= "
+                    AND (
+                        COALESCE(p.product_type, 'stock') = 'service'
+                        OR (
+                            EXISTS (
+                                SELECT 1 FROM product_branch_gl_mapping pbm
+                                WHERE pbm.tenant_id = p.tenant_id
+                                  AND pbm.product_id = p.id
+                                  AND pbm.branch_id = ?
+                                  AND pbm.activation_status IN ('ACTIVE_IN_BRANCH', 'GL_POSTED', 'RECONCILED')
+                            )
+                            AND EXISTS (
+                                SELECT 1 FROM branch_products bp
+                                WHERE bp.tenant_id = p.tenant_id
+                                  AND bp.product_id = p.id
+                                  AND bp.branch_id = ?
+                                  AND bp.quantity > 0
+                            )
+                        )
+                    )
                 ";
-                $qtyStmt = $this->db->prepare($qtyQuery);
-                $qtyStmt->execute(array_merge($productIds, [(int) $branchId, (int) $tenantId]));
-                $availableIds = array_column($qtyStmt->fetchAll(PDO::FETCH_ASSOC), 'product_id');
-                $products = array_filter($products, fn ($p) => in_array($p['id'], $availableIds));
+                $productParams[] = $branchId;
+                $productParams[] = $branchId;
             }
+            $productQuery .= ' LIMIT 10';
+
+            $stmt = $this->db->prepare($productQuery);
+            $stmt->execute($productParams);
+            $products = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             if (empty($products)) {
                 return $this->successResponse($response, [], 200);
@@ -77,7 +98,6 @@ class ProductsHandler extends BaseHandler
 
             $productIds = array_column($products, 'id');
 
-            // Get branch products data
             $branchProducts = [];
             $branchQuery = "
                 SELECT 
@@ -108,7 +128,6 @@ class ProductsHandler extends BaseHandler
                 $branchProducts[$pid] = $bp;
             }
 
-            // Get units for each product
             $allUnits = [];
             $unitsQuery = "
                 SELECT
@@ -137,8 +156,20 @@ class ProductsHandler extends BaseHandler
                 $allUnits[$pid][] = $unit;
             }
 
-            // Transform products using ProductListResource
             $includeCostData = $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW);
+            $branchMappings = [];
+            if ($branchId) {
+                $mappingStmt = $this->db->prepare(
+                    "SELECT product_id, activation_status
+                     FROM product_branch_gl_mapping
+                     WHERE tenant_id = ? AND branch_id = ?
+                       AND product_id IN (" . implode(',', array_fill(0, count($productIds), '?')) . ")"
+                );
+                $mappingStmt->execute(array_merge([(int) $tenantId, $branchId], $productIds));
+                foreach ($mappingStmt->fetchAll(PDO::FETCH_ASSOC) as $mapping) {
+                    $branchMappings[(int) $mapping['product_id']] = $mapping['activation_status'];
+                }
+            }
             $transformedProducts = [];
             foreach ($products as $product) {
                 $pid = (int) $product['id'];
@@ -146,8 +177,9 @@ class ProductsHandler extends BaseHandler
                     $product,
                     $branchProducts[$pid] ?? [],
                     $allUnits[$pid] ?? [],
-                    null,
-                    $includeCostData
+                    $branchMappings[$pid] ?? null,
+                    $includeCostData,
+                    $branchId !== null
                 );
             }
 
@@ -164,6 +196,7 @@ class ProductsHandler extends BaseHandler
         }
     }
 
+    /** List active products, optionally including only products assigned to a branch. */
     public function getAll(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -177,7 +210,6 @@ class ProductsHandler extends BaseHandler
                 ? (int) $queryParams['branch_id']
                 : null;
 
-            // Get products - filter by branch if specified
             $productQuery = "
                 SELECT p.*, c.name AS category_name
                 FROM products p
@@ -187,7 +219,6 @@ class ProductsHandler extends BaseHandler
             $params = [];
 
             if ($branchId) {
-                // INNER JOIN to get products assigned to this branch (including those with quantity = 0)
                 $productQuery .= "
                     INNER JOIN branch_products bp 
                         ON p.id = bp.product_id 
@@ -197,7 +228,6 @@ class ProductsHandler extends BaseHandler
                 ";
                 $params = [(int) $branchId, (int) $tenantId];
             } else {
-                // Get all active products regardless of branch
                 $productQuery .= "
                     WHERE p.active = 1 AND p.tenant_id = ?
                 ";
@@ -216,7 +246,6 @@ class ProductsHandler extends BaseHandler
 
             $productIds = array_column($products, 'id');
 
-            // Get branch products data
             $branchProducts = [];
             $branchQuery = "
                 SELECT 
@@ -247,7 +276,6 @@ class ProductsHandler extends BaseHandler
                 $branchProducts[$pid] = $bp;
             }
 
-            // Get units for each product
             $allUnits = [];
             $unitsQuery = "
                 SELECT
@@ -276,7 +304,6 @@ class ProductsHandler extends BaseHandler
                 $allUnits[$pid][] = $unit;
             }
 
-            // Get GL mapping statuses for this branch if branchId provided
             $glMappings = [];
             if ($branchId) {
                 $glQuery = "
@@ -297,7 +324,6 @@ class ProductsHandler extends BaseHandler
                 }
             }
 
-            // Transform products using ProductListResource
             $includeCostData = $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW);
             $transformedProducts = [];
             foreach ($products as $product) {
@@ -307,7 +333,8 @@ class ProductsHandler extends BaseHandler
                     $branchProducts[$pid] ?? [],
                     $allUnits[$pid] ?? [],
                     $glMappings[$pid] ?? null,
-                    $includeCostData
+                    $includeCostData,
+                    $branchId !== null
                 );
             }
 
@@ -322,6 +349,7 @@ class ProductsHandler extends BaseHandler
         }
     }
 
+    /** Return one active product with branch stock, units, and optional mapping status. */
     public function get(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -332,7 +360,6 @@ class ProductsHandler extends BaseHandler
         try {
             $productId = (int) ($args['id'] ?? 0);
 
-            // Get product details with category
             $stmt = $this->db->prepare("
                 SELECT 
                     p.*,
@@ -372,7 +399,6 @@ class ProductsHandler extends BaseHandler
             $stmt->execute($params);
             $branchProduct = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-            // Get all units for the product
             $stmt = $this->db->prepare("
                 SELECT
                     pu.unit_id,
@@ -388,8 +414,10 @@ class ProductsHandler extends BaseHandler
             $stmt->execute([$productId, (int) $tenantId]);
             $units = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            // Get GL mapping status if branchId is provided
             $glActivationStatus = null;
+            if ($branchId) {
+                $glActivationStatus = 'DRAFT';
+            }
 
             if ($branchId) {
                 $glStmt = $this->db->prepare("
@@ -405,13 +433,13 @@ class ProductsHandler extends BaseHandler
                 }
             }
 
-            // Transform using ProductDetailResource
             $transformedProduct = ProductDetailResource::transform(
                 $product,
                 $branchProduct,
                 $units,
                 $glActivationStatus,
-                $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW)
+                $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW),
+                $branchId !== null
             );
 
             return $this->successResponse($response, $transformedProduct, 200);
@@ -426,6 +454,7 @@ class ProductsHandler extends BaseHandler
         }
     }
 
+    /** Create a product, its units and branch mappings, and any requested opening stock. */
     public function create(Request $request, Response $response): Response
     {
         $data     = $request->getParsedBody() ?? [];
@@ -449,7 +478,6 @@ class ProductsHandler extends BaseHandler
                 $startedTransaction = true;
             }
 
-            // ── Insert product ────────────────────────────────────────────
             $stmt = $this->db->prepare("
                 INSERT INTO products (
                     name, sale_price, purchase_price, min_sale_price, fixed_discount_percentage, min_quantity,
@@ -481,7 +509,6 @@ class ProductsHandler extends BaseHandler
 
             $productId = (int) $this->db->lastInsertId();
 
-            // ── Auto-generate SKU based on product ID ───────────────────────
             $sku = 'PRD-' . str_pad((string) $productId, 6, '0', STR_PAD_LEFT);
             $this->db->prepare("
                 UPDATE products 
@@ -489,7 +516,6 @@ class ProductsHandler extends BaseHandler
                 WHERE id = ? AND tenant_id = ?
             ")->execute([$sku, $productId, (int) $tenantId]);
 
-            // ── Product units ─────────────────────────────────────────────
             if (isset($data['units']) && is_array($data['units']) && !empty($data['units'])) {
                 $unitStmt = $this->db->prepare("
                     INSERT INTO product_units (
@@ -516,20 +542,30 @@ class ProductsHandler extends BaseHandler
                 ")->execute([$productId, $data['unit_id'], 1.0, 1, $tenantId]);
             }
 
-            // ── Branch assignments ────────────────────────────────────────
             $branchIds = [];
+            $branchActivation = [];
             if (isset($data['branch_assignments']) && is_array($data['branch_assignments'])) {
                 $branchIds       = $data['branch_assignments']['branch_ids']       ?? [];
                 $initialQuantity = (float) ($data['branch_assignments']['initial_quantity'] ?? 0);
                 $initialUnitCost = (float) ($data['branch_assignments']['initial_unit_cost'] ?? 0);
                 $isServiceProduct = ($data['product_type'] ?? 'stock') === 'service';
+                $openingBalanceRequested = $initialQuantity != 0.0 || $initialUnitCost != 0.0;
+
+                if ($isServiceProduct && $openingBalanceRequested) {
+                    throw new \InvalidArgumentException('لا يمكن تعيين رصيد مخزني لمنتج من نوع خدمة.');
+                }
+                if ($openingBalanceRequested && empty($branchIds)) {
+                    throw new \InvalidArgumentException('يجب تحديد فرع قبل إدخال الرصيد الافتتاحي.');
+                }
+                if ($openingBalanceRequested && ($initialQuantity <= 0 || $initialUnitCost <= 0)) {
+                    throw new \InvalidArgumentException(
+                        'يجب أن تكون الكمية الافتتاحية وتكلفة الوحدة أكبر من صفر.'
+                    );
+                }
 
                 if (!empty($branchIds)) {
                     $userId             = $this->extractUserId($request);
                     $obService          = new InventoryOpeningBalanceService($this->db);
-                    // 🔴 إصلاح: كان تخطي فرع بسبب نقص إعداد حسابات GL يحدث بصمت تامة —
-                    // لا سجل خادم ولا أي أثر في الاستجابة. الآن يُجمَّع ويُرجَع للمستدعي.
-                    $openingBalanceWarnings = [];
 
                     foreach ($branchIds as $branchId) {
                         $branchId = (int) $branchId;
@@ -544,32 +580,99 @@ class ProductsHandler extends BaseHandler
                         $branch = $branchStmt->fetch(PDO::FETCH_ASSOC);
 
                         if (!$branch) {
-                            continue;
+                            throw new \InvalidArgumentException(
+                                "الفرع #{$branchId} غير موجود أو لا ينتمي لهذه المنشأة."
+                            );
                         }
 
-                        $inventoryGLId = $this->accounting->resolveInventoryAccountForBranch((int) $tenantId, $branchId);
+                        $inventoryGLId = !$isServiceProduct
+                            ? $this->accounting->resolveInventoryAccountForBranch((int) $tenantId, $branchId)
+                            : null;
+                        $purchaseGLId = !$isServiceProduct
+                            ? $this->getGLAccountByCode((int) $tenantId, '5001')
+                            : null;
+                        $cogsGLId = !$isServiceProduct
+                            ? $this->getGLAccountByCode((int) $tenantId, '5103')
+                            : null;
 
-                        if (!$inventoryGLId) {
+                        if ($initialQuantity > 0 && !$isServiceProduct && !$inventoryGLId) {
                             $this->logger->warning('Opening balance skipped — missing GL accounts for branch', [
                                 'product_id' => $productId,
                                 'branch_id'  => $branchId,
                             ]);
-                            $openingBalanceWarnings[] = [
-                                'branch_id' => $branchId,
-                                'reason'    => 'missing_gl_accounts',
-                            ];
-                            continue;
+                            throw new \InvalidArgumentException(
+                                "لا يمكن ترحيل الرصيد الافتتاحي للفرع #{$branchId}: حساب المخزون غير مُهيأ. "
+                                . 'تم إلغاء إنشاء المنتج بالكامل.'
+                            );
                         }
 
-                        // Stock products: post opening balance (service handles inv_tx, branch_products, GL, snapshot)
+                        if ($isServiceProduct) {
+                            $branchActivation[] = [
+                                'branch_id' => $branchId,
+                                'branch_name' => $branch['name'],
+                                'status' => 'not_required',
+                            ];
+                        } elseif ($inventoryGLId && $purchaseGLId && $cogsGLId) {
+                            $this->db->prepare("
+                                INSERT INTO product_branch_gl_mapping (
+                                    tenant_id, product_id, branch_id,
+                                    inventory_gl_account_id, purchase_gl_account_id, cogs_gl_account_id,
+                                    activation_status, activation_date,
+                                    created_by_user_id, updated_by_user_id
+                                ) VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE_IN_BRANCH', NOW(), ?, ?)
+                                ON DUPLICATE KEY UPDATE
+                                    inventory_gl_account_id = VALUES(inventory_gl_account_id),
+                                    purchase_gl_account_id = VALUES(purchase_gl_account_id),
+                                    cogs_gl_account_id = VALUES(cogs_gl_account_id),
+                                    activation_status = 'ACTIVE_IN_BRANCH',
+                                    activation_date = NOW(),
+                                    updated_by_user_id = VALUES(updated_by_user_id)
+                            ")->execute([
+                                (int) $tenantId,
+                                $productId,
+                                $branchId,
+                                $inventoryGLId,
+                                $purchaseGLId,
+                                $cogsGLId,
+                                $userId,
+                                $userId,
+                            ]);
+                            $branchActivation[] = [
+                                'branch_id' => $branchId,
+                                'branch_name' => $branch['name'],
+                                'status' => 'active',
+                            ];
+                        } else {
+                            $missingAccounts = [];
+                            if (!$inventoryGLId) {
+                                $missingAccounts[] = 'inventory';
+                            }
+                            if (!$purchaseGLId) {
+                                $missingAccounts[] = 'purchases';
+                            }
+                            if (!$cogsGLId) {
+                                $missingAccounts[] = 'cogs';
+                            }
+                            $branchActivation[] = [
+                                'branch_id' => $branchId,
+                                'branch_name' => $branch['name'],
+                                'status' => 'setup_required',
+                                'missing_accounts' => $missingAccounts,
+                            ];
+                            $this->logger->warning('Product branch activation deferred — required GL accounts are missing', [
+                                'product_id' => $productId,
+                                'branch_id' => $branchId,
+                                'missing_accounts' => $missingAccounts,
+                            ]);
+                        }
+
+                        // The service updates inventory, opening-balance, cost-layer, and GL records.
                         if (!$isServiceProduct) {
                             $totalCost = $initialQuantity > 0 && $initialUnitCost > 0
                                 ? $initialQuantity * $initialUnitCost
                                 : 0;
 
                             if ($totalCost > 0) {
-                                // Service handles everything: inv_tx, branch_products, opening_balances,
-                                // journal entry, cost_snapshot, RECONCILED status
                                 try {
                                     $jeId = $obService->post(
                                         tenantId:             (int) $tenantId,
@@ -601,7 +704,6 @@ class ProductsHandler extends BaseHandler
                                     throw $obError;
                                 }
                             } else {
-                                // Zero quantity: just create branch_products placeholder
                                 $this->db->prepare("
                                     INSERT INTO branch_products
                                         (tenant_id, branch_id, product_id, quantity, last_update, quantity_cost)
@@ -613,9 +715,6 @@ class ProductsHandler extends BaseHandler
                     }
                 }
             }
-            // End of branch assignments
-
-            // ── Update product status ─────────────────────────────────────
             if (isset($data['branch_assignments']) && !empty($branchIds)) {
                 $this->db->prepare("
                     UPDATE products
@@ -637,13 +736,16 @@ class ProductsHandler extends BaseHandler
                 'description' => $data['description'] ?? null,
                 'category_id' => $data['category_id'] ?? null,
                 'barcode'     => $data['barcode']      ?? null,
+                'branch_activation' => $branchActivation,
             ];
-            if (!empty($openingBalanceWarnings)) {
-                $responseData['warnings'] = ['opening_balance_skipped' => $openingBalanceWarnings];
-            }
 
             return $this->successResponse($response, $responseData, 200);
 
+        } catch (\InvalidArgumentException $e) {
+            if ($startedTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            return $this->errorResponse($response, $e->getMessage(), 422);
         } catch (\Throwable $e) {
             if ($startedTransaction && $this->db->inTransaction()) {
                 $this->db->rollBack();
@@ -659,6 +761,7 @@ class ProductsHandler extends BaseHandler
         }
     }
 
+    /** Update product fields and, when requested, replace its unit assignments. */
     public function update(Request $request, Response $response, array $args): Response
     {
         $data     = $request->getParsedBody() ?? [];
@@ -688,7 +791,6 @@ class ProductsHandler extends BaseHandler
                 return $this->errorResponse($response, 'Product not found', 404);
             }
 
-            // ── Validate SKU uniqueness if provided ────────────────────────
             if (isset($data['product_code']) && $data['product_code'] !== '') {
                 $skuStmt = $this->db->prepare("
                     SELECT COUNT(*) FROM products
@@ -708,8 +810,8 @@ class ProductsHandler extends BaseHandler
             $fields = [
                 'name', 'sale_price', 'purchase_price', 'min_sale_price',
                 'fixed_discount_percentage', 'min_quantity', 'description', 'category_id', 'barcode', 'unit_id',
-                'product_code',  // ← Allow SKU update
-                'default_expiry_date', 'default_batch_number', 'default_serial_number',  // ← Default values
+                'product_code',
+                'default_expiry_date', 'default_batch_number', 'default_serial_number',
             ];
             foreach ($fields as $field) {
                 if (isset($data[$field])) {
@@ -802,6 +904,7 @@ class ProductsHandler extends BaseHandler
         }
     }
 
+    /** Deactivate a product without deleting its stored records. */
     public function delete(Request $request, Response $response, array $args): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -842,6 +945,7 @@ class ProductsHandler extends BaseHandler
         }
     }
 
+    /** Search tenant-owned and shared units for product-entry forms. */
     public function listUnits(Request $request, Response $response): Response
     {
         $tenantId = null;
@@ -882,6 +986,7 @@ class ProductsHandler extends BaseHandler
         }
     }
 
+    /** Resolve a tenant GL account by code through AccountingService. */
     private function getGLAccountByCode(int $tenantId, string $code): ?int
     {
         return $this->accounting->getAccountByCode($tenantId, $code);

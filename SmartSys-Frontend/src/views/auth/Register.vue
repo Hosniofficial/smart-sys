@@ -2,21 +2,21 @@
   <div class="min-h-screen bg-[#fafafa] flex items-center justify-center p-4 lg:p-10 text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Register Card Container: Geometric shell consistent with Login page -->
-    <div class="w-full max-w-xl bg-white rounded-xl shadow-2xl shadow-slate-200/50 overflow-hidden border border-slate-200 relative animate-fadeIn">
+    <div class="w-full max-w-4xl bg-white rounded-xl shadow-2xl shadow-slate-200/50 overflow-hidden border border-slate-200 relative animate-fadeIn flex flex-col lg:flex-row">
       
       <!-- Top Decorative Identity Bar -->
       <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-l from-blue-600 via-indigo-600 to-blue-500"></div>
 
       <!-- Content Area -->
-      <div class="p-8 md:p-14">
+      <div class="w-full lg:w-[480px] p-8 md:p-14 flex flex-col justify-center relative z-10">
         
         <!-- Header: Focused and Professional -->
-        <div class="text-center mb-12">
-          <div class="w-14 h-14 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shadow-sm mx-auto mb-6 border border-blue-100/50">
-            <i class="fas fa-user-plus text-xl"></i>
+        <div class="mb-10">
+          <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center mb-6 border border-slate-100 shadow-sm">
+            <img src="/favicons/logo-smartsys.png" alt="SmartSys" class="w-11 h-11 object-contain" />
           </div>
-          <h1 class="text-2xl font-bold tracking-tight text-slate-900">إنشاء حساب تجاري</h1>
-          <p class="text-[11px] text-slate-400 mt-2 font-bold uppercase tracking-widest leading-relaxed">ابدأ تجربتك المجانية في إدارة المؤسسات والنمو الذكي</p>
+          <h1 class="text-2xl font-bold tracking-tight text-slate-900">أنشئ حسابك التجاري 🚀</h1>
+          <p class="text-sm text-slate-600 mt-3 font-medium leading-relaxed">خلّي شغلك أذكى وأسهل وابدأ تجربتك المجانية لإدارة نشاطك بكل سهولة وتنمية أعمالك.</p>
         </div>
 
         <!-- Success State: Trust-focused UI -->
@@ -26,9 +26,9 @@
               <i class="fas fa-envelope-circle-check text-3xl"></i>
             </div>
             <div class="space-y-2">
-              <h2 class="text-xl font-bold text-slate-900">تم إرسال رابط التفعيل</h2>
+              <h2 class="text-xl font-bold text-slate-900">اتبعتلك رابط التفعيل!</h2>
               <p class="text-sm font-medium text-slate-500 leading-relaxed">
-                يرجى التحقق من بريدك الإلكتروني لتأكيد الحساب:<br/>
+                افتح بريدك الإلكتروني واضغط على الرابط اللي بعتناهولك:<br/>
                 <span class="text-blue-600 font-bold font-mono">{{ form.email }}</span>
               </p>
             </div>
@@ -36,7 +36,7 @@
             <div class="bg-amber-50 border border-amber-100 p-5 rounded-lg text-right">
               <p class="text-[11px] font-bold text-amber-700 leading-relaxed flex gap-3">
                 <i class="fas fa-info-circle mt-0.5"></i>
-                <span>في حال عدم وصول الرسالة خلال دقائق، يرجى التحقق من مجلد الرسائل غير المرغوب فيها (Spam).</span>
+                <span>لو الرسالة ماجاتكش خلال دقايق، اتأكد من مجلد الـ Spam أو ابعت تاني.</span>
               </p>
             </div>
 
@@ -46,7 +46,7 @@
                 :disabled="resendLoading"
                 class="w-full h-11 bg-slate-900 text-white rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-black active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-slate-200"
               >
-                {{ resendLoading ? 'جاري الإرسال...' : 'إعادة إرسال رابط التأكيد' }}
+                {{ resendLoading ? 'بنبعت...' : 'ابعت الرابط تاني' }}
               </button>
               
               <router-link
@@ -54,7 +54,7 @@
                 class="flex items-center justify-center gap-2 text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors uppercase"
               >
                 <i class="fas fa-chevron-right text-[8px]"></i>
-                <span>العودة لتسجيل الدخول</span>
+                <span>ارجع لتسجيل الدخول</span>
               </router-link>
             </div>
           </div>
@@ -71,7 +71,7 @@
                   v-model="form.full_name"
                   type="text"
                   class="register-input"
-                  placeholder="الاسم الثلاثي..."
+                  placeholder="اكتب اسمك بالكامل"
                 />
                 <i class="fas fa-id-card absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors text-[10px]"></i>
               </div>
@@ -123,7 +123,7 @@
                 />
                 <i class="fas fa-lock absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors text-[10px]"></i>
               </div>
-              <p class="text-[9px] text-slate-400 font-bold px-1 uppercase tracking-tighter">أدخل 8 أحرف على الأقل (أرقام ورموز)</p>
+              <p class="text-[10px] text-slate-400 font-medium px-1">استخدم 8 أحرف على الأقل، ويفضّل تضمين أرقام ورموز لزيادة الأمان</p>
             </div>
 
             <!-- Feedback Notifications -->
@@ -151,8 +151,7 @@
                 class="w-full h-12 bg-blue-600 text-white rounded-lg font-bold text-xs uppercase tracking-widest shadow-lg shadow-blue-900/10 hover:bg-blue-700 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
               >
                 <template v-if="!loading">
-                  <span>إنشاء الحساب وتفعيل النظام</span>
-                  <i class="fas fa-rocket text-[10px]"></i>
+                  <span>إنشاء حسابي والبدء مجانًا</span>
                 </template>
                 <BaseSpinner v-else :size="18" color="#fff" />
               </button>
@@ -160,11 +159,30 @@
 
             <!-- Login Navigation -->
             <div class="text-center pt-8 border-t border-slate-100">
-              <p class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">لديك حساب بالفعل؟</p>
-              <router-link to="/" class="inline-block mt-3 text-xs font-bold text-blue-600 hover:text-blue-800 transition-all uppercase underline underline-offset-4 decoration-blue-200">العودة لتسجيل الدخول</router-link>
+              <p class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">عندك حساب بالفعل؟</p>
+              <router-link to="/" class="inline-block mt-3 text-xs font-bold text-blue-600 hover:text-blue-800 transition-all">تسجيل الدخول</router-link>
             </div>
           </form>
         </transition>
+      </div>
+
+      <div class="hidden lg:flex lg:flex-1 relative bg-slate-50 flex-col justify-end p-16">
+        <div class="absolute inset-0 z-0 overflow-hidden">
+          <div class="absolute inset-0 bg-gradient-to-br from-blue-50 via-white to-slate-100"></div>
+          <img src="/favicons/logo-smartsys.png" alt="" aria-hidden="true" class="absolute -left-20 -top-24 w-[28rem] opacity-[0.04] rotate-12" />
+        </div>
+        <div class="relative z-10">
+          <div class="bg-white/85 backdrop-blur-md border border-white p-8 rounded-2xl shadow-sm">
+            <img src="/favicons/banner-smartsys.png" alt="SmartSys" class="w-52 h-auto mb-8" />
+            <h2 class="text-3xl font-bold text-slate-900 leading-tight mb-4">ابدأ بإدارة أعمالك<br><span class="text-blue-600">من مكان واحد</span></h2>
+            <p class="text-slate-600 text-sm font-medium leading-relaxed max-w-sm">أنشئ حسابك لمتابعة المبيعات والمخزون والحسابات اليومية في مساحة منظمة.</p>
+            <div class="mt-8 pt-6 border-t border-slate-100 flex flex-wrap items-center gap-x-5 gap-y-3 text-[11px] font-bold text-slate-500">
+              <span class="inline-flex items-center gap-2"><i class="fas fa-receipt text-blue-500"></i>المبيعات</span>
+              <span class="inline-flex items-center gap-2"><i class="fas fa-boxes-stacked text-blue-500"></i>المخزون</span>
+              <span class="inline-flex items-center gap-2"><i class="fas fa-calculator text-blue-500"></i>الحسابات</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -173,7 +191,7 @@
 <script setup>
 // [SCRIPT SECTION REMAINS 100% IDENTICAL AS PER THE CRITICAL BUSINESS LOGIC RULE]
 import { ref } from 'vue'
-import { useAuthStore } from '@/stores/auth';
+import { useAuthStore } from '@/stores/auth/authStore';
 import { useRouter } from 'vue-router'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue'
 import apiClient from '@/config/axios'
@@ -259,11 +277,11 @@ async function resendVerification() {
 <style scoped>
 /* High-Density SaaS Form Elements */
 .register-input {
-  @apply w-full h-11 bg-white border border-slate-200 rounded-lg px-4 pr-10 outline-none transition-all duration-300 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 text-sm font-bold text-slate-800 placeholder-slate-300;
+  @apply w-full h-11 bg-white border border-slate-200 rounded-lg px-4 pr-10 outline-none transition-all duration-300 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 text-xs font-medium text-slate-700 placeholder-slate-300;
 }
 
 .metadata-label {
-  @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1;
+  @apply block text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-2 px-1;
 }
 
 /* Animations */

@@ -155,8 +155,8 @@
 <script setup>
 // [SCRIPT SECTION REMAINS 100% IDENTICAL AS PER BUSINESS LOGIC RULE]
 import { ref, computed, onMounted } from 'vue'
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import { useAccountStore } from '@/stores/account/accountStore';
 import LoadingButton from '@/components/ui/LoadingButton.vue'
 import { useBreadcrumb } from '@/composables/useBreadcrumb';

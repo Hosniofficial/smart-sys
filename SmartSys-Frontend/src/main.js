@@ -6,7 +6,7 @@ import App from './App.vue'
 import '@fortawesome/fontawesome-free/css/all.css'
 import router from './router'
 import apiClient from './config/axios'
-import { useAuthStore, setStoreRouter } from './stores/auth'
+import { useAuthStore, setStoreRouter } from '@/stores/auth/authStore'
 import logger from './services/logger'
 import { validateMenuConfig } from '@/config/menuConfig'
 

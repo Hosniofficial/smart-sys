@@ -5,22 +5,11 @@ declare(strict_types=1);
 namespace App\Security;
 
 /**
- * Permissions Catalog — single source of truth for all RBAC permission names.
+ * Canonical permission identifiers used by RBAC checks.
  *
- * IMPORTANT RULES:
- * 1. Never use permission strings directly in handlers/middleware. Always
- *    reference constants here so renames + audits are safe.
- * 2. When adding a new permission:
- *    a. Add the constant here.
- *    b. Add a row to the SQL migration (see database/migrations/W1_seed_permissions.sql).
- *    c. Run `php scripts/check_permission_coverage.php` to confirm DB <-> code parity.
- *
- * Naming convention: `<resource>.<action>` (matches existing DB rows).
- * Some legacy names use `<resource>.<sub>.<action>` — respected as-is for
- * backward compatibility (e.g. sales.approval.approve).
- *
- * Role bypass: super_admin (role_id=1) bypasses all checks at the middleware
- * layer. Do NOT grant super_admin rows in role_permissions — it's implicit.
+ * Keep these values aligned with the permission records managed by database
+ * migrations. Super-admin (role_id 1) is bypassed by middleware; legacy
+ * role_permissions rows are not an authorization source for that role.
  */
 final class Permissions
 {
@@ -133,6 +122,7 @@ final class Permissions
     // ──────────────────────────────────────────────────────────────────
     public const VOUCHER_VIEW   = 'voucher.view';
     public const VOUCHER_CREATE = 'voucher.create';
+    public const VOUCHER_EDIT   = 'voucher.edit';
     public const VOUCHER_DELETE = 'voucher.delete';
 
     // ──────────────────────────────────────────────────────────────────
@@ -140,8 +130,6 @@ final class Permissions
     // ──────────────────────────────────────────────────────────────────
     public const CATEGORY_VIEW   = 'category.view';
     public const CATEGORY_CREATE = 'category.create';
-    public const CATEGORY_EDIT   = 'category.edit';
-    public const CATEGORY_DELETE = 'category.delete';
 
     // ──────────────────────────────────────────────────────────────────
     // Documents
@@ -177,6 +165,12 @@ final class Permissions
     public const ACCOUNTING_JE_REVERSE    = 'accounting.je.reverse';
     public const ACCOUNTING_OPENING_BALANCE = 'accounting.opening_balance.commit';
 
+    // Owner Contributions (capital injections, owner loans, opening balances)
+    // Added in migration 011_add_owner_contribution_permissions.php
+    public const ACCOUNTING_OWNER_CONTRIBUTION_CREATE = 'accounting.owner_contribution.create';
+    public const ACCOUNTING_OWNER_CONTRIBUTION_VIEW   = 'accounting.owner_contribution.view';
+    public const ACCOUNTING_OWNER_CONTRIBUTION_VOID   = 'accounting.owner_contribution.void';
+
     // ──────────────────────────────────────────────────────────────────
     // POS (sessions, shifts, terminals)
     // ──────────────────────────────────────────────────────────────────
@@ -189,25 +183,14 @@ final class Permissions
     // Helpers
     // ──────────────────────────────────────────────────────────────────
 
-    /**
-     * Returns all permission string values defined as class constants.
-     *
-     * Used by the audit script to detect drift between code and DB.
-     *
-     * @return string[]
-     */
+    /** Return all permission identifiers defined by this catalog. */
     public static function all(): array
     {
         $ref = new \ReflectionClass(self::class);
         return array_values($ref->getConstants());
     }
 
-    /**
-     * Groups permissions by their category prefix (before the first dot).
-     * Useful for UI rendering or debugging.
-     *
-     * @return array<string, string[]>
-     */
+    /** Group identifiers by the segment before their first dot. */
     public static function grouped(): array
     {
         $groups = [];

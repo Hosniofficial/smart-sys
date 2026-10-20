@@ -13,21 +13,22 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception as MailException;
 
 /**
- * EmailVerificationService
+ * Manages verification and password-reset tokens, rate limits, and SMTP delivery.
  *
- * Centralises email verification business logic extracted from EmailVerificationHandler.
- * Handles: token generation, storage, validation, email sending, rate limiting.
+ * Uses PDO for token and user state, RequestHelper for client metadata, and PHPMailer for delivery.
  */
 class EmailVerificationService
 {
     private PDO $db;
     private array $config;
     private $logger;
+    private UserSessionService $userSessionService;
 
     public function __construct(PDO $db, array $config = [])
     {
         $this->db     = $db;
         $this->logger = MonologHandler::getInstance('email_verification');
+        $this->userSessionService = new UserSessionService($db);
 
         $requireHttps = false;
         $httpsEnv = getenv('HTTPS_ENFORCEMENT_ENABLED');
@@ -48,15 +49,10 @@ class EmailVerificationService
         ], $config);
     }
 
-    // -------------------------------------------------------------------------
-    // Public API
-    // -------------------------------------------------------------------------
-
     /**
-     * إنشاء token تحقق وإرسال البريد الإلكتروني.
+     * Create and send a verification token for the requested purpose.
      *
-     * @return array ['expires_at' => string, 'status' => 'sent']
-     * @throws \Exception on rate limit, user not found, or email failure
+     * @return array{expires_at: string, status: 'sent'}
      */
     public function sendVerification(
         string  $email,
@@ -76,7 +72,6 @@ class EmailVerificationService
         $tokenHash  = hash('sha256', $token);
         $expiresAt  = date('Y-m-d H:i:s', time() + ((int) $this->config['token_expires_hours'] * 3600));
 
-        // نخزّن الـ token أولاً (سريع — DB فقط)
         $this->storeToken(
             isset($user['id']) ? (int) $user['id'] : null,
             $email,
@@ -101,10 +96,16 @@ class EmailVerificationService
     }
 
     /**
-     * التحقق من token وتحديث حالة المستخدم.
+     * Validate a token, apply its purpose-specific update, and mark it used.
      *
-     * @return array ['status' => 'verified', 'purpose' => string]
-     * @throws \Exception on invalid/expired/used token
+     * @return array{
+     *     status: 'verified',
+     *     purpose: string,
+     *     user_id: int,
+     *     tenant_id: int,
+     *     user: array|null,
+     *     is_setup_complete: bool
+     * }
      */
     public function verifyToken(string $token): array
     {
@@ -144,12 +145,10 @@ class EmailVerificationService
 
         $this->markTokenUsed((int) $tokenInfo['id']);
 
-        // جلب بيانات المستخدم للـ auto-login (registration/email_change فقط)
         $userData = null;
         $isSetupComplete = false;
         if (in_array($purpose, ['registration', 'email_change'], true)) {
             $userData = $this->getUserById((int) $tokenInfo['user_id']);
-            // جلب حالة الـ setup من جدول tenants
             try {
                 $stmt = $this->db->prepare(
                     "SELECT is_setup_complete FROM tenants WHERE id = ? LIMIT 1"
@@ -171,7 +170,7 @@ class EmailVerificationService
     }
 
     /**
-     * إلغاء tokens قديمة وإرسال token جديد.
+     * Revoke the user's unused tokens for this purpose and send a replacement.
      */
     public function resend(string $email, string $purpose, Request $request): array
     {
@@ -186,28 +185,9 @@ class EmailVerificationService
     }
 
     /**
-     * جلب حالة التحقق للمستخدم.
-     */
-    public function getStatus(string $email): array
-    {
-        $user = $this->getUserByEmail($email);
-        if (!$user) {
-            throw new \App\Exceptions\NotFoundException('User not found');
-        }
-
-        $pending = $this->getPendingTokens((int) $user['id']);
-
-        return [
-            'email_verified'    => !empty($user['email_verified_at']),
-            'email_verified_at' => $user['email_verified_at'],
-            'pending_tokens'    => count($pending),
-            'last_sent_at'      => !empty($pending) ? $pending[0]['created_at'] : null,
-        ];
-    }
-
-    /**
-     * إرسال رابط إعادة تعيين كلمة المرور.
-     * يُرجع رسالة عامة دائماً (لا يكشف وجود الحساب).
+     * Send a password-reset link when the address belongs to a user.
+     *
+     * Unknown addresses are logged and return normally so the caller can keep a generic response.
      */
     public function sendPasswordReset(string $email, Request $request): void
     {
@@ -229,11 +209,7 @@ class EmailVerificationService
         $this->sendEmail($email, $token, 'password_reset', $user);
     }
 
-    /**
-     * إعادة تعيين كلمة المرور باستخدام token.
-     *
-     * @throws \Exception on invalid/expired token or weak password
-     */
+    /** Reset the password using a valid, unused password-reset token. */
     public function resetPassword(string $token, string $newPassword): void
     {
         if (strlen($newPassword) < 8) {
@@ -250,25 +226,31 @@ class EmailVerificationService
             || !empty($tokenInfo['is_revoked'])
             || !hash_equals((string) $tokenInfo['token_hash'], $tokenHash)
         ) {
-            usleep(150000); // timing-safe delay
+            usleep(150000);
             throw new Exception('الرابط غير صالح أو منتهي');
         }
 
-        $this->db->prepare(
-            "UPDATE users SET password = ?, updated_at = NOW()
-             WHERE id = ? AND tenant_id = ?"
-        )->execute([
-            password_hash($newPassword, PASSWORD_DEFAULT),
-            (int) $tokenInfo['user_id'],
-            (int) $tokenInfo['tenant_id'],
-        ]);
-
-        $this->markTokenUsed((int) $tokenInfo['id']);
+        $startedTransaction = !$this->db->inTransaction();
+        if ($startedTransaction) {
+            $this->db->beginTransaction();
+        }
+        try {
+            $this->userSessionService->changePassword(
+                (int) $tokenInfo['user_id'],
+                (int) $tokenInfo['tenant_id'],
+                $newPassword
+            );
+            $this->markTokenUsed((int) $tokenInfo['id']);
+            if ($startedTransaction) {
+                $this->db->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($startedTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $e;
+        }
     }
-
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
 
     private function generateToken(): string
     {
@@ -411,21 +393,8 @@ class EmailVerificationService
         )->execute([$userId, $purpose]);
     }
 
-    private function getPendingTokens(int $userId): array
-    {
-        $stmt = $this->db->prepare(
-            "SELECT * FROM email_verification_tokens
-             WHERE user_id = ? AND used_at IS NULL AND is_revoked = 0 AND expires_at > NOW()
-             ORDER BY created_at DESC"
-        );
-        $stmt->execute([$userId]);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        return is_array($rows) ? $rows : [];
-    }
-
     private function sendEmail(string $email, string $token, string $purpose, ?array $user): void
     {
-        // نزيد الـ execution time لأن SMTP قد يستغرق وقتاً
         $maxExecTime = (int) ($_ENV['EMAIL_MAX_EXECUTION_TIME'] ?? 60);
         if (function_exists('set_time_limit')) {
             set_time_limit($maxExecTime);

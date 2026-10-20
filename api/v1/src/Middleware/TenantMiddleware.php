@@ -12,6 +12,12 @@ use Psr\Container\ContainerInterface;
 use App\Database\DatabaseValidator;
 use App\Services\MonologHandler;
 
+/**
+ * Resolves tenant scope from JWT attributes or a validated X-Tenant-ID header.
+ *
+ * Header-based requests are checked against active tenants through the
+ * container's database connection; JWT-scoped requests pass through unchanged.
+ */
 class TenantMiddleware implements MiddlewareInterface
 {
     private $container;
@@ -22,6 +28,7 @@ class TenantMiddleware implements MiddlewareInterface
         $this->container = $container;
         $this->logger    = MonologHandler::getInstance('tenant');
     }
+    /** Validate or preserve the tenant context before dispatching the request. */
     public function process(Request $request, RequestHandler $handler): Response
     {
         $path = $request->getUri()->getPath();

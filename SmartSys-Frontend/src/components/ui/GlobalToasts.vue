@@ -50,7 +50,7 @@
 
 <script setup>
 import { storeToRefs } from 'pinia'
-import { useUiStore } from '../../stores/ui'
+import { useUiStore } from '@/stores/ui/uiStore'
 
 // ✅ مستعادة من النسخة القديمة: ربط الـ store بنفس الطريقة
 const ui = useUiStore()

@@ -11,8 +11,13 @@ use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 use Psr\Log\LoggerInterface;
 use App\Services\SecurityLogger;
 use App\Utils\RequestHelper;
-use Slim\Psr7\Response as SlimResponse;
 
+/**
+ * Records HTTP request metadata and error responses through security and app loggers.
+ *
+ * Optional body/header logging applies configured redaction; health and other
+ * configured paths can be excluded from logging.
+ */
 class RequestLoggingMiddleware implements MiddlewareInterface
 {
     private array $config;
@@ -54,6 +59,7 @@ class RequestLoggingMiddleware implements MiddlewareInterface
         ], $config);
     }
 
+    /** Log the request, dispatch it, then record response status and errors. */
     public function process(Request $request, RequestHandler $handler): Response
     {
         if (!$this->config['enabled']) {
@@ -62,20 +68,16 @@ class RequestLoggingMiddleware implements MiddlewareInterface
 
         $path = $request->getUri()->getPath();
 
-        // Skip logging for excluded paths
         foreach ($this->config['exclude_paths'] as $excludedPath) {
             if (strpos($path, $excludedPath) === 0) {
                 return $handler->handle($request);
             }
         }
 
-        // Log request details
         $this->logRequest($request);
 
-        // Process the request and get the response
         $response = $handler->handle($request);
 
-        // Log response details
         $this->logResponse($request, $response);
 
         return $response;

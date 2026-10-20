@@ -1,8 +1,8 @@
 import { ref, computed } from 'vue';
 import { SessionsService } from '@/services/sessions';
-import { useAuthStore } from '@/stores/auth';
+import { useAuthStore } from '@/stores/auth/authStore';
 import apiClient from '@/config/axios';
-import { getDeviceIdentity } from '@/utils/deviceIdentity';
+import { getDeviceIdentity, isSettingEnabled } from '@/utils';
 
 /**
  * Cashier Session Guard
@@ -17,6 +17,7 @@ export function useCashierSessionGuard() {
   const loading = ref(false);
   const error = ref(null);
   const authStore = useAuthStore();
+  const sessionsEnabled = ref(false);
   const enforceForRoles = ref([]); // array of role_ids that must work within sessions
   const enforceSessionForMe = computed(() => {
     const rid = authStore?.user?.role_id;
@@ -31,6 +32,7 @@ export function useCashierSessionGuard() {
         const { data } = await apiClient.get('/settings', { meta: { skipLoader: true } });
         if (data && data.status === 'success') {
           const s = data.data || {};
+          sessionsEnabled.value = isSettingEnabled(s['pos.sessions.enabled']);
           const raw = s['pos.sessions.enforce_for_roles'];
           let parsed = [];
           if (Array.isArray(raw)) parsed = raw;
@@ -44,6 +46,7 @@ export function useCashierSessionGuard() {
           enforceForRoles.value = (parsed || []).map(n => Number(n)).filter(n => !isNaN(n));
         }
       } catch (_) {
+        sessionsEnabled.value = false;
         enforceForRoles.value = [];
       } finally {
         done = true;
@@ -62,6 +65,7 @@ export function useCashierSessionGuard() {
   ) => {
     error.value = null;
     await loadSettingsOnce();
+    if (!sessionsEnabled.value) return true;
     const cashierId = authStore?.user?.id || null;
     if (!branchId && enforceSessionForMe.value) {
       error.value = 'الرجاء اختيار المخزن أولاً';
@@ -122,7 +126,7 @@ export default useCashierSessionGuard;
  * useSessionExemption
  * Frontend mirror of backend exemption logic to skip cashier-session enforcement for privileged users.
  * Exempt if:
- *  - authStore user role is admin/manager/owner/superadmin (by name), or role_id === 1
+ *  - the user is a platform super-admin, or a privileged user within a tenant
  *  - settings contain cashier_session_exempt_users including my user id
  *  - settings contain cashier_session_exempt_roles including my role name/slug
  */
@@ -134,10 +138,9 @@ export function useSessionExemption() {
 
   const hasPrivilegedRole = () => {
     const role = String(authStore?.user?.role || '').toLowerCase();
-    const rid = Number(authStore?.user?.role_id || 0);
-    if (["admin","administrator","manager","owner","superadmin","super_admin"].includes(role)) return true;
-    if (rid === 1) return true;
-    return false;
+    if (authStore.isSuperAdmin || authStore.isAdmin) return true;
+    return Number(authStore?.user?.tenant_id) > 0 &&
+      role === 'manager';
   };
 
   const loadOnce = (() => {

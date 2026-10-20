@@ -13,8 +13,10 @@
         :breadcrumb="{ parent: { label: 'التقارير', path: '/reports' }, current: { label: 'توزيع قيمة المخزون', path: '/reports/inventory-by-branch' } }"
         title="توزيع قيمة المخزون"
         description="تحليل الأصول وتوزيع السيولة عبر الفروع"
-        :branches="[]"
-        :selectedBranch="null"
+        :branches="branches"
+        :selectedBranch="selectedBranch === 'all' ? null : selectedBranch"
+        :hasExplicitSelection="true"
+        @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
           <!-- Valuation Switcher -->
@@ -175,21 +177,29 @@
 <script setup>
 // [بقاء المنطق البرمجي كما هو بنسبة 100%]
 import { ref, onMounted, watch, computed } from 'vue'
-import { useReportsStore } from '@/stores/reports'
+import { useReportsStore } from '@/stores/reports/reportsStore'
 import { Bar as BarChart } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from 'chart.js'
 
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import PageHeader from '@/components/PageHeader.vue';
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
 
 const reportsStore = useReportsStore()
+const branchStoreInstance = useBranchStore()
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency()
 const valuation = ref('sale')
 const rows = ref([])
 const totals = ref({})
 const loading = ref(false)
+
+const branches = computed(() => branchStoreInstance.branches)
+const selectedBranch = computed({
+  get: () => branchStoreInstance.selectedBranchId || 'all',
+  set: (value) => branchStoreInstance.setSelectedBranch(value === 'all' ? null : value)
+})
 
 const formatCurrency = (n) => formatCurrencyLocale(n, 2)
 

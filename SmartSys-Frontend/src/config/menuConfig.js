@@ -86,7 +86,7 @@ export const menuConfig = [
 
   {
     name: 'لوحة التحكم',
-    path: '/admin-dashboard',
+    path: '/dashboard',
     icon: LayoutDashboard,
     access: 'user'
   },
@@ -97,10 +97,10 @@ export const menuConfig = [
     icon: ShoppingCart,
     access: 'user',
     items: [
-      { name: 'نقطة البيع', path: '/sales/point', icon: ShoppingCart, access: 'user', permissions: ['sale.view', 'sale.create'] },
+      { name: 'نقطة البيع', path: '/sales/pos', icon: ShoppingCart, access: 'user', permissions: ['sale.view', 'sale.create'] },
       { name: 'سجل المبيعات', path: '/sales/history', icon: FileText, access: 'user', permission: 'sale.view' },
       { name: 'موافقات المبيعات', path: '/sales/approvals', icon: ClipboardCheck, access: 'user', permission: 'sales.approval.view' },
-      { name: 'لوحة تحكم الكاشير', path: '/cashier-dashboard', icon: LayoutDashboard, access: 'user' },
+      { name: 'لوحة تحكم الكاشير', path: '/cashier', icon: LayoutDashboard, access: 'user' },
       { name: 'جلسات الكاشير', path: '/sessions', icon: Clock, access: 'user', permission: 'pos.session.manage' },
     ],
     relatedRoutes: [
@@ -114,7 +114,7 @@ export const menuConfig = [
     icon: Undo2,
     access: 'user',
     items: [
-      { name: 'إدارة المرتجعات', path: '/sales/returns', icon: Undo2, access: 'user', permission: 'return.view' },
+      { name: 'إدارة المرتجعات', path: '/returns', icon: Undo2, access: 'user', permission: 'return.view' },
       { name: 'سجل المرتجعات', path: '/returns/history', icon: History, access: 'user', permission: 'return.view' },
     ],
     relatedRoutes: []
@@ -129,6 +129,14 @@ export const menuConfig = [
       { name: 'طلبات الضمان', path: '/warranty', icon: Shield, access: 'user' },
     ],
     relatedRoutes: []
+  },
+
+  {
+    name: 'صيانة الأجهزة',
+    path: '/repairs',
+    icon: CalendarCheck,
+    access: 'user',
+    permission: 'sale.view'
   },
 
   {
@@ -155,7 +163,7 @@ export const menuConfig = [
       { name: 'إدارة المخزون', path: '/inventory', icon: Warehouse, access: 'user', permission: 'inventory.view' },
       { name: 'إدارة الفروع', path: '/branches', icon: Building2, access: 'user', permission: 'branch.view' },
       { name: 'توزيع جماعي', path: '/branches/bulk-distribution', icon: Share2, access: 'user', permission: 'inventory.transfer' },
-      { name: 'الرصيد الافتتاحي', path: '/setup/opening-balance', icon: CreditCard, access: 'user', permission: 'accounting.opening_balance.commit' },
+      { name: 'الرصيد الافتتاحي', path: '/opening-balance', icon: CreditCard, access: 'user', permission: 'accounting.opening_balance.commit' },
     ],
     relatedRoutes: [
       { path: '/branches/:id', label: 'تفاصيل الفرع', access: 'admin' },
@@ -191,10 +199,11 @@ export const menuConfig = [
     icon: Wallet,
     access: 'user',
     items: [
-      { name: 'المدفوعات', path: '/payments', icon: Banknote, access: 'user', permissions: ['sale.payment.create', 'purchase.payment.create'] },
-      { name: 'طرق الدفع', path: '/admin/payment-methods', icon: CreditCard, access: 'user', permission: 'payment_method.view' },
+      { name: 'العمليات المالية', path: '/payments', icon: Banknote, access: 'user', permissions: ['sale.payment.create', 'purchase.payment.create'] },
+      { name: 'طرق الدفع', path: '/payment-methods', icon: CreditCard, access: 'user', permission: 'payment_method.view' },
       { name: 'سندات القبض والصرف', path: '/vouchers', icon: Receipt, access: 'user', permission: 'voucher.view' },
-      { name: 'الدورات المحاسبية', path: '/accounting/periods', icon: CalendarCheck, access: 'user', permission: 'accounting.period.manage' },
+      { name: 'الفترات المحاسبية', path: '/accounting/periods', icon: CalendarCheck, access: 'user', permission: 'accounting.period.manage' },
+      { name: 'مساهمات المالك', path: '/accounting/owner-contributions', icon: Wallet, access: 'admin' },
     ],
     relatedRoutes: []
   },
@@ -242,8 +251,8 @@ export const menuConfig = [
     icon: UserCog,
     access: 'user',
     items: [
-      { name: 'إدارة الموظفين والصلاحيات', path: '/admin/users', icon: UserCog, access: 'user', permissions: ['user.view', 'role.view', 'permission.view'] },
-      { name: 'سلامة البيانات', path: '/admin/data-integrity', icon: ShieldCheck, access: 'admin' },
+      { name: 'إدارة الموظفين والصلاحيات', path: '/users', icon: UserCog, access: 'user', permissions: ['user.view', 'role.view', 'permission.view'] },
+      { name: 'سلامة البيانات', path: '/data-integrity', icon: ShieldCheck, access: 'admin' },
     ],
     relatedRoutes: []
   },
@@ -439,14 +448,6 @@ function getBreadcrumbMap() {
 }
 
 /**
- * Test-only hook: clears the memoized breadcrumb map so unit tests can
- * mutate menuConfig and re-validate cleanly between cases.
- */
-export function __resetMenuConfigCacheForTests() {
-  cachedBreadcrumbMap = null
-}
-
-/**
  * Get breadcrumb information for a path.
  * Handles: exact matches, query params, and dynamic routes.
  * @param {string} path - route.path (NOT route.fullPath — query params are
@@ -468,11 +469,6 @@ export function getBreadcrumbForPath(path) {
   }
 
   return null
-}
-
-export function getSectionForPath(path) {
-  const info = getBreadcrumbForPath(path)
-  return info ? info.section : null
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -508,12 +504,17 @@ const MANAGER_ROLES = ['manager']
  * @param {string} role - raw role string from the user object
  * @param {Array} permissions - raw permissions array/objects from the user
  */
-export function hasMenuPermission(entry, role, permissions = []) {
-  const normalizedRole = normalizeRole(role)
+export function hasMenuPermission(entry, role, permissions = [], userContext = {}) {
+  const hasTenantContext = Object.prototype.hasOwnProperty.call(userContext, 'tenant_id')
+  const tenantUser = Number(userContext.tenant_id) > 0
+  const isPlatformSuperAdmin = hasTenantContext && !tenantUser && normalizeRole(role) === 'superAdmin'
+  const effectiveRole = tenantUser && normalizeRole(role) === 'superAdmin'
+    ? (userContext.is_owner ? 'admin' : 'employee')
+    : role
+  const normalizedRole = normalizeRole(effectiveRole)
   const permissionNames = normalizePermissionNames(permissions)
 
-  // superAdmin always passes, no exceptions.
-  if (normalizedRole === 'superAdmin') return true
+  if (isPlatformSuperAdmin) return true
 
   const requiredPermissions = entry.permissions || (entry.permission ? [entry.permission] : [])
 
@@ -546,7 +547,7 @@ export function hasMenuPermission(entry, role, permissions = []) {
 export function checkAccessForPath(path, user) {
   const info = getBreadcrumbForPath(path)
   if (!info) return false // unknown route → deny (safe fallback)
-  return hasMenuPermission(info, user?.role, user?.permissions)
+  return hasMenuPermission(info, user?.role, user?.permissions, user)
 }
 
 /**
@@ -554,10 +555,10 @@ export function checkAccessForPath(path, user) {
  * and permissions. Used by AppSidebar.vue and the mobile drawer.
  * @returns {array} - filtered menuConfig array
  */
-export function getMenuItems(role = 'employee', permissions = []) {
+export function getMenuItems(role = 'employee', permissions = [], userContext = {}) {
   function filterItems(items) {
     return items.reduce((visibleItems, item) => {
-      if (!hasMenuPermission(item, role, permissions)) return visibleItems
+      if (!hasMenuPermission(item, role, permissions, userContext)) return visibleItems
       const visibleItem = { ...item }
       if (item.items) visibleItem.items = filterItems(item.items)
       if (visibleItem.items?.length || !item.items) visibleItems.push(visibleItem)

@@ -1,6 +1,6 @@
 import { ref, computed, watch } from 'vue';
 import { useTableFilters } from './useTableFilters';
-import { useBranchStore } from '@/stores/branch';
+import { useBranchStore } from '@/stores/branch/branchStore';
 
 /**
  * Composable موحد لإدارة الفلاتر في سجلات المبيعات والمشتريات والمرتجعات
@@ -30,7 +30,7 @@ export const useHistoryFilters = (
   });
   
   const showBranchDropdown = ref(false);
-  const total = ref(0);
+  const total = baseFilters.totalCount;
   const kpiSum = ref(0);
   const kpiTax = ref(null);
   const kpiDiscount = ref(null);

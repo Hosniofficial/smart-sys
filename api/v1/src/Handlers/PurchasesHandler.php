@@ -14,46 +14,16 @@ use App\Services\MonologHandler;
 use App\Services\FinancialCalculationService;
 use App\Services\LabelService;
 use App\Services\LocaleService;
+use App\Services\PurchaseReturnSettlementPolicy;
 use App\Utils\PaginationHelper;
 use App\Utils\DateHelper;
 
 /**
- * ──────────────────────────────────────────────────────────
- * PURCHASES HANDLER
- * ──────────────────────────────────────────────────────────
+ * Handles tenant-scoped purchase invoices and supplier payments.
  *
- * HTTP handler for all purchase order and invoice management operations.
- * Provides endpoints for listing, retrieving, creating, updating, and deleting
- * purchase documents with payment tracking and supplier debt management.
- *
- * **Key Responsibilities**:
- * - Invoice CRUD operations with atomic transactions
- * - Approval workflow (pending, approval, rejection)
- * - Payment recording with Idempotency-Key support
- * - Supplier debt payment management with race condition prevention (FOR UPDATE)
- * - Multi-currency support via FinancialCalculationService
- * - Localized response labels (ar/en) via LabelService
- * - Automatic numbering and status calculation
- *
- * **Multi-Tenancy**:
- * All queries filtered by tenant_id; authorization via RBACHandler for approval operations.
- *
- * **Dependencies**:
- * - FinancialCalculationService: Cost calculations, currency conversions
- * - MonologHandler: Entity-specific logging (purchases channel)
- * - LabelService: Localized reference and status labels
- * - LocaleService: Accept-Language header parsing
- * - PaginationHelper: Query result pagination (limit, offset)
- * - DateHelper: DateTime normalization (end-of-day handling)
- *
- * **HTTP Status Codes**:
- * - 200: Success (GET, list operations)
- * - 201: Created (POST operations)
- * - 400: Bad Request (missing/invalid parameters)
- * - 403: Forbidden (insufficient permissions, missing tenant_id)
- * - 404: Not Found (invoice/payment not found)
- * - 409: Conflict (duplicate idempotency key)
- * - 500: Server Error (database/transaction failures)
+ * The handler validates request data, builds invoice totals, and coordinates
+ * persistence through purchase services. It also shapes localized list/detail
+ * responses and applies cashier-session and idempotency rules for payments.
  */
 class PurchasesHandler extends BaseHandler
 {
@@ -98,13 +68,12 @@ class PurchasesHandler extends BaseHandler
             return 'due';
         }
 
-        // Calculate total settlement: cash payments + returns applied to balance
+        // Returns reduce the outstanding amount alongside recorded payments.
         $totalSettled = round($paidAmount + $returnAmount, 2);
         $isFullySettled = $totalSettled >= $netTotal - 0.01;
 
         // Full settlement via cash payment (possibly combined with return)
         if ($isFullySettled) {
-            // Use first payment date to distinguish between same-day payment (paid) vs later settlement (settled)
             if ($createdAt && $firstPaymentDate) {
                 $createdDate = (new \DateTime($createdAt))->format('Y-m-d');
                 $paymentDate = (new \DateTime($firstPaymentDate))->format('Y-m-d');
@@ -124,7 +93,7 @@ class PurchasesHandler extends BaseHandler
     {
         $items = $data['items'] ?? [];
         if (!is_array($items) || count($items) === 0) {
-            throw new Exception('يجب إضافة عناصر للفاتورة.');
+            throw new Exception('يجب إضافة أصناف للفاتورة.');
         }
 
         $normalizedItems = [];
@@ -142,6 +111,11 @@ class PurchasesHandler extends BaseHandler
                 'serial' => null,
                 'category_id' => null,
             ], is_array($item) ? $item : []);
+
+            // Sanitize: empty strings are not valid dates/values for DB columns
+            if (($item['expiry_date'] ?? null) === '') $item['expiry_date'] = null;
+            if (($item['batch_number'] ?? null) === '') $item['batch_number'] = null;
+            if (($item['serial'] ?? null) === '')       $item['serial']       = null;
 
             $qty = (float) ($item['quantity'] ?? 0);
             $cost = (float) ($item['cost'] ?? 0);
@@ -169,11 +143,6 @@ class PurchasesHandler extends BaseHandler
         $taxRate = (float) ($data['tax_rate'] ?? 0);
         $paidAmount = (float) ($data['paid_amount'] ?? 0);
 
-        // ⚠️ إصلاح تناسق: كان الخصم يُحسب يدوياً هنا (نسخة مطابقة تقريباً لمنطق
-        // FinancialCalculationService::calculateDiscount عدا حالة النسبة > 100%)، بينما
-        // الضريبة بعده مباشرة تستخدم الخدمة المشتركة فعلاً. تم توحيدهما على نفس المصدر —
-        // calculateDiscount تضمن أصلاً ألا يتجاوز الخصم الإجمالي، فأصبح الشرط اليدوي التالي
-        // غير ضروري (أُزيل).
         $discountAmount = $this->financialCalcService->calculateDiscount($grossTotal, $discountValue, $discountType);
 
         $totalAfterDiscount = round($grossTotal - $discountAmount, 2);
@@ -250,25 +219,20 @@ class PurchasesHandler extends BaseHandler
         ?int $supplierAccountId,
         bool $enforceCashierSession,
         ?Request $request = null,
-        bool $purchaseJeAlreadyCreated = false
+        bool $purchaseJeAlreadyCreated = false,
+        ?int $resolvedSessionId = null,
+        bool $sessionAlreadyResolved = false,
+        bool $liquidityAlreadyValidated = false
     ): array {
-        // Resolve session ID here (HTTP layer concern) before delegating to service
-        $sessionId = null;
-        if ($enforceCashierSession && $request) {
-            $tenantId          = (int) $this->tenantId;
-            $isSessionsEnabled = $this->isSessionsEnabled($tenantId);
-            $isExempt          = $this->isCashierSessionExempt($request);
-            $isCash            = $this->isCashMethod($paymentMethodId, $tenantId);
-
-            if ($isSessionsEnabled && $isCash && !$isExempt) {
-                if (!$branchId) {
-                    throw new Exception('يجب تحديد المخزن لإتمام الدفعة النقدية للكاشير.');
-                }
-                $sessionId = $this->requireOpenCashierSession($tenantId, (int) $branchId, $userId ? (int) $userId : null);
-            } elseif (($isExempt || !$isSessionsEnabled) && $branchId) {
-                $sessionId = $this->findOpenCashierSession($tenantId, (int) $branchId, null);
-            }
-        }
+        $sessionId = $sessionAlreadyResolved
+            ? $resolvedSessionId
+            : $this->resolvePurchasePaymentSession(
+                $paymentMethodId,
+                $branchId,
+                $userId,
+                $enforceCashierSession,
+                $request
+            );
 
         return $this->services->purchase((int) $this->tenantId, $userId)->recordPayment(
             $purchaseId,
@@ -281,8 +245,43 @@ class PurchasesHandler extends BaseHandler
             $costCenterId,
             $supplierAccountId,
             $sessionId,
-            $purchaseJeAlreadyCreated
+            $purchaseJeAlreadyCreated,
+            $liquidityAlreadyValidated
         );
+    }
+
+    private function resolvePurchasePaymentSession(
+        int $paymentMethodId,
+        ?int $branchId,
+        ?int $userId,
+        bool $enforceCashierSession,
+        ?Request $request
+    ): ?int {
+        if (!$enforceCashierSession || !$request) {
+            return null;
+        }
+
+        $tenantId = (int) $this->tenantId;
+        $sessionsEnabled = $this->isSessionsEnabled($tenantId);
+        $isExempt = $this->isCashierSessionExempt($request);
+        $isCash = $this->isCashMethod($paymentMethodId, $tenantId);
+
+        if ($sessionsEnabled && $isCash && !$isExempt) {
+            if (!$branchId) {
+                throw new Exception('يجب تحديد المخزن لإتمام الدفعة النقدية للكاشير.');
+            }
+            return $this->requireOpenCashierSession(
+                $tenantId,
+                (int) $branchId,
+                $userId ? (int) $userId : null
+            );
+        }
+
+        if (($isExempt || !$sessionsEnabled) && $branchId) {
+            return $this->findOpenCashierSession($tenantId, (int) $branchId, null);
+        }
+
+        return null;
     }
 
     private function auditSafe(
@@ -300,45 +299,37 @@ class PurchasesHandler extends BaseHandler
         );
     }
 
-    /**
-     * Get next sequential purchase invoice number for this tenant.
-     *
-     * @param Request $request
-     * @param Response $response
-     * @return Response JSON: {invoice_number: string}
-     */
+    /** Return the next invoice number in the current tenant context. */
     public function getNextInvoiceNumber(Request $request, Response $response): Response
     {
         try {
             $this->requireTenantContext($request);
-
-            return $this->successResponse($response, [
-                'invoice_number' => $this->generatePurchaseInvoiceNumber()
-            ], 200);
         } catch (Throwable $e) {
             return $this->errorResponse($response, 'غير مصرح', 403);
         }
+
+        try {
+            $this->db->beginTransaction();
+            $invoiceNumber = $this->generatePurchaseInvoiceNumber();
+            $this->db->commit();
+
+            return $this->successResponse($response, [
+                'invoice_number' => $invoiceNumber
+            ], 200);
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            $this->logger->error('Failed to generate next purchase invoice number', [
+                'tenant_id' => $this->tenantId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->errorResponse($response, 'تعذر إنشاء رقم فاتورة الشراء', 500);
+        }
     }
 
-    /**
-     * List purchase invoices with pagination and filtering.
-     *
-     * **Query Parameters**:
-     * - q, search: Full-text search in invoice_number, supplier name
-     * - supplier_id: Filter by supplier (integer)
-     * - branch_id: Filter by branch (integer)
-     * - status: Filter by status (pending, approved, rejected, paid)
-     * - date_from, start_date: Start date (YYYY-MM-DD)
-     * - date_to, end_date: End date (YYYY-MM-DD)
-     * - sort: Field to sort by (id, invoice_date, total_amount, status) [default: invoice_date]
-     * - order: Sort direction (asc, desc) [default: desc]
-     * - page: Pagination page number [default: 1]
-     * - per_page: Items per page [default: 10]
-     *
-     * @param Request $request
-     * @param Response $response
-     * @return Response JSON: {items: array, total: int, page: int, limit: int, total_pages: int}
-     */
+    /** List tenant purchase invoices with pagination, filters, computed balances, and optional totals. */
     public function list(Request $request, Response $response): Response
     {
         try {
@@ -402,6 +393,7 @@ class PurchasesHandler extends BaseHandler
                 FROM purchases p
                 LEFT JOIN suppliers s ON p.supplier_id = s.id AND s.tenant_id = p.tenant_id
                 LEFT JOIN users u ON p.user_id = u.id AND u.tenant_id = p.tenant_id
+                LEFT JOIN journal_entries je ON je.id = p.journal_entry_id AND je.tenant_id = p.tenant_id
             ";
             $whereSql = " WHERE " . implode(' AND ', $where);
 
@@ -413,15 +405,25 @@ class PurchasesHandler extends BaseHandler
                 SELECT p.*,
                     s.name AS supplier_name,
                     u.name AS created_by_name,
-                    COALESCE((SELECT SUM(pm.amount) FROM payments pm
+                    je.status AS journal_status,
+                    COALESCE((SELECT SUM(
+                                  CASE WHEN pm.type = 'payment_for_return' THEN -pm.amount ELSE pm.amount END
+                              ) FROM payments pm
                               WHERE pm.purchase_id = p.id AND pm.tenant_id = p.tenant_id
-                                AND pm.status = 'completed'), 0) AS actual_paid_amount,
+                                AND pm.status = 'completed' AND pm.is_draft = 0), 0) AS actual_paid_amount,
+                    (SELECT COUNT(*) FROM payments pm
+                     WHERE pm.purchase_id = p.id AND pm.tenant_id = p.tenant_id
+                       AND COALESCE(pm.type, '') <> 'payment_for_return') AS linked_payment_count,
+                    (SELECT COUNT(*) FROM returns r
+                     WHERE r.purchase_id = p.id AND r.tenant_id = p.tenant_id
+                       AND r.return_type = 'purchase') AS linked_return_count,
                     COALESCE((SELECT SUM(r.grand_total) FROM returns r
                               WHERE r.purchase_id = p.id AND r.tenant_id = p.tenant_id
                                 AND r.return_type = 'purchase'), 0) AS return_amount,
                     (SELECT MIN(pm.payment_date) FROM payments pm
                      WHERE pm.purchase_id = p.id AND pm.tenant_id = p.tenant_id
-                       AND pm.status = 'completed' LIMIT 1) AS first_payment_date
+                       AND pm.status = 'completed' AND pm.is_draft = 0
+                        AND COALESCE(pm.type, '') <> 'payment_for_return' LIMIT 1) AS first_payment_date
                 $from
                 $whereSql
                 ORDER BY $sortCol $order
@@ -440,12 +442,15 @@ class PurchasesHandler extends BaseHandler
                 $actualPaid   = round((float) ($it['actual_paid_amount'] ?? $it['paid_amount'] ?? 0), 2);
                 $totalAmt     = round((float) ($it['total_amount'] ?? 0), 2);
                 $returnAmount = round((float) ($it['return_amount'] ?? 0), 2);
+                $storedStatus = strtolower((string) ($it['status'] ?? ''));
                 $it['actual_paid_amount'] = $actualPaid;
                 $it['return_amount']      = $returnAmount;
-                $it['remaining_balance']  = $returnAmount >= $totalAmt
+                $it['remaining_balance'] = in_array($storedStatus, ['canceled', 'cancelled', 'rejected'], true)
                     ? 0.0
-                    : round(max(0.0, $totalAmt - $actualPaid), 2);
-                $it['dynamic_status']     = $this->determinePurchaseStatus($totalAmt, $actualPaid, $returnAmount, $it['created_at'] ?? null, $it['first_payment_date'] ?? null);
+                    : PurchaseReturnSettlementPolicy::outstandingAmount($totalAmt, $actualPaid, $returnAmount);
+                $it['dynamic_status'] = in_array($storedStatus, ['canceled', 'cancelled', 'rejected'], true)
+                    ? $storedStatus
+                    : $this->determinePurchaseStatus($totalAmt, $actualPaid, $returnAmount, $it['created_at'] ?? null, $it['first_payment_date'] ?? null);
                 $it['status_label'] = $this->statusLabel($it['dynamic_status'], $locale);
             }
             unset($it);
@@ -453,15 +458,31 @@ class PurchasesHandler extends BaseHandler
             $summary = null;
             $includeTotals = isset($qp['include_totals']) && (string) $qp['include_totals'] !== '0';
             if ($includeTotals) {
+                $summaryWhereSql = $whereSql . " AND LOWER(COALESCE(p.status, '')) NOT IN ('canceled', 'cancelled', 'rejected')";
                 $sumSql = "
                     SELECT
                         COALESCE(SUM(p.total_amount), 0) AS sum_total_amount,
                         COALESCE(SUM(p.tax_amount), 0) AS sum_tax,
                         COALESCE(SUM(p.discount_value), 0) AS sum_discount,
-                        COALESCE(SUM(p.paid_amount), 0) AS sum_paid_amount,
-                        COALESCE(SUM(p.total_amount - p.paid_amount), 0) AS sum_balance_due
+                        COALESCE(SUM(COALESCE((SELECT SUM(
+                            CASE WHEN pm.type = 'payment_for_return' THEN -pm.amount ELSE pm.amount END
+                        ) FROM payments pm
+                        WHERE pm.purchase_id = p.id AND pm.tenant_id = p.tenant_id
+                          AND pm.status = 'completed' AND pm.is_draft = 0), 0)), 0) AS sum_paid_amount,
+                        COALESCE(SUM(GREATEST(
+                            p.total_amount
+                            - COALESCE((SELECT SUM(
+                                CASE WHEN pm.type = 'payment_for_return' THEN -pm.amount ELSE pm.amount END
+                            ) FROM payments pm
+                            WHERE pm.purchase_id = p.id AND pm.tenant_id = p.tenant_id
+                              AND pm.status = 'completed' AND pm.is_draft = 0), 0)
+                            - COALESCE((SELECT SUM(r.grand_total) FROM returns r
+                                WHERE r.purchase_id = p.id AND r.tenant_id = p.tenant_id
+                                  AND r.return_type = 'purchase'), 0),
+                            0
+                        )), 0) AS sum_balance_due
                     $from
-                    $whereSql
+                    $summaryWhereSql
                 ";
                 $stmt = $this->db->prepare($sumSql);
                 $stmt->execute($params);
@@ -491,17 +512,7 @@ class PurchasesHandler extends BaseHandler
         }
     }
 
-    /**
-     * Get single purchase invoice with items and payments.
-     *
-     * **Route Parameters**:
-     * - id: Purchase invoice ID (integer)
-     *
-     * @param Request $request
-     * @param Response $response
-     * @param array $args Route arguments: {id: int}
-     * @return Response JSON: Single purchase with items and payments
-     */
+    /** Return one tenant purchase invoice with line items, payments, and computed balance. */
     public function get(Request $request, Response $response, array $args = []): Response
     {
         try {
@@ -518,10 +529,12 @@ class PurchasesHandler extends BaseHandler
                     p.*,
                     s.name AS supplier_name,
                     s.phone AS supplier_phone,
-                    u.name AS created_by_name
+                    u.name AS created_by_name,
+                    je.status AS journal_status
                 FROM purchases p
                 LEFT JOIN suppliers s ON p.supplier_id = s.id AND s.tenant_id = p.tenant_id
                 LEFT JOIN users u ON p.user_id = u.id AND u.tenant_id = p.tenant_id
+                LEFT JOIN journal_entries je ON je.id = p.journal_entry_id AND je.tenant_id = p.tenant_id
                 WHERE p.id = ? AND p.tenant_id = ?
                 LIMIT 1
             ");
@@ -551,7 +564,7 @@ class PurchasesHandler extends BaseHandler
                 SELECT p.*, u.name AS created_by_name
                 FROM payments p
                 LEFT JOIN users u ON p.created_by = u.id AND u.tenant_id = p.tenant_id
-                WHERE p.purchase_id = ? AND p.tenant_id = ? AND p.status = 'completed'
+                WHERE p.purchase_id = ? AND p.tenant_id = ? AND p.status = 'completed' AND p.is_draft = 0
                 ORDER BY p.payment_date DESC
             ");
             $stmt->execute([$id, $tenantId]);
@@ -567,7 +580,16 @@ class PurchasesHandler extends BaseHandler
             }
             unset($payment);
 
-            $actualPaid = round(array_sum(array_column($payments, 'amount')), 2);
+            $stmtPaid = $this->db->prepare("
+                SELECT COALESCE(SUM(
+                    CASE WHEN type = 'payment_for_return' THEN -amount ELSE amount END
+                ), 0)
+                FROM payments
+                WHERE purchase_id = ? AND tenant_id = ?
+                  AND status = 'completed' AND is_draft = 0
+            ");
+            $stmtPaid->execute([$id, $tenantId]);
+            $actualPaid = round((float) $stmtPaid->fetchColumn(), 2);
             $totalAmt   = round((float) ($purchase['total_amount'] ?? 0), 2);
 
             $stmtRet = $this->db->prepare("
@@ -578,10 +600,10 @@ class PurchasesHandler extends BaseHandler
             $stmtRet->execute([$id, $tenantId]);
             $returnAmount = round((float) $stmtRet->fetchColumn(), 2);
 
-            // Get first payment date for accurate status determination (not updated_at which changes on any edit)
             $stmtFirstPayment = $this->db->prepare("
                 SELECT MIN(payment_date) FROM payments
                 WHERE purchase_id = ? AND tenant_id = ? AND status = 'completed'
+                  AND is_draft = 0 AND COALESCE(type, '') <> 'payment_for_return'
                 LIMIT 1
             ");
             $stmtFirstPayment->execute([$id, $tenantId]);
@@ -591,12 +613,15 @@ class PurchasesHandler extends BaseHandler
             $purchase['reference_id']     = $purchase['id'] ?? null;
             $purchase['reference']        = 'purchase#' . ($purchase['id'] ?? '');
             $purchase['reference_label']  = $this->refLabel('purchase', $locale);
+            $storedStatus = strtolower((string) ($purchase['status'] ?? ''));
             $purchase['actual_paid_amount'] = $actualPaid;
             $purchase['return_amount']      = $returnAmount;
-            $purchase['remaining_balance']  = $returnAmount >= $totalAmt
+            $purchase['remaining_balance'] = in_array($storedStatus, ['canceled', 'cancelled', 'rejected'], true)
                 ? 0.0
-                : round(max(0.0, $totalAmt - $actualPaid), 2);
-            $purchase['dynamic_status']     = $this->determinePurchaseStatus($totalAmt, $actualPaid, $returnAmount, $purchase['created_at'] ?? null, $firstPaymentDate);
+                : PurchaseReturnSettlementPolicy::outstandingAmount($totalAmt, $actualPaid, $returnAmount);
+            $purchase['dynamic_status'] = in_array($storedStatus, ['canceled', 'cancelled', 'rejected'], true)
+                ? $storedStatus
+                : $this->determinePurchaseStatus($totalAmt, $actualPaid, $returnAmount, $purchase['created_at'] ?? null, $firstPaymentDate);
             $purchase['status_label']     = $this->statusLabel($purchase['dynamic_status'], $locale);
             $purchase['payments']         = $payments;
 
@@ -617,36 +642,31 @@ class PurchasesHandler extends BaseHandler
     }
 
     /**
-     * Create new purchase invoice with line items.
-     *
-     * **Request Body** (JSON):
-     * - invoice_number: Unique invoice identifier (string)
-     * - invoice_date: Invoice date (YYYY-MM-DD)
-     * - supplier_id: Supplier ID (integer)
-     * - items: Array of items [{product_id, quantity, unit_price, ...}]
-     * - notes: Optional notes (string)
-     * - branch_id: Branch ID (integer)
-     * - payment_method_id: Payment method ID (integer, optional)
-     * - cost_center_id: Cost center ID (integer, optional)
-     * - supplier_account_id: Supplier account ID (integer, optional)
-     *
-     * **Side Effects**:
-     * - Creates accounting journal entries for purchase
-     * - Records audit trail
-     * - Sends notifications
-     *
-     * @param Request $request
-     * @param Response $response
-     * @return Response JSON: Created invoice with ID and status
+     * Create an invoice, line items, accounting entries, and an optional initial payment.
+     * Requires an Idempotency-Key; the key and request fingerprint are stored with the invoice.
      */
     public function create(Request $request, Response $response): Response
     {
+        $idempotencyKey = '';
+        $requestHash = '';
+        $tenantIdForReplay = 0;
+        $userIdForReplay = 0;
+        $purchaseTransactionStarted = false;
+
         try {
             $ctx = $this->requireTenantContext($request);
             $userId = $ctx['user_id'];
+            $tenantIdForReplay = (int) $this->tenantId;
+            $userIdForReplay = (int) $userId;
+
+            $idempotencyKey = trim($request->getHeaderLine('Idempotency-Key'));
+            if ($idempotencyKey === '' || strlen($idempotencyKey) > 128) {
+                return $this->errorResponse($response, 'مطلوب مفتاح طلب صالح لمنع إنشاء فاتورة شراء مكررة.', 400);
+            }
 
             $data = $request->getParsedBody();
             $data = is_array($data) ? $data : [];
+            $requestHash = \App\Services\PurchaseRequestFingerprint::fromPayload($data);
 
             foreach (['supplier_id', 'branch_id', 'items', 'payment_method_id'] as $field) {
                 if (empty($data[$field])) {
@@ -663,24 +683,35 @@ class PurchasesHandler extends BaseHandler
                 'tax_rate' => 0,
             ], $data);
 
+            $replayedResponse = $this->existingPurchaseCreationResponse(
+                $response,
+                (int) $this->tenantId,
+                (int) $userId,
+                $idempotencyKey,
+                $requestHash
+            );
+            if ($replayedResponse !== null) {
+                return $replayedResponse;
+            }
+
             $totals = $this->calculatePurchaseTotals($data);
             $invoiceDate = $this->normalizeDateTime((string) $data['invoice_date']);
             $this->applyDefaultCostCenter($data, $request);
             $costCenterId = $data['cost_center_id'] ?? 1;
 
+            $this->db->beginTransaction();
+            $purchaseTransactionStarted = true;
             $invoiceNumber = !empty($data['invoice_number'])
                 ? (string) $data['invoice_number']
                 : $this->generatePurchaseInvoiceNumber($invoiceDate);
-
-            $this->db->beginTransaction();
 
             $stmt = $this->db->prepare("
                 INSERT INTO purchases (
                     tenant_id, supplier_id, invoice_number, invoice_date, total_amount,
                     paid_amount, discount_value, discount_type, tax_rate, tax_amount,
                     notes, payment_method_id, user_id, total_items, status, branch_id,
-                    cost_center_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    cost_center_id, created_at, idempotency_key, request_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)
             ");
 
             $maxAttempts = 5;
@@ -707,10 +738,32 @@ class PurchasesHandler extends BaseHandler
                         $totals['total_items'],
                         $totals['status'],
                         (int) $data['branch_id'],
-                        $costCenterId
+                        $costCenterId,
+                        $idempotencyKey,
+                        $requestHash
                     ]);
                     break;
                 } catch (\Throwable $e) {
+                    if ($this->isDuplicateKeyException($e)) {
+                        if ($this->db->inTransaction()) {
+                            $this->db->rollBack();
+                        }
+                        $replayedResponse = $this->existingPurchaseCreationResponse(
+                            $response,
+                            (int) $this->tenantId,
+                            (int) $userId,
+                            $idempotencyKey,
+                            $requestHash
+                        );
+                        if ($replayedResponse !== null) {
+                            return $replayedResponse;
+                        }
+                        if ($attempt >= $maxAttempts) {
+                            throw $e;
+                        }
+                        $this->db->beginTransaction();
+                    }
+
                     if ($attempt >= $maxAttempts) {
                         throw $e;
                     }
@@ -737,6 +790,22 @@ class PurchasesHandler extends BaseHandler
             );
 
             $supplierAccountId = $this->getSupplierAccountId((int) $data['supplier_id']);
+
+            $initialPaymentSessionId = null;
+            if ($totals['paid_amount'] > 0) {
+                $initialPaymentSessionId = $this->resolvePurchasePaymentSession(
+                    (int) $data['payment_method_id'],
+                    (int) $data['branch_id'],
+                    $userId,
+                    true,
+                    $request
+                );
+                $this->services->purchase((int) $this->tenantId, $userId)->validatePaymentLiquidity(
+                    (int) $data['payment_method_id'],
+                    (float) $totals['paid_amount'],
+                    $initialPaymentSessionId
+                );
+            }
 
             $this->createJournalEntryForPurchase([
                 'id' => $purchaseId,
@@ -770,6 +839,9 @@ class PurchasesHandler extends BaseHandler
                     $supplierAccountId,
                     true,
                     $request,
+                    true,
+                    $initialPaymentSessionId,
+                    true,
                     true
                 );
 
@@ -825,23 +897,86 @@ class PurchasesHandler extends BaseHandler
                 $this->db->rollBack();
             }
 
-            return $this->errorResponse($response, $e->getMessage() ?: 'فشل في إنشاء فاتورة الشراء', 400);
+            if ($purchaseTransactionStarted && $idempotencyKey !== '' && $requestHash !== '') {
+                try {
+                    $replayedResponse = $this->existingPurchaseCreationResponse(
+                        $response,
+                        $tenantIdForReplay,
+                        $userIdForReplay,
+                        $idempotencyKey,
+                        $requestHash
+                    );
+                    if ($replayedResponse !== null) {
+                        return $replayedResponse;
+                    }
+                } catch (Throwable $verificationError) {
+                    $this->logger->error('Unable to determine purchase-create outcome after transaction error', [
+                        'tenant_id' => $tenantIdForReplay,
+                        'user_id' => $userIdForReplay,
+                        'idempotency_key' => $idempotencyKey,
+                        'error' => $verificationError->getMessage(),
+                    ]);
+                    return $this->errorResponse(
+                        $response,
+                        'تعذر تأكيد نتيجة إنشاء الفاتورة. أعد المحاولة بنفس الطلب ولا تنشئ فاتورة جديدة.',
+                        503
+                    );
+                }
+            }
+
+            return $this->errorResponse($response, $e->getMessage() ?: 'فشل في إنشاء فاتورة الشراء',
+                ($e instanceof \App\Exceptions\InsufficientLiquidityException) ? 402
+                    : (($e instanceof \DomainException) ? 422 : 400),
+                ($e instanceof \App\Exceptions\InsufficientLiquidityException)
+                    ? ['error_code' => 'insufficient_liquidity', 'details' => $e->getContext()]
+                    : []
+            );
         }
     }
 
-    /**
-     * Update purchase invoice (status, notes, partial item modifications).
-     *
-     * **Route Parameters**:
-     * - id: Purchase invoice ID (integer)
-     *
-     * **Request Body** (JSON): Any fields to update (partial update allowed)
-     *
-     * @param Request $request
-     * @param Response $response
-     * @param array $args Route arguments: {id: int}
-     * @return Response JSON: Updated invoice with new status/values
-     */
+    /** Return the matching committed invoice or a conflict for a key reused by another request. */
+    private function existingPurchaseCreationResponse(
+        Response $response,
+        int $tenantId,
+        int $userId,
+        string $idempotencyKey,
+        string $requestHash
+    ): ?Response {
+        $stmt = $this->db->prepare(
+            'SELECT id, invoice_number, request_hash, user_id FROM purchases
+             WHERE tenant_id = ? AND idempotency_key = ? LIMIT 1'
+        );
+        $stmt->execute([$tenantId, $idempotencyKey]);
+        $purchase = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$purchase) {
+            return null;
+        }
+
+        if ((int) $purchase['user_id'] !== $userId || !hash_equals((string) $purchase['request_hash'], $requestHash)) {
+            return $this->errorResponse(
+                $response,
+                'مفتاح الطلب مستخدم لبيانات شراء مختلفة. تحقق من الفواتير قبل بدء طلب جديد.',
+                409
+            );
+        }
+
+        return $this->jsonResponse($response, [
+            'status' => 'success',
+            'message' => 'تم إنشاء الفاتورة مسبقًا لهذا الطلب',
+            'data' => [
+                'id' => (int) $purchase['id'],
+                'invoice_number' => (string) $purchase['invoice_number'],
+            ],
+        ], 200);
+    }
+
+    private function isDuplicateKeyException(Throwable $exception): bool
+    {
+        return $exception instanceof PDOException
+            && ((int) ($exception->errorInfo[1] ?? 0) === 1062 || (string) $exception->getCode() === '23000');
+    }
+
+    /** Recalculate and update an invoice through the tenant purchase service. */
     public function update(Request $request, Response $response, array $args = []): Response
     {
         try {
@@ -889,7 +1024,24 @@ class PurchasesHandler extends BaseHandler
             $this->db->beginTransaction();
 
             $svc    = $this->services->purchase((int) $this->tenantId, $userId);
-            $result = $svc->updatePurchase($id, $purchase, $data, $totals, $invoiceDate, $costCenterId);
+            $sessionId = (float) $totals['paid_amount'] > 0
+                ? $this->resolvePurchasePaymentSession(
+                    (int) $data['payment_method_id'],
+                    (int) $data['branch_id'],
+                    $userId,
+                    true,
+                    $request
+                )
+                : null;
+            $result = $svc->updatePurchase(
+                $id,
+                $purchase,
+                $data,
+                $totals,
+                $invoiceDate,
+                $costCenterId,
+                $sessionId
+            );
 
             $this->db->commit();
 
@@ -911,6 +1063,24 @@ class PurchasesHandler extends BaseHandler
                 'message' => 'تم تحديث فاتورة الشراء بنجاح',
                 'data'    => $result,
             ], 200);
+        } catch (\App\Exceptions\InsufficientLiquidityException $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            return $this->errorResponse($response, $e->getMessage(), 402, [
+                'error_code' => 'insufficient_liquidity',
+                'details' => $e->getContext(),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            return $this->errorResponse($response, $e->getMessage(), 409);
+        } catch (\DomainException $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            return $this->errorResponse($response, $e->getMessage(), 422);
         } catch (Throwable $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
@@ -920,22 +1090,7 @@ class PurchasesHandler extends BaseHandler
     }
 
 
-    /**
-     * Delete/cancel purchase invoice (soft delete).
-     *
-     * **Route Parameters**:
-     * - id: Purchase invoice ID (integer)
-     *
-     * **Side Effects**:
-     * - Reverses associated accounting journal entries
-     * - Sets invoice status to 'cancelled'
-     * - Records audit trail
-     *
-     * @param Request $request
-     * @param Response $response
-     * @param array $args Route arguments: {id: int}
-     * @return Response JSON: {message: "Deleted successfully"}
-     */
+    /** Cancel an invoice through the purchase service while preserving its source record. */
     public function delete(Request $request, Response $response, array $args = []): Response
     {
         try {
@@ -964,7 +1119,7 @@ class PurchasesHandler extends BaseHandler
 
             $this->db->commit();
 
-            $this->auditSafe('purchase_deleted', 'purchases', $id, [
+            $this->auditSafe('purchase_cancelled', 'purchases', $id, [
                 'tenant_id'      => (int) $this->tenantId,
                 'user_id'        => $userId,
                 'branch_id'      => $purchase['branch_id']      ?? null,
@@ -974,13 +1129,18 @@ class PurchasesHandler extends BaseHandler
 
             return $this->jsonResponse($response, [
                 'status'  => 'success',
-                'message' => 'تم حذف فاتورة الشراء بنجاح',
+                'message' => 'تم إلغاء فاتورة الشراء وحفظ أثرها المحاسبي بنجاح',
             ], 200);
         } catch (\App\Exceptions\NotFoundException $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
             }
             return $this->errorResponse($response, $e->getMessage(), 404);
+        } catch (\InvalidArgumentException $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            return $this->errorResponse($response, $e->getMessage(), 409);
         } catch (Throwable $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
@@ -989,31 +1149,7 @@ class PurchasesHandler extends BaseHandler
         }
     }
 
-    /**
-     * Record payment for single purchase invoice.
-     *
-     * **Route Parameters**:
-     * - id: Purchase invoice ID (integer)
-     *
-     * **Request Body** (JSON):
-     * - amount: Payment amount (float)
-     * - payment_date: Payment date (YYYY-MM-DD)
-     * - payment_method_id: Payment method ID (integer)
-     * - reference_number: Optional payment reference (string)
-     *
-     * **Idempotency**:
-     * Supports Idempotency-Key header to prevent duplicate payments on retries.
-     *
-     * **Side Effects**:
-     * - Creates accounting journal entries
-     * - Updates invoice paid_amount
-     * - Records audit trail
-     *
-     * @param Request $request
-     * @param Response $response
-     * @param array $args Route arguments: {id: int}
-     * @return Response JSON: {payment_id: int, remaining_amount: float}
-     */
+    /** Record an invoice payment with optional idempotency and cashier-session checks. */
     public function addPayment(Request $request, Response $response, array $args = []): Response
     {
         try {
@@ -1034,17 +1170,20 @@ class PurchasesHandler extends BaseHandler
                 }
             }
 
-            // ── AUDIT FIX #3 (CRITICAL) ─────────────────────────────────────────
-            // The docblock above has claimed "Supports Idempotency-Key header to
-            // prevent duplicate payments on retries" since this method was
-            // written, but no code here ever read that header — a retried
-            // request re-ran the full payment flow a second time with zero
-            // protection at the HTTP layer (PurchaseService::addPaymentToInvoice
-            // does reject overpayment, but a same-amount retry that still fits
-            // under the remaining balance would post twice). This makes the
-            // docblock's claim true, using the same IdempotencyService pattern
-            // already proven correct in SalesHandler::payDebt().
+            $requestFingerprint = \App\Services\PurchaseRequestFingerprint::fromPayload([
+                'purchase_id' => $purchaseId,
+                'amount' => round((float) $data['amount'], 2),
+                'payment_date' => (string) $data['payment_date'],
+                'payment_method_id' => (int) $data['payment_method_id'],
+                'reference_number' => $data['reference_number'] ?? null,
+                'branch_id' => $data['branch_id'] ?? null,
+                'cost_center_id' => $data['cost_center_id'] ?? null,
+            ]);
+
             $idemKey = trim($request->getHeaderLine('Idempotency-Key'));
+            if (strlen($idemKey) > 128) {
+                return $this->errorResponse($response, 'مفتاح منع التكرار أطول من الحد المسموح.', 400);
+            }
             $idem    = null;
             if ($idemKey !== '') {
                 $idem   = new \App\Services\IdempotencyService($this->db);
@@ -1054,7 +1193,7 @@ class PurchasesHandler extends BaseHandler
                         'tenant_id'       => $this->tenantId,
                         'idempotency_key' => $idemKey,
                     ]);
-                    return $this->jsonResponse($response, $cached, 200);
+                    return $this->existingInvoicePaymentResponse($response, $cached, $requestFingerprint);
                 }
             }
 
@@ -1084,20 +1223,48 @@ class PurchasesHandler extends BaseHandler
             $this->applyDefaultCostCenter($data, $request);
             $costCenterId = $data['cost_center_id'] ?? 1;
 
-            // حل session_id (HTTP concern)
             $sessionId = null;
             $isCash    = $this->isCashMethod($paymentMethodId, (int) $this->tenantId);
-            if ($isCash && $branchId) {
+            if ($isCash) {
                 $isSessionsEnabled = $this->isSessionsEnabled((int) $this->tenantId);
                 $isExempt          = $this->isCashierSessionExempt($request);
                 if ($isSessionsEnabled && !$isExempt) {
+                    if (!$branchId) {
+                        throw new \InvalidArgumentException('يجب تحديد الفرع لتسجيل الدفعة النقدية.');
+                    }
                     $sessionId = $this->requireOpenCashierSession((int) $this->tenantId, $branchId, $userId);
-                } elseif ($isExempt || !$isSessionsEnabled) {
+                } elseif (($isExempt || !$isSessionsEnabled) && $branchId) {
                     $sessionId = $this->findOpenCashierSession((int) $this->tenantId, $branchId, null);
                 }
             }
 
             $this->db->beginTransaction();
+
+            $forUpdate = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+            $lockedPurchaseStmt = $this->db->prepare("
+                SELECT p.*, s.account_id AS supplier_account_id
+                FROM purchases p
+                INNER JOIN suppliers s ON s.id = p.supplier_id AND s.tenant_id = p.tenant_id
+                WHERE p.id = ? AND p.tenant_id = ?
+                LIMIT 1{$forUpdate}
+            ");
+            $lockedPurchaseStmt->execute([$purchaseId, $this->tenantId]);
+            $purchase = $lockedPurchaseStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$purchase) {
+                throw new \App\Exceptions\NotFoundException('لم يتم العثور على فاتورة الشراء');
+            }
+
+            if ($idemKey !== '' && $idem !== null) {
+                $cached = $idem->claimStrict(
+                    (int) $this->tenantId,
+                    $idemKey,
+                    $requestFingerprint
+                );
+                if ($cached !== null) {
+                    $this->db->commit();
+                    return $this->existingInvoicePaymentResponse($response, $cached, $requestFingerprint);
+                }
+            }
 
             $svc    = $this->services->purchase((int) $this->tenantId, $userId);
             $result = $svc->addPaymentToInvoice(
@@ -1111,6 +1278,30 @@ class PurchasesHandler extends BaseHandler
                 $costCenterId,
                 $sessionId
             );
+
+            $responseData = [
+                'status'  => 'success',
+                'message' => 'تم تسجيل الدفعة بنجاح',
+                'data'    => [
+                    'payment_id'       => $result['payment_id']       ?? null,
+                    'journal_entry_id' => $result['journal_entry_id'] ?? null,
+                    'purchase_id'      => $purchaseId,
+                    'status'           => $result['status']           ?? null,
+                    'paid_amount'      => $result['new_paid']         ?? null,
+                ],
+            ];
+
+            // Commit the idempotency record atomically with the payment.
+            if ($idemKey !== '' && $idem !== null) {
+                $idempotentResponse = $responseData;
+                $idempotentResponse['_request_fingerprint'] = $requestFingerprint;
+                $idem->storeStrict(
+                    (int) $this->tenantId,
+                    $idemKey,
+                    (int) ($result['payment_id'] ?? 0),
+                    $idempotentResponse
+                );
+            }
 
             $this->db->commit();
 
@@ -1128,59 +1319,49 @@ class PurchasesHandler extends BaseHandler
                 'paid_amount_total' => $result['new_paid']    ?? null,
             ], $userId);
 
-            $responseData = [
-                'status'  => 'success',
-                'message' => 'تم تسجيل الدفعة بنجاح',
-                'data'    => [
-                    'payment_id'       => $result['payment_id']       ?? null,
-                    'journal_entry_id' => $result['journal_entry_id'] ?? null,
-                    'purchase_id'      => $purchaseId,
-                    'status'           => $result['status']           ?? null,
-                    'paid_amount'      => $result['new_paid']         ?? null,
-                ],
-            ];
-
-            // Cache idempotent response for retry scenarios (same pattern as payDebt())
-            if ($idemKey !== '' && $idem !== null) {
-                $idem->store((int) $this->tenantId, $idemKey, (int) ($result['payment_id'] ?? 0), $responseData);
-            }
-
             return $this->jsonResponse($response, $responseData, 201);
         } catch (Throwable $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
             }
+            if ($e instanceof \App\Exceptions\InsufficientLiquidityException) {
+                $message = $e->getMessage() === 'Cash account cannot go negative when cashier sessions are disabled'
+                    ? 'لا يمكن تسجيل الدفعة لأن الرصيد النقدي في الصندوق غير كافٍ. عند تعطيل إلزام جلسات الكاشير لا يُسمح بتجاوز رصيد الصندوق إلى السالب.'
+                    : $e->getMessage();
+                return $this->errorResponse($response, $message, 402, [
+                    'error_code' => 'insufficient_liquidity',
+                    'details' => $e->getContext(),
+                ]);
+            }
+
             return $this->errorResponse($response, $e->getMessage() ?: 'فشل تسجيل الدفعة', 400);
         }
     }
 
-    /**
-     * Pay multiple supplier invoices (supplier debt payment).
-     *
-     * **Request Body** (JSON):
-     * - supplier_id: Supplier ID (integer)
-     * - amount: Total payment amount (float)
-     * - payment_date: Payment date (YYYY-MM-DD)
-     * - payment_method_id: Payment method ID (integer)
-     * - purchases: Array of {purchase_id: int, amount: float} (allocation across invoices)
-     * - reference_number: Optional payment reference (string)
-     *
-     * **Idempotency**:
-     * Supports Idempotency-Key header to prevent duplicate bulk payments on retries.
-     *
-     * **Concurrency Protection**:
-     * Uses SELECT... FOR UPDATE on supplier purchases to prevent race conditions.
-     *
-     * **Side Effects**:
-     * - Creates atomic transaction across all allocations
-     * - Creates accounting journal entries per invoice
-     * - Updates each invoice's paid_amount
-     * - Records audit trail
-     *
-     * @param Request $request
-     * @param Response $response
-     * @return Response JSON: {payments: array, total_paid: float}
-     */
+    /** Return a cached payment response only when the retry payload matches its original request. */
+    private function existingInvoicePaymentResponse(
+        Response $response,
+        array $cached,
+        string $requestFingerprint
+    ): Response {
+        $cachedFingerprint = $cached['_request_fingerprint'] ?? null;
+        if (
+            !is_string($cachedFingerprint)
+            || !hash_equals($cachedFingerprint, $requestFingerprint)
+            || !empty($cached['_processing'])
+        ) {
+            return $this->errorResponse(
+                $response,
+                'مفتاح منع التكرار مستخدم لبيانات دفعة مختلفة. استخدم مفتاحًا جديدًا بعد التحقق من الدفعات.',
+                409
+            );
+        }
+
+        unset($cached['_request_fingerprint']);
+        return $this->jsonResponse($response, $cached, 200);
+    }
+
+    /** Record a supplier debt payment, optionally allocating it across specified invoices. */
     public function paySupplierDebt(Request $request, Response $response): Response
     {
         $tenantId = null;
@@ -1193,47 +1374,169 @@ class PurchasesHandler extends BaseHandler
             $data        = $request->getParsedBody();
             $data        = is_array($data) ? $data : [];
             $supplierId  = !empty($data['supplier_id']) ? (int) $data['supplier_id'] : 0;
-            $amount      = isset($data['amount']) ? (float) $data['amount'] : 0;
+            $amount      = isset($data['amount']) ? round((float) $data['amount'], 2) : 0;
             $paymentDate = $this->normalizeDateTime($data['payment_date'] ?? date('Y-m-d'));
             $notes       = (string) ($data['notes'] ?? '');
+            $paymentMethodId = !empty($data['payment_method_id']) ? (int) $data['payment_method_id'] : 0;
+            $branchId = !empty($data['branch_id']) ? (int) $data['branch_id'] : null;
+            $allocations = $data['purchases'] ?? null;
 
-            if ($supplierId <= 0 || $amount <= 0) {
-                return $this->errorResponse($response, 'Supplier ID and amount are required', 400);
+            if ($supplierId <= 0 || !is_finite($amount) || $amount <= 0 || $paymentMethodId <= 0) {
+                return $this->errorResponse($response, 'المورد والمبلغ وطريقة الدفع مطلوبة.', 400);
             }
 
-            $stmt = $this->db->prepare(
-                "SELECT id FROM suppliers WHERE id = ? AND tenant_id = ? LIMIT 1"
-            );
-            $stmt->execute([$supplierId, $tenantId]);
-            if (!$stmt->fetch()) {
-                return $this->errorResponse($response, 'Supplier not found or does not belong to this tenant', 403);
+            try {
+                $normalizedAllocations = $allocations === null
+                    ? []
+                    : \App\Services\SupplierPaymentAllocationPolicy::normalize($allocations, $amount);
+            } catch (\InvalidArgumentException $e) {
+                return $this->errorResponse($response, $e->getMessage(), 400);
+            }
+
+            $requestFingerprint = hash('sha256', json_encode([
+                'supplier_id' => $supplierId,
+                'amount' => round($amount, 2),
+                'payment_date' => $paymentDate,
+                'payment_method_id' => $paymentMethodId,
+                'branch_id' => $branchId,
+                'cost_center_id' => isset($data['cost_center_id']) ? (int) $data['cost_center_id'] : null,
+                'reference_number' => $data['reference_number'] ?? null,
+                'notes' => $notes,
+                'purchases' => $normalizedAllocations,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+            $idempotencyKey = trim($request->getHeaderLine('Idempotency-Key'));
+            if (strlen($idempotencyKey) > 128) {
+                return $this->errorResponse($response, 'مفتاح منع التكرار أطول من الحد المسموح.', 400);
+            }
+            $idempotency = $idempotencyKey !== ''
+                ? new \App\Services\IdempotencyService($this->db)
+                : null;
+            if ($idempotency !== null) {
+                $cached = $idempotency->check((int) $tenantId, $idempotencyKey);
+                if ($cached !== null) {
+                    if (!hash_equals($requestFingerprint, (string) ($cached['_request_fingerprint'] ?? ''))) {
+                        return $this->errorResponse($response, 'مفتاح منع التكرار مستخدم لبيانات دفعة مختلفة.', 409);
+                    }
+                    unset($cached['_request_fingerprint']);
+                    return $this->jsonResponse($response, $cached, 200);
+                }
             }
 
             $this->db->beginTransaction();
+            $forUpdate = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+            $stmt = $this->db->prepare(
+                "SELECT id FROM suppliers WHERE id = ? AND tenant_id = ? LIMIT 1{$forUpdate}"
+            );
+            $stmt->execute([$supplierId, $tenantId]);
+            if (!$stmt->fetch()) {
+                throw new \App\Exceptions\NotFoundException('Supplier not found or does not belong to this tenant');
+            }
+            if ($idempotency !== null) {
+                $cached = $idempotency->checkStrict((int) $tenantId, $idempotencyKey);
+                if ($cached !== null) {
+                    $this->db->commit();
+                    if (!hash_equals($requestFingerprint, (string) ($cached['_request_fingerprint'] ?? ''))) {
+                        return $this->errorResponse($response, 'مفتاح منع التكرار مستخدم لبيانات دفعة مختلفة.', 409);
+                    }
+                    unset($cached['_request_fingerprint']);
+                    return $this->jsonResponse($response, $cached, 200);
+                }
+            }
 
-            $svc    = $this->services->purchase((int) $tenantId, $userId);
-            $result = $svc->recordSupplierDebtPayment($supplierId, $amount, $paymentDate, $notes);
+            $sessionId = null;
+            if ($this->isCashMethod($paymentMethodId, (int) $tenantId)) {
+                $sessionsEnabled = $this->isSessionsEnabled((int) $tenantId);
+                $isExempt = $this->isCashierSessionExempt($request);
+                if ($sessionsEnabled && !$isExempt) {
+                    if (!$branchId) {
+                        throw new \InvalidArgumentException('يجب تحديد الفرع لتسجيل الدفعة النقدية.');
+                    }
+                    $sessionId = $this->requireOpenCashierSession((int) $tenantId, $branchId, $userId);
+                } elseif ($branchId) {
+                    $sessionId = $this->findOpenCashierSession((int) $tenantId, $branchId, null);
+                }
+            }
+
+            $svc = $this->services->purchase((int) $tenantId, $userId);
+            $costCenterId = isset($data['cost_center_id']) ? (int) $data['cost_center_id'] : null;
+            if ($normalizedAllocations !== []) {
+                $payments = \App\Services\SupplierInvoicePaymentAllocator::allocate(
+                    $this->db,
+                    $svc,
+                    (int) $tenantId,
+                    $supplierId,
+                    $normalizedAllocations,
+                    $paymentDate,
+                    $paymentMethodId,
+                    $data['reference_number'] ?? ($notes !== '' ? $notes : null),
+                    $branchId,
+                    $costCenterId,
+                    $sessionId
+                );
+                $responseData = [
+                    'status' => 'success',
+                    'message' => 'تم تسجيل الدفعة وتخصيصها على الفواتير المحددة.',
+                    'data' => [
+                        'supplier_id' => $supplierId,
+                        'total_paid' => round($amount, 2),
+                        'payments' => $payments,
+                        'session_id' => $sessionId,
+                    ],
+                ];
+            } else {
+                $result = $svc->recordSupplierDebtPayment(
+                    $supplierId,
+                    $amount,
+                    $paymentDate,
+                    $notes,
+                    $paymentMethodId,
+                    $branchId,
+                    $costCenterId,
+                    $sessionId
+                );
+                $responseData = [
+                    'status' => 'success',
+                    'message' => 'دفعة تم تسجيلها بنجاح',
+                    'data' => [
+                        'payment_id' => $result['payment_id'],
+                        'supplier_id' => $supplierId,
+                        'amount' => round($amount, 2),
+                        'payment_date' => $paymentDate,
+                        'session_id' => $sessionId,
+                    ],
+                ];
+            }
+
+            if ($idempotency !== null) {
+                $paymentId = $normalizedAllocations !== []
+                    ? (int) ($payments[0]['payment_id'] ?? 0)
+                    : (int) ($result['payment_id'] ?? 0);
+                $idempotentResponse = $responseData;
+                $idempotentResponse['_request_fingerprint'] = $requestFingerprint;
+                $idempotency->storeStrict((int) $tenantId, $idempotencyKey, $paymentId, $idempotentResponse);
+            }
 
             $this->db->commit();
 
-            $this->auditSafe('supplier_payment_recorded', 'supplier_payments', $result['payment_id'], [
+            $this->auditSafe('supplier_payment_recorded', 'suppliers', $supplierId, [
                 'tenant_id'    => (int) $tenantId,
                 'supplier_id'  => $supplierId,
                 'amount'       => (float) $amount,
                 'payment_date' => $paymentDate,
                 'notes'        => $notes,
+                'allocations'  => $normalizedAllocations,
             ], $userId);
 
-            return $this->jsonResponse($response, [
-                'status'  => 'success',
-                'message' => 'دفعة تم تسجيلها بنجاح',
-                'data'    => [
-                    'payment_id'   => $result['payment_id'],
-                    'supplier_id'  => $supplierId,
-                    'amount'       => (float) $amount,
-                    'payment_date' => $paymentDate,
-                ],
-            ], 201);
+            return $this->jsonResponse($response, $responseData, 201);
+        } catch (\App\Exceptions\InsufficientLiquidityException $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            return $this->errorResponse($response, $e->getMessage(), 402, [
+                'error_code' => 'insufficient_liquidity',
+                'details' => $e->getContext(),
+            ]);
         } catch (Throwable $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();

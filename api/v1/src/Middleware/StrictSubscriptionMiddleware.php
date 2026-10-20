@@ -15,14 +15,10 @@ use App\Services\SecurityLogger;
 use App\Utils\RequestHelper;
 
 /**
- * Strict Subscription Security Middleware
+ * Applies IP, device, rate-limit, and abuse checks to subscription endpoints.
  *
- * Provides comprehensive security for subscription-related endpoints:
- * - IP blocking and rate limiting
- * - Device fingerprinting
- * - Suspicious activity detection
- * - Real-time validation
- * - Audit trail
+ * Uses PDO-backed security records and optionally emits events through
+ * SecurityLogger; rejected requests receive a generic 403 response.
  */
 class StrictSubscriptionMiddleware implements MiddlewareInterface
 {
@@ -49,6 +45,7 @@ class StrictSubscriptionMiddleware implements MiddlewareInterface
         $this->securityConfig = $this->loadSecurityConfig();
     }
 
+    /** Run configured subscription security checks before dispatching the request. */
     public function process(Request $request, RequestHandler $handler): Response
     {
         $startTime = microtime(true);
@@ -63,7 +60,6 @@ class StrictSubscriptionMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
-        // ✅ Development mode: skip all security checks
         $isDevelopment = ($_ENV['APP_ENV'] ?? getenv('APP_ENV') ?? 'production') === 'development';
         if ($isDevelopment) {
             return $handler->handle($request);
@@ -102,7 +98,6 @@ class StrictSubscriptionMiddleware implements MiddlewareInterface
                 ]
             );
 
-            // Process the request
             $response = $handler->handle($request);
 
             // 6. Post-request Security Checks
@@ -192,10 +187,7 @@ class StrictSubscriptionMiddleware implements MiddlewareInterface
     }
 
     /**
-     * Check individual rate limiting rule
-     * 
-     * ✅ Updated to use tenant_id:user_id as primary identifier
-     * Each user gets independent rate limits regardless of shared IP
+     * Apply a database-defined rate-limit rule to the available identifiers.
      */
     private function checkRule(array $rule, string $ipAddress, string $deviceFingerprint, string $path): void
     {

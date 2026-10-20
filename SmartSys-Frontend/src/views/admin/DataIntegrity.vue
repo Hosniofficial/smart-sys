@@ -12,12 +12,12 @@
       <header class="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-200">
         <div class="space-y-1">
           <div class="flex items-center gap-2 text-slate-500 text-xs font-medium uppercase tracking-wider">
-            <span>النظام</span>
+            <span>النظام والتدقيق</span>
             <i class="fas fa-chevron-left text-[8px]"></i>
             <span class="text-slate-900">سلامة البيانات</span>
           </div>
           <h1 class="text-2xl font-bold tracking-tight text-slate-900">الربط والنزاهة المحاسبية</h1>
-          <p class="text-sm text-slate-500 font-medium">رصد ومعالجة فجوات الربط مع دليل الحسابات لضمان صحة القيود الآلية.</p>
+          <p class="text-sm text-slate-500 font-medium">اكتشف مشكلات الربط مع دليل الحسابات، وراجعها وعالجها لضمان تسجيل القيود المحاسبية الآلية بشكل صحيح.</p>
         </div>
 
         <div class="flex items-center gap-3">

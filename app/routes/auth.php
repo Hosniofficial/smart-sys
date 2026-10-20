@@ -3,7 +3,6 @@
 use App\Handlers\AuthHandler;
 use App\Handlers\EmailVerificationHandler;
 use App\Handlers\StrictSubscriptionHandler;
-use App\Handlers\SubscriptionCronHandler;
 use App\Middleware\RequestRateLimiter;
 use App\Middleware\StrictSubscriptionMiddleware;
 use DI\Container;
@@ -13,7 +12,6 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $authHandler = $container->get(AuthHandler::class);
         $strictSubscriptionHandler = $container->get(StrictSubscriptionHandler::class);
         $emailVerificationHandler = $container->get(EmailVerificationHandler::class);
-        $subscriptionCronHandler = $container->get(SubscriptionCronHandler::class);
         $strictSubscriptionMiddleware = $container->get(StrictSubscriptionMiddleware::class);
         $rateLimiter = $container->get(RequestRateLimiter::class);
 
@@ -27,15 +25,12 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->post('/register', [$strictSubscriptionHandler, 'createSecureTrial'])
             ->add($strictSubscriptionMiddleware);
 
-        $group->post('/verify-email/send', [$emailVerificationHandler, 'sendVerificationEmail']);
         $group->post('/verify-email', [$emailVerificationHandler, 'verifyEmail']);
         $group->post('/verify-email/resend', [$emailVerificationHandler, 'resendVerificationEmail']);
-        $group->post('/verify-email/status', [$emailVerificationHandler, 'checkVerificationStatus']);
 
         $group->post('/forgot-password', [$emailVerificationHandler, 'forgotPassword'])
             ->add($rateLimiter);
         $group->post('/reset-password', [$emailVerificationHandler, 'resetPassword'])
             ->add($rateLimiter);
 
-        $group->post('/admin/subscriptions/cron', [$subscriptionCronHandler, 'processCron']);
 };

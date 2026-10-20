@@ -21,20 +21,17 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->get('/missing-accounts', [$handler, 'listMissingAccounts'])
             ->add(PermissionMiddleware::require(Permissions::ACCOUNTING_VIEW, $db));
 
-        $group->get('/{id}/transactions', [$handler, 'getTransactions'])
-            ->add(PermissionMiddleware::require(Permissions::SUPPLIER_VIEW, $db));
-
         $group->get('/{id}/statement', [$handler, 'getStatement'])
             ->add(PermissionMiddleware::require(Permissions::SUPPLIER_VIEW, $db));
 
         $group->post('', [$handler, 'createSupplier'])
             ->add(PermissionMiddleware::require(Permissions::SUPPLIER_CREATE, $db));
 
+        $group->post('/cash-default', [$handler, 'ensureCashSupplier'])
+            ->add(PermissionMiddleware::require(Permissions::PURCHASE_CREATE, $db));
+
         $group->post('/{id}/ensure-account', [$handler, 'ensureAccount'])
             ->add(PermissionMiddleware::require(Permissions::ACCOUNTING_VIEW, $db));
-
-        $group->post('/{id}/payments', [$handler, 'addPayment'])
-            ->add(PermissionMiddleware::require(Permissions::PURCHASE_PAYMENT_CREATE, $db));
 
         $group->put('/{id}', [$handler, 'updateSupplier'])
             ->add(PermissionMiddleware::require(Permissions::SUPPLIER_EDIT, $db));

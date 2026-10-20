@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import apiClient from '@/config/axios';
 import { useStatementStore } from '@/stores/statement/statementStore';
+import { useSalesStore } from '@/stores/sales/salesStore';
 
 const nowMs = () => Date.now();
 
@@ -9,17 +10,13 @@ export const useVoucherStore = defineStore('voucher', () => {
 
   // ─── Cache TTL ────────────────────────────────────────────────────────────
   const TTL = {
-    vouchersList:   5  * 60 * 1000, // 5 دقائق
-    voucherDetails: 10 * 60 * 1000, // 10 دقائق
+    vouchersList: 5 * 60 * 1000, // 5 دقائق
   };
 
   // ─── State ────────────────────────────────────────────────────────────────
   const vouchersList          = ref({});
   const vouchersListFetchedAt = ref({});
   const vouchersListInFlight  = ref(null);
-
-  const detailsCache          = ref({});
-  const detailsCacheFetchedAt = ref({});
 
   const searchCache           = ref({});
   const searchCacheFetchedAt  = ref({});
@@ -84,24 +81,6 @@ export const useVoucherStore = defineStore('voucher', () => {
     return await promise;
   };
 
-  // ─── fetchVoucherDetails ──────────────────────────────────────────────────
-  const fetchVoucherDetails = async (voucherId, { force = false } = {}) => {
-    if (!voucherId) throw new Error('Voucher ID is required');
-
-    const cacheKey = String(voucherId);
-    const cached   = detailsCache.value[cacheKey];
-    const cachedAt = detailsCacheFetchedAt.value[cacheKey];
-
-    if (!force && cached && isFresh(cachedAt, TTL.voucherDetails)) return cached;
-
-    const response = await apiClient.get(`/cash-vouchers/${voucherId}`);
-    const data     = response?.data?.data || response?.data;
-
-    detailsCache.value[cacheKey]          = data;
-    detailsCacheFetchedAt.value[cacheKey] = nowMs();
-    return data;
-  };
-
   // ─── searchVouchers ───────────────────────────────────────────────────────
   const searchVouchers = async ({
     query    = '',
@@ -140,13 +119,18 @@ export const useVoucherStore = defineStore('voucher', () => {
    * @param {Object} payload
    * @returns {{ status: 'success', data: Object }}
    */
-  const createVoucher = async (payload) => {
-    const response = await apiClient.post('/cash-vouchers', payload);
+  const createVoucher = async (payload, idempotencyKey) => {
+    const response = await apiClient.post('/cash-vouchers', payload, {
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+    });
 
     // امسح قائمة السندات عشان الـ refetch يجيب البيانات الجديدة
     clearVouchersListCache();
     clearSearchCache();
     useStatementStore().clear();
+    useSalesStore().clearSalesListCache();
+    useSalesStore().clearDetailsCache();
+    useSalesStore().clearSearchCache();
 
     return {
       status: 'success',
@@ -166,13 +150,12 @@ export const useVoucherStore = defineStore('voucher', () => {
 
     const response = await apiClient.put(`/cash-vouchers/${voucherId}`, payload);
 
-    // امسح الـ details cache للسند ده + قائمة السندات
-    const cacheKey = String(voucherId);
-    delete detailsCache.value[cacheKey];
-    delete detailsCacheFetchedAt.value[cacheKey];
     clearVouchersListCache();
     clearSearchCache();
     useStatementStore().clear();
+    useSalesStore().clearSalesListCache();
+    useSalesStore().clearDetailsCache();
+    useSalesStore().clearSearchCache();
 
     return {
       status: 'success',
@@ -180,39 +163,32 @@ export const useVoucherStore = defineStore('voucher', () => {
     };
   };
 
-  // ─── deleteVoucher ────────────────────────────────────────────────────────
+  // ─── cancelVoucher ────────────────────────────────────────────────────────
   /**
-   * يحذف سند ويمسح الـ cache
+   * يلغي سندًا دون حذف أثره ويمسح الـ cache
    * @param {number|string} voucherId
-   * @returns {{ status: 'success' }}
+   * @returns {Promise<{ status: 'success' }>}
    */
-  const deleteVoucher = async (voucherId) => {
+  const cancelVoucher = async (voucherId) => {
     if (!voucherId) throw new Error('Voucher ID is required');
 
     await apiClient.delete(`/cash-vouchers/${voucherId}`);
 
-    // امسح الـ details cache + القائمة
-    const cacheKey = String(voucherId);
-    delete detailsCache.value[cacheKey];
-    delete detailsCacheFetchedAt.value[cacheKey];
     clearVouchersListCache();
     clearSearchCache();
     useStatementStore().clear();
+    useSalesStore().clearSalesListCache();
+    useSalesStore().clearDetailsCache();
+    useSalesStore().clearSearchCache();
 
     return { status: 'success' };
   };
-
-  // ─── getVoucherById ───────────────────────────────────────────────────────
-  const getVoucherById = (voucherId) =>
-    computed(() => detailsCache.value[String(voucherId)]);
 
   // ─── Cache Clearers ───────────────────────────────────────────────────────
   const clear = () => {
     vouchersList.value          = {};
     vouchersListFetchedAt.value = {};
     vouchersListInFlight.value  = null;
-    detailsCache.value          = {};
-    detailsCacheFetchedAt.value = {};
     searchCache.value           = {};
     searchCacheFetchedAt.value  = {};
   };
@@ -221,11 +197,6 @@ export const useVoucherStore = defineStore('voucher', () => {
     vouchersList.value          = {};
     vouchersListFetchedAt.value = {};
     vouchersListInFlight.value  = null;
-  };
-
-  const clearDetailsCache = () => {
-    detailsCache.value          = {};
-    detailsCacheFetchedAt.value = {};
   };
 
   const clearSearchCache = () => {
@@ -240,19 +211,16 @@ export const useVoucherStore = defineStore('voucher', () => {
 
     // Read Actions
     fetchVouchersList,
-    fetchVoucherDetails,
     searchVouchers,
-    getVoucherById,
 
     // Write Actions
     createVoucher,
     updateVoucher,
-    deleteVoucher,
+    cancelVoucher,
 
     // Cache
     clear,
     clearVouchersListCache,
-    clearDetailsCache,
     clearSearchCache,
   };
 });

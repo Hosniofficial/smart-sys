@@ -6,32 +6,20 @@ use PDO;
 use Psr\Log\LoggerInterface;
 
 /**
- * NotificationAggregatorService
- * 
- * Smart notification batching and aggregation service.
- * Prevents notification spam by grouping similar events.
- * 
- * Features:
- * - Batch notifications by time intervals
- * - Aggregate similar events (e.g., multiple sales → "5 new orders")
- * - User-specific preferences (instant/batched/digest/disabled)
- * - Threshold filtering (only notify for important events)
- * - Deduplication (prevent duplicate notifications)
- * 
- * @package App\Services
+ * Persists tenant notifications immediately or groups them into scheduled batches.
  */
 class NotificationAggregatorService
 {
+    private static int $savepointCounter = 0;
+
     private PDO $db;
     private $logger; // Accept both LoggerInterface and MonologHandler
 
-    // Delivery modes
     public const MODE_INSTANT = 'instant';
     public const MODE_BATCHED = 'batched';
     public const MODE_DIGEST = 'digest';
     public const MODE_DISABLED = 'disabled';
 
-    // Priority levels
     public const PRIORITY_LOW = 'low';
     public const PRIORITY_NORMAL = 'normal';
     public const PRIORITY_HIGH = 'high';
@@ -40,19 +28,11 @@ class NotificationAggregatorService
     public function __construct(PDO $db, $logger = null)
     {
         $this->db = $db;
-        // Accept both LoggerInterface and MonologHandler
         $this->logger = $logger ?? new \App\Services\MonologHandler();
     }
 
     /**
-     * Queue a notification for smart delivery
-     * 
-     * @param int $userId
-     * @param int $tenantId
-     * @param string $type Notification type (new_order, low_stock_alert, etc.)
-     * @param array $eventData Event data (order_id, amount, etc.)
-     * @param string $priority Priority level (low/normal/high/urgent)
-     * @return bool Success status
+     * Apply user preferences and route an event to instant, batched, or digest storage.
      */
     public function queueNotification(
         int $userId,
@@ -61,20 +41,25 @@ class NotificationAggregatorService
         array $eventData,
         string $priority = self::PRIORITY_NORMAL
     ): bool {
+        if ($type === 'new_order') {
+            $this->logger->debug('Ordinary sale notifications are disabled', [
+                'user_id' => $userId,
+                'tenant_id' => $tenantId,
+            ]);
+            return true;
+        }
+
         try {
-            // Get user preferences for this notification type
             $prefs = $this->getUserPreferences($userId, $tenantId, $type);
 
-            // Check if notifications are disabled
             if ($prefs['delivery_mode'] === self::MODE_DISABLED) {
                 $this->logger->debug('Notification disabled by user preference', [
                     'user_id' => $userId,
                     'type' => $type
                 ]);
-                return true; // Not an error, user chose to disable
+                return true;
             }
 
-            // Apply threshold filtering
             if ($prefs['threshold_enabled'] && isset($eventData['amount'])) {
                 if ($eventData['amount'] < $prefs['threshold_value']) {
                     $this->logger->debug('Event below threshold, skipping notification', [
@@ -82,11 +67,10 @@ class NotificationAggregatorService
                         'amount' => $eventData['amount'],
                         'threshold' => $prefs['threshold_value']
                     ]);
-                    return true; // Below threshold, skip
+                    return true;
                 }
             }
 
-            // Decide delivery strategy
             switch ($prefs['delivery_mode']) {
                 case self::MODE_INSTANT:
                     return $this->sendInstantNotification($userId, $tenantId, $type, $eventData, $priority);
@@ -113,14 +97,7 @@ class NotificationAggregatorService
         }
     }
 
-    /**
-     * Get user notification preferences
-     * 
-     * @param int $userId
-     * @param int $tenantId
-     * @param string $type
-     * @return array Preferences array
-     */
+    /** Load stored delivery preferences, falling back to the default batched mode. */
     private function getUserPreferences(int $userId, int $tenantId, string $type): array
     {
         $stmt = $this->db->prepare("
@@ -140,7 +117,6 @@ class NotificationAggregatorService
         $stmt->execute([$userId, $tenantId, $type]);
         $prefs = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        // Return defaults if no preferences found
         if (!$prefs) {
             return [
                 'delivery_mode' => self::MODE_BATCHED,
@@ -156,16 +132,7 @@ class NotificationAggregatorService
         return $prefs;
     }
 
-    /**
-     * Send instant notification (no batching)
-     * 
-     * @param int $userId
-     * @param int $tenantId
-     * @param string $type
-     * @param array $eventData
-     * @param string $priority
-     * @return bool
-     */
+    /** Insert an unbatched in-app notification. */
     private function sendInstantNotification(
         int $userId,
         int $tenantId,
@@ -213,17 +180,7 @@ class NotificationAggregatorService
         }
     }
 
-    /**
-     * Add event to batch
-     * 
-     * @param int $userId
-     * @param int $tenantId
-     * @param string $type
-     * @param array $eventData
-     * @param int $intervalMinutes
-     * @param string $priority
-     * @return bool
-     */
+    /** Add an event to a batch while preserving any transaction owned by the caller. */
     private function addToBatch(
         int $userId,
         int $tenantId,
@@ -232,13 +189,21 @@ class NotificationAggregatorService
         int $intervalMinutes,
         string $priority
     ): bool {
-        try {
-            $this->db->beginTransaction();
+        $ownsTransaction = !$this->db->inTransaction();
+        $savepoint = 'notification_batch_' . (++self::$savepointCounter);
+        $savepointCreated = false;
 
-            // Find or create active batch
+        try {
+            if ($ownsTransaction) {
+                $this->db->beginTransaction();
+            } else {
+                // A savepoint isolates this operation without committing the caller's transaction.
+                $this->db->exec("SAVEPOINT {$savepoint}");
+                $savepointCreated = true;
+            }
+
             $batchId = $this->findOrCreateBatch($userId, $tenantId, $type, $intervalMinutes);
 
-            // Update batch count and total
             $amount = $eventData['amount'] ?? 0;
             
             $stmt = $this->db->prepare("
@@ -250,10 +215,8 @@ class NotificationAggregatorService
             ");
             $stmt->execute([$amount, $batchId]);
 
-            // Store event data for later aggregation
             $aggregationKey = $this->generateAggregationKey($userId, $tenantId, $type, $batchId);
             
-            // Check if we should update existing aggregated notification or create new
             $existingStmt = $this->db->prepare("
                 SELECT id, aggregated_count, data
                 FROM notifications
@@ -264,11 +227,9 @@ class NotificationAggregatorService
             $existing = $existingStmt->fetch(PDO::FETCH_ASSOC);
 
             if ($existing) {
-                // Update existing aggregated notification
                 $newCount = $existing['aggregated_count'] + 1;
                 $existingData = json_decode($existing['data'], true) ?? [];
                 
-                // Merge event data
                 if (!isset($existingData['events'])) {
                     $existingData['events'] = [];
                 }
@@ -292,7 +253,6 @@ class NotificationAggregatorService
                     $existing['id']
                 ]);
             } else {
-                // Create new aggregated notification placeholder
                 $message = $this->formatMessage($type, ['events' => [$eventData], 'total_amount' => $amount], 1);
                 $title = $this->getNotificationTitle($type);
 
@@ -326,10 +286,28 @@ class NotificationAggregatorService
                 ]);
             }
 
-            $this->db->commit();
+            if ($ownsTransaction) {
+                $this->db->commit();
+            } else {
+                $this->db->exec("RELEASE SAVEPOINT {$savepoint}");
+                $savepointCreated = false;
+            }
             return true;
         } catch (\Throwable $e) {
-            $this->db->rollBack();
+            try {
+                if ($ownsTransaction && $this->db->inTransaction()) {
+                    $this->db->rollBack();
+                } elseif (!$ownsTransaction && $savepointCreated && $this->db->inTransaction()) {
+                    $this->db->exec("ROLLBACK TO SAVEPOINT {$savepoint}");
+                    $this->db->exec("RELEASE SAVEPOINT {$savepoint}");
+                }
+            } catch (\Throwable $rollbackError) {
+                $this->logger->warning('Failed to roll back notification batch savepoint', [
+                    'error' => $rollbackError->getMessage(),
+                    'original_error' => $e->getMessage(),
+                ]);
+            }
+
             $this->logger->error('Failed to add to batch', [
                 'error' => $e->getMessage()
             ]);
@@ -337,18 +315,9 @@ class NotificationAggregatorService
         }
     }
 
-    /**
-     * Find or create batch for batching notifications
-     * 
-     * @param int $userId
-     * @param int $tenantId
-     * @param string $type
-     * @param int $intervalMinutes
-     * @return string Batch ID
-     */
+    /** Find a pending batch for this user/type or create one scheduled after the requested interval. */
     private function findOrCreateBatch(int $userId, int $tenantId, string $type, int $intervalMinutes): string
     {
-        // Look for pending batch scheduled within interval
         $stmt = $this->db->prepare("
             SELECT batch_id
             FROM notification_batches
@@ -368,7 +337,6 @@ class NotificationAggregatorService
             return $result['batch_id'];
         }
 
-        // Create new batch
         $batchId = $this->generateBatchId($userId, $tenantId, $type);
         $scheduledAt = date('Y-m-d H:i:s', strtotime("+{$intervalMinutes} minutes"));
 
@@ -397,27 +365,14 @@ class NotificationAggregatorService
         return $batchId;
     }
 
-    /**
-     * Add event to daily digest
-     * 
-     * @param int $userId
-     * @param int $tenantId
-     * @param string $type
-     * @param array $eventData
-     * @return bool
-     */
+    /** Route digest events through batching with an interval ending at local midnight. */
     private function addToDigest(int $userId, int $tenantId, string $type, array $eventData): bool
     {
-        // Similar to batching but scheduled for end of day
         $intervalMinutes = $this->getMinutesUntilEndOfDay();
         return $this->addToBatch($userId, $tenantId, $type, $eventData, $intervalMinutes, self::PRIORITY_LOW);
     }
 
-    /**
-     * Get minutes until end of day (for digest mode)
-     * 
-     * @return int
-     */
+    /** Return the minutes from now until the next local midnight. */
     private function getMinutesUntilEndOfDay(): int
     {
         $now = new \DateTime();
@@ -426,14 +381,7 @@ class NotificationAggregatorService
         return ($interval->h * 60) + $interval->i;
     }
 
-    /**
-     * Generate unique batch ID
-     * 
-     * @param int $userId
-     * @param int $tenantId
-     * @param string $type
-     * @return string
-     */
+    /** Build a batch identifier from its type, tenant, user, and current minute. */
     private function generateBatchId(int $userId, int $tenantId, string $type): string
     {
         return sprintf(
@@ -445,15 +393,7 @@ class NotificationAggregatorService
         );
     }
 
-    /**
-     * Generate aggregation key for deduplication
-     * 
-     * @param int $userId
-     * @param int $tenantId
-     * @param string $type
-     * @param string $batchId
-     * @return string
-     */
+    /** Build the notification key used to update an unread aggregate. */
     private function generateAggregationKey(int $userId, int $tenantId, string $type, string $batchId): string
     {
         return sprintf(
@@ -465,34 +405,10 @@ class NotificationAggregatorService
         );
     }
 
-    /**
-     * Format notification message based on count
-     * 
-     * @param string $type
-     * @param array $data
-     * @param int $count
-     * @return string
-     */
+    /** Format the in-app summary for supported event types. */
     private function formatMessage(string $type, array $data, int $count): string
     {
         switch ($type) {
-            case 'new_order':
-                if ($count === 1) {
-                    $event = $data['events'][0] ?? $data;
-                    return sprintf(
-                        'طلب جديد #%d من %s',
-                        $event['order_id'] ?? 0,
-                        $event['customer_name'] ?? 'عميل'
-                    );
-                } else {
-                    $totalAmount = number_format($data['total_amount'] ?? 0, 2);
-                    return sprintf(
-                        '%d طلبات جديدة بإجمالي %s ريال',
-                        $count,
-                        $totalAmount
-                    );
-                }
-
             case 'low_stock_alert':
                 if ($count === 1) {
                     $event = $data['events'][0] ?? $data;
@@ -528,16 +444,10 @@ class NotificationAggregatorService
         }
     }
 
-    /**
-     * Get notification title by type
-     * 
-     * @param string $type
-     * @return string
-     */
+    /** Return the localized title for a known event type or a generic fallback. */
     private function getNotificationTitle(string $type): string
     {
         $titles = [
-            'new_order' => 'طلبات جديدة',
             'low_stock_alert' => 'تنبيه مخزون',
             'payment_received' => 'دفعات جديدة',
             'order_status_change' => 'تحديث حالة الطلب',
@@ -547,15 +457,10 @@ class NotificationAggregatorService
         return $titles[$type] ?? 'إشعار';
     }
 
-    /**
-     * Process pending batches (called by cron)
-     * 
-     * @return int Number of batches processed
-     */
+    /** Mark due batches as processed; this method does not send email or push messages. */
     public function processPendingBatches(): int
     {
         try {
-            // Find batches ready to be sent
             $stmt = $this->db->prepare("
                 SELECT batch_id, tenant_id, user_id, notification_type, event_count, total_amount
                 FROM notification_batches
@@ -584,16 +489,10 @@ class NotificationAggregatorService
         }
     }
 
-    /**
-     * Finalize a batch and mark as sent
-     * 
-     * @param array $batch
-     * @return bool
-     */
+    /** Mark a batch as sent and log its aggregate count. */
     private function finalizeBatch(array $batch): bool
     {
         try {
-            // Mark batch as sent
             $stmt = $this->db->prepare("
                 UPDATE notification_batches
                 SET status = 'sent',

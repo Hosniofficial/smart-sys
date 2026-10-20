@@ -12,7 +12,7 @@
       <PageHeader
         :breadcrumb="breadcrumb"
         title="قاعدة بيانات العملاء"
-        description="إدارة ملفات العملاء، مراقبة المديونيات، وتحصيل الدفعات بشكل مركزي."
+        description="أدر بيانات العملاء، وتابع الأرصدة المستحقة والمدفوعات والتحصيلات."
         :branches="branches"
         :selectedBranch="selectedBranch"
         @branch-changed="handleBranchChange"
@@ -177,6 +177,7 @@
     <!-- Modals: Minimal Standard Overlay -->
     
     <!-- Customer Form -->
+    <Teleport to="body">
     <transition name="fade">
       <div v-if="showFormModal" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
         <div class="bg-white w-full max-w-xl rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn flex flex-col max-h-[90vh]">
@@ -206,34 +207,138 @@
         </div>
       </div>
     </transition>
+    </Teleport>
 
-    <!-- Payment Collection -->
-    <transition name="fade">
-      <div v-if="showPaymentModal" class="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-        <div class="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn">
-          <div class="px-8 py-6 border-b border-slate-100 bg-slate-50/50 text-center">
-            <h3 class="text-sm font-bold text-slate-900 uppercase">تسجيل دفعة واردة</h3>
-            <p class="text-[10px] text-slate-400 mt-1 font-medium italic">تحصيل المبالغ من العميل: {{ selectedContact.name }}</p>
+    <!-- Payment Collection Modal — Teleported to body -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="showPaymentModal"
+          class="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"
+          @click.self="showPaymentModal = false"
+          @keydown.esc="showPaymentModal = false"
+        >
+          <div class="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn" dir="rtl">
+            <!-- Header -->
+            <div class="px-8 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900">تحصيل دفعة من</h3>
+                <p class="text-[10px] text-slate-400 mt-0.5 font-medium">{{ selectedContact?.name }}</p>
+              </div>
+              <button type="button" @click="showPaymentModal = false"
+                      class="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all flex items-center justify-center">
+                <i class="fas fa-times text-xs"></i>
+              </button>
+            </div>
+
+            <!-- Form -->
+            <form @submit.prevent="handlePaymentSubmit" class="px-8 py-6 space-y-4">
+              <p v-if="hasPendingCustomerPayment" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-800">
+                توجد دفعة لم تُحسم نتيجتها. أعد المحاولة بالبيانات نفسها قبل بدء دفعة أخرى.
+              </p>
+              <!-- المبلغ -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  المبلغ <span class="text-rose-500">*</span>
+                </label>
+                <input
+                  v-model.number="paymentData.amount"
+                  :disabled="hasPendingCustomerPayment"
+                  type="number" step="0.01" min="0.01"
+                  class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-mono"
+                  placeholder="0.00" required
+                />
+                <button
+                  v-if="Number(selectedContact?.balance) > 0"
+                  type="button"
+                  @click="paymentData.amount = Number(selectedContact.balance)"
+                  :disabled="hasPendingCustomerPayment"
+                  class="text-[9px] font-bold text-blue-600 hover:underline px-1"
+                >
+                  تحصيل الرصيد كاملاً ({{ formatPrice(Number(selectedContact?.balance)) }})
+                </button>
+              </div>
+
+              <!-- تاريخ الدفع -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  تاريخ الدفع <span class="text-rose-500">*</span>
+                </label>
+                <input
+                  v-model="paymentData.payment_date"
+                  :disabled="hasPendingCustomerPayment"
+                  type="date"
+                  class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-mono"
+                  required
+                />
+              </div>
+
+              <!-- طريقة الدفع -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  طريقة الدفع <span class="text-rose-500">*</span>
+                </label>
+                <select
+                  v-model.number="paymentData.payment_method_id"
+                  :disabled="hasPendingCustomerPayment"
+                  class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none"
+                  required
+                >
+                  <option value="">اختر طريقة الدفع</option>
+                  <option v-for="m in collectiblePaymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option>
+                </select>
+              </div>
+
+              <!-- الفرع -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  الفرع <span class="text-rose-500">*</span>
+                </label>
+                <select
+                  v-model="paymentData.branch_id"
+                  :disabled="hasPendingCustomerPayment"
+                  class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none"
+                  required
+                >
+                  <option value="">اختر الفرع</option>
+                  <option v-for="w in branches" :key="w.id" :value="w.id">{{ w.name || w.branch_name }}</option>
+                </select>
+              </div>
+
+              <!-- ملاحظات -->
+              <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">ملاحظات</label>
+                <textarea
+                  v-model="paymentData.notes"
+                  :disabled="hasPendingCustomerPayment"
+                  rows="2"
+                  class="w-full bg-white border border-slate-200 rounded-md px-3 py-2 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all italic resize-none"
+                  placeholder="مرجع التحويل، رقم الشيك..."
+                ></textarea>
+              </div>
+
+              <!-- أزرار -->
+              <div class="pt-4 border-t border-slate-100 flex gap-3">
+                <button
+                  type="button"
+                  @click="showPaymentModal = false"
+                  class="flex-1 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors rounded-md hover:bg-slate-50"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  :disabled="hasPendingCustomerPayment && !paymentData.amount"
+                  class="flex-[2] h-10 bg-emerald-600 text-white rounded-md text-xs font-bold shadow-lg shadow-emerald-900/20 active:scale-95 transition-all"
+                >
+                  {{ hasPendingCustomerPayment ? 'إعادة المحاولة بنفس البيانات' : 'تأكيد التحصيل' }}
+                </button>
+              </div>
+            </form>
           </div>
-          <form @submit.prevent="handlePaymentSubmit" class="p-8 space-y-6">
-            <div class="text-center">
-              <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">المبلغ المحصل</label>
-              <input type="number" v-model.number="paymentData.amount" class="w-full h-14 text-3xl font-bold text-center text-emerald-600 border-b-2 border-slate-100 focus:border-emerald-500 outline-none transition-all font-mono" required />
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-              <div class="space-y-1.5"><label class="metadata-label">التاريخ</label><input ref="paymentDateRef" type="date" v-model="paymentData.payment_date" class="filter-input-v2 h-10 font-mono" required /></div>
-              <div class="space-y-1.5"><label class="metadata-label">طريقة الدفع</label><select v-model.number="paymentData.payment_method_id" class="filter-input-v2 h-10 font-bold" required><option value="">-- اختر --</option><option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option></select></div>
-            </div>
-            <div class="space-y-1.5"><label class="metadata-label">الفرع (للنقدي)</label><select v-model="paymentData.branch_id" class="filter-input-v2 h-10"><option value="">-- اختياري --</option><option v-for="w in branches" :key="w.id" :value="w.id">{{ w.name }}</option></select></div>
-            <div class="space-y-1.5"><label class="metadata-label">ملاحظات</label><textarea v-model="paymentData.notes" rows="2" class="filter-input-v2 h-auto py-2 italic" placeholder="مرجع التحويل، شيك..."></textarea></div>
-            <div class="pt-4 border-t border-slate-100 flex gap-3">
-              <button type="button" @click="showPaymentModal = false" class="flex-1 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">إلغاء</button>
-              <button type="submit" class="flex-[2] h-10 bg-emerald-600 text-white rounded-md text-xs font-bold shadow-lg shadow-emerald-900/20 active:scale-95 transition-all">تأكيد التحصيل</button>
-            </div>
-          </form>
         </div>
-      </div>
-    </transition>
+      </Transition>
+    </Teleport>
 
   </div>
 </template>
@@ -242,7 +347,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useToast } from '@/composables/useToast';
 import { useTableFilters } from '@/composables/useTableFilters';
-import getLocalDateISO from '@/utils/date';
+import { getLocalDateISO } from '@/utils';
 import { useRouter } from 'vue-router';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
@@ -250,9 +355,10 @@ import AlertService from '@/services/AlertService';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useSessionExemption } from '@/composables/useCashierSessionGuard';
 import { useBranchIsolation } from '@/composables/useBranchIsolation';
+import { usePendingIdempotentRequest } from '@/composables/usePendingIdempotentRequest';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
-import { useAuthStore } from '@/stores/auth';
-import { useBranchStore } from '@/stores/branch';
+import { useAuthStore } from '@/stores/auth/authStore';
+import { useBranchStore } from '@/stores/branch/branchStore';
 import { useCustomerStore } from '@/stores/customer/customerStore';
 import { usePaymentStore } from '@/stores/payment/paymentStore';
 import PageHeader from '@/components/PageHeader.vue';
@@ -298,10 +404,15 @@ const selectedContact = ref(null);
 const viewMode = ref('cards'); 
 const showPaymentModal = ref(false);
 const paymentData = ref({ amount: null, payment_date: null, payment_method_id: null, branch_id: null, notes: '' });
+const pendingCustomerPayment = usePendingIdempotentRequest('customer-payment');
+const hasPendingCustomerPayment = computed(() => !!pendingCustomerPayment.pending.value);
 
 // Date input refs
 const paymentDateRef = ref(null);
 const paymentMethods = ref([]);
+const collectiblePaymentMethods = computed(() =>
+  paymentMethods.value.filter(method => String(method.kind || '').toLowerCase() !== 'credit')
+);
 
 // Logic: Filters
 const filteredContacts = computed(() => {
@@ -377,7 +488,11 @@ const viewContact = (c) => { try { sessionStorage.setItem('selectedContact', JSO
 const deleteContact = async (c) => {
   if (await AlertService.confirm(`هل أنت متأكد من حذف ${c.name}?`, 'حذف العميل')) {
     try {
-      await customerStore.deleteCustomer(c.id);
+      const result = await customerStore.deleteCustomer(c.id);
+      if (result?.status !== 'success') {
+        showToast(result?.message || 'فشل حذف العميل', 'error');
+        return;
+      }
       showToast('تم الحذف بنجاح', 'success');
       fetchContacts();
     } catch (e) { showToast(e.response?.data?.message || 'فشل الحذف', 'error'); }
@@ -396,25 +511,50 @@ const handleFormSubmit = async (formData) => {
 
 const openPaymentModal = (c) => {
   selectedContact.value = c;
-  paymentData.value = { amount: null, payment_date: getLocalDateISO(), payment_method_id: null, branch_id: null, notes: '' };
-  showPaymentModal.value = true;
+  try {
+    const pending = pendingCustomerPayment.restore(c.id);
+    paymentData.value = pending?.payload
+      ? { ...pending.payload }
+      : {
+          amount: Number(c.balance) > 0 ? Number(c.balance) : null,
+          payment_date: getLocalDateISO(),
+          payment_method_id: null,
+          branch_id: branchStore.selectedBranchId || null,
+          notes: '',
+        };
+    showPaymentModal.value = true;
+  } catch (error) {
+    showToast(error.message || 'تعذر استعادة عملية التحصيل السابقة.', 'error');
+  }
 };
 
 const handlePaymentSubmit = async () => {
   if (!paymentData.value.amount || paymentData.value.amount <= 0) return showToast('ادخل مبلغ صحيح', 'error');
-  if (!paymentData.value.payment_method_id) return showToast('اختر الطريقة', 'error');
-  if (!paymentData.value.payment_date) {
-    showToast('الرجاء تحديد تاريخ الدفع', 'error');
-    return;
-  }
+  if (!paymentData.value.payment_method_id) return showToast('اختر طريقة الدفع', 'error');
+  if (!paymentData.value.payment_date) { showToast('الرجاء تحديد تاريخ الدفع', 'error'); return; }
   try {
-    const res = await customerStore.recordCustomerPayment(selectedContact.value?.id, paymentData.value);
+    const customerId = selectedContact.value?.id;
+    const payload = {
+      amount: Number(paymentData.value.amount),
+      payment_date: paymentData.value.payment_date,
+      payment_method_id: Number(paymentData.value.payment_method_id),
+      branch_id: paymentData.value.branch_id ? Number(paymentData.value.branch_id) : undefined,
+      notes: paymentData.value.notes || '',
+    };
+    const pending = pendingCustomerPayment.prepare(customerId, payload);
+    const res = await customerStore.recordCustomerPayment(customerId, pending.payload, pending.key);
     if (res.status === 'success') {
+      pendingCustomerPayment.clear(customerId);
       showToast(`تم التسجيل بنجاح`, 'success');
       showPaymentModal.value = false;
       fetchContacts();
     } else {
-      showToast(res.message || 'فشل التسجيل', 'error');
+      if (res.outcomeUnknown) {
+        showToast('تعذر تأكيد نتيجة التحصيل. أعد المحاولة بالبيانات نفسها.', 'error');
+      } else {
+        pendingCustomerPayment.clear(customerId);
+        showToast(res.message || 'فشل التسجيل', 'error');
+      }
     }
   } catch (e) {
     showToast(e.response?.data?.message || e.message || 'فشل التسجيل', 'error');

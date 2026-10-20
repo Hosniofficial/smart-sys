@@ -4,13 +4,28 @@ import { esc, fmt, getCompanyData } from './printHelpers';
 const itemReturnTotal = (it) =>
   parseFloat(it.net_total || it.total || (it.quantity * (it.unit_price || it.sale_price || 0)) || 0);
 
+const isPurchaseReturn = (doc) => String(doc.return_type || '').toLowerCase() === 'purchase';
+const returnTypeLabel = (doc) => doc.return_type_label || (isPurchaseReturn(doc) ? 'مرتجع مشتريات' : 'مرتجع مبيعات');
+const returnPartyLabel = (doc) => isPurchaseReturn(doc) ? 'المورد' : 'العميل';
+const returnPartyName = (doc) => doc.party_name || (isPurchaseReturn(doc) ? doc.supplier_name : doc.customer_name) || (isPurchaseReturn(doc) ? 'غير محدد' : 'عميل نقدي');
+const returnSettlementRows = (doc, rowClass) => {
+  const cashRefund = Math.max(0, Number(doc.cash_refund_amount ?? doc.paid_amount ?? 0));
+  const offset = Math.max(0, Number(doc.offset_amount ?? 0));
+  const net = Number(doc.net_settlement_amount ?? cashRefund + offset);
+  const cashLabel = Number(doc.is_cash) === 1 ? 'المبلغ المسترد نقدًا:' : 'المبلغ المسترد:';
+  return `${offset > 0 ? `<div class="${rowClass}"><span>المبلغ المُقاصّ:</span><span>${fmt(offset)}</span></div>` : ''}
+    ${cashRefund > 0 ? `<div class="${rowClass}"><span>${cashLabel}</span><span>${fmt(cashRefund)}</span></div>` : ''}
+    <div class="${rowClass}"><span>صافي التسوية:</span><span>${fmt(net)}</span></div>`;
+};
+
 /**
  * Thermal template for return documents (76mm roll)
  */
 const buildReturnThermalHtml = (doc) => {
   const cfg     = getPrintConfig();
   const company = getCompanyData(doc);
-  const docDate = doc.return_date || doc.created_at || new Date().toISOString();
+  const returnDate = doc.return_date || doc.created_at || new Date().toISOString();
+  const createdAt = doc.created_at || returnDate;
 
   const itemsHtml = (doc.items || []).map((it, idx) => `
     <div style="margin-bottom:8px;font-size:12px;">
@@ -24,7 +39,7 @@ const buildReturnThermalHtml = (doc) => {
     </div>`).join('');
 
   return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"/>
-  <title>مرتجع ${esc(doc.return_number || doc.id || '')}</title>
+  <title>إشعار ${esc(returnTypeLabel(doc))} ${esc(doc.return_number || doc.id || '')}</title>
   <style>
     *{box-sizing:border-box;}
     body{font-family:Tahoma,Arial,sans-serif;margin:0;padding:0;background:#fff;}
@@ -49,14 +64,16 @@ const buildReturnThermalHtml = (doc) => {
         ${company.tax ? `ر.ضريبي: ${esc(company.tax)}` : ''}
       </div>
       ${company.address ? `<div class="info-line">${esc(company.address)}</div>` : ''}
-      <div class="return-badge">↩ وثيقة مرتجع</div>
+      <div class="return-badge">↩ إشعار ${esc(returnTypeLabel(doc))}</div>
     </div>
 
     <div class="meta-grid">
-      <div><strong>رقم:</strong> ${esc(doc.return_number || doc.id)}</div>
-      <div style="text-align:left"><strong>التاريخ:</strong> ${new Date(docDate).toLocaleDateString('ar-EG')}</div>
-      ${doc.customer_name ? `<div><strong>العميل:</strong> ${esc(doc.customer_name)}</div>` : '<div></div>'}
-      <div style="text-align:left"><strong>الوقت:</strong> ${new Date(docDate).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}</div>
+      <div><strong>رقم المرتجع:</strong> ${esc(doc.return_number || doc.id)}</div>
+      <div><strong>تاريخ المرتجع:</strong> ${new Date(returnDate).toLocaleDateString('ar-EG')}</div>
+      <div><strong>الفاتورة الأصلية:</strong> ${esc(doc.original_invoice_number || doc.invoice_number || 'غير محدد')}</div>
+      <div><strong>${returnPartyLabel(doc)}:</strong> ${esc(returnPartyName(doc))}</div>
+      <div><strong>أنشأه:</strong> ${esc(doc.created_by_name || 'النظام')}</div>
+      <div><strong>تاريخ ووقت الإنشاء:</strong> ${new Date(createdAt).toLocaleString('ar-EG')}</div>
     </div>
 
     ${cfg.headerEnabled && cfg.headerText
@@ -67,7 +84,8 @@ const buildReturnThermalHtml = (doc) => {
 
     <div class="totals-area">
       <div class="total-row"><span>إجمالي المرتجع:</span><span>${fmt(doc.grand_total || doc.total_amount)}</span></div>
-      ${doc.return_reason ? `<div class="total-row" style="color:#666;font-size:11px;"><span>السبب:</span><span>${esc(doc.return_reason)}</span></div>` : ''}
+      ${returnSettlementRows(doc, 'total-row')}
+      ${(doc.notes || doc.return_reason) ? `<div class="total-row" style="color:#666;font-size:11px;"><span>سبب الإرجاع:</span><span>${esc(doc.notes || doc.return_reason)}</span></div>` : ''}
     </div>
 
     ${cfg.footerEnabled && cfg.footerText
@@ -85,7 +103,8 @@ const buildReturnThermalHtml = (doc) => {
 const buildReturnA4Html = (doc) => {
   const cfg     = getPrintConfig();
   const company = getCompanyData(doc);
-  const docDate = doc.return_date || doc.created_at || new Date().toISOString();
+  const returnDate = doc.return_date || doc.created_at || new Date().toISOString();
+  const createdAt = doc.created_at || returnDate;
 
   const itemsHtml = (doc.items || []).map((it, idx) => `
     <tr>
@@ -97,7 +116,7 @@ const buildReturnA4Html = (doc) => {
     </tr>`).join('');
 
   return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"/>
-  <title>مرتجع ${esc(doc.return_number || doc.id || '')}</title>
+  <title>إشعار ${esc(returnTypeLabel(doc))} ${esc(doc.return_number || doc.id || '')}</title>
   <style>
     *{box-sizing:border-box;}
     body{font-family:Tahoma,Arial,sans-serif;margin:0;padding:24px;color:#1e293b;direction:rtl;}
@@ -128,15 +147,18 @@ const buildReturnA4Html = (doc) => {
         </div>
       </div>
       <div>
-        <div class="return-badge">↩ وثيقة مرتجع</div>
+        <div class="return-badge">↩ إشعار ${esc(returnTypeLabel(doc))}</div>
         <div class="return-no">${esc(doc.return_number || 'RET-' + doc.id)}</div>
       </div>
     </div>
 
     <div class="info-grid">
-      <div class="info-box"><label>التاريخ</label>${new Date(docDate).toLocaleDateString('en-US')}</div>
-      <div class="info-box"><label>العميل</label>${esc(doc.customer_name || 'عميل نقدي')}</div>
+      <div class="info-box"><label>تاريخ المرتجع</label>${new Date(returnDate).toLocaleDateString('ar-EG')}</div>
+      <div class="info-box"><label>الفاتورة الأصلية</label>${esc(doc.original_invoice_number || doc.invoice_number || 'غير محدد')}</div>
+      <div class="info-box"><label>${returnPartyLabel(doc)}</label>${esc(returnPartyName(doc))}</div>
       <div class="info-box"><label>الفرع</label>${esc(doc.branch_name || '-')}</div>
+      <div class="info-box"><label>أنشأه</label>${esc(doc.created_by_name || 'النظام')}</div>
+      <div class="info-box"><label>تاريخ ووقت الإنشاء</label>${new Date(createdAt).toLocaleString('ar-EG')}</div>
     </div>
 
     <table>
@@ -145,8 +167,9 @@ const buildReturnA4Html = (doc) => {
     </table>
 
     <div class="totals">
-      <div class="totals-final"><span>إجمالي المرتجع:</span><span>${fmt(doc.grand_total || doc.total_amount)}</span></div>
-      ${doc.return_reason ? `<div class="totals-row" style="color:#666"><span>سبب المرتجع:</span><span>${esc(doc.return_reason)}</span></div>` : ''}
+      <div class="totals-row"><span>إجمالي المرتجع:</span><span>${fmt(doc.grand_total || doc.total_amount)}</span></div>
+      ${returnSettlementRows(doc, 'totals-row')}
+      ${(doc.notes || doc.return_reason) ? `<div class="totals-row" style="color:#666"><span>سبب الإرجاع:</span><span>${esc(doc.notes || doc.return_reason)}</span></div>` : ''}
     </div>
 
     ${cfg.footerEnabled && cfg.footerText

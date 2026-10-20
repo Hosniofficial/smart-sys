@@ -37,14 +37,17 @@ class PurchaseRepository
     }
 
     /**
-     * Get total completed payments for a purchase.
+     * Get net completed, non-draft payments for a purchase after supplier refunds.
      */
     public function getTotalPaid(int $purchaseId, int $tenantId): float
     {
         $stmt = $this->db->prepare(
-            "SELECT COALESCE(SUM(amount), 0)
+            "SELECT COALESCE(SUM(
+                 CASE WHEN type = 'payment_for_return' THEN -amount ELSE amount END
+             ), 0)
              FROM payments
-             WHERE purchase_id = ? AND tenant_id = ? AND status = 'completed'"
+             WHERE purchase_id = ? AND tenant_id = ?
+               AND status = 'completed' AND is_draft = 0"
         );
         $stmt->execute([$purchaseId, $tenantId]);
         return round((float) $stmt->fetchColumn(), 2);

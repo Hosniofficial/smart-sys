@@ -10,6 +10,14 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
 use App\Services\CostCenter\CostCenterService;
 
+/**
+ * Previews and commits tenant opening inventory balances.
+ *
+ * Uses PDO for product/branch resolution and inventory persistence, CostCenterService
+ * for required context, and AccountingService for GL account resolution and posting.
+ * The opening-balance routes gate template/preview and commit with the accounting
+ * opening-balance permission.
+ */
 class OpeningBalanceHandler extends BaseHandler
 {
     private CostCenterService $costCenterService;
@@ -21,6 +29,7 @@ class OpeningBalanceHandler extends BaseHandler
         $this->costCenterService = new CostCenterService($db, 'opening_balance');
     }
 
+    /** Find a tenant or shared branch by ID. */
     private function findBranch(int $tenantId, int $branchId): ?array
     {
         $stmt = $this->db->prepare("
@@ -34,6 +43,7 @@ class OpeningBalanceHandler extends BaseHandler
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
+    /** Resolve a branch code against supported schema aliases, then its name. */
     private function findBranchByCode(int $tenantId, string $code): ?array
     {
         $code = trim($code);
@@ -69,10 +79,11 @@ class OpeningBalanceHandler extends BaseHandler
         return null;
     }
 
+    /** Find a product by ID within the tenant. */
     private function findProduct(int $tenantId, int $productId): ?array
     {
         $stmt = $this->db->prepare("
-            SELECT id, name, purchase_price
+            SELECT id, name, purchase_price, product_type
             FROM products
             WHERE id = ? AND tenant_id = ?
             LIMIT 1
@@ -82,6 +93,7 @@ class OpeningBalanceHandler extends BaseHandler
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
+    /** Resolve a tenant product by barcode first, then product code. */
     private function findProductByCodeOrBarcode(int $tenantId, ?string $productCode, ?string $barcode): ?array
     {
         $productCode = $productCode !== null ? trim($productCode) : '';
@@ -124,6 +136,7 @@ class OpeningBalanceHandler extends BaseHandler
         return null;
     }
 
+    /** Resolve a tenant or shared unit by code. */
     private function findUnitByCode(int $tenantId, string $unitCode): ?array
     {
         $unitCode = trim($unitCode);
@@ -142,6 +155,7 @@ class OpeningBalanceHandler extends BaseHandler
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
+    /** Normalize one submitted row to IDs and append lookup failures to the error list. */
     private function resolveRowToIds(int $tenantId, array $row, int $line, array &$errors): array
     {
         $branchId = (int) ($row['branch_id'] ?? 0);
@@ -197,22 +211,7 @@ class OpeningBalanceHandler extends BaseHandler
         ];
     }
 
-    public function template(Request $request, Response $response): Response
-    {
-        $csv = "branch_id,product_id,unit_id,quantity,cost,notes\n" .
-            "1,1001,1,10,25.50,Opening stock example\n\n" .
-            "# Alternative by codes (preferred):\n" .
-            "branch_code,product_code_or_barcode,unit_code,quantity,cost,notes\n" .
-            "MAIN,SKU-001,PCS,10,25.50,Opening stock example\n";
-
-        $response->getBody()->write($csv);
-
-        return $response
-            ->withHeader('Content-Type', 'text/csv; charset=utf-8')
-            ->withHeader('Content-Disposition', 'attachment; filename="opening_balance_template.csv"')
-            ->withStatus(200);
-    }
-
+    /** Validate and normalize proposed opening balances without writing data. */
     public function preview(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -226,7 +225,7 @@ class OpeningBalanceHandler extends BaseHandler
         if (!is_array($items) || count($items) === 0) {
             return $this->jsonResponse($response, [
                 'status' => 'error',
-                'message' => 'الرجاء إدخال عناصر الرصيد الافتتاحي',
+                'message' => 'يُرجى إدخال أصناف الرصيد الافتتاحي',
                 'field' => 'items'
             ], 400);
         }
@@ -259,7 +258,7 @@ class OpeningBalanceHandler extends BaseHandler
             }
 
             if ($qty <= 0) {
-                $errors[] = "السطر {$line}: الكمية يجب أن تكون أكبر من صفر";
+                $errors[] = "السطر {$line}: يجب أن تكون الكمية أكبر من صفر.";
             }
 
             if ($cost < 0) {
@@ -277,6 +276,8 @@ class OpeningBalanceHandler extends BaseHandler
                 $product = $this->findProduct($tenantId, $productId);
                 if (!$product) {
                     $errors[] = "السطر {$line}: المنتج غير موجود";
+                } elseif (strtolower((string) ($product['product_type'] ?? 'stock')) !== 'stock') {
+                    $errors[] = "السطر {$line}: المنتج من نوع خدمة، ولا يُسمح بتسجيل رصيد مخزني له.";
                 } elseif ($cost == 0.0) {
                     $warnings[] = "السطر {$line}: التكلفة = 0؛ سيتم اعتبارها صفرية (قد يؤثر على COGS)";
                 }
@@ -323,8 +324,9 @@ class OpeningBalanceHandler extends BaseHandler
     }
 
     /**
-     * Post explicitly submitted opening stock without implicitly activating a branch GL mapping.
-     * Mapping metadata is reused only when a user has configured it beforehand.
+     * Commit opening stock and, when requested, post its branch inventory GL entries.
+     *
+     * Existing branch GL mappings are reused as metadata but are not created or activated.
      */
     public function commit(Request $request, Response $response): Response
     {
@@ -362,7 +364,7 @@ class OpeningBalanceHandler extends BaseHandler
         if (!is_array($items) || count($items) === 0) {
             return $this->jsonResponse($response, [
                 'status' => 'error',
-                'message' => 'الرجاء إدخال عناصر الرصيد الافتتاحي',
+                'message' => 'يُرجى إدخال أصناف الرصيد الافتتاحي',
                 'field' => 'items'
             ], 400);
         }
@@ -381,12 +383,15 @@ class OpeningBalanceHandler extends BaseHandler
                 $errors[] = "السطر {$line}: المخزن غير موجود";
             }
 
-            if ($productId <= 0 || !$this->findProduct($tenantId, $productId)) {
+            $product = $productId > 0 ? $this->findProduct($tenantId, $productId) : null;
+            if (!$product) {
                 $errors[] = "السطر {$line}: المنتج غير موجود";
+            } elseif (strtolower((string) ($product['product_type'] ?? 'stock')) !== 'stock') {
+                $errors[] = "السطر {$line}: المنتج من نوع خدمة ولا يقبل رصيدًا مخزنيًا";
             }
 
             if ($qty <= 0) {
-                $errors[] = "السطر {$line}: الكمية يجب أن تكون أكبر من صفر";
+                $errors[] = "السطر {$line}: يجب أن تكون الكمية أكبر من صفر.";
             }
 
             if ($cost < 0) {
@@ -443,17 +448,26 @@ class OpeningBalanceHandler extends BaseHandler
             )));
             sort($productIdsToLock, SORT_NUMERIC);
             $productLock = $this->db->prepare(
-                'SELECT id FROM products WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE'
+                'SELECT id, product_type FROM products WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE'
             );
             foreach ($productIdsToLock as $productIdToLock) {
                 $productLock->execute([$tenantId, $productIdToLock]);
-                if (!$productLock->fetchColumn()) {
+                $lockedProduct = $productLock->fetch(PDO::FETCH_ASSOC);
+                if (!$lockedProduct) {
                     throw new \RuntimeException("المنتج #{$productIdToLock} غير موجود.");
+                }
+                if (strtolower((string) ($lockedProduct['product_type'] ?? 'stock')) !== 'stock') {
+                    throw new \InvalidArgumentException(
+                        "المنتج #{$productIdToLock} من نوع خدمة ولا يقبل رصيدًا مخزنيًا."
+                    );
                 }
             }
 
             $openingBalanceCheck = $this->db->prepare(
-                'SELECT 1 FROM opening_balances WHERE tenant_id = ? AND product_id = ? AND branch_id = ? LIMIT 1 FOR UPDATE'
+                'SELECT 1 FROM opening_balances
+                 WHERE tenant_id = ? AND product_id = ? AND branch_id = ?
+                   AND reversed_at IS NULL
+                 LIMIT 1 FOR UPDATE'
             );
             $duplicateOpenings = [];
             $checkedPairs = [];
@@ -467,7 +481,7 @@ class OpeningBalanceHandler extends BaseHandler
                 $checkedPairs[$pairKey] = true;
                 $openingBalanceCheck->execute([$tenantId, $productId, $branchId]);
                 if ($openingBalanceCheck->fetchColumn()) {
-                    $duplicateOpenings[] = "المنتج #{$productId} في الفرع #{$branchId} لديه رصيد افتتاحي مسجل مسبقاً";
+                    $duplicateOpenings[] = "المنتج #{$productId} في الفرع #{$branchId}: يوجد رصيد افتتاحي مسجل مسبقًا.";
                 }
             }
             if ($duplicateOpenings !== []) {
@@ -475,7 +489,7 @@ class OpeningBalanceHandler extends BaseHandler
                 $transactionActive = false;
                 return $this->jsonResponse($response, [
                     'status' => 'error',
-                    'message' => 'بعض المنتجات لديها رصيد افتتاحي مسجل مسبقاً',
+                    'message' => 'يوجد رصيد افتتاحي مسجل مسبقًا لبعض المنتجات',
                     'errors' => $duplicateOpenings,
                 ], 409);
             }
@@ -491,8 +505,8 @@ class OpeningBalanceHandler extends BaseHandler
                 INSERT INTO branch_products (tenant_id, branch_id, product_id, quantity, last_update, quantity_cost, gl_reconciled)
                 VALUES (?, ?, ?, ?, NOW(), ?, 0)
                 ON DUPLICATE KEY UPDATE
-                    quantity = quantity + VALUES(quantity),
-                    quantity_cost = quantity_cost + VALUES(quantity_cost),
+                    quantity = VALUES(quantity),
+                    quantity_cost = VALUES(quantity_cost),
                     gl_reconciled = 0,
                     last_update = NOW()
             ");
@@ -535,8 +549,28 @@ class OpeningBalanceHandler extends BaseHandler
                 }
             }
 
+            if ($postAccounting) {
+                $branchesWithValue = [];
+                foreach ($items as $row) {
+                    if ((float) $row['quantity'] * (float) $row['cost'] > 0) {
+                        $branchesWithValue[(int) $row['branch_id']] = true;
+                    }
+                }
+                if ($branchesWithValue !== [] && !$equityAccountId) {
+                    throw new \RuntimeException('حساب حقوق الأرصدة الافتتاحية (2001) غير مُهيأ.');
+                }
+                foreach (array_keys($branchesWithValue) as $branchIdWithValue) {
+                    if (empty($branchGLMap[$branchIdWithValue])) {
+                        throw new \RuntimeException(
+                            "حساب المخزون غير مُهيأ للفرع #{$branchIdWithValue}؛ لم يتم تسجيل أي كمية في المخزون."
+                        );
+                    }
+                }
+            }
+
             $jeId     = null;
             $warnings = [];
+            $postedProductIds = [];
 
             foreach ($items as $row) {
                 $branchId = (int) $row['branch_id'];
@@ -584,7 +618,7 @@ class OpeningBalanceHandler extends BaseHandler
 
                 // ── Per-branch Journal Entry ──────────────────────────────
                 $branchInvGLId = $branchGLMap[$branchId] ?? null;
-                if ($postAccounting && !empty($equityAccountId) && !empty($branchInvGLId)) {
+                if ($postAccounting && $lineTotalCost > 0) {
                     $productName   = $productNameMap[$productId] ?? "منتج #{$productId}";
                     $branchName    = $branchNameMap[$branchId]   ?? "فرع #{$branchId}";
 
@@ -611,11 +645,16 @@ class OpeningBalanceHandler extends BaseHandler
                             date('Y-m-d'),
                             $userId ? (int) $userId : 1,
                             null,
-                            "ob_bulk:t{$tenantId}:p{$productId}:b{$branchId}"
+                            $this->getBulkOpeningBalanceIdempotencyKey(
+                                (int) $tenantId,
+                                $productId,
+                                $branchId
+                            )
                         );
 
                         if ($jeIdItem) {
                             $jeId = $jeIdItem;
+                            $postedProductIds[$productId] = true;
 
                             $this->db->prepare(
                                 'UPDATE inventory_transactions SET journal_entry_id = ? WHERE id = ? AND tenant_id = ?'
@@ -651,9 +690,9 @@ class OpeningBalanceHandler extends BaseHandler
                                 $cost, $qty, $qty,
                             ]);
                         } else {
-                            $warnings['journal_entry_skipped'] = true;
-                            $warnings['reason']  = 'missing_accounts_or_zero_total';
-                            $warnings['message'] = 'تم تخطي القيد المحاسبي لأحد الأصناف.';
+                            throw new \RuntimeException(
+                                "فشل ترحيل قيد الرصيد الافتتاحي للمنتج #{$productId} في الفرع #{$branchId}."
+                            );
                         }
                     } catch (\Throwable $e) {
                         $this->logger->error('Error creating per-branch JE', [
@@ -661,13 +700,27 @@ class OpeningBalanceHandler extends BaseHandler
                             'branch_id'  => $branchId,
                             'message'    => $e->getMessage(),
                         ]);
-                        $warnings['journal_entry_error'] = $e->getMessage();
+                        throw $e;
                     }
+                } elseif (!$postAccounting && $lineTotalCost > 0) {
+                    $warnings['journal_entry_skipped'] = true;
+                    $warnings['reason'] = 'accounting_disabled';
+                    $warnings['message'] = 'تم حفظ الكمية دون ترحيل القيد المحاسبي، بناءً على الطلب.';
+                } elseif ($lineTotalCost <= 0) {
+                    $warnings['journal_entry_skipped'] = true;
+                    $warnings['reason'] = 'zero_total_cost';
+                    $warnings['message'] = 'تم حفظ الكمية بتكلفة صفرية دون إنشاء قيد محاسبي.';
                 }
 
                 $total = $qty * $cost;
 
                 $insOB->execute([$tenantId, $productId, $branchId, $qty, $cost]);
+                $openingBalanceId = (int) $this->db->lastInsertId();
+                $this->db->prepare("
+                    UPDATE opening_balances
+                    SET inventory_transaction_id = ?
+                    WHERE id = ? AND tenant_id = ?
+                ")->execute([$inventoryTransactionId, $openingBalanceId, $tenantId]);
 
                 $totalQty += $qty;
                 $totalCost += $total;
@@ -679,7 +732,7 @@ class OpeningBalanceHandler extends BaseHandler
             // ── Mark all posted products with opening_balance_posted = 1 ────────────
             // This ensures ProductListResource correctly calculates gl_status = 'posted'
             // (see ProductListResource::transform line 43-44)
-            $productIds = array_unique(array_map(fn ($row) => (int)$row['product_id'], $items));
+            $productIds = array_keys($postedProductIds);
             if (!empty($productIds)) {
                 $placeholders = implode(',', array_fill(0, count($productIds), '?'));
                 $this->db->prepare("
@@ -730,11 +783,23 @@ class OpeningBalanceHandler extends BaseHandler
         }
     }
 
-    /**
-     * Get GL account ID by code — delegates to AccountingService (single source of truth)
-     */
+    /** Resolve an account by code through AccountingService. */
     private function getGLAccountByCode(int $tenantId, string $code): ?int
     {
         return $this->accounting->getAccountByCode($tenantId, $code);
+    }
+
+    /** Include the reversal cycle in the per-tenant/product/branch posting key. */
+    private function getBulkOpeningBalanceIdempotencyKey(int $tenantId, int $productId, int $branchId): string
+    {
+        $stmt = $this->db->prepare(
+            'SELECT COUNT(*) FROM opening_balances
+             WHERE tenant_id = ? AND product_id = ? AND branch_id = ?'
+        );
+        $stmt->execute([$tenantId, $productId, $branchId]);
+        $reversalCycle = (int) $stmt->fetchColumn();
+
+        $key = "ob_bulk:t{$tenantId}:p{$productId}:b{$branchId}";
+        return $reversalCycle > 0 ? "{$key}:r{$reversalCycle}" : $key;
     }
 }

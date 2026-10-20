@@ -10,7 +10,16 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
 use App\Services\LabelService;
 use App\Utils\PaginationHelper;
+use App\Utils\SuperAdminHelper;
 
+/**
+ * Lists tenant payment records and customer receipts.
+ *
+ * Uses PDO for filtered, paginated payment queries, PaginationHelper for page
+ * bounds, and LabelService for localized reference/status labels. The payment
+ * routes apply financial/report permissions; the general list also enforces
+ * branch scope for non-exempt users.
+ */
 class PaymentsHandler extends BaseHandler
 {
     public function __construct(PDO $db)
@@ -19,6 +28,7 @@ class PaymentsHandler extends BaseHandler
         $this->logger = MonologHandler::getInstance('payments');
     }
 
+    /** Return paginated payment records with optional filters and display labels. */
     public function list(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
@@ -44,9 +54,66 @@ class PaymentsHandler extends BaseHandler
             [$page, $perPage, $offset] = PaginationHelper::fromArray($qp, 50);
             $createdBy = $qp['created_by'] ?? ($qp['created_by_id'] ?? null);
             $costCenterId = $qp['cost_center_id'] ?? null;
+            $branchId = isset($qp['branch_id']) && $qp['branch_id'] !== ''
+                ? filter_var($qp['branch_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+                : null;
+            if ($branchId === false) {
+                return $this->errorResponse($response, 'معرف الفرع غير صالح.', 400);
+            }
+
+            $requestUser = $request->getAttribute('user');
+            $requestUser = is_array($requestUser) ? $requestUser : null;
+            $isBranchExempt = SuperAdminHelper::isAdminOrAbove($requestUser)
+                || strtolower((string) ($requestUser['role'] ?? '')) === 'manager';
+            if (!$isBranchExempt) {
+                $userBranchId = (int) ($requestUser['branch_id'] ?? 0);
+                if ($userBranchId <= 0) {
+                    return $this->errorResponse($response, 'لم يتم تعيين فرع لحسابك.', 403);
+                }
+                if ($branchId !== null && (int) $branchId !== $userBranchId) {
+                    return $this->errorResponse($response, 'غير مصرح لك بعرض بيانات هذا الفرع.', 403);
+                }
+                $branchId = $userBranchId;
+            }
 
             $where = ["p.tenant_id = :tenant_id"];
             $params = [':tenant_id' => (int) $tenantId];
+            // Zero-value return adjustments are not cash movements; the return itself
+            // remains available in the returns history.
+            $where[] = "(COALESCE(p.type, '') <> 'return_payment' OR p.amount > 0)";
+
+            if ($branchId !== null) {
+                $branchStmt = $this->db->prepare('SELECT id FROM branches WHERE id = ? AND tenant_id = ? LIMIT 1');
+                $branchStmt->execute([(int) $branchId, (int) $tenantId]);
+                if (!$branchStmt->fetchColumn()) {
+                    return $this->errorResponse($response, 'الفرع غير موجود.', 404);
+                }
+                $where[] = '(
+                    p.branch_id = :payment_branch_id
+                    OR EXISTS (
+                        SELECT 1 FROM sales branch_sale
+                        WHERE branch_sale.id = p.sale_id
+                          AND branch_sale.tenant_id = p.tenant_id
+                          AND branch_sale.branch_id = :sale_branch_id
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM purchases branch_purchase
+                        WHERE branch_purchase.id = p.purchase_id
+                          AND branch_purchase.tenant_id = p.tenant_id
+                          AND branch_purchase.branch_id = :purchase_branch_id
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM returns branch_return
+                        WHERE branch_return.id = p.return_id
+                          AND branch_return.tenant_id = p.tenant_id
+                          AND branch_return.branch_id = :return_branch_id
+                    )
+                )';
+                $params[':payment_branch_id'] = (int) $branchId;
+                $params[':sale_branch_id'] = (int) $branchId;
+                $params[':purchase_branch_id'] = (int) $branchId;
+                $params[':return_branch_id'] = (int) $branchId;
+            }
 
             if (!empty($costCenterId)) {
                 $where[] = 'p.cost_center_id = :cost_center_id';
@@ -119,9 +186,9 @@ class PaymentsHandler extends BaseHandler
             if (!empty($type)) {
                 $t = strtolower((string) $type);
                 if ($t === 'receipt') {
-                    $where[] = 'p.customer_id IS NOT NULL';
+                    $where[] = "p.customer_id IS NOT NULL AND p.return_id IS NULL AND COALESCE(p.type, '') <> 'return_payment'";
                 } elseif ($t === 'payment') {
-                    $where[] = 'p.supplier_id IS NOT NULL';
+                    $where[] = 'p.supplier_id IS NOT NULL AND p.return_id IS NULL';
                 }
             }
 
@@ -154,7 +221,7 @@ class PaymentsHandler extends BaseHandler
                     ON s.id = p.supplier_id
                    AND s.tenant_id = p.tenant_id
                 {$whereSql}
-                ORDER BY p.payment_date ASC, p.id ASC
+                ORDER BY p.payment_date DESC, p.id DESC
                 LIMIT :limit OFFSET :offset
             ";
 
@@ -171,12 +238,26 @@ class PaymentsHandler extends BaseHandler
             $locale = (stripos($acceptLang, 'ar') === 0) ? 'ar' : 'en';
 
             foreach ($items as &$p) {
-                $isReceipt = !empty($p['customer_id']) || !empty($p['sale_id']);
-                $refType = $isReceipt ? 'receipt' : 'payment';
+                $paymentType = strtolower((string) ($p['type'] ?? ''));
+                $isReturnSettlement = !empty($p['return_id']) || $paymentType === 'return_payment';
+                $isRefund = $paymentType === 'return_payment'
+                    && (float) ($p['amount'] ?? 0) > 0;
+                if ($isReturnSettlement) {
+                    $refType = $isRefund ? 'return_payment' : 'sales_return';
+                    $p['reference'] = 'return#' . ($p['return_id'] ?? $p['id'] ?? '');
+                } elseif ($paymentType === 'refund') {
+                    $refType = 'refund';
+                    $p['reference'] = 'refund#' . ($p['id'] ?? '');
+                } else {
+                    $isReceipt = !empty($p['customer_id']) || !empty($p['sale_id']);
+                    $refType = $isReceipt ? 'receipt' : 'payment';
+                    $p['reference'] = $refType . '#' . ($p['id'] ?? '');
+                }
 
                 $p['reference_type'] = $refType;
-                $p['reference_id'] = $p['id'] ?? null;
-                $p['reference'] = $refType . '#' . ($p['id'] ?? '');
+                $p['reference_id'] = $isReturnSettlement
+                    ? ($p['return_id'] ?? null)
+                    : ($p['id'] ?? null);
                 $p['reference_label'] = $this->refLabel($refType, $locale);
                 $p['status_code'] = $p['status'] ?? 'completed';
                 $p['status_label'] = $this->statusLabel($p['status_code'], $locale);
@@ -202,18 +283,19 @@ class PaymentsHandler extends BaseHandler
         }
     }
 
-    // --- Localization helpers ---
+    /** Resolve a localized label for a payment reference type. */
     private function refLabel(?string $type, string $locale = 'ar'): string
     {
         return LabelService::refLabel($type, $locale);
     }
 
+    /** Resolve a localized label for a payment status. */
     private function statusLabel(?string $code, string $locale = 'ar'): string
     {
         return LabelService::statusLabel($code, $locale);
     }
 
-    // GET: list receipts for customer (pagination + filtering)
+    /** Return completed receipts for one customer within an optional date range. */
     public function listReceipts(Request $request, Response $response): Response
     {
         $tenantId = $this->extractTenantId($request);
