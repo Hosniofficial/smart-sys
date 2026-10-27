@@ -332,8 +332,9 @@
 
 <script setup>
 import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue';
-import apiClient from '@/config/axios';
 import paymentService from '@/services/payment';
+import returnsService from '@/services/returns';
+import salesService from '@/services/sales';
 import { useToast } from '@/composables/useToast';
 import LoadingButton from '@/components/ui/LoadingButton.vue'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
@@ -612,14 +613,11 @@ function debouncedSearchInvoice() {
       if (invoiceSearchAbortController) invoiceSearchAbortController.abort();
       invoiceSearchAbortController = new AbortController();
 
-      const res = await apiClient.get('/returns/invoices', {
-        params: {
-          type: normalizedType.value,
-          q: query,
-          ...(searchBranchId ? { branch_id: searchBranchId } : {})
-        },
-        signal: invoiceSearchAbortController.signal
-      });
+      const res = await returnsService.searchInvoices({
+        type: normalizedType.value,
+        q: query,
+        ...(searchBranchId ? { branch_id: searchBranchId } : {})
+      }, invoiceSearchAbortController.signal);
 
       if (searchBranchId !== (props.branchId ? String(props.branchId) : null)) return;
       const data = (res.data?.data || []).filter(canReturnInvoice);
@@ -714,11 +712,11 @@ async function selectInvoice(invoice) {
     let invoiceDetails = {};
     if (!items) {
       if (props.type === 'sales') {
-        const itemsRes = await apiClient.get(`/sales/${invoice.id}`);
+        const itemsRes = await salesService.get(invoice.id);
         invoiceDetails = itemsRes.data?.data || {};
         items = invoiceDetails.items || [];
       } else {
-        const itemsRes = await apiClient.get('/returns/invoice-items', { params: { type: 'purchase', invoice_id: invoice.id } });
+        const itemsRes = await returnsService.getInvoiceItems('purchase', invoice.id);
         invoiceDetails = itemsRes.data?.data || {};
         items = invoiceDetails.items || [];
       }
@@ -729,12 +727,7 @@ async function selectInvoice(invoice) {
     // استخدام API الجديد الذي يعيد item_id
     let availableItemsMap = {};
     try {
-      const sumRes = await apiClient.get('/returns/returned-qty', {
-        params: {
-          type: normalizedType.value,
-          invoice_id: invoice.id
-        }
-      });
+      const sumRes = await returnsService.getReturnedQuantities(normalizedType.value, invoice.id);
       const rows = sumRes.data?.data || [];
 
       // Aggregate historical quantities by product and unit, then allocate them
@@ -961,9 +954,6 @@ defineExpose({ submitReturn, isSubmittingReturn, canSubmitReturn });
 </script>
 
 <style scoped>
-.filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
-}
 /* Transitions */
 .dropdown-enter-active { animation: dropdownIn 0.2s ease-out; }
 @keyframes dropdownIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }

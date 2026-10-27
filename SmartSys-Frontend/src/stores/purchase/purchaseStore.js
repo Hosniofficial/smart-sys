@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import purchasesService from '@/services/purchases';
 import { useStatementStore } from '@/stores/statement/statementStore';
 import { useProductStore } from '@/stores/product/productStore';
 
@@ -82,7 +82,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
           if (dateFrom)   params.date_from   = dateFrom;
           if (dateTo)     params.date_to     = dateTo;
 
-          const response = await apiClient.get('/purchases', { params });
+          const response = await purchasesService.list(params);
           const data     = response?.data?.data || response?.data || [];
           const list     = Array.isArray(data) ? data : (data?.items || []);
           const summary  = data.summary || {};
@@ -169,7 +169,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
 
     if (!force && cached && isFresh(cachedAt, TTL.purchaseDetails)) return cached;
 
-    const response = await apiClient.get(`/purchases/${purchaseId}`, { signal });
+    const response = await purchasesService.get(purchaseId, signal);
     const data     = response?.data?.data || response?.data;
 
     detailsCache.value[cacheKey]          = data;
@@ -246,7 +246,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
       const params = { q, limit: String(limit) };
       if (branchId) params.branch_id = String(branchId);
 
-      const response = await apiClient.get('/purchases', { params });
+      const response = await purchasesService.list(params);
       const data     = response?.data?.data || response?.data || [];
       const list     = Array.isArray(data) ? data : (data?.items || []);
 
@@ -271,10 +271,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
   // ─── createPurchase ───────────────────────────────────────────────────────
   const createPurchase = async (payload, idempotencyKey) => {
     try {
-      const response = await apiClient.post('/purchases', payload, {
-        headers: { 'Idempotency-Key': idempotencyKey },
-        timeout: 60000,
-      });
+      const response = await purchasesService.create(payload, idempotencyKey);
 
       // ✅ تحديث تلقائي للكميات — امسح cache المنتجات في المستودع المتأثر
       const productStore = useProductStore();
@@ -308,7 +305,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
     try {
       if (!purchaseId) throw new Error('Purchase ID is required');
 
-      const response = await apiClient.put(`/purchases/${purchaseId}`, payload);
+      const response = await purchasesService.update(purchaseId, payload);
 
     // حدّث الـ details cache
       const updated  = response?.data?.data || response?.data || {};
@@ -345,7 +342,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
     try {
       if (!purchaseId) throw new Error('Purchase ID is required');
 
-      const response = await apiClient.delete(`/purchases/${purchaseId}`);
+      const response = await purchasesService.delete(purchaseId);
 
       const cacheKey = String(purchaseId);
       delete detailsCache.value[cacheKey];
@@ -375,7 +372,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
    */
   const getNextInvoiceNumber = async () => {
     try {
-      const response = await apiClient.get('/purchases/next-invoice-number');
+      const response = await purchasesService.getNextInvoiceNumber();
       
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
@@ -405,9 +402,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
     try {
       if (!purchaseId) throw new Error('Purchase ID is required');
 
-      const response = await apiClient.post(`/purchases/${purchaseId}/payments`, payload, {
-        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
-      });
+      const response = await purchasesService.addPayment(purchaseId, payload, idempotencyKey);
 
       // clear details cache for this invoice so balance updates
       const cacheKey = String(purchaseId);

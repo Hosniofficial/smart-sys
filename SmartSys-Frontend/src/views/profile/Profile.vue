@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="profileLoading || passwordLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="profileLoading || passwordLoading" />
 
     <div class="max-w-6xl mx-auto p-6 lg:p-10 space-y-8 animate-fadeIn">
       
@@ -98,15 +96,14 @@
               </div>
 
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-slate-50">
-                <button 
+                <LoadingButton
                   type="submit" 
-                  :disabled="profileLoading" 
-                  class="h-9 px-6 bg-slate-900 text-white rounded-md text-xs font-bold shadow-sm hover:bg-black active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  <BaseSpinner v-if="profileLoading" :size="12" color="#fff" :margin="0" />
-                  <i v-else class="fas fa-save text-[10px]"></i>
-                  <span>حفظ التعديلات</span>
-                </button>
+                  text="حفظ التعديلات"
+                  loadingText="جارٍ الحفظ..."
+                  icon="fas fa-save"
+                  :isLoading="profileLoading"
+                  class="h-9 rounded-md px-6 text-xs shadow-sm"
+                />
 
                 <transition name="slide-down">
                   <div 
@@ -182,15 +179,14 @@
               </div>
 
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-slate-50">
-                <button 
+                <LoadingButton
                   type="submit" 
-                  :disabled="passwordLoading" 
-                  class="h-9 px-6 bg-rose-600 text-white rounded-md text-xs font-bold shadow-sm hover:bg-rose-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  <BaseSpinner v-if="passwordLoading" :size="12" color="#fff" :margin="0" />
-                  <i v-else class="fas fa-key text-[10px]"></i>
-                  <span>تحديث كلمة المرور</span>
-                </button>
+                  text="تحديث كلمة المرور"
+                  loadingText="جارٍ التحديث..."
+                  icon="fas fa-key"
+                  :isLoading="passwordLoading"
+                  class="h-9 rounded-md px-6 text-xs shadow-sm"
+                />
 
                 <transition name="slide-down">
                   <div 
@@ -252,12 +248,13 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import apiClient from '@/config/axios'
 import { useAuthStore } from '@/stores/auth/authStore'
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import { useUserStore } from '@/stores/user/userStore'
+import LoadingButton from '@/components/ui/LoadingButton.vue'
 
 // --- State & Stores (Strictly Preserved) ---
 const authStore = useAuthStore()
+const userStore = useUserStore()
 
 const profileLoading = ref(false)
 const profileMessage = ref('')
@@ -292,8 +289,7 @@ const userInitials = computed(() => {
 
 async function fetchMe() {
   try {
-    const res = await apiClient.get('/users/me')
-    const me = res?.data?.data
+    const me = await userStore.fetchCurrentUserProfile()
     if (!me) return
     profileForm.name = me?.name || profileForm.name
     profileForm.email = me?.email || ''
@@ -316,14 +312,14 @@ async function updateProfile() {
   }
   profileLoading.value = true
   try {
-    const res = await apiClient.post('/users/update-profile', {
+    const res = await userStore.updateCurrentUserProfile({
       name: profileForm.name,
       email: profileForm.email,
       phone: profileForm.phone
     })
-    profileMessage.value = res?.data?.message || 'تم تحديث البيانات بنجاح'
-    if (res?.data?.data) {
-      const merged = { ...(authUser.value || {}), ...res.data.data }
+    profileMessage.value = res?.message || 'تم تحديث البيانات بنجاح'
+    if (res?.data) {
+      const merged = { ...(authUser.value || {}), ...res.data }
       localStorage.setItem('user', JSON.stringify(merged))
       if (authStore) authStore.user = merged
     }
@@ -339,7 +335,7 @@ async function changePassword() {
   passwordMessage.value = ''
   passwordMessageType.value = 'success'
   if (!passwordForm.current_password || !passwordForm.new_password) {
-    profileMessageType.value = 'error'
+    passwordMessageType.value = 'error'
     passwordMessage.value = 'يرجى إدخال كلمات المرور'
     return
   }
@@ -350,11 +346,11 @@ async function changePassword() {
   }
   passwordLoading.value = true
   try {
-    const res = await apiClient.post('/users/change-password', {
+    const res = await userStore.changeCurrentUserPassword({
       current_password: passwordForm.current_password,
       new_password: passwordForm.new_password
     })
-    passwordMessage.value = res?.data?.message || 'تم تغيير كلمة المرور'
+    passwordMessage.value = res?.message || 'تم تغيير كلمة المرور'
     passwordForm.current_password = ''
     passwordForm.new_password = ''
     passwordForm.confirm_password = ''

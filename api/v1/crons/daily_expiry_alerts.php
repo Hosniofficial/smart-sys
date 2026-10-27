@@ -50,10 +50,10 @@ try {
     $tenantStmt = $db->prepare("
         SELECT DISTINCT p.tenant_id
         FROM products p
-        JOIN product_batches b ON b.product_id = p.id
+        JOIN product_expiry b
+          ON b.product_id = p.id AND b.tenant_id = p.tenant_id
         WHERE b.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
           AND b.expiry_date > CURDATE()
-        GROUP BY p.tenant_id
     ");
     $tenantStmt->execute();
     $tenants = $tenantStmt->fetchAll(PDO::FETCH_COLUMN);
@@ -71,13 +71,15 @@ try {
 
             // Get products expiring within 30 days
             $productStmt = $db->prepare("
-                SELECT DISTINCT p.id, p.name
+                SELECT p.id, p.name, MIN(b.expiry_date) AS nearest_expiry_date
                 FROM products p
-                JOIN product_batches b ON b.product_id = p.id
+                JOIN product_expiry b
+                  ON b.product_id = p.id AND b.tenant_id = p.tenant_id
                 WHERE p.tenant_id = ?
                   AND b.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
                   AND b.expiry_date > CURDATE()
-                ORDER BY b.expiry_date ASC
+                GROUP BY p.id, p.name
+                ORDER BY nearest_expiry_date ASC
             ");
             $productStmt->execute([$tenantId]);
             $products = $productStmt->fetchAll(PDO::FETCH_ASSOC);

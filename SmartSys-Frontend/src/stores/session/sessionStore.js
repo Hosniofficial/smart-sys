@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import SessionsService from '@/services/sessions';
 
 const nowMs = () => Date.now();
 
@@ -47,12 +47,10 @@ export const useSessionStore = defineStore('session', () => {
       isLoading.value = true;
       error.value = null;
 
-      const response = await apiClient.get('/sessions/current', {
-        params: {
-          branch_id: branchId,
-          user_id: userId,
-          device_id: deviceId,
-        },
+      const response = await SessionsService.getCurrentSession({
+        branch_id: branchId,
+        user_id: userId,
+        device_id: deviceId,
       });
 
       const _d = response?.data?.data;
@@ -92,7 +90,7 @@ export const useSessionStore = defineStore('session', () => {
       isLoading.value = true;
       error.value = null;
 
-      const response = await apiClient.post('/sessions/open', payload);
+      const response = await SessionsService.openSessionRequest(payload);
       currentSession.value = response?.data?.data || response?.data;
       currentSessionFetchedAt.value = nowMs();
 
@@ -119,7 +117,7 @@ export const useSessionStore = defineStore('session', () => {
       isLoading.value = true;
       error.value = null;
 
-      const response = await apiClient.post(`/sessions/${sessionId}/close`, {
+      const response = await SessionsService.closeSession(sessionId, {
         closing_cash_amount: closingAmount,
         variance_reason: reason,
       });
@@ -156,7 +154,7 @@ export const useSessionStore = defineStore('session', () => {
         };
       }
 
-      const response = await apiClient.get(`/sessions/${sessionId}/summary`);
+      const response = await SessionsService.getSessionSummary(sessionId);
       const data = response?.data?.data || response?.data;
 
       // Only cache if this is the single-session use case (not overwrite shared ref during bulk loads)
@@ -201,9 +199,7 @@ export const useSessionStore = defineStore('session', () => {
         };
       }
 
-      const response = await apiClient.post('/sessions/batch-summaries', {
-        session_ids: ids,
-      });
+      const response = await SessionsService.getSessionSummaries(ids);
 
       const summaries = response?.data?.data || {};
 
@@ -229,7 +225,7 @@ export const useSessionStore = defineStore('session', () => {
       isLoading.value = true;
       error.value = null;
 
-      const response = await apiClient.get('/sessions', { params });
+      const response = await SessionsService.listSessions(params);
       const resData = response?.data?.data;
       const items   = Array.isArray(resData) ? resData : (resData?.items || []);
       const total   = resData?.total ?? items.length;

@@ -221,10 +221,12 @@
                  <option :value="50">50</option>
                </select>
              </div>
-             <div class="flex items-center gap-1">
-               <button @click="filters.previousPage()" :disabled="filters.page.value <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-               <button @click="filters.nextPage(filters.totalPages.value)" :disabled="filters.page.value >= filters.totalPages.value" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-             </div>
+             <PaginationControls
+               :page="filters.page.value"
+               :total-pages="filters.totalPages.value"
+               @previous="filters.previousPage()"
+               @next="filters.nextPage(filters.totalPages.value)"
+             />
           </div>
         </div>
       </div>
@@ -265,11 +267,14 @@
       </form>
     </BaseModal>
 
-    <!-- Details Modal -->
-    <BaseModal :show="showDetailsModal" @close="closeDetailsModal" maxWidth="4xl">
-      <template #header>
-        <h3 class="text-sm font-bold text-slate-900 uppercase">بطاقة تفاصيل الصنف</h3>
-      </template>
+    <HistoryDetailsModal
+      :show="showDetailsModal"
+      @close="closeDetailsModal"
+      :title="productDetails?.name ? `تفاصيل الصنف: ${productDetails.name}` : 'تفاصيل الصنف'"
+      :subtitle="productDetails?.product_code || productDetails?.barcode || ''"
+      icon="fas fa-box-open"
+      maxWidth="4xl"
+    >
 
       <!-- مؤشر التحميل أثناء جلب التفاصيل الكاملة من API -->
       <div v-if="isLoadingDetails" class="py-12 flex flex-col items-center justify-center gap-4 text-slate-400">
@@ -291,7 +296,7 @@
 
         <div class="grid grid-cols-2 gap-4 font-bold text-xs">
           <div v-for="info in [
-            {l: 'الفئة', v: productDetails.category_name || 'غير مصنف', c: 'text-slate-700'},
+            {l: 'الفئة', v: productDetails.category_name || 'بدون تصنيف', c: 'text-slate-700'},
             {l: 'سعر البيع', v: formatCurrency(productDetails.sale_price || 0), c: 'text-blue-600'},
             {l: 'حد التنبيه', v: productDetails.min_quantity, c: 'text-slate-700'},
             {l: 'SKU الكود', v: productDetails.product_code || '--', c: 'text-indigo-600 font-mono'}
@@ -332,7 +337,7 @@
         </button>
         <button @click="adjustStock(productDetails)" class="px-10 h-10 bg-blue-600 text-white rounded-md text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all">تعديل المخزون</button>
       </template>
-    </BaseModal>
+    </HistoryDetailsModal>
 
     <!-- GL Activate Modal -->
     <BaseModal :show="showActivateModal" @close="showActivateModal = false" maxWidth="md" align="center">
@@ -397,9 +402,15 @@
 
         <div class="flex gap-3 pt-2">
           <button type="button" @click="showOpeningBalanceModal = false" class="flex-1 h-10 text-xs font-bold text-slate-500">إلغاء</button>
-          <button type="submit" class="flex-2 h-10 bg-emerald-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-emerald-900/20 active:scale-95 flex items-center justify-center gap-2 px-8">
-            <i class="fas fa-check text-xs"></i> ترحيل الرصيد الافتتاحي
-          </button>
+          <LoadingButton
+            type="submit"
+            text="ترحيل الرصيد الافتتاحي"
+            loadingText="جارٍ الترحيل..."
+            variant="success"
+            icon="fas fa-check"
+            :isLoading="isPostingOpeningBalance"
+            class="flex-2 h-10 rounded-lg px-8 text-xs shadow-lg shadow-emerald-900/20"
+          />
         </div>
       </form>
     </BaseModal>
@@ -420,11 +431,12 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
+import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
 import { useRoute } from 'vue-router';
-import { useLoader } from '@/composables/useLoader';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useToast } from '@/composables/useToast';
 import { useTableFilters } from '@/composables/useTableFilters';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 import { getLocalDateISO } from '@/utils';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
@@ -449,7 +461,6 @@ const productStore = useProductStore();
 const inventoryStore = useInventoryStore();
 
 const route = useRoute();
-const { showLoader, hideLoader } = useLoader();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const { showToast } = useToast();
 const { ensureLoaded: ensureExemptionLoaded, isExempt } = useSessionExemption();
@@ -498,6 +509,7 @@ const pickerSearch = ref('');
 
 const showActivateModal = ref(false);
 const showOpeningBalanceModal = ref(false);
+const isPostingOpeningBalance = ref(false);
 const selectedProductForActivation = ref(null);
 const obQuantity = ref(0);
 const obUnitCost = ref(0);
@@ -852,6 +864,7 @@ const activateProduct = async (productId) => {
 };
 
 const handleOpeningBalanceSubmit = async () => {
+  if (isPostingOpeningBalance.value) return;
   if (!obQuantity.value || !obUnitCost.value) {
     showToast('يرجى إدخال الكمية والسعر', 'warning');
     return;
@@ -861,6 +874,7 @@ const handleOpeningBalanceSubmit = async () => {
     return;
   }
 
+  isPostingOpeningBalance.value = true;
   try {
     // ✅ مباشرة: أرسل product_id + branch_id، الـ backend سيبحث عن mapping
     const response = await productStore.postOpeningBalance({
@@ -886,6 +900,8 @@ const handleOpeningBalanceSubmit = async () => {
   } catch (e) {
     console.error('Opening balance error:', e);
     showToast(e.response?.data?.message || e.message || 'فشل ترحيل الرصيد الافتتاحي', 'error');
+  } finally {
+    isPostingOpeningBalance.value = false;
   }
 };
 
@@ -1088,46 +1104,41 @@ const checkPendingOpeningBalance = async () => {
 };
 
 onMounted(async () => {
-  showLoader(true);
-  try {
-    await fetchSettings();
-    await ensureExemptionLoaded();
-    await branchStore.fetchBranches();
-    if (isExempt.value) await ensureBranchSelected();
-    await Promise.all([
-      loadInventory(),
-      loadSummary(),
-    ]);
+  await fetchSettings();
+  await ensureExemptionLoaded();
+  await branchStore.fetchBranches();
+  if (isExempt.value) await ensureBranchSelected();
+  await Promise.all([
+    loadInventory(),
+    loadSummary(),
+  ]);
     
-    // Check for pending opening balance updates from previous session
-    await checkPendingOpeningBalance();
+  // Check for pending opening balance updates from previous session
+  await checkPendingOpeningBalance();
 
-    // ─── Listen for opening balance posted events from OpeningBalance.vue ─────
-    window.addEventListener('openingBalancePosted', handleOpeningBalancePosted);
-    console.log('✅ Listener registered for openingBalancePosted events');
+  // ─── Listen for opening balance posted events from OpeningBalance.vue ─────
+  window.addEventListener('openingBalancePosted', handleOpeningBalancePosted);
+  console.log('✅ Listener registered for openingBalancePosted events');
 
-    // ─── Auto-open modal from query params (من BranchInventory router-links) ───
-    const action    = route.query.action;
-    const productId = route.query.product_id ? Number(route.query.product_id) : null;
-    const branchId  = route.query.branch_id;
-    if (action && productId) {
-      if (branchId && isExempt.value && String(branchId) !== String(selectedBranch.value)) {
-        if (!setRequiredBranch(branchId)) {
-          showToast('الفرع المطلوب غير متاح لحسابك.', 'error');
-          return;
-        }
-        await loadInventory();
+  // ─── Auto-open modal from query params (من BranchInventory router-links) ───
+  const action    = route.query.action;
+  const productId = route.query.product_id ? Number(route.query.product_id) : null;
+  const branchId  = route.query.branch_id;
+  if (action && productId) {
+    if (branchId && isExempt.value && String(branchId) !== String(selectedBranch.value)) {
+      if (!setRequiredBranch(branchId)) {
+        showToast('الفرع المطلوب غير متاح لحسابك.', 'error');
+        return;
       }
-      const item = inventory.value.find(
-        i => Number(i.product_id ?? i.id) === productId
-      );
-      if (item) {
-        if (action === 'adjust')   adjustStock(item);
-        else if (action === 'transfer') openTransferModal(item);
-      }
+      await loadInventory();
     }
-  } finally {
-    hideLoader();
+    const item = inventory.value.find(
+      i => Number(i.product_id ?? i.id) === productId
+    );
+    if (item) {
+      if (action === 'adjust')   adjustStock(item);
+      else if (action === 'transfer') openTransferModal(item);
+    }
   }
 });
 
@@ -1160,24 +1171,12 @@ onUnmounted(() => {
 }
 
 /* Form Inputs */
-.filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
-}
-
-.metadata-label {
-  @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1;
-}
-
 /* Status Badges */
 .status-badge {
   @apply px-2 py-0.5 rounded text-[9px] font-bold border flex items-center justify-center gap-1.5 w-fit mx-auto;
 }
 
 /* Pagination */
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
-}
-
 /* Scrollbar */
 .custom-scroll::-webkit-scrollbar {
   width: 5px;

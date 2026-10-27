@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="isLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -18,9 +16,15 @@
         @branch-changed="onBranchChange"
       >
         <template #controls>
-          <button @click="load" :disabled="isLoading" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2">
-            <i class="fas fa-sync-alt text-[10px]" :class="{'animate-spin': isLoading}"></i> تحديث
-          </button>
+          <LoadingButton
+            text="تحديث"
+            loadingText="جاري التحديث..."
+            icon="fas fa-sync-alt"
+            :isLoading="isLoading"
+            variant="secondary"
+            class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs hover:bg-slate-50"
+            @click="load"
+          />
           <button @click="exportCsv" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-emerald-600 text-xs font-bold hover:bg-emerald-50 transition-all flex items-center gap-2">
             <i class="fas fa-file-csv text-[10px]"></i> تصدير
           </button>
@@ -207,9 +211,9 @@
                 </td>
                 <td class="px-4 py-4">
                   <div class="flex flex-col">
-                    <router-link v-if="p.customer_id" :to="{ name: 'AccountStatement', params: { type: 'customers', id: p.customer_id } }" class="text-blue-600 font-bold hover:underline">{{ p.customer_name }}</router-link>
+                    <router-link v-if="p.customer_id" :to="{ name: 'AccountStatement', params: { type: 'customers', id: p.customer_id } }" class="text-blue-600 font-bold hover:underline">{{ customerDisplayName(p) }}</router-link>
                     <router-link v-else-if="p.supplier_id" :to="{ name: 'AccountStatement', params: { type: 'suppliers', id: p.supplier_id } }" class="text-indigo-600 font-bold hover:underline">{{ p.supplier_name }}</router-link>
-                    <span v-else class="text-slate-300 italic">—</span>
+                    <span v-else class="text-slate-500">{{ customerDisplayName(p) }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4 text-center">
@@ -239,10 +243,12 @@
                  <option :value="50">50</option>
                </select>
              </div>
-             <div class="flex items-center gap-1">
-               <button @click="prevPage()" :disabled="page <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-               <button @click="nextPage()" :disabled="page * perPage >= meta.total" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-             </div>
+             <PaginationControls
+               :page="page"
+               :total-pages="Math.max(1, Math.ceil(meta.total / perPage))"
+               @previous="prevPage()"
+               @next="nextPage()"
+             />
           </div>
         </div>
       </div>
@@ -264,8 +270,10 @@ import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useBootstrapStore } from '@/stores/bootstrap/bootstrapStore';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 // --- State ---
 const { breadcrumb } = useBreadcrumb();
@@ -345,6 +353,9 @@ const badgeClass = (s) => {
   if (['rejected', 'canceled', 'cancelled'].includes(v)) return 'bg-rose-100 text-rose-700';
   return 'bg-slate-100 text-slate-500';
 };
+
+const customerDisplayName = (payment) =>
+  payment?.customer_name || payment?.customer_id || (payment?.sale_id ? 'عميل نقدي' : '—');
 
 // --- Filtered dropdown lists ---
 const filteredUsers = computed(() => {
@@ -440,7 +451,7 @@ function exportCsv() {
     payment_method_id: r.payment_method_id,
     payment_method_name: r.payment_method_name,
     created_by: r.created_by_name,
-    customer: r.customer_name || r.customer_id,
+    customer: customerDisplayName(r),
     supplier: r.supplier_name || r.supplier_id,
     sale_id: r.sale_id,
     purchase_id: r.purchase_id,
@@ -489,7 +500,7 @@ function exportPdf() {
       <td>${r.payment_method_name || '-'}</td>
       <td>${r.created_by_name || '-'}</td>
       <td>${Number(r.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-      <td>${r.customer_name || r.customer_id || '-'}</td>
+      <td>${customerDisplayName(r)}</td>
       <td>${r.supplier_name || r.supplier_id || '-'}</td>
     </tr>
   `).join('');
@@ -587,12 +598,6 @@ watch([perPage], () => { page.value = 1; load(); });
 
 .filter-input-v3 {
   @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
-}
-
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1; }
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
 }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }

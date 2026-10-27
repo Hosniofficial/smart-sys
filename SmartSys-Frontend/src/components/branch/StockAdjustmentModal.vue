@@ -157,16 +157,15 @@
         >
           إلغاء
         </button>
-        <button
+        <LoadingButton
           type="button"
           @click="handleSubmit"
-          class="h-9 px-5 bg-slate-900 text-white rounded-md text-xs font-bold shadow-sm hover:bg-black active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
-          :disabled="isSubmitting"
-        >
-          <BaseSpinner v-if="isSubmitting" :size="14" color="#ffffff" />
-          <i v-else class="fas fa-check text-[10px]"></i>
-          <span>تأكيد وتسوية المخزون</span>
-        </button>
+          text="تأكيد وتسوية المخزون"
+          :isLoading="isSubmitting"
+          loadingText="جارٍ التسوية..."
+          variant="primary"
+          class="h-9 px-5 rounded-md"
+        />
       </div>
 
       </div>
@@ -178,7 +177,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useToast } from '@/composables/useToast';
 import { adjustStock } from '@/services/branchInventoryService';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 // --- Logic Initialization (STRICTLY PRESERVED) ---
 const props = defineProps({

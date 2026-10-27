@@ -13,6 +13,7 @@ use App\Services\InventoryOpeningBalanceService;
 use App\Resources\ProductListResource;
 use App\Resources\ProductDetailResource;
 use App\Security\Permissions;
+use App\Services\PriceCampaignService;
 
 /**
  * Handles product search, reads, CRUD operations, and unit lookup.
@@ -156,6 +157,23 @@ class ProductsHandler extends BaseHandler
                 $allUnits[$pid][] = $unit;
             }
 
+            $productUnits = [];
+            foreach ($products as $product) {
+                $productId = (int) $product['id'];
+                foreach ($allUnits[$productId] ?? [] as $unit) {
+                    if (!empty($unit['is_main_unit'])) {
+                        $productUnits[$productId] = (int) $unit['unit_id'];
+                        break;
+                    }
+                }
+                if (!isset($productUnits[$productId]) && isset($allUnits[$productId][0]['unit_id'])) {
+                    $productUnits[$productId] = (int) $allUnits[$productId][0]['unit_id'];
+                }
+            }
+            $campaignPrices = $branchId && $productUnits
+                ? PriceCampaignService::findActivePrices($this->db, (int) $tenantId, $branchId, $productUnits)
+                : [];
+
             $includeCostData = $this->can($request, Permissions::PRODUCT_PURCHASE_PRICE_VIEW);
             $branchMappings = [];
             if ($branchId) {
@@ -173,6 +191,13 @@ class ProductsHandler extends BaseHandler
             $transformedProducts = [];
             foreach ($products as $product) {
                 $pid = (int) $product['id'];
+                $unitId = $productUnits[$pid] ?? null;
+                $campaign = $unitId === null ? null : ($campaignPrices[$pid . ':' . $unitId] ?? null);
+                if ($campaign !== null) {
+                    $product['campaign_id'] = $campaign['campaign_id'];
+                    $product['campaign_name'] = $campaign['campaign_name'];
+                    $product['campaign_price'] = $campaign['campaign_price'];
+                }
                 $transformedProducts[] = ProductListResource::transform(
                     $product,
                     $branchProducts[$pid] ?? [],

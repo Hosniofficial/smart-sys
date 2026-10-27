@@ -1,10 +1,8 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-amber-100" dir="rtl">
+    <PageLoadingBar :active="isLoading" />
     
     <!-- Top Progress Bar -->
-    <div v-if="isLoading || isSubmitting" class="fixed top-0 left-0 right-0 h-0.5 bg-amber-500/10 z-[110]">
-      <div class="h-full bg-amber-500 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -19,14 +17,6 @@
         @branch-changed="onBranchChange"
       >
         <template #controls>
-          <!-- Polling Indicator -->
-          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-            <div v-if="isPolling" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            <div v-else class="w-2 h-2 rounded-full bg-slate-300"></div>
-            <span>{{ isPolling ? 'مزامنة مستمرة' : 'متوقفة' }}</span>
-            <span v-if="lastUpdatedLabel" class="text-slate-300 ml-1">• {{ lastUpdatedLabel }}</span>
-          </div>
-
           <!-- New Invoice Alert -->
           <transition name="fade-scale">
             <div v-if="newInvoicesAlert" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 text-white text-xs font-bold shadow-lg shadow-amber-900/20 animate-bounce">
@@ -35,14 +25,35 @@
             </div>
           </transition>
 
-          <div class="flex items-center gap-3 bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
-            <div class="px-4 py-1.5 border-l border-slate-100">
-              <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">المعلق</p>
-              <p class="text-lg font-bold text-slate-900 leading-none font-mono tracking-tighter">{{ total }}</p>
+          <!-- Polling + Pending unified card -->
+          <div class="flex items-center gap-0 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden divide-x divide-x-reverse divide-slate-100">
+            <!-- مزامنة مستمرة -->
+            <div class="flex items-center gap-2 px-3 py-2">
+              <div :class="isPolling ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'" class="w-1.5 h-1.5 rounded-full shrink-0"></div>
+              <div class="leading-none">
+                <p class="text-[9px] font-bold uppercase tracking-widest" :class="isPolling ? 'text-emerald-600' : 'text-slate-400'">
+                  {{ isPolling ? 'مزامنة مستمرة' : 'متوقفة' }}
+                </p>
+                <p v-if="lastUpdatedLabel" class="text-[9px] text-slate-400 mt-0.5">{{ lastUpdatedLabel }}</p>
+              </div>
             </div>
-            <button @click="manualRefresh" :disabled="isLoading" class="h-8 w-8 flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors">
-              <i class="fas fa-sync-alt text-xs" :class="{'animate-spin': isLoading}"></i>
-            </button>
+            <!-- عدد المعلق -->
+            <div class="px-3 py-2 text-center leading-none">
+              <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">المعلق</p>
+              <p class="text-base font-bold text-slate-900 font-mono leading-none">{{ total }}</p>
+            </div>
+            <!-- زر تحديث -->
+            <LoadingButton
+              text=""
+              loadingText=""
+              :showTextDuringLoad="false"
+              icon="fas fa-sync-alt"
+              :isLoading="isLoading"
+              variant="secondary"
+              class="h-full px-3 rounded-none border-0 bg-transparent text-slate-400 hover:bg-blue-50/50 hover:text-blue-600"
+              aria-label="تحديث الموافقات"
+              @click="manualRefresh"
+            />
           </div>
         </template>
       </PageHeader>
@@ -144,10 +155,12 @@
                    <option :value="50">50</option>
                  </select>
                </div>
-               <div class="flex items-center gap-1">
-                 <button @click="page = Math.max(1, page - 1); fetchPending({ silent: false })" :disabled="page <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-                 <button @click="page = Math.min(totalPages, page + 1); fetchPending({ silent: false })" :disabled="page >= totalPages" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-               </div>
+               <PaginationControls
+                 :page="page"
+                 :total-pages="totalPages"
+                 @previous="page = Math.max(1, page - 1); fetchPending({ silent: false })"
+                 @next="page = Math.min(totalPages, page + 1); fetchPending({ silent: false })"
+               />
             </div>
           </div>
         </div>
@@ -312,7 +325,6 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue'
 import { useApprovalsStore } from '@/stores/approvals/approvalsStore'
 import { useToast } from '@/composables/useToast'
-import { useLoader } from '@/composables/useLoader'
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency'
 import { useBreadcrumb } from '@/composables/useBreadcrumb'
 import { useBranchStore } from '@/stores/branch/branchStore'
@@ -323,10 +335,10 @@ import { useBranchIsolation } from '@/composables/useBranchIsolation'
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 
 // --- Logic Initialization (STRICTLY PRESERVED) ---
 const { showToast } = useToast()
-const { showLoader, hideLoader } = useLoader()
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency()
 const { breadcrumb } = useBreadcrumb()
 const branchStore = useBranchStore()
@@ -427,7 +439,7 @@ const kindClass = (k) => {
 const fetchPending = async ({ silent = false } = {}) => {
   if (listAbortCtrl) listAbortCtrl.abort()
   listAbortCtrl = new AbortController()
-  if (!silent) { isLoading.value = true; showLoader(); }
+  if (!silent) isLoading.value = true
   try {
     const approvalsStore = useApprovalsStore();
     approvalsStore.clearCache()
@@ -437,7 +449,7 @@ const fetchPending = async ({ silent = false } = {}) => {
     } else {
       params.branch_id = branchIsolation.getRequiredBranchId();
     }
-    const res = await approvalsStore.listPending(params)
+    const res = await approvalsStore.listPending(params, { skipLoader: silent })
     const newRows = res.data || []
     const newTotal = Number(res.pagination?.total || newRows.length)
 
@@ -462,7 +474,7 @@ const fetchPending = async ({ silent = false } = {}) => {
     if (e.name !== 'CanceledError' && !silent)
       showToast(e?.response?.data?.message || 'فشل تحميل القائمة', 'error')
   } finally {
-    if (!silent) { isLoading.value = false; hideLoader(); }
+    if (!silent) isLoading.value = false
   }
 }
 
@@ -534,7 +546,7 @@ const closeAction = () => { actionModal.value.open = false; }
 
 const submitAction = async () => {
   if (!actionModal.value.open || !actionModal.value.id || isSubmitting.value) return
-  isSubmitting.value = true; showLoader();
+  isSubmitting.value = true
   try {
     const approvalsStore = useApprovalsStore();
     if (actionModal.value.mode === 'approve') {
@@ -558,7 +570,7 @@ const submitAction = async () => {
       closeAction(); await fetchPending();
     }
   } catch (e) { showToast(e?.response?.data?.message || 'فشل التنفيذ', 'error') } 
-  finally { hideLoader(); isSubmitting.value = false; }
+  finally { isSubmitting.value = false; }
 }
 
 const printApprovedSale = async () => {
@@ -571,14 +583,14 @@ const printApprovedSale = async () => {
 }
 
 const viewDetails = async (id) => {
-  isLoadingDetails.value = true; showLoader();
+  isLoadingDetails.value = true
   try {
     const res = await salesStore.fetchSaleDetails(id, { force: true });
     const saleData = res?.data ?? res
     if (saleData) { details.value = saleData; showDetails.value = true; }
     else showToast('لم يتم استرجاع بيانات الفاتورة', 'error')
   } catch { showToast('فشل تحميل التفاصيل', 'error') } 
-  finally { isLoadingDetails.value = false; hideLoader(); }
+  finally { isLoadingDetails.value = false; }
 }
 
 // isMounting flag: يمنع watch(selectedBranch) من إطلاق fetch أثناء onMounted
@@ -613,16 +625,6 @@ watch(limit, () => { page.value = 1; fetchPending() })
 
 <style scoped>
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
-
-.filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
-}
-
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1; }
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
-}
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import apiClient from '@/config/axios';
+import adminService from '@/services/admin';
  
 export const useAdminStore = defineStore('admin', () => {
   const loading = ref(false);
@@ -11,7 +11,7 @@ export const useAdminStore = defineStore('admin', () => {
   async function fetchSubscriptions(params = {}) {
     loading.value = true;
     try {
-      const response = await apiClient.get('/admin/subscriptions', { params });
+      const response = await adminService.listSubscriptions(params);
       // API returns { data: { items: [...] } }
       const subscriptions = response.data?.data?.items || response.data?.data || [];
       return {
@@ -34,7 +34,7 @@ export const useAdminStore = defineStore('admin', () => {
     actionLoading.value = true;
     try {
       const body = plan ? { plan } : {};
-      const response = await apiClient.post(`/admin/subscriptions/${id}/activate`, body);
+      const response = await adminService.activateSubscription(id, body);
       return {
         status: 'success',
         data: response.data?.data || null,
@@ -54,7 +54,7 @@ export const useAdminStore = defineStore('admin', () => {
   async function expireSubscription(id) {
     actionLoading.value = true;
     try {
-      const response = await apiClient.post(`/admin/subscriptions/${id}/expire`);
+      const response = await adminService.expireSubscription(id);
       return {
         status: 'success',
         data: response.data?.data || null,
@@ -74,7 +74,7 @@ export const useAdminStore = defineStore('admin', () => {
   async function extendSubscription(id, days) {
     actionLoading.value = true;
     try {
-      const response = await apiClient.post(`/admin/subscriptions/${id}/extend`, { days });
+      const response = await adminService.extendSubscription(id, days);
       return {
         status: 'success',
         data: response.data?.data || null,
@@ -99,7 +99,7 @@ export const useAdminStore = defineStore('admin', () => {
         prorate,
         extend_period: extendPeriod
       };
-      const response = await apiClient.post(`/admin/subscriptions/${id}/change-plan`, body);
+      const response = await adminService.changeSubscriptionPlan(id, body);
       return {
         status: 'success',
         data: response.data?.data || null,
@@ -119,7 +119,7 @@ export const useAdminStore = defineStore('admin', () => {
   async function refreshSubscriptionSecurity(id) {
     securityLoading.value = true;
     try {
-      const response = await apiClient.post(`/admin/subscriptions/${id}/security-check`);
+      const response = await adminService.refreshSubscriptionSecurity(id);
       return {
         status: 'success',
         data: response.data?.data || null,
@@ -139,7 +139,7 @@ export const useAdminStore = defineStore('admin', () => {
   async function blockSubscription(id) {
     securityLoading.value = true;
     try {
-      const response = await apiClient.post(`/admin/subscriptions/${id}/block`);
+      const response = await adminService.blockSubscription(id);
       return {
         status: 'success',
         data: response.data?.data || null,
@@ -160,7 +160,7 @@ export const useAdminStore = defineStore('admin', () => {
   async function fetchPlans() {
     loading.value = true;
     try {
-      const response = await apiClient.get('/admin/plans');
+      const response = await adminService.listPlans();
       // API returns { data: { items: [...] } }
       const plansList = response.data?.data?.items || response.data?.data || [];
       const plans = Array.isArray(plansList) ? plansList.map(p => ({ ...p, is_active: Number(p.is_active) })) : [];
@@ -183,7 +183,7 @@ export const useAdminStore = defineStore('admin', () => {
   async function createPlan(planData) {
     actionLoading.value = true;
     try {
-      const response = await apiClient.post('/admin/plans', planData);
+      const response = await adminService.createPlan(planData);
       return {
         status: 'success',
         data: response.data?.data || null,
@@ -203,7 +203,7 @@ export const useAdminStore = defineStore('admin', () => {
   async function updatePlan(code, planData) {
     actionLoading.value = true;
     try {
-      const response = await apiClient.put(`/admin/plans/${code}`, planData);
+      const response = await adminService.updatePlan(code, planData);
       return {
         status: 'success',
         data: response.data?.data || null,
@@ -223,7 +223,7 @@ export const useAdminStore = defineStore('admin', () => {
   async function deletePlan(code) {
     actionLoading.value = true;
     try {
-      const response = await apiClient.delete(`/admin/plans/${code}`);
+      const response = await adminService.deletePlan(code);
       return {
         status: 'success',
         data: response.data?.data || null,
@@ -244,7 +244,7 @@ export const useAdminStore = defineStore('admin', () => {
   async function fetchCustomersMissingAccounts() {
     loading.value = true;
     try {
-      const response = await apiClient.get('/customers/missing-accounts');
+      const response = await adminService.listCustomersMissingAccounts();
       const payload = response.data?.data?.items ?? response.data?.data ?? [];
       const customers = Array.isArray(payload) ? payload : [];
       return {
@@ -266,7 +266,7 @@ export const useAdminStore = defineStore('admin', () => {
   async function fetchSuppliersMissingAccounts() {
     loading.value = true;
     try {
-      const response = await apiClient.get('/suppliers/missing-accounts');
+      const response = await adminService.listSuppliersMissingAccounts();
       const payload = response.data?.data?.items ?? response.data?.data ?? [];
       const suppliers = Array.isArray(payload) ? payload : [];
       return {
@@ -287,7 +287,7 @@ export const useAdminStore = defineStore('admin', () => {
  
   async function ensureCustomerAccount(customerId) {
     try {
-      const response = await apiClient.post(`/customers/${customerId}/ensure-account`);
+      const response = await adminService.ensureCustomerAccount(customerId);
       return {
         status: 'success',
         data: response.data?.data || null,
@@ -304,7 +304,7 @@ export const useAdminStore = defineStore('admin', () => {
  
   async function ensureSupplierAccount(supplierId) {
     try {
-      const response = await apiClient.post(`/suppliers/${supplierId}/ensure-account`);
+      const response = await adminService.ensureSupplierAccount(supplierId);
       return {
         status: 'success',
         data: response.data?.data || null,

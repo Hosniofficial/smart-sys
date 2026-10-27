@@ -31,6 +31,19 @@ final class Permissions
     public const PERMISSION_VIEW   = 'permission.view';
     public const PERMISSION_ASSIGN = 'permission.assign';
 
+    /** Permission grants that are never editable through tenant overrides. */
+    public static function rbacManagement(): array
+    {
+        return [
+            self::ROLE_VIEW,
+            self::ROLE_EDIT,
+            self::ROLE_CREATE,
+            self::ROLE_DELETE,
+            self::PERMISSION_VIEW,
+            self::PERMISSION_ASSIGN,
+        ];
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // Products / Categories
     // ──────────────────────────────────────────────────────────────────
@@ -130,6 +143,8 @@ final class Permissions
     // ──────────────────────────────────────────────────────────────────
     public const CATEGORY_VIEW   = 'category.view';
     public const CATEGORY_CREATE = 'category.create';
+    public const CATEGORY_EDIT   = 'category.edit';
+    public const CATEGORY_DELETE = 'category.delete';
 
     // ──────────────────────────────────────────────────────────────────
     // Documents

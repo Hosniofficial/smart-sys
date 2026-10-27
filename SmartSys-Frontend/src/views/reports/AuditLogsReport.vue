@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar: High-precision indicator -->
-    <div v-if="isLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -19,10 +17,15 @@
         @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
-          <button @click="fetchLogs" :disabled="isLoading" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
-            <i class="fas fa-sync-alt text-[10px]" :class="{'animate-spin': isLoading}"></i>
-            تحديث السجلات
-          </button>
+          <LoadingButton
+            text="تحديث السجلات"
+            loadingText="جاري التحديث..."
+            icon="fas fa-sync-alt"
+            :isLoading="isLoading"
+            variant="secondary"
+            class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs shadow-sm hover:bg-slate-50"
+            @click="fetchLogs"
+          />
         </template>
       </PageHeader>
 
@@ -202,10 +205,12 @@
                  <option :value="50">50</option>
                </select>
              </div>
-             <div class="flex items-center gap-1">
-               <button @click="filters.previousPage()" :disabled="filters.page.value <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-               <button @click="filters.nextPage(filters.totalPages.value)" :disabled="filters.page.value >= filters.totalPages.value" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-             </div>
+             <PaginationControls
+               :page="filters.page.value"
+               :total-pages="filters.totalPages.value"
+               @previous="filters.previousPage()"
+               @next="filters.nextPage(filters.totalPages.value)"
+             />
           </div>
         </div>
       </div>
@@ -331,6 +336,8 @@ import { Bar as BarChart, Doughnut as DoughnutChart } from 'vue-chartjs';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import { useTableFilters } from '@/composables/useTableFilters';
 import PageHeader from '@/components/PageHeader.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement } from 'chart.js';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';;
 import { getLocalDateISO } from '@/utils';
@@ -615,20 +622,16 @@ watch([startDate, endDate, actionType, userId, selectedBranch], () => { clearTim
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
 .filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all;
+  @apply focus:ring-4 focus:ring-blue-500/5;
 }
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1; }
+.metadata-label { @apply mb-1; }
 
 .quick-range-pill {
   @apply px-3 py-1.5 rounded-md bg-white border border-slate-200 text-[10px] font-bold text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-all;
 }
 
 .status-badge { @apply px-2 py-0.5 rounded text-[9px] font-bold border inline-flex items-center justify-center; }
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
-}
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Middleware;
 
 use Psr\Http\Message\ResponseInterface as Response;
+use App\Utils\ApiResponseEnvelope;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
@@ -83,10 +84,10 @@ class CorsMiddleware implements MiddlewareInterface
             }
 
             $statusCode = ($e->getCode() >= 400 && $e->getCode() <= 599) ? $e->getCode() : 500;
-            $response->getBody()->write(json_encode([
+            $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
                 'status' => 'error',
                 'message' => $statusCode >= 500 ? 'Internal server error' : $e->getMessage(),
-            ]));
+            ], $statusCode)));
 
             return $response
                 ->withHeader('Content-Type', 'application/json')

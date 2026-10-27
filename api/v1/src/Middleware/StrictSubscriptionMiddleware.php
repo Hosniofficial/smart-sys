@@ -13,6 +13,7 @@ use PDO;
 use Exception;
 use App\Services\SecurityLogger;
 use App\Utils\RequestHelper;
+use App\Utils\ApiResponseEnvelope;
 
 /**
  * Applies IP, device, rate-limit, and abuse checks to subscription endpoints.
@@ -78,7 +79,7 @@ class StrictSubscriptionMiddleware implements MiddlewareInterface
 
             // 3. Device Fingerprinting Check
             if ($this->config['enable_device_fingerprinting']) {
-                $this->checkDeviceFingerprinting($ipAddress, $deviceFingerprint, $userAgent, $path);
+                $this->checkDeviceFingerprinting($ipAddress, $deviceFingerprint, $userAgent);
             }
 
             // 4. Suspicious Pattern Detection
@@ -127,11 +128,11 @@ class StrictSubscriptionMiddleware implements MiddlewareInterface
 
             // Return error response
             $response = new SlimResponse();
-            $response->getBody()->write(json_encode([
+            $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
                 'status' => 'error',
                 'message' => 'Access denied',
                 'code' => 'SECURITY_VIOLATION'
-            ], JSON_UNESCAPED_UNICODE));
+            ], 403), JSON_UNESCAPED_UNICODE));
 
             return $response
                 ->withHeader('Content-Type', 'application/json')
@@ -346,7 +347,7 @@ class StrictSubscriptionMiddleware implements MiddlewareInterface
     /**
      * Check device fingerprinting
      */
-    private function checkDeviceFingerprinting(string $ipAddress, string $deviceFingerprint, string $userAgent, string $path): void
+    private function checkDeviceFingerprinting(string $ipAddress, string $deviceFingerprint, string $userAgent): void
     {
         if (empty($deviceFingerprint)) {
             return;
@@ -368,22 +369,6 @@ class StrictSubscriptionMiddleware implements MiddlewareInterface
             throw new Exception("Suspicious device detected (risk score: {$suspicious['risk_score']})");
         }
 
-        // Check for too many accounts associated with single device
-        $stmt = $this->db->prepare("
-            SELECT COUNT(*) as account_count 
-            FROM account_device_associations ada
-            JOIN device_fingerprints df ON ada.device_fingerprint_id = df.id
-            WHERE df.fingerprint_hash = ?
-            AND ada.association_type = 'primary'
-            AND ada.is_blocked = FALSE
-        ");
-        $stmt->execute([$deviceFingerprint]);
-        $accountCount = $stmt->fetchColumn();
-
-        if ($accountCount > 5) { // Configurable threshold
-            $this->flagDeviceAsSuspicious($deviceFingerprint, 'too_many_accounts', "Device associated with {$accountCount} accounts");
-            throw new Exception("Device associated with too many accounts");
-        }
     }
 
     /**
@@ -403,34 +388,6 @@ class StrictSubscriptionMiddleware implements MiddlewareInterface
                 usage_count = usage_count + 1
         ");
         $stmt->execute([$fingerprintHash, $ipAddress, $userAgentHash]);
-    }
-
-    /**
-     * Flag device as suspicious
-     */
-    private function flagDeviceAsSuspicious(string $deviceFingerprint, string $reason, string $description): void
-    {
-        $fingerprintHash = hash('sha256', $deviceFingerprint);
-
-        $stmt = $this->db->prepare("
-            UPDATE device_fingerprints 
-            SET is_suspicious = TRUE,
-                risk_score = LEAST(risk_score + 0.3, 1.0),
-                last_seen_at = NOW()
-            WHERE fingerprint_hash = ?
-        ");
-        $stmt->execute([$fingerprintHash]);
-
-        $this->securityLogger?->logSecurityEvent(
-            'device_flagged',
-            'medium',
-            "Device flagged as suspicious: {$reason}",
-            [
-                'device_fingerprint' => $deviceFingerprint,
-                'reason' => $reason,
-                'description' => $description
-            ]
-        );
     }
 
     /**

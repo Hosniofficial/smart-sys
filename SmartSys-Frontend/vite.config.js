@@ -39,7 +39,6 @@ export default defineConfig({
          *  vendor-ui      — Icon libraries: Lucide Vue Next + Font Awesome (always needed)
          *  vendor-charts  — chart.js + vue-chartjs (reports pages only)
          *  vendor-excel   — exceljs (export pages only — was bloating OpeningBalance)
-         *  vendor-print   — qz-tray (POS print only)
          *  vendor-utils   — axios, pinia, dayjs, uuid, etc.
          */
         manualChunks(id) {
@@ -53,10 +52,6 @@ export default defineConfig({
           if (id.includes('node_modules/chart.js') ||
               id.includes('node_modules/vue-chartjs')) {
             return 'vendor-charts';
-          }
-
-          if (id.includes('node_modules/qz-tray')) {
-            return 'vendor-print';
           }
 
           // ── Vue core ────────────────────────────────────────────────────

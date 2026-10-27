@@ -229,10 +229,12 @@
                  <option :value="50">50</option>
                </select>
              </div>
-             <div class="flex items-center gap-1">
-               <button @click="filters.previousPage()" :disabled="filters.page.value <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-               <button @click="filters.nextPage(filters.totalPages.value)" :disabled="filters.page.value >= filters.totalPages.value" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-             </div>
+             <PaginationControls
+               :page="filters.page.value"
+               :total-pages="filters.totalPages.value"
+               @previous="filters.previousPage()"
+               @next="filters.nextPage(filters.totalPages.value)"
+             />
           </div>
         </div>
       </section>
@@ -255,6 +257,7 @@ import { useBranchStore } from '@/stores/branch/branchStore';
 import { useProductStore } from '@/stores/product/productStore';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 
 ChartJS.register(Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement, Filler);
@@ -455,16 +458,12 @@ watch([startDate, endDate, movementType, selectedBranch], () => {
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
 .filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all;
+  @apply focus:ring-4 focus:ring-blue-500/5;
 }
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1; }
+.metadata-label { @apply mb-1; }
 
 .status-badge { @apply px-2 py-0.5 rounded text-[9px] font-bold border inline-flex items-center justify-center; }
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
-}
 
 .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }

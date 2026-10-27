@@ -78,7 +78,7 @@ final class SaleDiscountPolicy
                     throw new DomainException('لا تملك صلاحية اعتماد البيع بأقل من تكلفة المنتج.');
                 }
                 if (!$belowCostConfirmed) {
-                    throw new DomainException('سعر البيع أقل من تكلفة المنتج. يلزم تأكيد المشرف للمتابعة.');
+                    throw new DomainException('سعر البيع أقل من تكلفة المنتج. يلزم تأكيد مدير الفرع للمتابعة.');
                 }
                 if (strlen(trim($belowCostReason)) < 5) {
                     throw new DomainException('سبب البيع بأقل من التكلفة مطلوب ويجب ألا يقل عن 5 أحرف.');
@@ -132,7 +132,7 @@ final class SaleDiscountPolicy
             }
 
             if ($isBelowMinimumPrice && !$belowMinimumPriceConfirmed) {
-                throw new DomainException('سعر البيع أقل من أقل سعر مسموح. يلزم تأكيد المشرف للمتابعة.');
+                throw new DomainException('سعر البيع أقل من أقل سعر مسموح. يلزم تأكيد مدير الفرع للمتابعة.');
             }
         }
         return $hasBelowCostItems;

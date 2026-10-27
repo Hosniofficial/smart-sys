@@ -3,21 +3,6 @@ import apiClient from '../config/axios'
 const REPORT_TIMEOUT = 30000
 
 export const reportsService = {
-  // تحليلات المبيعات (مع branch_id إجباري)
-  async getSalesAnalytics(startDate, endDate, branchId, sessionId = null) {
-    const params = {
-      start_date: startDate,
-      end_date: endDate
-    }
-    if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
-    }
-    if (sessionId) {
-      params.session_id = sessionId
-    }
-    return await apiClient.get('/analytics/sales', { params })
-  },
-
   // تحليلات المخزون (مع branch_id إجباري)
   async getInventoryAnalytics(branchId, signal) {
     const params = {}

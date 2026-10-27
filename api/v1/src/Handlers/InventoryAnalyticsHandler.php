@@ -11,7 +11,7 @@ use App\Services\MonologHandler;
 
 /**
  * Produces tenant inventory levels and movement summaries, with optional
- * branch-scoped reporting. Also provides an internal stock forecast helper.
+ * branch-scoped reporting.
  *
  * Uses PDO for inventory, product, and branch data; analytics routes enforce
  * report permissions.
@@ -132,84 +132,5 @@ class InventoryAnalyticsHandler extends BaseHandler
         ], 200);
     }
 
-    /**
-     * Forecast tenant-wide stock from recent sales and daily consumption variance.
-     *
-     * @return list<array<string, int|float|bool|string>> Daily forecast rows.
-     */
-    public function forecastInventory(int $productId, int $tenantId, int $days = 30): array
-    {
-        if (!$tenantId) {
-            $this->logger->warning('forecastInventory called without tenantId', ['product_id' => $productId]);
-            return [];
-        }
 
-        $stmt = $this->db->prepare("
-            SELECT AVG(daily_quantity) as avg_daily_consumption
-            FROM (
-                SELECT DATE(s.date) as date, SUM(si.quantity) as daily_quantity
-                FROM sales s
-                JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id
-                WHERE si.product_id = ? AND s.tenant_id = ? AND s.date >= DATE_SUB(NOW(), INTERVAL 90 DAY)
-                GROUP BY DATE(s.date)
-            ) daily_sales
-        ");
-        $stmt->execute([$productId, $tenantId]);
-        $avgConsumption = (float) ($stmt->fetchColumn() ?? 0);
-
-        $stmt = $this->db->prepare("
-            SELECT STDDEV(daily_quantity) as consumption_stddev
-            FROM (
-                SELECT DATE(s.date) as date, SUM(si.quantity) as daily_quantity
-                FROM sales s
-                JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id
-                WHERE si.product_id = ? AND s.tenant_id = ? AND s.date >= DATE_SUB(NOW(), INTERVAL 90 DAY)
-                GROUP BY DATE(s.date)
-            ) daily_sales
-        ");
-        $stmt->execute([$productId, $tenantId]);
-        $stdDev = (float) ($stmt->fetchColumn() ?? 0);
-
-        $stmt = $this->db->prepare("
-            SELECT COALESCE(SUM(bp.quantity), 0) as current_stock,
-                   p.min_quantity, p.maximum_quantity, 
-                   COALESCE(p.lead_time_days, 5) as lead_time_days
-            FROM products p
-            LEFT JOIN branch_products bp ON bp.product_id = p.id AND bp.tenant_id = ?
-            WHERE p.id = ? AND p.tenant_id = ?
-            GROUP BY p.id, p.min_quantity, p.maximum_quantity, p.lead_time_days
-        ");
-        $stmt->execute([$tenantId, $productId, $tenantId]);
-        $product = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$product) {
-            $this->logger->warning('Product not found for forecast', [
-                'product_id' => $productId,
-                'tenant_id' => $tenantId
-            ]);
-            return [];
-        }
-
-        $safetyStock  = $stdDev * sqrt((float) ($product['lead_time_days'] ?? 5));
-        $currentStock = (float) $product['current_stock'];
-        $minQuantity  = (float) ($product['min_quantity'] ?? 0);
-        $forecast     = [];
-
-        for ($i = 1; $i <= $days; $i++) {
-            $expectedStock = $currentStock - ($avgConsumption * $i);
-            $reorderPoint  = $minQuantity + $safetyStock;
-
-            $forecast[] = [
-                'day'                  => $i,
-                'date'                 => date('Y-m-d', strtotime("+{$i} days")),
-                'expected_stock'       => round($expectedStock, 2),
-                'expected_consumption' => round($avgConsumption, 2),
-                'needs_reorder'        => $expectedStock <= $reorderPoint,
-                'reorder_point'        => round($reorderPoint, 2),
-                'safety_stock'         => round($safetyStock, 2),
-            ];
-        }
-
-        return $forecast;
-    }
 }

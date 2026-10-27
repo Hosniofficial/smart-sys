@@ -14,6 +14,7 @@ use App\Services\MonologHandler;
 use App\Services\LabelService;
 use App\Services\CurrencyService;
 use App\Handlers\AuditHandler;
+use App\Utils\ApiResponseEnvelope;
 use App\Utils\PaginationHelper;
 use App\Repositories\SaleRepository;
 
@@ -616,7 +617,10 @@ class SalesHandler extends BaseHandler
 
             $response = $response->withStatus(409)
                 ->withHeader('Content-Type', 'application/json');
-            $response->getBody()->write(json_encode($e->toArray(), JSON_UNESCAPED_UNICODE));
+            $response->getBody()->write(json_encode(
+                ApiResponseEnvelope::normalize($e->toArray(), 409),
+                JSON_UNESCAPED_UNICODE
+            ));
             return $response;
         } catch (\DomainException $e) {
             return $this->errorResponse($response, $e->getMessage(), 422);
@@ -741,7 +745,10 @@ class SalesHandler extends BaseHandler
 
             $response = $response->withStatus(409)
                 ->withHeader('Content-Type', 'application/json');
-            $response->getBody()->write(json_encode($e->toArray(), JSON_UNESCAPED_UNICODE));
+            $response->getBody()->write(json_encode(
+                ApiResponseEnvelope::normalize($e->toArray(), 409),
+                JSON_UNESCAPED_UNICODE
+            ));
             return $response;
         } catch (\DomainException $e) {
             return $this->errorResponse($response, $e->getMessage(), 422);

@@ -7,7 +7,7 @@
  * re-export shim at src/store/modules/subscription.js
  */
 import { defineStore } from 'pinia'
-import apiClient from '@/config/axios'
+import subscriptionsService from '@/services/subscriptions'
 
 export const useSubscriptionStore = defineStore('subscription', {
   state: () => ({
@@ -49,6 +49,11 @@ export const useSubscriptionStore = defineStore('subscription', {
   },
 
   actions: {
+    async fetchPublicPlans() {
+      const response = await subscriptionsService.getPublicPlans()
+      return response?.data ?? {}
+    },
+
     async fetchSubscription(forceRefresh = false) {
       if (this.loading && !forceRefresh) return this.promise || this.current
 
@@ -69,9 +74,7 @@ export const useSubscriptionStore = defineStore('subscription', {
             console.log('  authStore.isAuthenticated:', authStore.isAuthenticated);
           }
           // Skip token refresh during subscription fetch to avoid 401 on new auto-logged-in users
-          const response = await apiClient.get('/subscription/me', {
-            meta: { skipTokenRefresh: true }
-          })
+          const response = await subscriptionsService.getCurrentSubscription()
           if (response.data.status === 'success') {
             this.current     = response.data.data.current
             this.lastFetched = Date.now()

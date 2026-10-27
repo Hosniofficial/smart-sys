@@ -2,32 +2,27 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar: High-precision indicator -->
-    <div v-if="isLoading || isSaving" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading" />
 
-    <!-- Page Header Area -->
-    <header class="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-3">
-      <div class="max-w-[1600px] mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div class="flex items-center gap-4">
-          <div class="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center text-white shadow-sm shrink-0">
-            <i class="fas fa-desktop text-sm"></i>
-          </div>
-          <div>
-            <h1 class="text-sm font-bold text-slate-900">إدارة أجهزة نقاط البيع</h1>
-            <p class="text-[10px] text-slate-500 font-medium uppercase tracking-widest mt-0.5">تعريف ومراقبة محطات الكاشير (Terminals)</p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-3">
-          <!-- Quick Status Metric -->
-          <div class="px-4 py-1.5 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-4 shadow-inner">
+    <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/80 px-6 py-3 backdrop-blur-md">
+      <div class="mx-auto max-w-[1600px]">
+        <PageHeader
+          class="border-0 pb-0"
+          :breadcrumb="{ parent: 'الإعدادات', current: 'أجهزة نقاط البيع' }"
+          title="إدارة أجهزة نقاط البيع"
+          description="تعريف ومراقبة محطات الكاشير (Terminals)"
+          :branches="[]"
+          :selected-branch="null"
+        >
+          <template #controls>
+            <div class="px-4 py-1.5 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-4 shadow-inner">
             <div class="text-center">
               <p class="text-[8px] font-bold text-blue-400 uppercase tracking-widest leading-none mb-1">إجمالي الأجهزة</p>
               <p class="text-sm font-bold text-blue-700 leading-none font-mono tracking-tighter">{{ terminals.length }}</p>
             </div>
-          </div>
-        </div>
+            </div>
+          </template>
+        </PageHeader>
       </div>
     </header>
 
@@ -99,9 +94,17 @@
             <i class="fas fa-list-ul text-slate-400"></i>
             الأجهزة المعرّفة في النظام
           </h3>
-          <button @click="loadTerminals" :disabled="isLoading" class="h-8 w-8 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-blue-600 transition-all active:scale-95 shadow-sm">
-            <i class="fas fa-sync-alt text-[10px]" :class="{'animate-spin': isLoading}"></i>
-          </button>
+          <LoadingButton
+            text=""
+            loadingText=""
+            :showTextDuringLoad="false"
+            icon="fas fa-sync-alt"
+            :isLoading="isLoading"
+            variant="secondary"
+            class="h-8 w-8 rounded-lg border border-slate-200 bg-white p-0 text-slate-400 shadow-sm hover:text-blue-600"
+            aria-label="تحديث الأجهزة"
+            @click="loadTerminals"
+          />
         </div>
 
         <div class="overflow-x-auto">
@@ -159,6 +162,7 @@
                   <div class="flex items-center justify-center gap-2">
                     <button @click="openEdit(t)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center"><i class="fas fa-pen text-[10px]"></i></button>
                     <button @click="toggleStatus(t)" 
+                      :title="t.status === 'active' ? 'تعطيل الجهاز (بدون حذف)' : 'تفعيل الجهاز'"
                       :class="t.status === 'active' ? 'text-rose-400 hover:text-rose-600' : 'text-emerald-400 hover:text-emerald-600'"
                       class="w-8 h-8 rounded-lg border border-slate-200 transition-all flex items-center justify-center">
                       <i :class="t.status === 'active' ? 'fas fa-power-off' : 'fas fa-check'" class="text-[10px]"></i>
@@ -220,6 +224,7 @@ import { useBranchStore } from '@/stores/branch/branchStore'
 import { useTerminalStore } from '@/stores/terminal/terminalStore'
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
+import PageHeader from '@/components/PageHeader.vue';
 
 const { showToast } = useToast()
 const branchStore = useBranchStore()
@@ -294,7 +299,10 @@ const loadbranchs = async () => {
 const loadTerminals = async () => {
   try {
     isLoading.value = true
-    const result = await terminalStore.fetchTerminals(form.value.branch_id || undefined);
+    const result = await terminalStore.fetchTerminals(form.value.branch_id || undefined, {
+      force: true,
+      status: 'all',
+    });
     terminals.value = Array.isArray(result) ? result : [];
   } catch (e) {
     console.error('Failed to load terminals', e);
@@ -355,10 +363,10 @@ onMounted(async () => {
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
 .filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all;
+  @apply focus:ring-4 focus:ring-blue-500/5;
 }
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1; }
+.metadata-label { @apply mb-1; }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }

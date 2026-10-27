@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-indigo-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="isLoadingPurchases || isLoadingDetails" class="fixed top-0 left-0 right-0 h-0.5 bg-indigo-600/10 z-[110]">
-      <div class="h-full bg-indigo-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoadingPurchases || isLoadingDetails" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -165,7 +163,7 @@
                 </td>
                 <td class="px-4 py-4 text-center">
                   <div class="flex items-center justify-center gap-2">
-                    <button @click="viewPurchaseDetails(purchase.id)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center justify-center"><i class="fas fa-eye text-[10px]"></i></button>
+                    <button @click="openPurchaseDetails(purchase.id)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center justify-center" :aria-label="`فتح تفاصيل فاتورة الشراء ${purchase.invoice_number || purchase.id} في تبويب`"><i class="fas fa-eye text-[10px]"></i></button>
                   </div>
                 </td>
               </tr>
@@ -181,7 +179,12 @@
           </div>
           <div class="flex items-center gap-3">
              <div class="flex items-center gap-2"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">النتائج:</span><select v-model.number="filters.perPage.value" class="h-8 border border-slate-200 rounded px-2 text-[10px] font-bold outline-none"><option :value="10">10</option><option :value="20">20</option><option :value="50">50</option></select></div>
-             <div class="flex items-center gap-1"><button @click="filters.previousPage()" :disabled="filters.page.value<=1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button><button @click="filters.nextPage(totalPages)" :disabled="filters.page.value>=totalPages" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button></div>
+             <PaginationControls
+               :page="filters.page.value"
+               :total-pages="totalPages"
+               @previous="filters.previousPage()"
+               @next="filters.nextPage(totalPages)"
+             />
           </div>
         </div>
       </div>
@@ -190,7 +193,7 @@
     <!-- Purchase Details Modal -->
     <HistoryDetailsModal
       :show="showDetailsModal && !!selectedPurchase"
-      @close="showDetailsModal = false"
+      @close="closePurchaseDetails"
       :title="`تفاصيل فاتورة الشراء #${selectedPurchase?.invoice_number || selectedPurchase?.id}`"
       icon="fas fa-file-invoice"
     >
@@ -224,33 +227,56 @@
         </div>
 
         <div class="flex flex-col md:flex-row gap-8">
-          <div class="flex-grow space-y-2 p-5 rounded-xl bg-slate-50/50 border border-slate-100">
-            <p class="text-[10px] font-bold text-slate-400 uppercase mb-3">التلخيص المالي</p>
-            <div class="flex justify-between text-xs font-bold text-slate-500"><span>إجمالي المبلغ:</span><span class="text-slate-900">{{ formatPrice(selectedPurchase?.total_amount || 0) }}</span></div>
-            <div class="flex justify-between text-xs font-bold text-slate-500"><span>المدفوع:</span><span class="text-emerald-600">{{ formatPrice(selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0) }}</span></div>
-            <div v-if="Number(selectedPurchase?.return_amount || 0) > 0" class="flex justify-between text-xs font-bold text-slate-500"><span>قيمة المرتجعات:</span><span class="text-orange-600">{{ formatPrice(selectedPurchase.return_amount) }}</span></div>
-            <div class="flex justify-between text-xs font-black pt-2 border-t border-slate-200"><span>المتبقي:</span><span class="text-rose-600">{{ formatPrice(selectedPurchase?.remaining_balance ?? ((selectedPurchase?.total_amount || 0) - (selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0))) }}</span></div>
+          <div class="flex-1 p-5 rounded-xl bg-slate-50/50 border border-slate-100">
+            <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">ملاحظات الفاتورة</p>
+            <p class="text-xs text-slate-600 italic">{{ selectedPurchase?.notes || 'لا توجد ملاحظات.' }}</p>
           </div>
-          <div class="w-full md:w-72 bg-slate-900 p-6 rounded-xl text-white flex items-center justify-center">
-            <div class="text-center">
-              <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">صافي الفاتورة</p>
-              <p class="text-3xl font-bold tracking-tighter text-blue-400 leading-none">{{ formatPrice(selectedPurchase?.total_amount || 0) }}</p>
+          <div class="w-full md:w-72 space-y-2.5 bg-slate-50 border border-slate-200 p-5 rounded-xl">
+            <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المجموع</span><span class="font-mono font-bold text-slate-700">{{ formatPrice(selectedPurchase?.total_amount || 0) }}</span></div>
+            <div class="flex justify-between text-[11px] font-medium text-slate-500 pb-2.5 border-b border-slate-200"><span>المدفوع</span><span class="font-mono font-bold text-emerald-600">{{ formatPrice(selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0) }}</span></div>
+            <!-- صافي الفاتورة مميز -->
+            <div class="flex justify-between items-center bg-indigo-600 text-white px-4 py-3 rounded-lg">
+              <span class="text-[11px] font-bold uppercase tracking-widest opacity-80">صافي الفاتورة</span>
+              <span class="text-xl font-bold font-mono tracking-tighter">{{ formatPrice(selectedPurchase?.total_amount || 0) }}</span>
+            </div>
+            <div class="pt-1 space-y-2">
+              <div v-if="Number(selectedPurchase?.return_amount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
+                <span>قيمة المرتجعات</span>
+                <span class="font-mono font-bold text-amber-500">{{ formatPrice(selectedPurchase.return_amount) }}</span>
+              </div>
+              <div v-if="(selectedPurchase?.remaining_balance ?? ((selectedPurchase?.total_amount || 0) - (selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0))) > 0" class="flex justify-between text-[11px] font-bold pt-1 border-t border-slate-200">
+                <span class="text-slate-500">المتبقي</span>
+                <span class="font-mono text-rose-600">{{ formatPrice(selectedPurchase?.remaining_balance ?? ((selectedPurchase?.total_amount || 0) - (selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0))) }}</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <template #footer>
-        <div dir="rtl" class="mr-auto flex flex-row-reverse flex-wrap items-center gap-3">
-        <button
-          v-if="canPaySelectedPurchase"
-          @click="openPaymentModal(selectedPurchase)"
-          class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-emerald-200 px-4 text-xs font-bold text-emerald-700 transition-all hover:bg-emerald-50"
-        >
-          <i class="fas fa-money-bill-wave text-[10px]"></i> تسجيل دفعة
-        </button>
-        <button @click="printPurchaseDetails" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-indigo-600 px-5 text-xs font-bold text-white shadow-lg shadow-indigo-900/20"><i class="fas fa-print"></i> طباعة الفاتورة</button>
-        <button @click="showDetailsModal = false" class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500">إغلاق</button>
+        <div class="mr-auto flex flex-row flex-wrap items-center gap-3">
+          <!-- 1. تسجيل دفعة -->
+          <button
+            v-if="canPaySelectedPurchase"
+            @click="openPaymentModal(selectedPurchase)"
+            class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-emerald-600 px-4 text-xs font-bold text-white shadow-sm shadow-emerald-900/20 transition-all hover:bg-emerald-700"
+          >
+            <i class="fas fa-money-bill-wave text-[10px]"></i> تسجيل دفعة
+          </button>
+          <!-- 2. طباعة الفاتورة -->
+          <button
+            @click="printPurchaseDetails"
+            class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-indigo-200 px-4 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
+          >
+            <i class="fas fa-print"></i> طباعة الفاتورة
+          </button>
+          <!-- 3. إغلاق -->
+          <button
+            @click="closePurchaseDetails"
+            class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500"
+          >
+            إغلاق
+          </button>
         </div>
       </template>
     </HistoryDetailsModal>
@@ -283,7 +309,15 @@
 
       <template #footer>
         <button @click="showPaymentModal = false" class="flex-1 h-10 text-xs font-bold text-slate-500">إلغاء</button>
-        <button v-if="canPayPurchases" @click="submitPayment" class="flex-[2] h-10 bg-emerald-600 text-white rounded-md text-xs font-bold shadow-lg shadow-emerald-900/20">تأكيد العملية</button>
+        <LoadingButton
+          v-if="canPayPurchases"
+          text="تأكيد العملية"
+          :isLoading="isSubmittingPayment"
+          loadingText="جاري التسجيل..."
+          variant="success"
+          class="flex-[2] h-10"
+          @click="submitPayment"
+        />
       </template>
     </BaseModal>
 
@@ -293,12 +327,11 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import BaseModal from '@/components/BaseModal.vue';
 import { useHistoryFilters } from '@/composables/useHistoryFilters';
-import { useLoader } from '@/composables/useLoader';
 import { useToast } from '@/composables/useToast';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useSessionExemption } from '@/composables/useCashierSessionGuard';
@@ -314,8 +347,8 @@ import { useBootstrapStore } from '@/stores/bootstrap/bootstrapStore';
 import { getLocalDateISO, isSettingEnabled, printDocument } from '@/utils';
 import { buildPurchaseHtml } from '@/utils/printTemplates';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 
-const { showLoader, hideLoader } = useLoader();
 const { showToast } = useToast();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const { isExempt, ensureLoaded: ensureExemptionLoaded } = useSessionExemption();
@@ -339,6 +372,7 @@ const supplierStore = useSupplierStore();
 const bootstrapStore = useBootstrapStore();
 
 const route = useRoute();
+const router = useRouter();
 const detailsAbortCtrl = ref(null);
 const showDetailsModal = ref(false);
 const selectedPurchase = ref(null);
@@ -480,16 +514,25 @@ const fetchPurchases = async (forceRefresh = false) => {
     if (e?.name !== 'AbortError' && e?.name !== 'CanceledError' && e?.code !== 'ERR_CANCELED') {
       showToast('فشل في تحميل سجل المشتريات', 'error'); rows.value = []; filters.total.value = 0;
     }
-  } finally { if (currentCtrl === purchasesAbortCtrl) isLoadingPurchases.value = false; hideLoader(); }
+  } finally { if (currentCtrl === purchasesAbortCtrl) isLoadingPurchases.value = false; }
 };
 
 const resetFilters = () => { filters.resetFilters(); fetchPurchases(); };
+
+watch(() => route.query.id, async (id) => {
+  if (Number(id) > 0) {
+    await viewPurchaseDetails(Number(id));
+    return;
+  }
+  showDetailsModal.value = false;
+  selectedPurchase.value = null;
+});
 
 const viewPurchaseDetails = async (purchaseId) => {
   if (detailsAbortCtrl.value) detailsAbortCtrl.value.abort();
   detailsAbortCtrl.value = new AbortController();
   const currentCtrl = detailsAbortCtrl.value;
-  isLoadingDetails.value = true; showLoader();
+  isLoadingDetails.value = true;
   try {
     const response = await purchaseStore.getPurchaseById(purchaseId, { signal: currentCtrl.signal });
     if (currentCtrl !== detailsAbortCtrl.value) return;
@@ -502,10 +545,32 @@ const viewPurchaseDetails = async (purchaseId) => {
     if (e?.name !== 'AbortError' && e?.name !== 'CanceledError' && e?.code !== 'ERR_CANCELED') {
       showToast('فشل في تحميل تفاصيل المشترية', 'error');
     }
-  } finally { if (currentCtrl === detailsAbortCtrl.value) isLoadingDetails.value = false; hideLoader(); }
+  } finally { if (currentCtrl === detailsAbortCtrl.value) isLoadingDetails.value = false; }
+};
+
+const openPurchaseDetails = async (purchaseId) => {
+  if (Number(route.query.id) === Number(purchaseId)) {
+    await viewPurchaseDetails(purchaseId);
+    return;
+  }
+
+  await router.push({
+    name: 'PurchaseHistory',
+    query: { ...route.query, id: String(purchaseId) }
+  });
+};
+
+const closePurchaseDetails = async () => {
+  showDetailsModal.value = false;
+  if (!route.query.id) return;
+
+  const query = { ...route.query };
+  delete query.id;
+  await router.replace({ name: 'PurchaseHistory', query });
 };
 
 const showPaymentModal = ref(false);
+const isSubmittingPayment = ref(false);
 const paymentData = ref({ purchase_id: null, supplier_id: null, amount: 0, payment_method_id: null, payment_date: getLocalDateISO(), reference_number: '' });
 const currentPayingPurchase = ref(null);
 const paymentIdempotencyKey = ref('');
@@ -526,22 +591,22 @@ const openPaymentModal = (p) => {
 };
 
 const submitPayment = async () => {
-  if (!canPayPurchases.value) return;
+  if (!canPayPurchases.value || isSubmittingPayment.value) return;
   const amount = Number(paymentData.value.amount || 0);
   if (amount <= 0) return showToast('الرجاء إدخال مبلغ صحيح', 'error');
   const remaining = Number(currentPayingPurchase.value?.remaining_balance ?? 0);
   if (amount > remaining + 0.01) return showToast('مبلغ الدفعة يتجاوز الرصيد المتبقي على الفاتورة.', 'error');
-  try { await ensureExemptionLoaded(); } catch {}
-  const settings = await fetchSettings(true);
-  const sessionsEnabled = isSettingEnabled(settings?.['pos.sessions.enabled']);
-  if (sessionsEnabled && !isExempt.value && isCashById(paymentData.value.payment_method_id) && amount > 0) {
-    let wid; try { wid = branchIsolation.getRequiredBranchId(); } catch { wid = currentPayingPurchase.value?.branch_id; }
-    if (!wid) return showToast('يجب تحديد الفرع', 'error');
-    try { const sessionStore = useSessionStore(); const result = await sessionStore.getCurrentSession(wid, authStore?.user?.id || null); if (!result.data?.id) return showToast('لا توجد جلسة كاشير مفتوحة', 'error'); }
-    catch { return showToast('خطأ في التحقق من الجلسة', 'error'); }
-  }
-  showLoader();
+  isSubmittingPayment.value = true;
   try {
+    try { await ensureExemptionLoaded(); } catch {}
+    const settings = await fetchSettings(true);
+    const sessionsEnabled = isSettingEnabled(settings?.['pos.sessions.enabled']);
+    if (sessionsEnabled && !isExempt.value && isCashById(paymentData.value.payment_method_id) && amount > 0) {
+      let wid; try { wid = branchIsolation.getRequiredBranchId(); } catch { wid = currentPayingPurchase.value?.branch_id; }
+      if (!wid) return showToast('يجب تحديد الفرع', 'error');
+      try { const sessionStore = useSessionStore(); const result = await sessionStore.getCurrentSession(wid, authStore?.user?.id || null); if (!result.data?.id) return showToast('لا توجد جلسة كاشير مفتوحة', 'error'); }
+      catch { return showToast('خطأ في التحقق من الجلسة', 'error'); }
+    }
     let branchId; try { branchId = branchIsolation.getRequiredBranchId(); } catch { branchId = currentPayingPurchase.value?.branch_id; }
     const res = await purchaseStore.addPayment(paymentData.value.purchase_id, { amount, payment_date: paymentData.value.payment_date, payment_method_id: paymentData.value.payment_method_id, reference_number: paymentData.value.reference_number || undefined, branch_id: String(branchId) }, paymentIdempotencyKey.value);
     if (res?.status === 'success') {
@@ -563,8 +628,11 @@ const submitPayment = async () => {
         'error'
       );
     }
-  } catch (e) { showToast(e.response?.data?.message || 'فشل التسجيل', 'error'); }
-  finally { hideLoader(); }
+  } catch (e) {
+    showToast(e.response?.data?.message || 'فشل التسجيل', 'error');
+  } finally {
+    isSubmittingPayment.value = false;
+  }
 };
 
 const printPurchaseDetails = async () => {
@@ -638,7 +706,7 @@ onMounted(async () => {
     resolvedBranchId,
     branchesCount: branchStore.branches.length
   });
-  
+
   isMounting = false;
   await new Promise(resolve => setTimeout(resolve, 100));
   fetchPurchases();
@@ -667,10 +735,6 @@ onUnmounted(() => { if (purchasesAbortCtrl) purchasesAbortCtrl.abort(); if (sear
 }
 
 /* Pagination */
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
-}
-
 /* Scrollbar */
 .custom-scroll::-webkit-scrollbar {
   width: 5px;

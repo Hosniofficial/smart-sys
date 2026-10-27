@@ -9,3 +9,15 @@ export async function listUsers(params = {}) {
   if (Array.isArray(data?.data?.items)) return data.data.items;
   return [];
 }
+
+export async function getCurrentUserProfile() {
+  return apiClient.get('/users/me');
+}
+
+export async function updateCurrentUserProfile(payload) {
+  return apiClient.post('/users/update-profile', payload);
+}
+
+export async function changeCurrentUserPassword(payload) {
+  return apiClient.post('/users/change-password', payload);
+}

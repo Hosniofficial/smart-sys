@@ -9,64 +9,6 @@ use Slim\Psr7\Response;
 
 final class SalesVoidReportExclusionTest extends TestCase
 {
-    public function testFinancialSummaryUsesProfitLossTotalsAndIncludesEndDateExpenseCount(): void
-    {
-        $db = new PDO('sqlite::memory:');
-        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $db->exec('CREATE TABLE sales (
-            id INTEGER PRIMARY KEY, tenant_id INTEGER, created_at TEXT, branch_id INTEGER,
-            customer_id INTEGER, total_amount REAL, paid_amount REAL, payment_status TEXT, status TEXT
-        )');
-        $db->exec('CREATE TABLE cash_vouchers (
-            id INTEGER PRIMARY KEY, tenant_id INTEGER, account_id INTEGER, type TEXT,
-            amount REAL, date TEXT, status TEXT, branch_id INTEGER
-        )');
-        $db->exec('CREATE TABLE accounts (
-            id INTEGER PRIMARY KEY, tenant_id INTEGER, type TEXT
-        )');
-        $db->exec('CREATE TABLE cash_transactions (
-            id INTEGER PRIMARY KEY, tenant_id INTEGER, type TEXT, amount REAL,
-            status TEXT, created_at TEXT, branch_id INTEGER
-        )');
-        $db->exec('CREATE TABLE products (
-            id INTEGER PRIMARY KEY, tenant_id INTEGER, active INTEGER, cost_price REAL
-        )');
-        $db->exec('CREATE TABLE branch_products (
-            product_id INTEGER, tenant_id INTEGER, branch_id INTEGER, quantity REAL
-        )');
-        $db->exec("INSERT INTO sales VALUES
-            (1, 5, '2026-10-09 12:00:00', 8, 10, 500, 400, 'partial', 'paid'),
-            (2, 5, '2026-10-09 12:00:00', 9, 11, 900, 0, 'unpaid', 'paid')");
-        $db->exec('ALTER TABLE sales ADD COLUMN net_total_amount REAL NULL');
-        $db->exec("INSERT INTO accounts VALUES (1, 5, 'expense')");
-        $db->exec("INSERT INTO cash_vouchers VALUES
-            (1, 5, 1, 'payment', 20, '2026-10-09', 'posted', 8),
-            (2, 5, 1, 'payment', 99, '2026-10-09', 'posted', 9)");
-        $db->exec("INSERT INTO products VALUES (1, 5, 1, 25)");
-        $db->exec("INSERT INTO branch_products VALUES (1, 5, 8, 4), (1, 5, 9, 7)");
-
-        $data = (new AdvancedReportsHandler($db))->getFinancialSummary(
-            ['branch_id' => 8],
-            5,
-            [
-                'period' => ['start_date' => '2026-10-01', 'end_date' => '2026-10-09'],
-                'revenue' => ['total_revenue' => 400],
-                'summary' => ['gross_profit' => 100, 'total_expenses' => 20, 'net_profit' => 80],
-                'account_transactions' => [['expense_category' => 'Rent', 'total' => 20]],
-            ]
-        );
-
-        self::assertEquals(500, $data['sales']['gross_revenue']);
-        self::assertEquals(400, $data['sales']['total_revenue']);
-        self::assertEquals(100, $data['sales']['total_profit']);
-        self::assertEquals(20, $data['account_transactions']['total_expenses']);
-        self::assertSame(1, $data['account_transactions']['expense_count']);
-        self::assertEquals(80, $data['net_profit']);
-        self::assertEquals(20, $data['profit_margin']);
-        self::assertEquals(100, $data['inventory']['total_inventory_value']);
-        self::assertSame(1, (int) $data['accounts_receivable']['unpaid_invoices']);
-    }
-
     public function testProfitLossUsesSharedNetCogsInsteadOfJournalEntryAmount(): void
     {
         $db = new PDO('sqlite::memory:');

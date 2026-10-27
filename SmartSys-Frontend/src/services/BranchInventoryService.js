@@ -1,4 +1,6 @@
-import apiClient from '../config/axios';
+import apiClient from '@/config/axios';
+import inventoryService from '@/services/inventory';
+import productsService from '@/services/products';
 
 /**
  * Fetch inventory for a specific branch
@@ -7,13 +9,8 @@ import apiClient from '../config/axios';
  * @returns {Promise<Object>} - Inventory data and stats
  */
 export const getBranchInventory = async (branchId, filters = {}) => {
-  try {
-    const response = await apiClient.get(`/branches/${branchId}/stock`, { params: filters });
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching branch inventory:', error);
-    throw error;
-  }
+  const response = await apiClient.get(`/branches/${branchId}/stock`, { params: filters });
+  return response.data;
 };
 
 /**
@@ -23,16 +20,8 @@ export const getBranchInventory = async (branchId, filters = {}) => {
  * @returns {Promise<Object>} - Response data
  */
 export const adjustStock = async (branchId, adjustmentData) => {
-  try {
-    const response = await apiClient.post(
-      `/branches/${branchId}/adjustments`,
-      adjustmentData
-    );
-    return response.data;
-  } catch (error) {
-    console.error('Error adjusting stock:', error);
-    throw error;
-  }
+  const response = await inventoryService.adjustStock(branchId, adjustmentData);
+  return response.data;
 };
 
 /**
@@ -41,13 +30,10 @@ export const adjustStock = async (branchId, adjustmentData) => {
  * @returns {Promise<Array>} - List of matching products
  */
 export const searchProducts = async (query) => {
-  try {
-    const response = await apiClient.get('/products/search', {
-      params: { q: query, limit: 10 }
-    });
-    return response.data.data || [];
-  } catch (error) {
-    console.error('Error searching products:', error);
-    return [];
+  const response = await productsService.search({ q: query, limit: 10 });
+  const products = response.data?.data;
+  if (!Array.isArray(products)) {
+    throw new Error('Invalid response when searching products');
   }
+  return products;
 };

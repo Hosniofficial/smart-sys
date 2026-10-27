@@ -14,7 +14,7 @@
 
 ### الخطوة 1: التحقق من وجود الخطة الترويجية
 
-خطة `promo_3months` موجودة في seed الإنتاج المعتمد `database/production/smartsys_production_core_seed_20261002.sql`. لا تُدخلها يدويًا ولا تستورد seed إضافيًا.
+خطة `promo_3months` من بيانات التهيئة الحالية. لا تُدخلها يدويًا ولا تستورد seed إضافيًا.
 
 ### الخطوة 2: تحقق من إضافة الخطة
 
@@ -221,7 +221,7 @@ Content-Type: application/json
 
 ## 📝 توثيق مرتبط
 
-- **database/production/README.md** — حزمة قاعدة البيانات وتهيئة الإنتاج.
+- **database/README.md** — تعليمات migrations وتشغيل قاعدة البيانات.
 - **database/migrations/README.md** — تطبيق migrations والتحقق منها.
 - **.kiro/docs/PROMOTIONAL_PLANS.md** — توثيق الخطط الترويجية.
    - سيناريوهات عملية

@@ -41,6 +41,34 @@ final class MigrationDatabaseTest extends TestCase
         self::assertSame('new_password', $config['password']);
     }
 
+    public function testProcessEnvironmentOverridesDotenvValues(): void
+    {
+        $config = MigrationDatabase::resolveConfig(
+            [
+                'DB_HOST' => 'localhost',
+                'DB_PORT' => '3306',
+                'DB_DATABASE' => 'local_database',
+                'DB_USERNAME' => 'local_user',
+                'DB_PASSWORD' => 'local_password',
+            ],
+            [
+                'DB_HOST' => 'production-proxy.example',
+                'DB_PORT' => '15839',
+                'DB_DATABASE' => 'railway',
+                'DB_USERNAME' => 'migration_user',
+                'DB_PASSWORD' => 'rotated_password',
+            ]
+        );
+
+        self::assertSame([
+            'host' => 'production-proxy.example',
+            'port' => '15839',
+            'database' => 'railway',
+            'username' => 'migration_user',
+            'password' => 'rotated_password',
+        ], $config);
+    }
+
     public function testSupportsLegacyVariableNamesDuringTransition(): void
     {
         $config = MigrationDatabase::resolveConfig([

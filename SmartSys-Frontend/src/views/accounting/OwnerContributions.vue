@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-indigo-100" dir="rtl">
 
     <!-- Top Progress Bar -->
-    <div v-if="loading || saving || voidLoading || loadingLists" class="fixed top-0 left-0 right-0 h-0.5 bg-indigo-600/10 z-[110]">
-      <div class="h-full bg-indigo-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="loading || loadingLists" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
 
@@ -77,9 +75,15 @@
         <button class="h-10 rounded-md border border-slate-200 px-4 text-xs font-bold" :disabled="loading" @click="loadContributions(1)">
           تطبيق الفلاتر
         </button>
-        <button class="h-10 rounded-md bg-slate-900 px-4 text-xs font-bold text-white" :disabled="loading" @click="loadContributions(page)">
-          <i class="fas fa-sync-alt ml-1"></i> تحديث
-        </button>
+        <LoadingButton
+          text="تحديث"
+          loadingText="جاري التحديث..."
+          icon="fas fa-sync-alt"
+          :isLoading="loading"
+          variant="secondary"
+          class="h-10 rounded-md px-4 text-xs"
+          @click="loadContributions(page)"
+        />
       </div>
     </section>
 
@@ -198,9 +202,14 @@
           </template>
           <div class="flex justify-end gap-2 border-t border-slate-100 pt-4 md:col-span-2">
             <button type="button" class="h-10 rounded-md px-4 text-xs font-bold text-slate-500" :disabled="saving" @click="closeCreate">إلغاء</button>
-            <button type="submit" class="h-10 rounded-md bg-indigo-600 px-5 text-xs font-bold text-white disabled:opacity-50" :disabled="saving || !assetAccounts.length || !relatedAccounts.length">
-              {{ saving ? 'جاري الحفظ...' : (pendingCreate ? 'إعادة محاولة الحفظ' : 'حفظ المساهمة') }}
-            </button>
+            <LoadingButton
+              type="submit"
+              :text="pendingCreate ? 'إعادة محاولة الحفظ' : 'حفظ المساهمة'"
+              loadingText="جاري الحفظ..."
+              :isLoading="saving"
+              :disabled="!assetAccounts.length || !relatedAccounts.length"
+              class="h-10 rounded-md px-5 text-xs"
+            />
           </div>
         </form>
       </section>
@@ -235,9 +244,15 @@
           </label>
           <div class="flex justify-end gap-2 border-t border-slate-100 pt-4">
             <button type="button" class="h-10 rounded-md px-4 text-xs font-bold text-slate-500" :disabled="voidLoading" @click="closeVoid">إلغاء</button>
-            <button type="submit" class="h-10 rounded-md bg-rose-600 px-5 text-xs font-bold text-white disabled:opacity-50" :disabled="voidLoading || !voidPaymentMethods.length">
-              {{ voidLoading ? 'جاري العكس...' : 'تأكيد العكس' }}
-            </button>
+            <LoadingButton
+              type="submit"
+              text="تأكيد العكس"
+              loadingText="جاري العكس..."
+              variant="danger"
+              :isLoading="voidLoading"
+              :disabled="!voidPaymentMethods.length"
+              class="h-10 rounded-md px-5 text-xs"
+            />
           </div>
         </form>
       </section>
@@ -261,6 +276,7 @@ import { useBranchIsolation } from '@/composables/useBranchIsolation';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { isSettingEnabled } from '@/utils';
 import PageHeader from '@/components/PageHeader.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 const permissionNames = {
   create: 'accounting.owner_contribution.create',

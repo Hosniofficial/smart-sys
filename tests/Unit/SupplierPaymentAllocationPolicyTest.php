@@ -154,12 +154,25 @@ final class SupplierPaymentAllocationPolicyTest extends TestCase
             CREATE TABLE permissions (
                 id INTEGER PRIMARY KEY,
                 tenant_id INTEGER,
-                name TEXT NOT NULL
+                name TEXT NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1
             );
             CREATE TABLE role_permissions (
                 role_id INTEGER NOT NULL,
                 permission_id INTEGER NOT NULL,
                 tenant_id INTEGER
+            );
+            CREATE TABLE permission_overrides (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL,
+                subject_type TEXT NOT NULL,
+                subject_id INTEGER NOT NULL,
+                permission_id INTEGER NOT NULL,
+                effect TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                created_by INTEGER NOT NULL,
+                created_at TEXT,
+                updated_at TEXT
             );
             CREATE TABLE users_role (
                 user_id INTEGER NOT NULL,

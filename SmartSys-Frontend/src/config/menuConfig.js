@@ -63,7 +63,7 @@ import {
   LayoutDashboard, ShoppingCart, FileText, ClipboardCheck,
   Users, Truck, Wallet, Banknote, Receipt, Shield,
   Undo2, History, ShoppingBag, Package2, Warehouse,
-  Building2, Share2, CreditCard, Link, TrendingUp,
+  Building2, Share2, CreditCard, Link, TrendingUp, Tags,
   ArrowLeftRight, Clock, BarChart2, Settings, PieChart,
   UserCog, ShieldCheck, Layers, BookOpen,
   ClipboardList, CalendarCheck
@@ -99,6 +99,8 @@ export const menuConfig = [
     items: [
       { name: 'نقطة البيع', path: '/sales/pos', icon: ShoppingCart, access: 'user', permissions: ['sale.view', 'sale.create'] },
       { name: 'سجل المبيعات', path: '/sales/history', icon: FileText, access: 'user', permission: 'sale.view' },
+      { name: 'عروض الأسعار', path: '/sales/quotations', icon: FileText, access: 'user', permission: 'sale.view' },
+      { name: 'حملات الأسعار', path: '/sales/price-campaigns', icon: Tags, access: 'user', permission: 'sale.discount' },
       { name: 'موافقات المبيعات', path: '/sales/approvals', icon: ClipboardCheck, access: 'user', permission: 'sales.approval.view' },
       { name: 'لوحة تحكم الكاشير', path: '/cashier', icon: LayoutDashboard, access: 'user' },
       { name: 'جلسات الكاشير', path: '/sessions', icon: Clock, access: 'user', permission: 'pos.session.manage' },
@@ -121,22 +123,15 @@ export const menuConfig = [
   },
 
   {
-    name: 'الضمان',
-    key: 'warranty',
-    icon: Shield,
+    name: 'العمليات',
+    key: 'operations',
+    icon: ClipboardList,
     access: 'user',
     items: [
       { name: 'طلبات الضمان', path: '/warranty', icon: Shield, access: 'user' },
+      { name: 'صيانة الأجهزة', path: '/repairs', icon: CalendarCheck, access: 'user', permission: 'sale.view' },
     ],
     relatedRoutes: []
-  },
-
-  {
-    name: 'صيانة الأجهزة',
-    path: '/repairs',
-    icon: CalendarCheck,
-    access: 'user',
-    permission: 'sale.view'
   },
 
   {
@@ -161,6 +156,7 @@ export const menuConfig = [
     items: [
       { name: 'إدارة المنتجات', path: '/products', icon: Package2, access: 'user', permission: 'product.view' },
       { name: 'إدارة المخزون', path: '/inventory', icon: Warehouse, access: 'user', permission: 'inventory.view' },
+      { name: 'إدارة التصنيفات', path: '/inventory/categories', icon: Tags, access: 'user', permission: 'category.view' },
       { name: 'إدارة الفروع', path: '/branches', icon: Building2, access: 'user', permission: 'branch.view' },
       { name: 'توزيع جماعي', path: '/branches/bulk-distribution', icon: Share2, access: 'user', permission: 'inventory.transfer' },
       { name: 'الرصيد الافتتاحي', path: '/opening-balance', icon: CreditCard, access: 'user', permission: 'accounting.opening_balance.commit' },
@@ -252,6 +248,7 @@ export const menuConfig = [
     access: 'user',
     items: [
       { name: 'إدارة الموظفين والصلاحيات', path: '/users', icon: UserCog, access: 'user', permissions: ['user.view', 'role.view', 'permission.view'] },
+      { name: 'إدارة صلاحيات الأدوار', path: '/role-permissions', icon: ShieldCheck, access: 'user', permission: 'permission.assign' },
       { name: 'سلامة البيانات', path: '/data-integrity', icon: ShieldCheck, access: 'admin' },
     ],
     relatedRoutes: []

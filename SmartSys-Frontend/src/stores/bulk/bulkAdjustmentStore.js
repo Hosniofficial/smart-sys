@@ -1,7 +1,10 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { bulkAdjustFromCsv, bulkAdjustProduct } from '@/services/BulkAdjustmentsService';
-import apiClient from '@/config/axios';
+import {
+  bulkAdjustFromCsv,
+  bulkAdjustProduct,
+  searchBulkAdjustmentProducts,
+} from '@/services/BulkAdjustmentsService';
 
 const nowMs = () => Date.now();
 
@@ -28,9 +31,7 @@ export const useBulkAdjustmentStore = defineStore('bulkAdjustment', () => {
 
     const promise = (async () => {
       try {
-        const { data } = await apiClient.get('/products/search', {
-          params: normalizedQuery ? { q: normalizedQuery, limit: 10 } : {},
-        });
+        const data = await searchBulkAdjustmentProducts(normalizedQuery);
         const results = data?.data ?? data;
         const items = (Array.isArray(results) ? results : (results?.items || []))
           .map(product => ({

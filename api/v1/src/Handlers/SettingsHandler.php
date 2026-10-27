@@ -15,9 +15,8 @@ use Psr\Http\Message\ResponseInterface as Response;
  * Persists and retrieves typed, tenant-scoped settings.
  *
  * Settings are stored in the settings table, cached per handler instance, and
- * audited on writes. Prefix and domain helpers expose grouped settings, defaults,
- * and static currency metadata. AdminSettingsHandler uses this class for API
- * persistence; StrictSubscriptionHandler also reads settings internally.
+ * audited on writes. AdminSettingsHandler uses this class for API persistence;
+ * StrictSubscriptionHandler also reads settings internally.
  * Authorization for settings endpoints is handled by AdminSettingsHandler and
  * app/routes/settings.php.
  */
@@ -237,40 +236,6 @@ class SettingsHandler extends BaseHandler
         }
     }
 
-    /** Load and cache all settings whose keys share the supplied prefix. */
-    public function getGroup($prefix, $tenantId = null): array
-    {
-        $resolvedTenantId = $this->resolveTenantId($tenantId);
-
-        if (!$resolvedTenantId) {
-            $this->logger->warning('Settings group get - missing tenant ID', [
-                'prefix' => $prefix
-            ]);
-            return [];
-        }
-
-        $stmt = $this->db->prepare(
-            "SELECT key_name, value, type
-             FROM settings
-             WHERE key_name LIKE ? AND tenant_id = ?
-             ORDER BY key_name"
-        );
-        $stmt->execute([$prefix . '%', $resolvedTenantId]);
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-        $settings = [];
-
-        foreach ($results as $result) {
-            $key = $result['key_name'];
-            $value = $this->castValue($result['value'], $result['type']);
-
-            $settings[$key] = $value;
-            $this->cache[$resolvedTenantId . ':' . $key] = $value;
-        }
-
-        return $settings;
-    }
-
     /** Persist a settings map, reusing an active database transaction. */
     public function setGroup($settings, $tenantId = null, $userId = null): bool
     {
@@ -302,108 +267,6 @@ class SettingsHandler extends BaseHandler
 
             throw $e;
         }
-    }
-
-    public function getCompanySettings($tenantId = null): array
-    {
-        return $this->getGroup('company.', $tenantId);
-    }
-
-    public function getInvoiceSettings($tenantId = null): array
-    {
-        return $this->getGroup('invoice.', $tenantId);
-    }
-
-    public function updateInvoiceSettings($settings, $tenantId = null, $userId = null): bool
-    {
-        $validSettings = [
-            'invoice.prefix',
-            'invoice.next_number',
-            'invoice.template',
-            'invoice.terms',
-            'invoice.notes',
-            'invoice.due_days',
-            'invoice.tax_rate',
-            'invoice.show_tax',
-            'invoice.show_discount',
-            'invoice.show_shipping',
-            'invoice.footer'
-        ];
-
-        $filteredSettings = array_intersect_key($settings, array_flip($validSettings));
-
-        return $this->setGroup($filteredSettings, $tenantId, $userId);
-    }
-
-    public function getSecuritySettings($tenantId = null): array
-    {
-        return $this->getGroup('security.', $tenantId);
-    }
-
-    public function updateSecuritySettings($settings, $tenantId = null, $userId = null): bool
-    {
-        $validSettings = [
-            'security.password_policy',
-            'security.password_expiry_days',
-            'security.session_timeout',
-            'security.max_login_attempts',
-            'security.lockout_duration',
-            'security.two_factor_enabled',
-            'security.allowed_ips',
-            'security.api_rate_limit',
-            'security.jwt_expiry',
-            'security.cors_origins'
-        ];
-
-        $filteredSettings = array_intersect_key($settings, array_flip($validSettings));
-
-        return $this->setGroup($filteredSettings, $tenantId, $userId);
-    }
-
-    public function getNotificationSettings($tenantId = null): array
-    {
-        return $this->getGroup('notification.', $tenantId);
-    }
-
-    public function updateNotificationSettings($settings, $tenantId = null, $userId = null): bool
-    {
-        $validSettings = [
-            'notification.email_enabled',
-            'notification.sms_enabled',
-            'notification.push_enabled',
-            'notification.low_stock_threshold',
-            'notification.order_status_change',
-            'notification.payment_received',
-            'notification.new_customer',
-            'notification.product_expiry'
-        ];
-
-        $filteredSettings = array_intersect_key($settings, array_flip($validSettings));
-
-        return $this->setGroup($filteredSettings, $tenantId, $userId);
-    }
-
-    public function getInventorySettings($tenantId = null): array
-    {
-        return $this->getGroup('inventory.', $tenantId);
-    }
-
-    public function updateInventorySettings($settings, $tenantId = null, $userId = null): bool
-    {
-        $validSettings = [
-            'inventory.low_stock_threshold',
-            'inventory.reorder_point_calculation',
-            'inventory.expiry_notification_days',
-            'inventory.allow_backorder',
-            'inventory.auto_reorder',
-            'inventory.stock_count_interval',
-            'inventory.batch_tracking',
-            'inventory.serial_tracking'
-        ];
-
-        $filteredSettings = array_intersect_key($settings, array_flip($validSettings));
-
-        return $this->setGroup($filteredSettings, $tenantId, $userId);
     }
 
     public function updateSettings($settings, $tenantId = null, $userId = null): bool

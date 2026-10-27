@@ -2,12 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar (Active on Loading / Searching / Saving) -->
-    <div 
-      v-if="isSearchingProducts || isSaving || isPrinting || loadingSession || refreshingSession" 
-      class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]"
-    >
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isSearchingProducts || loadingSession || refreshingSession" />
 
     <div class="max-w-[1700px] mx-auto p-5 lg:p-8 space-y-6 animate-fadeIn">
       
@@ -27,6 +22,16 @@
           </button>
         </template>
       </PageHeader>
+
+      <div v-if="importedQuotationNumber" class="flex flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <strong>عرض السعر {{ importedQuotationNumber }} جاهز للمراجعة.</strong>
+          <span class="mr-1">راجع المخزون والبيانات، ثم احفظ الفاتورة لإتمام التحويل.</span>
+        </div>
+        <button class="self-start rounded-md border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 sm:self-auto" @click="clearImportedQuotation">
+          إزالة بيانات العرض
+        </button>
+      </div>
 
       <!-- Main POS Grid -->
       <div class="flex flex-col lg:flex-row gap-6 w-full items-start">
@@ -157,7 +162,12 @@
                     </td>
                     <td class="px-3 py-3 text-[11px] text-slate-500 font-medium">{{ product.unit_name ?? '-' }}</td>
                     <td class="px-4 py-3 text-left font-mono font-bold text-xs text-blue-600">
-                      {{ formatPrice(product.sale_price) }}
+                      <div v-if="product.campaign_id" class="flex flex-col items-end">
+                        <span class="text-[9px] text-slate-400 line-through">{{ formatPrice(product.regular_sale_price) }}</span>
+                        <span class="text-emerald-700">{{ formatPrice(product.campaign_price) }}</span>
+                        <span class="mt-0.5 rounded bg-rose-50 px-1.5 py-0.5 text-[8px] text-rose-600">عرض {{ product.campaign_name }}</span>
+                      </div>
+                      <span v-else>{{ formatPrice(product.sale_price) }}</span>
                     </td>
                     <td class="px-3 py-3 text-left font-mono text-[11px] text-amber-600 font-bold">
                       {{ formatPrice(product.min_sale_price) }}
@@ -437,6 +447,11 @@
                     <!-- Name & Sub-details -->
                     <td class="py-2.5 pl-2">
                       <div class="font-bold text-slate-900 leading-tight">{{ item.name }}</div>
+                      <div v-if="item.campaign_id" class="mt-1 text-[9px] font-bold text-emerald-700">
+                        <i class="fas fa-tag ml-1"></i>
+                        سعر حملة: {{ item.campaign_name }}
+                        <span class="mr-1 text-slate-400 line-through">{{ formatPrice(item.regular_sale_price) }}</span>
+                      </div>
                       <div class="flex items-center gap-2 mt-1 text-[10px]">
                         <!-- Batches Select -->
                         <select 
@@ -467,7 +482,7 @@
                         </div>
                       </div>
                       <div v-if="Number(item.min_sale_price) > 0 && item.sale_price < item.min_sale_price" class="text-[9px] font-mono text-amber-600 font-bold mt-0.5">
-                        أقل من الحد الأدنى - يتطلب اعتماد مشرف ({{ formatPrice(item.min_sale_price) }})
+                        أقل من الحد الأدنى - يتطلب اعتماد مدير الفرع ({{ formatPrice(item.min_sale_price) }})
                       </div>
                     </td>
 
@@ -488,6 +503,7 @@
                         type="number" 
                         v-model.number="item.sale_price" 
                         :min="item.min_sale_price" 
+                        :disabled="item.campaign_id && !canApplyCampaignDiscount"
                         :class="['w-16 h-7 text-center font-mono font-bold bg-white border rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none', item.sale_price < item.min_sale_price ? 'border-rose-300 text-rose-600' : 'border-slate-200 text-slate-800']" 
                         @change="validateSalePrice(item)" 
                       />
@@ -606,6 +622,7 @@
                     variant="primary"
                     loaderType="dots"
                     @click="saveAndPrint"
+                    :disabled="isImportingQuotation"
                     class="h-10 w-full rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700"
                   />
 
@@ -617,9 +634,18 @@
                       variant="primary"
                       loaderType="dots"
                       @click="saveSale()"
-                      :disabled="isPrinting"
+                      :disabled="isPrinting || isImportingQuotation"
                       class="h-9 w-full rounded-lg text-xs font-bold shadow-sm"
                     />
+                  <button
+                    type="button"
+                    class="h-9 w-full rounded-lg border border-indigo-200 bg-indigo-50 text-xs font-bold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="!invoice.length || isSaving || isPrinting || isSavingQuotation || isImportingQuotation"
+                    @click="openQuotationModal"
+                  >
+                    <i class="fas fa-file-invoice-dollar ml-1.5"></i>
+                    حفظ كعرض سعر
+                  </button>
                 </div>
               </div>
             </div>
@@ -633,6 +659,52 @@
     </div>
 
     <!-- ===== SYSTEM MODALS ===== -->
+
+    <BaseModal :show="showQuotationModal" @close="showQuotationModal = false" maxWidth="md">
+      <template #header>
+        <div>
+          <h3 class="text-sm font-bold text-slate-900">إنشاء عرض سعر</h3>
+          <p class="mt-1 text-[10px] font-bold text-slate-400">سيُحفظ العرض دون إصدار فاتورة أو خصم كميات من المخزون.</p>
+        </div>
+      </template>
+      <div class="space-y-4">
+        <label class="block space-y-1.5">
+          <span class="text-xs font-bold text-slate-600">مدة صلاحية العرض (بالأيام)</span>
+          <input v-model.number="quotationValidityDays" type="number" min="1" max="365" step="1" class="filter-input" />
+        </label>
+        <div class="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-800">
+          صالح حتى {{ quotationValidUntil }}
+        </div>
+        <div v-if="quotationHasBelowCost" class="space-y-2 rounded-lg border border-rose-200 bg-rose-50 p-3">
+          <p v-if="!canApproveBelowCost" class="text-xs font-bold text-rose-700">يتضمن العرض سعراً أقل من التكلفة ولا تملك صلاحية اعتماده.</p>
+          <template v-else>
+            <p class="text-xs font-bold text-rose-700">يتضمن العرض سعراً أقل من التكلفة. يلزم تسجيل سبب الاعتماد.</p>
+            <textarea v-model.trim="quotationBelowCostReason" rows="2" maxlength="500" class="filter-input h-auto p-3" placeholder="سبب الاعتماد (5 أحرف على الأقل)"></textarea>
+          </template>
+        </div>
+        <label v-if="quotationHasBelowMinimumPrice" class="flex cursor-pointer items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">
+          <input v-model="quotationPriceOverrideConfirmed" type="checkbox" class="mt-0.5" />
+          <span>أؤكد تقديم هذا العرض بسعر أقل من الحد الأدنى المحدد للمنتج.</span>
+        </label>
+        <label class="block space-y-1.5">
+          <span class="text-xs font-bold text-slate-600">ملاحظات العرض (اختياري)</span>
+          <textarea v-model.trim="quotationNotes" rows="3" maxlength="2000" class="filter-input h-auto p-3" placeholder="شروط أو ملاحظات إضافية للعميل"></textarea>
+        </label>
+      </div>
+      <template #footer>
+        <button class="h-9 rounded-md px-4 text-xs font-bold text-slate-500 hover:bg-slate-100" :disabled="isSavingQuotation" @click="showQuotationModal = false">إلغاء</button>
+        <LoadingButton
+          text="حفظ عرض السعر"
+          :isLoading="isSavingQuotation"
+          loadingText="جاري الحفظ..."
+          icon="fas fa-save"
+          variant="primary"
+          loaderType="dots"
+          class="h-9"
+          @click="saveQuotation"
+        />
+      </template>
+    </BaseModal>
 
     <!-- Open Session Modal -->
     <BaseModal :show="showOpenDialog" @close="showOpenDialog = false" maxWidth="md">
@@ -943,8 +1015,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BusyIndicator from '@/components/ui/BusyIndicator.vue';
 import BaseModal from '@/components/BaseModal.vue';
@@ -953,7 +1025,6 @@ import { getLocalDateISO, isSettingEnabled, printDocument } from '@/utils';
 import { getBuilderByTemplate } from '@/utils/printTemplates';
 import { useCashierSessionGuard } from '@/composables/useCashierSessionGuard';
 import { useToast } from '@/composables/useToast';
-import { useLoader } from '@/composables/useLoader';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useSessionStore } from '@/stores/session/sessionStore';
 import { useAuthStore } from '@/stores/auth/authStore';
@@ -971,8 +1042,8 @@ import AlertService from '@/services/AlertService';
 
 const isComponentMounted = ref(false);
 const router = useRouter();
+const route = useRoute();
 const { showToast } = useToast();
-const { showLoader, hideLoader } = useLoader();
 const authStore = useAuthStore();
 const branchStore = useBranchStore();
 const catalogStore = useCatalogStore();
@@ -985,14 +1056,18 @@ const inventoryStore = useInventoryStore();
 const salesStore = useSalesStore();
 const bootstrapStore = useBootstrapStore();
 const { ensureOpenSession } = useCashierSessionGuard();
-const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
+const { formatCurrencyLocale, fetchSettings, currencyCode } = useCompanyCurrency();
 const formatPrice = (amount) => formatCurrencyLocale(amount, 2);
 const userChoseBranch = ref(localStorage.getItem('selectedBranchId') !== null && localStorage.getItem('selectedBranchId') !== 'all');
 
 const canApproveBelowCost = computed(() => {
   const role = String(authStore.user?.role || '').toLowerCase();
-  return authStore.isAdmin || authStore.isOwner || ['manager', 'branch_manager', 'supervisor', 'branch_supervisor', 'administrator', 'super_admin'].includes(role);
+  return authStore.isAdmin || authStore.isOwner || role === 'manager';
 });
+const canApplyCampaignDiscount = computed(() =>
+  authStore.isSuperAdmin
+  || authStore.user?.permissions?.includes('sale.discount') === true
+);
 const canSelectBranch = computed(() => {
   const role = String(authStore.user?.role || '').toLowerCase();
   return Number(authStore.user?.tenant_id) > 0 && (authStore.isAdmin || role === 'manager');
@@ -1030,6 +1105,22 @@ const currentTerminalLabel = computed(() => {
   return t ? (t.code ? `${t.code} - ${t.name}` : (t.name || '')) : '';
 });
 const showOpenDialog = ref(false);
+const showQuotationModal = ref(false);
+const isSavingQuotation = ref(false);
+const isImportingQuotation = ref(false);
+const importedQuotationNumber = ref('');
+const skipDiscountClamp = ref(false);
+const quotationValidityDays = ref(7);
+const quotationNotes = ref('');
+const quotationBelowCostReason = ref('');
+const quotationPriceOverrideConfirmed = ref(false);
+const quotationValidUntil = computed(() => {
+  const days = Math.min(365, Math.max(1, Math.floor(Number(quotationValidityDays.value) || 1)));
+  const validUntil = new Date();
+  validUntil.setHours(0, 0, 0, 0);
+  validUntil.setDate(validUntil.getDate() + days);
+  return getLocalDateISO(validUntil);
+});
 const openingAmount = ref('');
 const openSubmitting = ref(false);
 const showCloseDialog = ref(false);
@@ -1147,6 +1238,26 @@ const discountAmount = computed(() => manualPriceDiscountAmount.value + invoiceD
 
 const taxAmount = computed(() => (parseFloat(taxValue.value) || 0) / 100 * (enteredSubtotal.value - invoiceDiscountAmount.value));
 const finalTotal = computed(() => enteredSubtotal.value - invoiceDiscountAmount.value + taxAmount.value);
+const quotationPricePolicyItems = computed(() => invoice.value.map(item => {
+  const quantity = Number(item.selectedQuantity) || 0;
+  const lineSubtotal = (Number(item.sale_price) || 0) * quantity;
+  const allocatedDiscount = enteredSubtotal.value > 0
+    ? invoiceDiscountAmount.value * (lineSubtotal / enteredSubtotal.value)
+    : 0;
+  const effectiveUnitPrice = quantity > 0
+    ? (Number(item.sale_price) || 0) - allocatedDiscount / quantity
+    : 0;
+  const conversionFactor = Number(item.conversion_factor || 1);
+  const purchasePrice = Number(item.purchase_price) * conversionFactor;
+  const minimumPrice = Number(item.min_sale_price) * conversionFactor;
+  return {
+    belowCost: purchasePrice > 0 && effectiveUnitPrice + 0.005 < purchasePrice,
+    belowMinimum: minimumPrice > 0 && effectiveUnitPrice + 0.005 < minimumPrice
+      && !(purchasePrice > 0 && effectiveUnitPrice + 0.005 < purchasePrice),
+  };
+}));
+const quotationHasBelowCost = computed(() => quotationPricePolicyItems.value.some(item => item.belowCost));
+const quotationHasBelowMinimumPrice = computed(() => quotationPricePolicyItems.value.some(item => item.belowMinimum));
 
 const remainingAmount = computed(() => Math.max(0, finalTotal.value - (parseFloat(actualPaidAmount.value) || 0)));
 
@@ -1442,7 +1553,13 @@ const searchProducts = async () => {
     const res = await productStore.searchProducts({ query: searchQuery.value, branchId: wid, categoryId: selectedCategory.value, limit: 100 });
     if (currentCtrl === productSearchAbortCtrl) {
       const list = res?.data || [];
-      searchResults.value = list.map(p => ({ ...p, quantity: p.current_quantity, selectedQuantity: 1 }));
+      searchResults.value = list.map(p => ({
+        ...p,
+        regular_sale_price: Number(p.regular_sale_price ?? p.sale_price),
+        quantity: p.current_quantity,
+        selectedQuantity: 1,
+        sale_price: Number(p.campaign_price ?? p.sale_price),
+      }));
     }
   } catch (e) {
     const isAborted = e?.name === 'CanceledError' || e?.name === 'AbortError' || e?.message === 'canceled' || e?.code === 'ERR_CANCELED';
@@ -1569,7 +1686,7 @@ const getMaxAllowedDiscount = () => {
 };
 
 watch([discountValue, discountType, invoice], () => {
-  if (!invoice.value.length) return;
+  if (skipDiscountClamp.value || !invoice.value.length) return;
   let disc = parseFloat(discountValue.value) || 0;
   const total = totalAmount.value;
   const maxAllowed = getMaxAllowedDiscount();
@@ -1595,7 +1712,13 @@ const resetInvoiceState = () => {
   selectedCustomer.value = '';
   customerQuery.value = '';
   actualPaidAmount.value = 0;
+  importedQuotationNumber.value = '';
   setDefaultCashPaymentMethod();
+};
+
+const clearImportedQuotation = () => {
+  resetInvoiceState();
+  showToast('تمت إزالة بيانات العرض من الفاتورة.', 'info');
 };
 
 const holdInvoice = () => {
@@ -1614,10 +1737,82 @@ const resumeInvoice = (index) => {
   showToast('تم استئناف الفاتورة بنجاح', 'success');
 };
 
+const openQuotationModal = () => {
+  if (!invoice.value.length) {
+    showToast('أضف صنفاً واحداً على الأقل قبل إنشاء عرض السعر.', 'warning');
+    return;
+  }
+  quotationValidityDays.value = 7;
+  quotationNotes.value = '';
+  quotationBelowCostReason.value = '';
+  quotationPriceOverrideConfirmed.value = false;
+  showQuotationModal.value = true;
+};
+
+const saveQuotation = async () => {
+  if (isSavingQuotation.value) return;
+  const branchId = selectedBranch.value || authStore.user?.branch_id;
+  if (!branchId) {
+    showToast('الرجاء تحديد فرع قبل إنشاء عرض السعر.', 'error');
+    return;
+  }
+  const validityDays = Number(quotationValidityDays.value);
+  if (!Number.isInteger(validityDays) || validityDays < 1 || validityDays > 365) {
+    showToast('مدة صلاحية العرض يجب أن تكون بين يوم واحد و365 يوماً.', 'error');
+    return;
+  }
+  if (quotationHasBelowCost.value
+    && (!canApproveBelowCost.value || quotationBelowCostReason.value.trim().length < 5)) {
+    showToast(
+      canApproveBelowCost.value
+        ? 'أدخل سبباً واضحاً لاعتماد السعر الأقل من التكلفة (5 أحرف على الأقل).'
+        : 'لا تملك صلاحية إنشاء عرض بسعر أقل من التكلفة.',
+      'error'
+    );
+    return;
+  }
+  if (quotationHasBelowMinimumPrice.value && !quotationPriceOverrideConfirmed.value) {
+    showToast('أكد تجاوز الحد الأدنى للسعر قبل حفظ العرض.', 'warning');
+    return;
+  }
+
+  isSavingQuotation.value = true;
+  try {
+    const result = await salesStore.createQuotation({
+      branch_id: String(branchId),
+      customer_id: selectedCustomer.value || null,
+      valid_until: quotationValidUntil.value,
+      items: invoice.value.map(item => ({
+        product_id: Number(item.id),
+        unit_id: Number(item.unit_id || item.unit?.id || 1),
+        quantity: Number(item.selectedQuantity),
+        sale_price: Number(item.sale_price),
+        below_cost_confirmed: quotationHasBelowCost.value && canApproveBelowCost.value,
+        below_minimum_price_confirmed: quotationPriceOverrideConfirmed.value,
+      })),
+      discount_type: discountType.value === 'نسبة %' ? 'percentage' : 'fixed',
+      discount_value: Number(discountValue.value) || 0,
+      tax_rate: Number(taxValue.value) || 0,
+      currency_code: currencyCode.value || 'EGP',
+      notes: quotationNotes.value,
+      below_cost_reason: quotationBelowCostReason.value.trim(),
+    });
+    if (result.status !== 'success') {
+      throw new Error(result.message || 'تعذر إنشاء عرض السعر.');
+    }
+
+    showQuotationModal.value = false;
+    showToast(`تم حفظ عرض السعر ${result.data?.quote_number || ''} بنجاح.`, 'success');
+  } catch (error) {
+    showToast(error?.message || 'تعذر إنشاء عرض السعر.', 'error');
+  } finally {
+    isSavingQuotation.value = false;
+  }
+};
+
 const saveSale = async (options = {}) => {
   if (isSaving.value || (isPrinting.value && !options.allowWhilePrinting)) return null;
   isSaving.value = true;
-  let loaderShown = false;
   try {
     const wid = selectedBranch.value || authStore.user?.branch_id;
     if (!wid) { showToast('الرجاء اختيار مخزن قبل الحفظ', 'error'); return null; }
@@ -1641,7 +1836,7 @@ const saveSale = async (options = {}) => {
     let belowCostReason = '';
     if (belowCostItems.size) {
       if (!canApproveBelowCost.value) {
-        showToast('اعتماد البيع بأقل من التكلفة متاح للمدير أو المشرف فقط.', 'error');
+        showToast('لا تملك صلاحية اعتماد البيع بأقل من التكلفة.', 'error');
         return null;
       }
       belowCostReason = await requestBelowCostReason([...belowCostItems]);
@@ -1661,8 +1856,6 @@ const saveSale = async (options = {}) => {
       );
       if (!belowPriceConfirmed) return null;
     }
-    showLoader();
-    loaderShown = true;
     if (!requireApproval.value) {
       try {
         const pm = Number(selectedPaymentMethod.value);
@@ -1753,7 +1946,6 @@ const saveSale = async (options = {}) => {
     
     return null;
   } finally {
-    if (loaderShown) hideLoader();
     isSaving.value = false;
   }
 };
@@ -1855,6 +2047,122 @@ const loadInitial = async () => {
     showToast('فشل تحميل البيانات الأولية', 'error'); 
   }
 };
+
+const importQuotationToInvoice = async () => {
+  const quotationId = String(route.query.quotation_id || '').trim();
+  if (!quotationId || isImportingQuotation.value) return;
+  if (!/^\d+$/.test(quotationId)) {
+    showToast('معرف عرض السعر غير صالح.', 'error');
+    return;
+  }
+  if (invoice.value.length) {
+    showToast('أفرغ الفاتورة الحالية قبل تحميل عرض السعر.', 'warning');
+    return;
+  }
+
+  isImportingQuotation.value = true;
+  try {
+    const quotationResult = await salesStore.fetchQuotation(quotationId);
+    if (quotationResult.status !== 'success') {
+      throw new Error(quotationResult.message || 'تعذر تحميل عرض السعر.');
+    }
+    const quotation = quotationResult.data;
+    const today = getLocalDateISO(new Date());
+    if (quotation.status !== 'active' || quotation.valid_until < today) {
+      throw new Error('انتهت صلاحية عرض السعر أو لم يعد متاحاً للتحويل.');
+    }
+
+    const branchId = Number(quotation.branch_id);
+    if (!branchId) throw new Error('لا يوجد فرع محدد في عرض السعر.');
+    if (String(getActivebranchId()) !== String(branchId)) {
+      if (!canSelectBranch.value || !branchStore.setTemporaryBranch(branchId)) {
+        throw new Error('عرض السعر تابع لفرع غير محدد أو غير متاح لحسابك.');
+      }
+      await Promise.all([loadInitial(), refreshSession(), fetchTerminals()]);
+    }
+
+    const lines = Array.isArray(quotation.items) ? quotation.items : [];
+    if (!lines.length) throw new Error('عرض السعر لا يحتوي على أصناف.');
+
+    const productLines = await Promise.all(lines.map(async line => {
+      const detailResult = await productStore.getProductDetail(line.product_id, branchId);
+      if (detailResult.status !== 'success' || !detailResult.data) {
+        throw new Error(detailResult.message || `تعذر تحميل المنتج ${line.product_name || line.product_id}.`);
+      }
+      const detail = detailResult.data;
+      const unit = (detail.units || []).find(candidate => Number(candidate.id) === Number(line.unit_id));
+      if (!unit) throw new Error(`وحدة القياس في عرض السعر غير متاحة للمنتج ${line.product_name || detail.name}.`);
+
+      let availableBatches = [];
+      let availableSerials = [];
+      if (detail.configuration?.has_batch_number || detail.configuration?.has_serial_number) {
+        const batchesResult = await inventoryStore.fetchBatches({ productId: line.product_id, branchId });
+        if (detail.configuration.has_batch_number) availableBatches = batchesResult.data?.batches || [];
+        if (detail.configuration.has_serial_number) availableSerials = batchesResult.data?.serials || [];
+      }
+
+      const currentQuantity = detail.inventory?.current_quantity ?? detail.quantity ?? 0;
+      return {
+        ...detail,
+        product_type: detail.configuration?.product_type || 'stock',
+        has_batch_number: detail.configuration?.has_batch_number || false,
+        has_serial_number: detail.configuration?.has_serial_number || false,
+        has_expiry_date: detail.configuration?.has_expiry_date || false,
+        current_quantity: currentQuantity,
+        quantity: currentQuantity,
+        purchase_price: Number(detail.pricing?.purchase_price) || 0,
+        regular_sale_price: Number(detail.pricing?.sale_price) || 0,
+        sale_price: Number(line.sale_price),
+        catalog_sale_price: Number(detail.pricing?.sale_price) || 0,
+        min_sale_price: Number(detail.pricing?.min_sale_price) || 0,
+        fixed_discount_percentage: Number(detail.pricing?.fixed_discount_percentage) || 0,
+        conversion_factor: Number(unit.conversion_factor) || 1,
+        selectedQuantity: Number(line.quantity),
+        unit_id: Number(line.unit_id),
+        unit_name: unit.name || line.unit_name || 'قطعة',
+        available_batches: availableBatches,
+        available_serials: availableSerials,
+        batch_number: '',
+        expiry_date: '',
+        serial: '',
+        manual_price_override: Number(line.sale_price) < (Number(detail.pricing?.sale_price) || 0),
+      };
+    }));
+
+    skipDiscountClamp.value = true;
+    invoice.value = productLines;
+    discountType.value = quotation.discount_type === 'percentage' ? 'نسبة %' : 'مبلغ';
+    discountValue.value = Number(quotation.discount_value) || 0;
+    taxValue.value = Number(quotation.tax_rate) || 0;
+    selectedCustomer.value = quotation.customer_id ? String(quotation.customer_id) : '';
+    customerQuery.value = quotation.customer_name || '';
+    if (quotation.customer_id && quotation.customer_name) {
+      const customerResult = await customerStore.searchCustomers(quotation.customer_name, {
+        force: true,
+        params: { branch_id: String(branchId) },
+      });
+      const matchedCustomer = customerResult.data?.find(customer => String(customer.id) === String(quotation.customer_id));
+      if (matchedCustomer && !customers.value.some(customer => String(customer.id) === String(matchedCustomer.id))) {
+        customers.value = [...customers.value, matchedCustomer];
+      }
+    }
+    await nextTick();
+    skipDiscountClamp.value = false;
+    importedQuotationNumber.value = quotation.quote_number || String(quotation.id);
+
+    const remainingQuery = { ...route.query };
+    delete remainingQuery.quotation_id;
+    delete remainingQuery.branch_id;
+    await router.replace({ path: route.path, query: remainingQuery });
+    showToast(`تم تحميل عرض السعر ${importedQuotationNumber.value} إلى نقطة البيع.`, 'success');
+  } catch (importError) {
+    skipDiscountClamp.value = false;
+    showToast(importError.message || 'تعذر تحميل عرض السعر إلى نقطة البيع.', 'error');
+  } finally {
+    isImportingQuotation.value = false;
+  }
+};
+
 const handleSessionRefreshRequest = () => refreshSession();
 const handleSaleReturnRecorded = async (event) => {
   await refreshSession();
@@ -1879,8 +2187,10 @@ const handleBranchChange = async (newBranchId) => {
   
   // تحذير لو في فاتورة مفتوحة عند تغيير المخزن
   if (oldBranchId && newBranchId !== oldBranchId && invoice.value.length > 0) {
-    const confirmed = window.confirm(
-      `لديك ${invoice.value.length} منتج في الفاتورة الحالية.\nتغيير المخزن سيمسح الفاتورة. هل تريد المتابعة؟`
+    const confirmed = await AlertService.confirm(
+      `لديك ${invoice.value.length} منتج في الفاتورة الحالية.\nتغيير المخزن سيمسح الفاتورة. هل تريد المتابعة؟`,
+      'تأكيد تغيير الفرع',
+      { confirmText: 'تغيير الفرع ومسح الفاتورة', cancelText: 'العودة للفاتورة' }
     );
     if (!confirmed) {
       return;
@@ -1934,6 +2244,7 @@ const confirmBranchSelection = async () => {
   await Promise.all([loadInitial(), refreshSession(), fetchTerminals()]);
   setDefaultCashPaymentMethod();
   debouncedSearch();
+  await importQuotationToInvoice();
 };
 
 const cancelBranchSelection = () => router.push('/cashier');
@@ -1955,6 +2266,7 @@ onMounted(async () => {
   // سجّل ما إذا كان المستخدم اختار فرعاً في جلسة سابقة (قبل fetchBranches يكتب default)
   const hadPriorBranchChoice = localStorage.getItem('selectedBranchId') !== null 
                                && localStorage.getItem('selectedBranchId') !== 'all';
+  const quotationBranchId = String(route.query.branch_id || '').trim();
 
   try {
     branchStore.loadFromStorage();
@@ -1963,9 +2275,16 @@ onMounted(async () => {
     }
   } catch {}
 
+  if (route.query.quotation_id && quotationBranchId && canSelectBranch.value) {
+    if (!branchStore.setTemporaryBranch(quotationBranchId)) {
+      showToast('فرع عرض السعر غير متاح لحسابك.', 'error');
+      return;
+    }
+  }
+
   // بعد fetchBranches: أعد تعيين الـ flag بما كان موجوداً قبل الكتابة
   // لأن fetchBranches() قد تكتب selectedBranchId في localStorage تلقائياً
-  userChoseBranch.value = hadPriorBranchChoice;
+  userChoseBranch.value = Boolean(route.query.quotation_id && quotationBranchId) || hadPriorBranchChoice;
   
   // ✅ تحميل كل الإعدادات مرة واحدة بدل 3 مرات
   await loadAllSettings();
@@ -2004,6 +2323,7 @@ onMounted(async () => {
   await Promise.all([loadInitial(), refreshSession(), fetchTerminals()]);
   setDefaultCashPaymentMethod();
   debouncedSearch();
+  await importQuotationToInvoice();
 
   window.addEventListener('pos:return-recorded', handleSaleReturnRecorded);
   window.addEventListener('pos:voucher-recorded', handleVoucherRecorded);

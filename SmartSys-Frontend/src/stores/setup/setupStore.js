@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import apiClient from '@/config/axios';
+import setupService from '@/services/setup';
 
 export const useSetupStore = defineStore('setup', () => {
 
@@ -16,7 +16,7 @@ export const useSetupStore = defineStore('setup', () => {
     loading.value = true;
     error.value   = null;
     try {
-      const response = await apiClient.post('/setup/save', setupData);
+      const response = await setupService.save(setupData);
       return {
         status: 'success',
         data: response.data,
@@ -39,7 +39,7 @@ export const useSetupStore = defineStore('setup', () => {
     loading.value = true;
     error.value   = null;
     try {
-      const response = await apiClient.post('/setup/skip');
+      const response = await setupService.skip();
       return {
         status: 'success',
         data: response.data,
@@ -62,7 +62,7 @@ export const useSetupStore = defineStore('setup', () => {
     loading.value = true;
     error.value   = null;
     try {
-      const response = await apiClient.get('/setup/status');
+      const response = await setupService.getStatus();
       return {
         status: 'success',
         data: response.data,
@@ -85,7 +85,7 @@ export const useSetupStore = defineStore('setup', () => {
     loading.value = true;
     error.value   = null;
     try {
-      const response = await apiClient.post('/setup/opening-balance/preview', { items: payload });
+      const response = await setupService.previewOpeningBalance(payload);
       return {
         status: response.data?.status || 'success',
         data: response.data?.data ?? response.data,
@@ -108,7 +108,7 @@ export const useSetupStore = defineStore('setup', () => {
     loading.value = true;
     error.value   = null;
     try {
-      const response = await apiClient.post('/setup/opening-balance/commit', { items: payload });
+      const response = await setupService.commitOpeningBalance(payload);
       return {
         status: response.data?.status || 'success',
         data: response.data?.data ?? response.data,

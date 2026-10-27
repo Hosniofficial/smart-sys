@@ -11,12 +11,20 @@ use PDO;
  */
 final class PermissionResolver
 {
-    /** Return the distinct permission names granted through the user's roles. */
-    public static function getGrantedPermissionNames(PDO $db, int $userId): array
+    /** Return effective permission names after tenant role and user overrides. */
+    public static function getGrantedPermissionNames(PDO $db, int $userId, bool $applyUserOverrides = true): array
     {
         if ($userId <= 0) {
             return [];
         }
+
+        $userStmt = $db->prepare('SELECT tenant_id FROM users WHERE id = ? LIMIT 1');
+        $userStmt->execute([$userId]);
+        $tenantValue = $userStmt->fetchColumn();
+        if ($tenantValue === false) {
+            return [];
+        }
+        $tenantId = (int) ($tenantValue ?? 0);
 
         $assignment = $db->prepare('SELECT 1 FROM users_role WHERE user_id = ? LIMIT 1');
         $assignment->execute([$userId]);
@@ -31,7 +39,7 @@ final class PermissionResolver
             : '';
 
         $stmt = $db->prepare(
-            "SELECT DISTINCT p.name
+            "SELECT DISTINCT p.name, r.id AS role_id
              FROM users u
              {$roleJoin}
              JOIN role_permissions rp ON rp.role_id = r.id
@@ -57,12 +65,139 @@ final class PermissionResolver
                        )
                    )
                )
+               AND COALESCE(p.is_active, 1) = 1
                AND (rp.tenant_id IS NULL OR rp.tenant_id = u.tenant_id)
                AND (p.tenant_id IS NULL OR p.tenant_id = u.tenant_id)"
         );
         $stmt->execute([$userId]);
 
-        return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+        $grantedByRole = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $roleId = (int) $row['role_id'];
+            $grantedByRole[$roleId][(string) $row['name']] = true;
+        }
+
+        $assignedRoles = $db->prepare(
+            "SELECT DISTINCT r.id
+             FROM users u
+             {$roleJoin}
+             WHERE u.id = ?
+               {$assignmentScope}
+               AND (
+                   (r.tenant_id = u.tenant_id AND LOWER(r.name) NOT IN ('super_admin', 'administrator'))
+                   OR (
+                       r.tenant_id IS NULL
+                       AND (
+                           (
+                               LOWER(r.name) = 'super_admin'
+                               AND COALESCE(u.tenant_id, 0) = 0
+                           )
+                           OR (
+                               (
+                                   r.is_system_role = 1
+                                   OR LOWER(r.name) IN ('manager', 'cashier', 'finance_officer', 'inventory_clerk')
+                               )
+                               AND LOWER(r.name) NOT IN ('super_admin', 'administrator')
+                           )
+                       )
+                   )
+               )"
+        );
+        $assignedRoles->execute([$userId]);
+        $roleIds = array_map('intval', $assignedRoles->fetchAll(PDO::FETCH_COLUMN) ?: []);
+        foreach ($roleIds as $roleId) {
+            $grantedByRole[$roleId] ??= [];
+        }
+
+        if ($tenantId > 0 && $roleIds !== []) {
+            $overrides = self::getOverrides($db, $tenantId, 'role', $roleIds);
+            foreach ($overrides as $override) {
+                $roleId = (int) $override['subject_id'];
+                $name = (string) $override['name'];
+                if ($override['effect'] === 'allow') {
+                    $grantedByRole[$roleId][$name] = true;
+                } else {
+                    unset($grantedByRole[$roleId][$name]);
+                }
+            }
+        }
+
+        $granted = [];
+        foreach ($grantedByRole as $permissions) {
+            foreach ($permissions as $name => $_) {
+                $granted[$name] = true;
+            }
+        }
+
+        if ($applyUserOverrides && $tenantId > 0) {
+            foreach (self::getOverrides($db, $tenantId, 'user', [$userId]) as $override) {
+                $name = (string) $override['name'];
+                if ($override['effect'] === 'allow') {
+                    $granted[$name] = true;
+                } else {
+                    unset($granted[$name]);
+                }
+            }
+        }
+
+        $names = array_keys($granted);
+        sort($names, SORT_STRING);
+        return $names;
+    }
+
+    /** Return one role's effective permissions within the given tenant. */
+    public static function getRoleGrantedPermissionNames(PDO $db, int $tenantId, int $roleId): array
+    {
+        if ($tenantId <= 0 || $roleId <= 0) {
+            return [];
+        }
+
+        $stmt = $db->prepare(
+            'SELECT DISTINCT p.name
+             FROM role_permissions rp
+             JOIN permissions p ON p.id = rp.permission_id
+             WHERE rp.role_id = ?
+               AND (rp.tenant_id IS NULL OR rp.tenant_id = ?)
+               AND (p.tenant_id IS NULL OR p.tenant_id = ?)
+               AND COALESCE(p.is_active, 1) = 1'
+        );
+        $stmt->execute([$roleId, $tenantId, $tenantId]);
+        $granted = array_fill_keys(array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []), true);
+
+        foreach (self::getOverrides($db, $tenantId, 'role', [$roleId]) as $override) {
+            $name = (string) $override['name'];
+            if ($override['effect'] === 'allow') {
+                $granted[$name] = true;
+            } else {
+                unset($granted[$name]);
+            }
+        }
+
+        $names = array_keys($granted);
+        sort($names, SORT_STRING);
+        return $names;
+    }
+
+    /** @return array<int, array{subject_id:string,name:string,effect:string}> */
+    private static function getOverrides(PDO $db, int $tenantId, string $subjectType, array $subjectIds): array
+    {
+        if ($subjectIds === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($subjectIds), '?'));
+        $stmt = $db->prepare(
+            "SELECT po.subject_id, p.name, po.effect
+             FROM permission_overrides po
+             JOIN permissions p ON p.id = po.permission_id
+             WHERE po.tenant_id = ?
+               AND po.subject_type = ?
+               AND po.subject_id IN ({$placeholders})
+               AND (p.tenant_id IS NULL OR p.tenant_id = ?)
+               AND COALESCE(p.is_active, 1) = 1"
+        );
+        $stmt->execute(array_merge([$tenantId, $subjectType], $subjectIds, [$tenantId]));
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
     /**

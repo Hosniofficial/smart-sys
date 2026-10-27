@@ -1,10 +1,8 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar: High-precision indicator -->
-    <div v-if="isLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <!-- Top Progress Bar -->
+    <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
 
@@ -14,7 +12,7 @@
         title="إدارة الموظفين والصلاحيات"
         description="أدر حسابات الموظفين، وحدّد أدوارهم وصلاحيات الوصول إلى وظائف النظام المختلفة."
         :branches="[]"
-        :selectedBranch="null"
+        :selected-branch="null"
       >
         <template #controls>
           <button @click="openCreate" class="h-9 px-6 bg-blue-600 text-white rounded-md text-xs font-bold shadow-sm hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-2">
@@ -23,12 +21,12 @@
         </template>
       </PageHeader>
 
-      <!-- Integrity Overview KPIs: Metric Grid -->
+      <!-- KPI Cards -->
       <section class="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <div v-for="kpi in [
-          { label: 'إجمالي الموظفين', val: users.length, icon: 'fa-users', color: 'text-slate-600', bg: 'bg-slate-100' },
-          { label: 'نشط حالياً', val: users.filter(u => u.status === 'active').length, icon: 'fa-check-circle', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'موقوف', val: users.filter(u => u.status !== 'active').length, icon: 'fa-user-slash', color: 'text-rose-600', bg: 'bg-rose-50' },
+          { label: 'إجمالي الموظفين', val: total, icon: 'fa-users', color: 'text-slate-600', bg: 'bg-slate-100' },
+          { label: 'نشط حالياً', val: activeCount, icon: 'fa-check-circle', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { label: 'موقوف', val: inactiveCount, icon: 'fa-user-slash', color: 'text-rose-600', bg: 'bg-rose-50' },
           { label: 'الأدوار المعرفة', val: roles.length, icon: 'fa-shield-halved', color: 'text-blue-600', bg: 'bg-blue-50' }
         ]" :key="kpi.label" class="bg-white border border-slate-200 p-5 rounded-xl flex items-center justify-between group hover:border-slate-300 transition-all shadow-sm">
           <div>
@@ -41,12 +39,13 @@
         </div>
       </section>
 
-      <!-- Search & Filters Utility Bar -->
+      <!-- Search & Filters -->
       <section class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
         <div class="relative flex-grow group max-w-xl">
           <input 
             type="text" 
             v-model="search" 
+            @input="debouncedSearch"
             class="h-9 w-full bg-slate-50 border border-slate-100 rounded-md pr-9 pl-4 text-xs font-bold text-slate-700 focus:bg-white focus:border-blue-500 outline-none transition-all" 
             placeholder="بحث بالاسم، البريد، أو اسم المستخدم..."
           />
@@ -54,11 +53,11 @@
         </div>
         
         <div class="flex items-center gap-2">
-          <select v-model="filterRole" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-[11px] font-bold text-slate-600 hover:border-slate-300 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
+          <select v-model="filterRole" @change="loadUsers(1)" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-[11px] font-bold text-slate-600 hover:border-slate-300 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
             <option value="">جميع الأدوار</option>
             <option v-for="r in roles" :key="r.id" :value="r.id">{{ roleAr(r.name) }}</option>
           </select>
-          <select v-model="filterStatus" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-[11px] font-bold text-slate-600 hover:border-slate-300 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
+          <select v-model="filterStatus" @change="loadUsers(1)" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-[11px] font-bold text-slate-600 hover:border-slate-300 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
             <option value="">جميع الحالات</option>
             <option value="active">نشط</option>
             <option value="inactive">موقوف</option>
@@ -66,8 +65,8 @@
         </div>
       </section>
 
-      <!-- Main User Ledger: High-Density Audit Grid -->
-      <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative min-h-[500px]">
+      <!-- Main User Table -->
+      <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
             <thead>
@@ -82,18 +81,23 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 font-medium text-xs">
+              <!-- Loading Skeleton -->
               <template v-if="isLoading">
                 <tr v-for="n in 5" :key="n" class="animate-pulse">
                   <td v-for="m in 7" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                 </tr>
               </template>
-              <tr v-else-if="!filtered.length">
+
+              <!-- Empty State -->
+              <tr v-else-if="!users.length">
                 <td colspan="7" class="py-24 text-center text-slate-300">
                    <i class="fas fa-users-slash text-3xl mb-4 opacity-20"></i>
                    <p class="text-xs font-bold uppercase tracking-widest">لا يوجد موظفون متاحون حالياً</p>
                 </td>
               </tr>
-              <tr v-for="u in filtered" :key="u.id" class="hover:bg-blue-50/20 transition-all group">
+
+              <!-- Data Rows -->
+              <tr v-else v-for="u in users" :key="u.id" class="hover:bg-blue-50/20 transition-all group">
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex items-center gap-3">
                     <div :class="['w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-sm border border-white/20 uppercase transition-transform group-hover:scale-110', avatarColor(u.id)]">
@@ -105,7 +109,7 @@
                     </div>
                   </div>
                 </td>
-                <td class="px-4 py-4 text-slate-500 font-medium">{{ u.email || '—' }}                </td>
+                <td class="px-4 py-4 text-slate-500 font-medium">{{ u.email || '—' }}</td>
                 <td class="px-4 py-4 text-center text-[10px] font-bold text-slate-500">
                   {{ u.branch_name || 'بدون فرع' }}
                 </td>
@@ -136,6 +140,14 @@
                     <button @click="openEdit(u)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center shadow-sm">
                       <i class="fas fa-pen text-[10px]"></i>
                     </button>
+                    <button
+                      v-if="canAssignPermissions && !u.is_owner"
+                      @click="openPermissionOverrides(u)"
+                      title="تخصيص صلاحيات هذا المستخدم"
+                      class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-violet-600 hover:border-violet-200 transition-all flex items-center justify-center shadow-sm"
+                    >
+                      <i class="fas fa-shield-halved text-[10px]"></i>
+                    </button>
                     <button @click="confirmDelete(u)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-all flex items-center justify-center shadow-sm">
                       <i class="fas fa-trash-alt text-[10px]"></i>
                     </button>
@@ -145,9 +157,35 @@
             </tbody>
           </table>
         </div>
+
+        <!-- Pagination -->
+        <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
+          <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            صفحة <span class="text-slate-900">{{ page }}</span> من <span class="text-slate-900">{{ totalPages }}</span>
+            <span class="mx-2 text-slate-200">|</span>
+            إجمالي <span class="text-slate-900">{{ total }}</span> موظف
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-bold text-slate-400 uppercase">النتائج:</span>
+              <select v-model.number="perPage" @change="loadUsers(1)" class="h-8 border border-slate-200 rounded px-2 text-[10px] font-bold outline-none">
+                <option :value="10">10</option>
+                <option :value="20">20</option>
+                <option :value="50">50</option>
+              </select>
+            </div>
+            <PaginationControls
+              :page="page"
+              :total-pages="totalPages"
+              @previous="loadUsers(page - 1)"
+              @next="loadUsers(page + 1)"
+            />
+          </div>
+        </div>
       </div>
     </div>
 
+    <!-- Create/Edit Modal -->
     <BaseModal
       :show="modal.open"
       @close="modal.open = false"
@@ -207,7 +245,12 @@
         </div>
 
         <div class="space-y-3 pt-4 border-t border-slate-50">
-          <label class="metadata-label">الأدوار والصلاحيات</label>
+          <div class="space-y-1">
+            <label class="metadata-label">الأدوار والصلاحيات <span class="text-rose-500">*</span></label>
+            <p class="text-[10px] leading-5 text-slate-500">
+              اختر الأدوار المناسبة لمهام الموظف؛ صلاحيات الأدوار المختارة تتجمع. «مسؤول المنشأة» يملك صلاحيات إدارية واسعة.
+            </p>
+          </div>
           <div class="grid grid-cols-2 gap-3">
             <label
               v-for="role in roles"
@@ -241,10 +284,94 @@
         <button @click="modal.open = false" class="px-6 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">
           إلغاء
         </button>
-        <button @click="saveUser" :disabled="modal.saving" class="px-10 h-10 bg-slate-900 text-white rounded-md text-[11px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200 hover:bg-black transition-all flex items-center justify-center gap-3 disabled:opacity-50">
-          <BaseSpinner v-if="modal.saving" size="14" color="#fff" />
-          <span>{{ modal.mode === 'create' ? 'إضافة الموظف' : 'حفظ التعديلات' }}</span>
-        </button>
+        <LoadingButton
+          :text="modal.mode === 'create' ? 'إضافة الموظف' : 'حفظ التعديلات'"
+          loadingText="جارٍ الحفظ..."
+          :isLoading="modal.saving"
+          @click="saveUser"
+          class="px-10 h-10 rounded-md text-[11px] tracking-widest shadow-lg shadow-blue-200"
+        />
+      </template>
+    </BaseModal>
+
+    <!-- Permission Overrides Modal -->
+    <BaseModal
+      :show="permissionModal.open"
+      @close="permissionModal.open = false"
+      max-width="5xl"
+      align="start"
+      :close-on-click-outside="false"
+    >
+      <template #header>
+        <div class="flex items-center gap-3">
+          <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
+            <i class="fas fa-shield-halved text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900">تخصيص صلاحيات المستخدم</h3>
+            <p class="mt-1 text-[10px] text-slate-500">{{ permissionModal.user?.name }}</p>
+          </div>
+        </div>
+      </template>
+
+      <div class="space-y-4" dir="rtl">
+        <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[10px] leading-5 text-amber-900">
+          <strong>منح</strong> يضيف صلاحية لهذا المستخدم، و<strong>منع</strong> يسحبها حتى لو منحها أحد أدواره، و<strong>افتراضي</strong> يعيد القرار للأدوار. صلاحيات إدارة الأدوار محمية ولا يمكن تخصيصها من هنا.
+        </div>
+        <p v-if="permissionModal.error" role="alert" class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-[11px] font-bold text-rose-700">
+          {{ permissionModal.error }}
+        </p>
+        <div v-if="permissionModal.loading" class="py-12 text-center text-xs text-slate-400">جاري تحميل الصلاحيات...</div>
+        <template v-else>
+          <div class="max-h-[55vh] space-y-4 overflow-y-auto pl-1">
+            <section v-for="group in userPermissionGroups" :key="group.name" class="overflow-hidden rounded-lg border border-slate-200">
+              <header class="border-b border-slate-100 bg-slate-50 px-4 py-2 text-[11px] font-bold text-slate-700">
+                {{ permissionCategoryLabel(group.name) }}
+              </header>
+              <div class="divide-y divide-slate-100">
+                <div v-for="permission in group.items" :key="permission.name" class="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div class="min-w-0">
+                    <p class="break-words text-[11px] font-bold text-slate-800">{{ permission.display_name || permission.description || permission.name }}</p>
+                    <p class="mt-0.5 font-mono text-[9px] text-slate-400">{{ permission.name }}</p>
+                    <p class="mt-1 text-[9px] text-slate-500">
+                      من الدور: {{ permission.role_granted ? 'ممنوحة' : 'غير ممنوحة' }}
+                      <span v-if="permission.override" class="mr-2 font-bold text-violet-700">
+                        · استثناء حالي: {{ permission.override.effect === 'allow' ? 'منح' : 'منع' }}
+                      </span>
+                    </p>
+                    <p v-if="permission.override?.reason" class="mt-0.5 text-[9px] text-slate-400">السبب: {{ permission.override.reason }}</p>
+                  </div>
+                  <select
+                    v-model="permission.overrideMode"
+                    :disabled="isProtectedPermission(permission.name)"
+                    class="h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-[10px] font-bold outline-none focus:border-blue-500 disabled:bg-slate-100 sm:w-32"
+                  >
+                    <option value="inherit">افتراضي الدور</option>
+                    <option value="allow">منح للمستخدم</option>
+                    <option value="deny">منع المستخدم</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+          </div>
+          <label class="block space-y-1.5">
+            <span class="text-[10px] font-bold text-slate-500">سبب التعديل (مطلوب لسجل التدقيق)</span>
+            <textarea v-model="permissionModal.reason" maxlength="500" rows="2" class="filter-input-v2 h-auto py-2" placeholder="اكتب سبب منح أو منع الصلاحيات"></textarea>
+          </label>
+        </template>
+      </div>
+
+      <template #footer>
+        <button @click="permissionModal.open = false" class="h-10 px-5 text-xs font-bold text-slate-500">إلغاء</button>
+        <LoadingButton
+          text="حفظ التخصيصات"
+          loadingText="جاري الحفظ..."
+          :isLoading="permissionModal.saving"
+          type="button"
+          @click="savePermissionOverrides"
+          :disabled="permissionModal.loading || !permissionModal.reason.trim()"
+          class="h-10 rounded-md px-6 text-xs"
+        />
       </template>
     </BaseModal>
 
@@ -272,13 +399,18 @@
 
       <template #footer>
         <button @click="deleteModal.open = false" class="flex-1 h-10 text-xs font-bold text-slate-500">إلغاء</button>
-        <button @click="deleteUser" :disabled="deleteModal.saving" class="flex-[2] h-10 bg-rose-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-rose-900/20 active:scale-95 transition-all disabled:opacity-50">
-          تأكيد الحذف
-        </button>
+        <LoadingButton
+          text="تأكيد الحذف"
+          :isLoading="deleteModal.saving"
+          loadingText="جاري الحذف..."
+          variant="danger"
+          class="flex-[2] h-10 rounded-lg"
+          @click="deleteUser"
+        />
       </template>
     </BaseModal>
 
-    <!-- Global Toast Feed -->
+    <!-- Global Toast -->
     <transition name="slide-up">
       <div v-if="toast.show" :class="[toast.type === 'success' ? 'bg-slate-900 border-emerald-500' : 'bg-rose-600 border-white/20']"
            class="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-xl shadow-2xl text-white font-bold text-xs flex items-center gap-3 border transition-all">
@@ -291,46 +423,103 @@
 </template>
 
 <script setup>
-// [SCRIPT SECTION REMAINS 100% IDENTICAL AS PER THE CRITICAL BUSINESS LOGIC RULE]
 import { ref, computed, onMounted, reactive } from 'vue'
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import LoadingButton from '@/components/ui/LoadingButton.vue'
 import BaseModal from '@/components/BaseModal.vue'
-import apiClient from '@/config/axios'
+import PaginationControls from '@/components/ui/PaginationControls.vue'
 import { useAuthStore } from '@/stores/auth/authStore'
 import { useBranchStore } from '@/stores/branch/branchStore'
-import { useBreadcrumb } from '@/composables/useBreadcrumb';
-import PageHeader from '@/components/PageHeader.vue';
+import { useRoleStore } from '@/stores/role/roleStore'
+import { useRbacStore } from '@/stores/rbac/rbacStore'
+import { useBreadcrumb } from '@/composables/useBreadcrumb'
+import PageHeader from '@/components/PageHeader.vue'
 
-const { breadcrumb } = useBreadcrumb();
+const { breadcrumb } = useBreadcrumb()
 const authStore = useAuthStore()
-const users    = ref([])
-const roles    = ref([])
+const rbacStore = useRbacStore()
+const roleStore = useRoleStore()
 const branchStore = useBranchStore()
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const users = ref([])
+const roles = ref([])
 const branches = computed(() => branchStore.branches)
 const isLoading = ref(false)
-const savingId  = ref(null)
-const search     = ref('')
-const filterRole   = ref('')
+const savingId = ref(null)
+
+// ─── Pagination ───────────────────────────────────────────────────────────────
+const page = ref(1)
+const perPage = ref(20)
+const total = ref(0)
+const totalPages = computed(() => Math.ceil(total.value / perPage.value) || 1)
+
+// ─── KPI Counts ───────────────────────────────────────────────────────────────
+const activeCount = ref(0)
+const inactiveCount = ref(0)
+
+// ─── Filters ──────────────────────────────────────────────────────────────────
+const search = ref('')
+const filterRole = ref('')
 const filterStatus = ref('')
+let searchTimeout = null
 
+// ─── Modals ───────────────────────────────────────────────────────────────────
 const modal = reactive({ open: false, mode: 'create', saving: false, error: '', userId: null })
-const form  = reactive({ name: '', username: '', email: '', password: '', roles: [], branch_id: null, status: 'active' })
-
+const form = reactive({ name: '', username: '', email: '', password: '', roles: [], branch_id: null, status: 'active' })
 const deleteModal = reactive({ open: false, saving: false, user: null })
+const permissionModal = reactive({
+  open: false,
+  loading: false,
+  saving: false,
+  user: null,
+  permissions: [],
+  reason: '',
+  error: '',
+})
 const toast = reactive({ show: false, type: 'success', message: '' })
+
+// ─── Computed ─────────────────────────────────────────────────────────────────
+const canAssignPermissions = computed(() => authStore.user?.permissions?.includes('permission.assign') === true)
+const protectedPermissionNames = new Set([
+  'role.view', 'role.edit', 'role.create', 'role.delete', 'permission.view', 'permission.assign',
+])
+const permissionCategories = {
+  rbac: 'إدارة الأدوار والصلاحيات',
+  sales_management: 'إدارة المبيعات',
+  purchase_management: 'إدارة المشتريات',
+  inventory_management: 'إدارة المخزون',
+  pos: 'نقطة البيع',
+  payments: 'المدفوعات',
+  reports: 'التقارير',
+  system: 'النظام',
+  security: 'الأمان',
+  accounting: 'المحاسبة',
+}
+const userPermissionGroups = computed(() => {
+  const groups = new Map()
+  for (const permission of permissionModal.permissions) {
+    const category = permission.category || 'other'
+    if (!groups.has(category)) groups.set(category, [])
+    groups.get(category).push(permission)
+  }
+  return [...groups].map(([name, items]) => ({ name, items }))
+})
 
 const roleLabels = {
   super_admin: 'مدير النظام الرئيسي',
-  admin: 'مدير',
-  manager: 'مشرف',
+  admin: 'مدير النظام',
+  manager: 'مدير الفروع',
   cashier: 'كاشير',
   inventory_clerk: 'أمين مخزن',
   finance_officer: 'مسؤول مالي',
 }
-const roleAr = (name) => roleLabels[name] || name
 
-const avatarColors = ['bg-blue-600','bg-violet-600','bg-emerald-600','bg-amber-600','bg-rose-600','bg-cyan-600','bg-indigo-600','bg-pink-600']
-const avatarColor  = (id) => avatarColors[id % avatarColors.length]
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const roleAr = (name) => roleLabels[name] || name
+const permissionCategoryLabel = (name) => permissionCategories[name] || name
+const isProtectedPermission = (name) => protectedPermissionNames.has(name)
+const avatarColors = ['bg-blue-600', 'bg-violet-600', 'bg-emerald-600', 'bg-amber-600', 'bg-rose-600', 'bg-cyan-600', 'bg-indigo-600', 'bg-pink-600']
+const avatarColor = (id) => avatarColors[id % avatarColors.length]
 
 const assignedRoleIds = (user) => {
   if (typeof user.role_ids === 'string' && user.role_ids) {
@@ -342,37 +531,52 @@ const assignedRoles = (user) => {
   const roleIds = new Set(assignedRoleIds(user))
   return roles.value.filter((role) => roleIds.has(Number(role.id)))
 }
-
 const formatDate = (dt) => {
   if (!dt) return ''
   return new Date(dt).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
 }
-
 const showToast = (message, type = 'success') => {
-  toast.message = message; toast.type = type; toast.show = true
+  toast.message = message
+  toast.type = type
+  toast.show = true
   setTimeout(() => { toast.show = false }, 3000)
 }
 
-const filtered = computed(() => {
-  return users.value.filter(u => {
-    const q = search.value.toLowerCase()
-    const matchQ = !q || (u.name || '').toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)
-    const matchRole = !filterRole.value || assignedRoleIds(u).includes(Number(filterRole.value))
-    const matchStatus = !filterStatus.value || u.status === filterStatus.value
-    return matchQ && matchRole && matchStatus
-  })
-})
+// ─── Debounced Search ─────────────────────────────────────────────────────────
+const debouncedSearch = () => {
+  clearTimeout(searchTimeout)
+  searchTimeout = setTimeout(() => {
+    loadUsers(1)
+  }, 500)
+}
 
-const fetchAll = async () => {
+// ─── API ──────────────────────────────────────────────────────────────────────
+const loadUsers = async (nextPage = page.value) => {
   isLoading.value = true
   try {
-    const [uRes, rRes] = await Promise.all([
-      apiClient.get('/rbac/users'),
-      apiClient.get('/rbac/roles'),
-      branchStore.fetchBranches(),
+    const params = {
+      page: nextPage,
+      limit: perPage.value,
+      search: search.value.trim(),
+      role_id: filterRole.value || '',
+      status: filterStatus.value || '',
+    }
+
+    const response = await rbacStore.listUsers(params)
+
+    users.value = response.items || []
+    total.value = response.total || 0
+    page.value = response.page || nextPage
+
+    // جلب KPI counts منفصل (active/inactive من كل البيانات)
+    const [activeRes, inactiveRes] = await Promise.allSettled([
+      rbacStore.listUsers({ page: 1, limit: 1, status: 'active' }),
+      rbacStore.listUsers({ page: 1, limit: 1, status: 'inactive' }),
     ])
-    users.value = uRes.data?.data || uRes.data || []
-    roles.value = (rRes.data?.data || rRes.data || []).filter(r => r.name !== 'super_admin')
+
+    activeCount.value = activeRes.status === 'fulfilled' ? (activeRes.value.total || 0) : 0
+    inactiveCount.value = inactiveRes.status === 'fulfilled' ? (inactiveRes.value.total || 0) : 0
+
   } catch (e) {
     showToast('فشل تحميل البيانات', 'error')
   } finally {
@@ -380,13 +584,24 @@ const fetchAll = async () => {
   }
 }
 
+const loadRoles = async () => {
+  try {
+    const roleList = await roleStore.fetchRoles()
+    roles.value = roleList.filter(r => r.name !== 'super_admin')
+  } catch (e) {
+    showToast('فشل تحميل الأدوار', 'error')
+  }
+}
+
 const toggleStatus = async (user) => {
   savingId.value = user.id
   const newStatus = user.status === 'active' ? 'inactive' : 'active'
   try {
-    await apiClient.put(`/rbac/users/${user.id}`, { status: newStatus })
+    await rbacStore.updateUser(user.id, { status: newStatus })
     user.status = newStatus
     showToast(newStatus === 'active' ? 'تم تفعيل الحساب' : 'تم إيقاف الحساب')
+    // إعادة تحميل KPI counts
+    loadUsers(page.value)
   } catch (e) {
     showToast(e?.response?.data?.message || 'فشل تغيير الحالة', 'error')
   } finally {
@@ -395,15 +610,19 @@ const toggleStatus = async (user) => {
 }
 
 const openCreate = () => {
-  Object.assign(form, { name: '', username: '', email: '', password: '', roles: roles.value[0] ? [roles.value[0].id] : [], branch_id: null, status: 'active' })
+  Object.assign(form, { name: '', username: '', email: '', password: '', roles: [], branch_id: null, status: 'active' })
   Object.assign(modal, { open: true, mode: 'create', saving: false, error: '', userId: null })
 }
 
 const openEdit = (user) => {
   Object.assign(form, {
-    name: user.name || '', username: user.username || '',
-    email: user.email || '', password: '',
-    roles: assignedRoleIds(user), branch_id: user.branch_id ? Number(user.branch_id) : null, status: user.status || 'active'
+    name: user.name || '',
+    username: user.username || '',
+    email: user.email || '',
+    password: '',
+    roles: assignedRoleIds(user),
+    branch_id: user.branch_id ? Number(user.branch_id) : null,
+    status: user.status || 'active'
   })
   Object.assign(modal, { open: true, mode: 'edit', saving: false, error: '', userId: user.id })
 }
@@ -415,25 +634,38 @@ const saveUser = async () => {
       return (modal.error = 'اسم المستخدم والبريد وكلمة المرور مطلوبة')
   }
   if (!form.roles.length) return (modal.error = 'يجب اختيار دور واحد على الأقل')
+
   modal.saving = true
   try {
     const changingOwnPassword = modal.mode === 'edit' &&
       !!form.password &&
       Number(modal.userId) === Number(authStore.user?.id)
+
     if (modal.mode === 'create') {
-      await apiClient.post('/rbac/users', {
-        name: form.name, username: form.username, email: form.email,
-        password: form.password, roles: form.roles, branch_id: form.branch_id, status: form.status
+      await rbacStore.createUser({
+        name: form.name,
+        username: form.username,
+        email: form.email,
+        password: form.password,
+        roles: form.roles,
+        branch_id: form.branch_id,
+        status: form.status
       })
     } else {
       const payload = {
-        name: form.name, username: form.username, email: form.email,
-        roles: form.roles, branch_id: form.branch_id, status: form.status
+        name: form.name,
+        username: form.username,
+        email: form.email,
+        roles: form.roles,
+        branch_id: form.branch_id,
+        status: form.status
       }
       if (form.password) payload.password = form.password
-      await apiClient.put(`/rbac/users/${modal.userId}`, payload)
+      await rbacStore.updateUser(modal.userId, payload)
     }
+
     modal.open = false
+
     if (changingOwnPassword) {
       showToast('تم تغيير كلمة المرور. يرجى تسجيل الدخول مجددًا.')
       setTimeout(() => {
@@ -442,7 +674,8 @@ const saveUser = async () => {
       }, 1200)
       return
     }
-    await fetchAll()
+
+    await loadUsers(page.value)
     showToast(modal.mode === 'create' ? 'تم إضافة الموظف بنجاح' : 'تم تحديث البيانات')
   } catch (e) {
     modal.error = e?.response?.data?.message || e?.response?.data?.error || 'فشل الحفظ'
@@ -452,15 +685,17 @@ const saveUser = async () => {
 }
 
 const confirmDelete = (user) => {
-  deleteModal.user = user; deleteModal.open = true; deleteModal.saving = false
+  deleteModal.user = user
+  deleteModal.open = true
+  deleteModal.saving = false
 }
 
 const deleteUser = async () => {
   deleteModal.saving = true
   try {
-    await apiClient.delete(`/rbac/users/${deleteModal.user.id}`)
+    await rbacStore.deleteUser(deleteModal.user.id)
     deleteModal.open = false
-    users.value = users.value.filter(u => u.id !== deleteModal.user.id)
+    await loadUsers(page.value)
     showToast('تم حذف الموظف')
   } catch (e) {
     showToast(e?.response?.data?.message || 'فشل الحذف', 'error')
@@ -470,35 +705,84 @@ const deleteUser = async () => {
   }
 }
 
-onMounted(fetchAll)
+const openPermissionOverrides = async (user) => {
+  Object.assign(permissionModal, {
+    open: true,
+    loading: true,
+    saving: false,
+    user,
+    permissions: [],
+    reason: '',
+    error: '',
+  })
+  try {
+    const result = await rbacStore.getUserPermissions(user.id)
+    permissionModal.permissions = result.permissions.map(permission => ({
+      ...permission,
+      overrideMode: permission.override?.effect || 'inherit',
+    }))
+  } catch (e) {
+    permissionModal.error = e?.response?.data?.message || 'فشل تحميل الصلاحيات'
+  } finally {
+    permissionModal.loading = false
+  }
+}
+
+const savePermissionOverrides = async () => {
+  if (!permissionModal.reason.trim()) return
+  permissionModal.saving = true
+  permissionModal.error = ''
+  try {
+    const overrides = permissionModal.permissions
+      .filter(p => p.overrideMode !== 'inherit')
+      .map(p => ({
+        permission_name: p.name,
+        effect: p.overrideMode,
+      }))
+    await rbacStore.setUserPermissionOverrides(permissionModal.user.id, {
+      overrides,
+      reason: permissionModal.reason.trim(),
+    })
+    permissionModal.open = false
+    showToast('تم حفظ تخصيصات الصلاحيات')
+  } catch (e) {
+    permissionModal.error = e?.response?.data?.message || 'فشل حفظ التخصيصات'
+  } finally {
+    permissionModal.saving = false
+  }
+}
+
+// ─── Lifecycle ────────────────────────────────────────────────────────────────
+onMounted(async () => {
+  await Promise.all([
+    branchStore.fetchBranches(),
+    loadRoles(),
+  ])
+  await loadUsers(1)
+})
 </script>
 
 <style scoped>
-@keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
-
-.filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all;
+@keyframes loading {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
 }
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1; }
+.metadata-label {
+  @apply text-[10px] font-bold text-slate-400 uppercase tracking-widest;
+}
 
-.custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
-.custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
+.filter-input-v2 {
+  @apply w-full rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10;
+}
 
-.animate-fadeIn { animation: fadeIn 0.4s ease-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-@keyframes modalIn { from { opacity: 0; transform: scale(0.98) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-.animate-modalIn { animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-
-.slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-.slide-up-enter-from, .slide-up-leave-to { transform: translate(-50%, 20px); opacity: 0; }
-
-.fade-enter-active, .fade-leave-active { transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
-.slide-down-enter-active, .slide-down-leave-active { transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-.slide-down-enter-from, .slide-down-leave-to { transform: translateY(-10px); opacity: 0; }
-
-.status-badge { @apply px-2 py-0.5 rounded text-[9px] font-bold border inline-flex items-center justify-center; }
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.3s ease;
+}
+.slide-up-enter-from,
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 20px);
+}
 </style>

@@ -38,6 +38,7 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 
 use App\Services\NotificationAggregatorService;
 use App\Services\MonologHandler;
+use App\Utils\ApiResponseEnvelope;
 
 // Load .env
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../../..');
@@ -50,9 +51,12 @@ if (php_sapi_name() !== 'cli') {
 
     if (!$cronSecret || $providedSecret !== $cronSecret) {
         http_response_code(403);
-        echo json_encode([
+        header('Content-Type: application/json');
+        echo json_encode(ApiResponseEnvelope::normalize([
+            'status' => 'error',
+            'message' => 'Unauthorized - Invalid cron token',
             'error' => 'Unauthorized - Invalid cron token'
-        ]);
+        ], 403), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit(1);
     }
 }
@@ -101,13 +105,24 @@ try {
         'duration_seconds' => $duration
     ]);
 
-    // Output summary for logging
-    echo sprintf(
-        "[%s] Notification batch processor completed: %d batches processed in %.2f seconds\n",
-        date('Y-m-d H:i:s'),
+    $message = sprintf(
+        'Notification batch processor completed: %d batches processed in %.2f seconds',
         $processedCount,
         $duration
     );
+    if (PHP_SAPI === 'cli') {
+        echo sprintf("[%s] %s\n", date('Y-m-d H:i:s'), $message);
+    } else {
+        header('Content-Type: application/json');
+        echo json_encode(ApiResponseEnvelope::normalize([
+            'status' => 'success',
+            'message' => $message,
+            'data' => [
+                'processed_batches' => $processedCount,
+                'duration_seconds' => $duration,
+            ],
+        ], 200), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
 
     exit(0);
 
@@ -117,11 +132,17 @@ try {
         'code' => $e->getCode()
     ]);
 
-    echo sprintf(
-        "[%s] ERROR: Database connection failed - %s\n",
-        date('Y-m-d H:i:s'),
-        $e->getMessage()
-    );
+    $message = 'ERROR: Database connection failed - ' . $e->getMessage();
+    if (PHP_SAPI === 'cli') {
+        echo sprintf("[%s] %s\n", date('Y-m-d H:i:s'), $message);
+    } else {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode(ApiResponseEnvelope::normalize([
+            'status' => 'error',
+            'message' => $message,
+        ], 500), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
 
     exit(1);
 
@@ -131,11 +152,17 @@ try {
         'trace' => $e->getTraceAsString()
     ]);
 
-    echo sprintf(
-        "[%s] ERROR: %s\n",
-        date('Y-m-d H:i:s'),
-        $e->getMessage()
-    );
+    $message = 'ERROR: ' . $e->getMessage();
+    if (PHP_SAPI === 'cli') {
+        echo sprintf("[%s] %s\n", date('Y-m-d H:i:s'), $message);
+    } else {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode(ApiResponseEnvelope::normalize([
+            'status' => 'error',
+            'message' => $message,
+        ], 500), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
 
     exit(1);
 }

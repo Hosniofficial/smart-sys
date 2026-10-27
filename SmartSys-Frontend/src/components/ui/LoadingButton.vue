@@ -1,7 +1,8 @@
 <template>
   <button
-    type="button"
-    :disabled="isLoading"
+    :type="type"
+    :disabled="disabled || isLoading"
+    :aria-busy="isLoading || undefined"
     class="loading-button inline-flex items-center justify-center gap-2 border-none cursor-pointer transition-all whitespace-nowrap font-bold uppercase"
     :class="[
       `loading-button--${variant}`,
@@ -9,23 +10,16 @@
     ]"
     v-bind="$attrs"
   >
-    <!-- Loading state -->
     <div v-if="isLoading" class="loading-button__loader">
-      <!-- Option 1: Dots Animation (Default) -->
-      <div v-if="loaderType === 'dots'" class="dots-loader">
+      <div v-if="loaderType === 'dots'" class="dots-loader" aria-hidden="true">
         <span class="dot"></span>
         <span class="dot"></span>
         <span class="dot"></span>
       </div>
-
-      <!-- Option 2: Linear Progress -->
-      <div v-else-if="loaderType === 'line'" class="line-loader"></div>
-
-      <!-- Option 3: Shimmer -->
-      <div v-else-if="loaderType === 'shimmer'" class="shimmer-loader"></div>
+      <div v-else-if="loaderType === 'line'" class="line-loader" aria-hidden="true"></div>
+      <div v-else-if="loaderType === 'shimmer'" class="shimmer-loader" aria-hidden="true"></div>
     </div>
 
-    <!-- Text or Icon -->
     <span v-if="!isLoading || showTextDuringLoad" class="loading-button__text">
       <i v-if="icon && !isLoading" :class="icon" class="loading-button__icon text-[10px]"></i>
       {{ isLoading ? loadingText : text }}
@@ -34,10 +28,21 @@
 </template>
 
 <script setup>
+defineOptions({ inheritAttrs: false })
+
 defineProps({
+  type: {
+    type: String,
+    default: 'button',
+    validator: (value) => ['button', 'submit', 'reset'].includes(value)
+  },
   text: {
     type: String,
     required: true
+  },
+  disabled: {
+    type: Boolean,
+    default: false
   },
   isLoading: {
     type: Boolean,
@@ -53,8 +58,8 @@ defineProps({
   },
   variant: {
     type: String,
-    default: 'primary', // primary, secondary, danger
-    validator: (v) => ['primary', 'secondary', 'danger'].includes(v)
+    default: 'primary',     // primary, secondary, success, indigo, warning, danger
+    validator: (v) => ['primary', 'secondary', 'success', 'indigo', 'warning', 'danger'].includes(v)
   },
   loaderType: {
     type: String,
@@ -81,14 +86,14 @@ defineProps({
 /* ═══════════════════════════════════════════════════════════ */
 
 .loading-button--primary {
-  background-color: #1f2937;
+  background-color: #2563eb;
   color: #fff;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
 }
 
 .loading-button--primary:hover:not(:disabled) {
-  background-color: #111827;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.15);
+  background-color: #1d4ed8;
+  box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.25);
 }
 
 .loading-button--primary:active:not(:disabled) {
@@ -104,6 +109,36 @@ defineProps({
 .loading-button--secondary:hover:not(:disabled) {
   background-color: #e5e7eb;
   border-color: #9ca3af;
+}
+
+.loading-button--success {
+  background-color: #059669;
+  color: #fff;
+  box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.2);
+}
+
+.loading-button--success:hover:not(:disabled) {
+  background-color: #047857;
+}
+
+.loading-button--indigo {
+  background-color: #4f46e5;
+  color: #fff;
+  box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
+}
+
+.loading-button--indigo:hover:not(:disabled) {
+  background-color: #4338ca;
+}
+
+.loading-button--warning {
+  background-color: #d97706;
+  color: #fff;
+  box-shadow: 0 4px 6px -1px rgba(217, 119, 6, 0.2);
+}
+
+.loading-button--warning:hover:not(:disabled) {
+  background-color: #b45309;
 }
 
 .loading-button--danger {

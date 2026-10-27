@@ -2,12 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
 
     <!-- Top Progress Bar -->
-    <div
-      v-if="isLoading || isGLLoading || isTransfersLoading || isStockTransfersLoading || isActivatingBranch || isPostingBranch"
-      class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]"
-    >
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading || isGLLoading || isTransfersLoading || isStockTransfersLoading" />
 
     <div class="max-w-[1800px] mx-auto p-4 lg:p-8 space-y-8 animate-fadeIn">
 
@@ -174,14 +169,18 @@
                       </button>
                     </div>
 
-                    <button
-                      @click="loadBranchProductGLStatuses"
-                      :disabled="isGLLoading"
-                      class="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all flex items-center justify-center shadow-sm"
+                    <LoadingButton
+                      text=""
+                      loadingText=""
+                      :showTextDuringLoad="false"
+                      icon="fas fa-sync-alt"
+                      :isLoading="isGLLoading"
+                      variant="secondary"
+                      class="w-8 h-8 rounded-lg border border-slate-200 bg-white p-0 text-slate-400 shadow-sm hover:text-emerald-600 hover:border-emerald-200"
                       title="تحديث حالات GL"
-                    >
-                      <i class="fas fa-sync-alt text-[10px]" :class="{ 'animate-spin': isGLLoading }"></i>
-                    </button>
+                      aria-label="تحديث حالات GL"
+                      @click="loadBranchProductGLStatuses"
+                    />
                   </div>
                 </div>
 
@@ -325,14 +324,18 @@
                     <i class="fas fa-plus text-[10px]"></i>
                     <span>نقل جديد</span>
                   </router-link>
-                  <button
-                    @click="fetchTransfers"
-                    :disabled="isTransfersLoading"
-                    class="w-9 h-9 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center shadow-sm"
+                  <LoadingButton
+                    text=""
+                    loadingText=""
+                    :showTextDuringLoad="false"
+                    icon="fas fa-sync-alt"
+                    :isLoading="isTransfersLoading"
+                    variant="secondary"
+                    class="w-9 h-9 rounded-md border border-slate-200 bg-white p-0 text-slate-400 shadow-sm hover:text-blue-600 hover:border-blue-200"
                     title="تحديث السجل"
-                  >
-                    <i class="fas fa-sync-alt text-xs" :class="{ 'animate-spin': isTransfersLoading }"></i>
-                  </button>
+                    aria-label="تحديث سجل التحويلات"
+                    @click="fetchTransfers"
+                  />
                 </div>
               </div>
 
@@ -416,14 +419,18 @@
                   </div>
                 </div>
 
-                <button
-                  @click="fetchStockTransfers"
-                  :disabled="isStockTransfersLoading"
-                  class="w-9 h-9 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center justify-center shadow-sm"
+                <LoadingButton
+                  text=""
+                  loadingText=""
+                  :showTextDuringLoad="false"
+                  icon="fas fa-sync-alt"
+                  :isLoading="isStockTransfersLoading"
+                  variant="secondary"
+                  class="w-9 h-9 rounded-md border border-slate-200 bg-white p-0 text-slate-400 shadow-sm hover:text-indigo-600 hover:border-indigo-200"
                   title="تحديث السجلات"
-                >
-                  <i class="fas fa-sync-alt text-xs" :class="{ 'animate-spin': isStockTransfersLoading }"></i>
-                </button>
+                  aria-label="تحديث سجلات النقل"
+                  @click="fetchStockTransfers"
+                />
               </div>
 
               <!-- High-Density Table -->
@@ -629,15 +636,14 @@
 
       <template #footer>
         <button @click="showBranchActivateModal = false" class="flex-1 h-10 text-xs font-bold text-slate-500">إلغاء</button>
-        <button
+        <LoadingButton
           @click="activateBranchProduct"
-          :disabled="isActivatingBranch"
-          class="flex-2 h-10 bg-blue-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 flex items-center justify-center gap-2 px-8 disabled:opacity-50"
-        >
-          <BaseSpinner v-if="isActivatingBranch" size="14" color="#fff" />
-          <i v-else class="fas fa-check text-xs"></i>
-          <span>تفعيل الآن</span>
-        </button>
+          text="تفعيل الآن"
+          :isLoading="isActivatingBranch"
+          loadingText="جارٍ التفعيل..."
+          variant="primary"
+          class="flex-2 h-10 rounded-lg px-8"
+        />
       </template>
     </BaseModal>
 
@@ -703,15 +709,16 @@
 
         <div class="flex gap-3 pt-2">
           <button type="button" @click="showBranchOpeningBalanceModal = false" class="flex-1 h-10 text-xs font-bold text-slate-500">إلغاء</button>
-          <button
+          <LoadingButton
             type="submit"
-            :disabled="isPostingBranch || !branchObQuantity || !branchObUnitCost"
-            class="flex-2 h-10 bg-emerald-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-emerald-900/20 active:scale-95 flex items-center justify-center gap-2 px-8 disabled:opacity-50"
-          >
-            <BaseSpinner v-if="isPostingBranch" size="14" color="#fff" />
-            <i v-else class="fas fa-check text-xs"></i>
-            <span>ترحيل الرصيد الافتتاحي</span>
-          </button>
+            text="ترحيل الرصيد الافتتاحي"
+            loadingText="جارٍ الترحيل..."
+            variant="success"
+            icon="fas fa-check"
+            :isLoading="isPostingBranch"
+            :disabled="!branchObQuantity || !branchObUnitCost"
+            class="flex-2 h-10 rounded-lg px-8 text-xs shadow-lg shadow-emerald-900/20"
+          />
         </div>
       </form>
     </BaseModal>
@@ -729,9 +736,9 @@ import { getLocalDateISO } from '@/utils';
 import { useToast } from '@/composables/useToast';
 import BranchInventory from '@/components/branch/BranchInventory.vue';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import { useBranchStore } from '@/stores/branch/branchStore';
 import { useProductStore } from '@/stores/product/productStore';
-import apiClient from '@/config/axios';
 
 // --- Services & Router ---
 const route = useRoute();
@@ -895,9 +902,7 @@ const fetchTransfers = async () => {
   isTransfersLoading.value = true;
   transfersError.value = null;
   try {
-    const response = await apiClient.get(`/branches/${branchId}/transfers`);
-    const data = response?.data?.data ?? response?.data ?? [];
-    transfers.value = Array.isArray(data) ? data : (data?.items || []);
+    transfers.value = await branchStore.fetchBranchTransfers(branchId);
   } catch (err) {
     transfersError.value = err.response?.data?.message || err.message || 'حدث خطأ أثناء جلب سجل عمليات النقل';
   } finally {
@@ -910,11 +915,7 @@ const fetchStockTransfers = async () => {
   isStockTransfersLoading.value = true;
   stockTransfersError.value = null;
   try {
-    const response = await apiClient.get('/branches/transfers', {
-      params: { branch_id: branchId },
-    });
-    const data = response?.data?.data ?? response?.data ?? [];
-    stockTransfers.value = Array.isArray(data) ? data : (data?.items || []);
+    stockTransfers.value = await branchStore.fetchStockTransfers(branchId);
   } catch (err) {
     stockTransfersError.value = err.response?.data?.message || err.message || 'حدث خطأ أثناء جلب عمليات النقل المرجعية';
   } finally {
@@ -928,8 +929,7 @@ const openStockTransferDetails = async (id) => {
   stockTransferDetails.value = null;
   showStockTransferDetails.value = true;
   try {
-    const response = await apiClient.get(`/branches/transfers/${id}`);
-    stockTransferDetails.value = response?.data?.data ?? response?.data ?? null;
+    stockTransferDetails.value = await branchStore.fetchStockTransfer(id);
   } catch (err) {
     showToast(err.response?.data?.message || err.message || 'حدث خطأ أثناء جلب التفاصيل', 'error');
   } finally {
@@ -984,18 +984,6 @@ watch(activeTab, (tab) => {
 @keyframes loading {
   0% { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
-}
-
-.filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
-}
-
-.metadata-label {
-  @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1;
-}
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
 }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }

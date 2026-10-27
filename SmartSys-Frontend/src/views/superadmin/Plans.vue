@@ -2,12 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div 
-      v-if="loading || addLoading || Object.values(saveLoading).some(Boolean) || Object.values(deleteLoading).some(Boolean)" 
-      class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]"
-    >
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8 animate-fadeIn">
       
@@ -21,15 +16,16 @@
       >
         <template #controls>
           <div class="flex items-center gap-2">
-            <button 
-              @click="load" 
-              :disabled="loading" 
-              class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold transition-all flex items-center gap-2 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+            <LoadingButton
+              text="تحديث"
+              loadingText="جاري التحميل..."
+              icon="fas fa-rotate"
+              :isLoading="loading"
+              variant="secondary"
+              class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-700 text-xs shadow-sm hover:bg-slate-50"
               title="تحديث البيانات"
-            >
-              <i class="fas fa-rotate text-[10px]" :class="{'animate-spin': loading}"></i>
-              <span>تحديث</span>
-            </button>
+              @click="load"
+            />
             <button 
               @click="showAddModal = true" 
               class="h-9 px-4 rounded-md bg-blue-600 text-white text-xs font-bold shadow-sm hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-2"
@@ -170,25 +166,28 @@
                 </td>
                 <td class="px-6 py-4 text-center">
                   <div class="flex items-center justify-center gap-1.5">
-                    <button 
-                      @click="save(p)" 
-                      :disabled="p.code === 'trial' || saveLoading[p.code]" 
-                      class="h-8 px-3 rounded-md bg-blue-600 text-white text-[11px] font-bold shadow-sm hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-1.5"
-                    >
-                      <BaseSpinner v-if="saveLoading[p.code]" :size="10" color="#fff" :margin="0" />
-                      <i v-else class="fas fa-save text-[10px]"></i>
-                      <span>حفظ</span>
-                    </button>
-                    <button 
+                    <LoadingButton
+                      text="حفظ"
+                      loadingText="جارٍ الحفظ..."
+                      icon="fas fa-save"
+                      :isLoading="saveLoading[p.code]"
+                      :disabled="p.code === 'trial'"
+                      @click="save(p)"
+                      class="h-8 rounded-md px-3 text-[11px] disabled:opacity-40"
+                    />
+                    <LoadingButton
                       v-if="p.code !== 'trial'" 
                       @click="deletePlan(p)" 
-                      :disabled="deleteLoading[p.code]" 
-                      class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all active:scale-95 disabled:opacity-40 flex items-center justify-center"
+                      :isLoading="deleteLoading[p.code]"
+                      text=""
+                      loadingText=""
+                      icon="fas fa-trash-alt"
+                      :showTextDuringLoad="false"
+                      variant="danger"
+                      class="h-8 w-8 rounded-lg p-0"
+                      aria-label="حذف الخطة"
                       title="حذف الخطة"
-                    >
-                      <BaseSpinner v-if="deleteLoading[p.code]" :size="10" color="#fff" :margin="0" />
-                      <i v-else class="fas fa-trash-alt text-[10px]"></i>
-                    </button>
+                    />
                   </div>
                 </td>
               </tr>
@@ -260,15 +259,15 @@
         <button type="button" @click="showAddModal = false" class="px-6 h-9 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">
           إلغاء
         </button>
-        <button 
+        <LoadingButton
           form="addPlanForm"
           type="submit"
+          text="إضافة الخطة الآن"
+          loadingText="جارٍ الإضافة..."
           :disabled="addLoading" 
-          class="px-6 h-9 bg-slate-900 text-white rounded-md text-xs font-bold shadow-sm hover:bg-black active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
-        >
-          <BaseSpinner v-if="addLoading" :size="14" color="#fff" :margin="0" />
-          <span>إضافة الخطة الآن</span>
-        </button>
+          :isLoading="addLoading"
+          class="px-6 h-9 rounded-md text-xs shadow-sm"
+        />
       </template>
     </BaseModal>
 
@@ -281,8 +280,9 @@ import BaseModal from '@/components/BaseModal.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { useAdminStore } from '@/stores/admin/adminStore'
 import { useBreadcrumb } from '@/composables/useBreadcrumb'
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import LoadingButton from '@/components/ui/LoadingButton.vue'
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue'
+import AlertService from '@/services/AlertService'
 
 // --- State & Stores (Strictly Preserved) ---
 const adminStore = useAdminStore()
@@ -346,7 +346,12 @@ async function save(p) {
 
 async function deletePlan(p) {
   if (p.code === 'trial') return
-  if (!confirm(`هل أنت متأكد من حذف خطة "${p.name}"؟`)) return
+  const confirmed = await AlertService.confirm(
+    `هل أنت متأكد من حذف خطة "${p.name}"؟`,
+    'حذف الخطة',
+    { confirmText: 'حذف الخطة', cancelText: 'إلغاء' }
+  )
+  if (!confirmed) return
   deleteLoading[p.code] = true
   const result = await adminStore.deletePlan(p.code)
   if (result.status === 'success') {

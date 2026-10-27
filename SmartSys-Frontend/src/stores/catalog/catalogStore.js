@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import catalogService from '@/services/catalog';
 import { useProductStore } from '@/stores/product/productStore';
 
 const nowMs = () => Date.now();
@@ -47,7 +47,7 @@ export const useCatalogStore = defineStore('catalog', () => {
 
     const promise = (async () => {
       try {
-        const res = await apiClient.get('/categories', { params: { branch_id: bid } });
+        const res = await catalogService.getCategories(bid);
         const list = normalizeArray(res);
         categoriesByBranch.value = { ...categoriesByBranch.value, [bid]: list };
         categoriesFetchedAtByBranch.value = { ...categoriesFetchedAtByBranch.value, [bid]: nowMs() };
@@ -65,6 +65,26 @@ export const useCatalogStore = defineStore('catalog', () => {
     return await promise;
   };
 
+  const createCategory = async (payload) => {
+    const response = await catalogService.createCategory(payload);
+    if (payload?.branch_id) invalidateCategoriesForBranch(payload.branch_id);
+    return response;
+  };
+
+  const updateCategory = async (categoryId, payload) => {
+    if (!categoryId) throw new Error('Category ID is required');
+    const response = await catalogService.updateCategory(categoryId, payload);
+    if (payload?.branch_id) invalidateCategoriesForBranch(payload.branch_id);
+    return response;
+  };
+
+  const deleteCategory = async (categoryId, branchId) => {
+    if (!categoryId) throw new Error('Category ID is required');
+    const response = await catalogService.deleteCategory(categoryId, branchId);
+    if (branchId) invalidateCategoriesForBranch(branchId);
+    return response;
+  };
+
   // Units (global)
   const fetchUnits = async ({ force = false } = {}) => {
     if (!force && isFresh(unitsFetchedAt.value, TTL.units) && Array.isArray(units.value) && units.value.length) {
@@ -75,7 +95,7 @@ export const useCatalogStore = defineStore('catalog', () => {
 
     const promise = (async () => {
       try {
-        const res = await apiClient.get('/units');
+        const res = await catalogService.getUnits();
         const list = normalizeArray(res);
         units.value = Array.isArray(list) ? list : [];
         unitsFetchedAt.value = nowMs();
@@ -108,6 +128,20 @@ export const useCatalogStore = defineStore('catalog', () => {
     return Array.isArray(categories) ? categories : [];
   };
 
+  const invalidateCategoriesForBranch = (branchId) => {
+    const bid = branchId == null || branchId === '' ? null : String(branchId);
+    if (!bid) return;
+    const categories = { ...categoriesByBranch.value };
+    const fetchedAt = { ...categoriesFetchedAtByBranch.value };
+    const inFlight = { ...categoriesInFlightByBranch.value };
+    delete categories[bid];
+    delete fetchedAt[bid];
+    delete inFlight[bid];
+    categoriesByBranch.value = categories;
+    categoriesFetchedAtByBranch.value = fetchedAt;
+    categoriesInFlightByBranch.value = inFlight;
+  };
+
   // Clear cache
   const clear = () => {
     categoriesByBranch.value = {};
@@ -127,8 +161,12 @@ export const useCatalogStore = defineStore('catalog', () => {
 
     // Actions
     fetchCategories,
+    createCategory,
+    updateCategory,
+    deleteCategory,
     fetchProducts,
     fetchUnits,
+    invalidateCategoriesForBranch,
     clear,
 
     // Computed helpers

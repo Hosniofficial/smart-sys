@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import paymentService from '@/services/payment';
-import apiClient from '@/config/axios';
 
 const nowMs = () => Date.now();
 
@@ -133,7 +132,7 @@ export const usePaymentStore = defineStore('payment', () => {
         };
       }
 
-      const response = await apiClient.get(endpoint, { params, signal });
+      const response = await paymentService.getPayments(endpoint, params, signal);
       const raw      = response?.data?.data ?? response?.data ?? {};
       const list     = Array.isArray(raw) ? raw : (raw.items || []);
 

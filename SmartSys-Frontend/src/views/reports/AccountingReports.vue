@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar: High-precision indicator -->
-    <div v-if="false" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -19,9 +17,15 @@
         @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
-          <button @click="loadAll" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
-            <i class="fas fa-sync-alt text-[10px]"></i> تحديث التقارير
-          </button>
+          <LoadingButton
+            text="تحديث التقارير"
+            loadingText="جاري التحديث..."
+            icon="fas fa-sync-alt"
+            :isLoading="loadingAll"
+            variant="secondary"
+            class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs shadow-sm hover:bg-slate-50"
+            @click="loadAll"
+          />
         </template>
       </PageHeader>
 
@@ -69,9 +73,14 @@
           </div>
 
           <div class="lg:col-span-2">
-             <button @click="loadAll" class="h-9 w-full bg-slate-900 text-white rounded-md text-[11px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-sm">
-               تطبيق الفلاتر
-             </button>
+             <LoadingButton
+               text="تطبيق الفلاتر"
+               loadingText="جاري التحديث..."
+               :isLoading="loadingAll"
+               variant="secondary"
+               class="h-9 w-full rounded-md text-[11px] uppercase tracking-widest shadow-sm"
+               @click="loadAll"
+             />
           </div>
         </div>
       </section>
@@ -145,7 +154,17 @@
           <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
             <div class="flex items-center justify-between mb-8 px-1">
               <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">سلامة ربط الفروع</h3>
-              <button @click="loadCoverage" class="w-8 h-8 rounded-lg bg-slate-50 text-slate-400 flex items-center justify-center hover:text-blue-600 transition-colors border border-slate-100 shadow-inner"><i class="fas fa-rotate text-[10px]"></i></button>
+              <LoadingButton
+                text=""
+                loadingText=""
+                :showTextDuringLoad="false"
+                icon="fas fa-rotate"
+                :isLoading="loadingCoverage"
+                variant="secondary"
+                class="w-8 h-8 rounded-lg bg-slate-50 p-0 text-slate-400 shadow-inner hover:text-blue-600"
+                aria-label="تحديث سلامة ربط الفروع"
+                @click="loadCoverage"
+              />
             </div>
 
             <div v-if="coverage" class="space-y-6">
@@ -218,7 +237,17 @@
               <h2 class="text-[11px] font-bold text-slate-800 uppercase tracking-widest">تحليل صافي القيمة البيعية (NRV)</h2>
             </div>
             <div class="flex items-center gap-2">
-              <button @click="loadNrv" class="w-7 h-7 rounded border border-amber-200 bg-white text-amber-500 hover:bg-amber-500 hover:text-white transition-all"><i class="fas fa-rotate text-[10px]" :class="{'fa-spin': loadingNrv}"></i></button>
+              <LoadingButton
+                text=""
+                loadingText=""
+                :showTextDuringLoad="false"
+                icon="fas fa-rotate"
+                :isLoading="loadingNrv"
+                variant="secondary"
+                class="w-7 h-7 rounded border border-amber-200 bg-white p-0 text-amber-500 hover:bg-amber-500 hover:text-white"
+                aria-label="تحديث تحليل صافي القيمة البيعية"
+                @click="loadNrv"
+              />
               <button v-if="nrvData?.count > 0" @click="postWriteDown" class="h-7 px-3 bg-rose-600 text-white text-[9px] font-bold uppercase tracking-widest rounded shadow-sm hover:bg-rose-700">تسجيل قيد تخفيض</button>
             </div>
           </div>
@@ -264,7 +293,17 @@
             </div>
             <div class="flex items-center gap-2">
               <input type="date" v-model="arAgingAsOf" class="h-7 border border-rose-200 rounded px-2 text-[10px] font-mono outline-none focus:border-rose-400 bg-white" />
-              <button @click="loadArAging" class="w-7 h-7 rounded border border-rose-200 bg-white text-rose-500 hover:bg-rose-500 hover:text-white transition-all"><i class="fas fa-rotate text-[10px]" :class="{'fa-spin': loadingArAging}"></i></button>
+              <LoadingButton
+                text=""
+                loadingText=""
+                :showTextDuringLoad="false"
+                icon="fas fa-rotate"
+                :isLoading="loadingArAging"
+                variant="secondary"
+                class="w-7 h-7 rounded border border-rose-200 bg-white p-0 text-rose-500 hover:bg-rose-500 hover:text-white"
+                aria-label="تحديث تحليل أعمار الديون"
+                @click="loadArAging"
+              />
             </div>
           </div>
           <div class="p-6 space-y-6">
@@ -339,7 +378,17 @@
             قائمة التدفقات النقدية (IAS 7)
           </h2>
           <div class="flex items-center gap-2">
-            <button @click="loadCashFlow" class="w-8 h-8 rounded-lg bg-slate-50 text-slate-400 flex items-center justify-center hover:text-blue-600 transition-colors border border-slate-100"><i class="fas fa-rotate text-[10px]" :class="{'fa-spin': loadingCashFlow}"></i></button>
+            <LoadingButton
+              text=""
+              loadingText=""
+              :showTextDuringLoad="false"
+              icon="fas fa-rotate"
+              :isLoading="loadingCashFlow"
+              variant="secondary"
+              class="w-8 h-8 rounded-lg bg-slate-50 p-0 text-slate-400 hover:text-blue-600"
+              aria-label="تحديث قائمة التدفقات النقدية"
+              @click="loadCashFlow"
+            />
             <span class="text-[9px] font-bold text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded uppercase tracking-tighter">Cash Flow</span>
           </div>
         </div>
@@ -423,6 +472,8 @@ import { useBranchStore } from '@/stores/branch/branchStore';
 
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
+import AlertService from '@/services/AlertService';
 
 const { breadcrumb } = useBreadcrumb();
 const branchStore = useBranchStore();
@@ -443,6 +494,8 @@ const trialBalance = ref([]); const ledger = ref({ opening_balance: 0, lines: []
 const incomeStatement = ref({ revenues: 0, expenses: 0, net_income: 0 });
 const balanceSheet = ref({ asset: [], liability: [], equity: [] });
 const coverage = ref(null);
+const loadingCoverage = ref(false);
+const loadingAll = ref(false);
 const nrvData = ref(null); const loadingNrv = ref(false); const postingWriteDown = ref(false); const writeDownResult = ref(null);
 const cashFlowData = ref(null); const loadingCashFlow = ref(false);
 const arAgingData = ref(null); const loadingArAging = ref(false);
@@ -459,6 +512,7 @@ function fmt(n) {
 }
 
 async function loadAll() {
+  loadingAll.value = true
   const branchId = selectedBranch.value === 'all' ? null : selectedBranch.value
   try {
     const [tb, is, bs] = await Promise.allSettled([
@@ -486,6 +540,8 @@ async function loadAll() {
     }
   } catch (e) {
     console.error('Error loading accounting reports:', e);
+  } finally {
+    loadingAll.value = false
   }
 }
 
@@ -499,10 +555,12 @@ async function loadAccounts() {
 }
 
 async function loadCoverage() {
+  loadingCoverage.value = true
   try {
     const result = await reportsStore.fetchBranchAccountCoverage(selectedBranch.value === 'all' ? null : selectedBranch.value)
     coverage.value = result.status === 'success' ? result.data : null
   } catch (e) { coverage.value = null; console.error(e); }
+  finally { loadingCoverage.value = false }
 }
 
 async function loadArAging() {
@@ -517,7 +575,12 @@ async function loadArAging() {
 
 async function postProvision() {
   if (!arAgingData.value?.total_provision) return
-  if (!confirm(`سيتم تسجيل قيد مخصص الديون المشكوك فيها بمبلغ ${fmt(arAgingData.value.total_provision)} وفق IFRS 9. هل أنت متأكد؟`)) return
+  const confirmed = await AlertService.confirm(
+    `سيتم تسجيل قيد مخصص الديون المشكوك فيها بمبلغ ${fmt(arAgingData.value.total_provision)} وفق IFRS 9. هل أنت متأكد؟`,
+    'تأكيد قيد المخصص',
+    { confirmText: 'تسجيل القيد', cancelText: 'إلغاء' }
+  )
+  if (!confirmed) return
   postingProvision.value = true
   provisionResult.value = null
   try {
@@ -548,7 +611,12 @@ async function loadNrv() {
 }
 
 async function postWriteDown() {
-  if (!confirm('سيتم تسجيل قيود تخفيض قيمة المخزون وفق IAS 2. هل أنت متأكد؟')) return
+  const confirmed = await AlertService.confirm(
+    'سيتم تسجيل قيود تخفيض قيمة المخزون وفق IAS 2. هل أنت متأكد؟',
+    'تأكيد قيود تخفيض المخزون',
+    { confirmText: 'تسجيل القيود', cancelText: 'إلغاء' }
+  )
+  if (!confirmed) return
   postingWriteDown.value = true
   writeDownResult.value = null
   try {
@@ -585,10 +653,10 @@ watch(selectedBranch, () => {
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
 .filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all;
+  @apply focus:ring-4 focus:ring-blue-500/5;
 }
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1; }
+.metadata-label { @apply mb-1; }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }

@@ -22,6 +22,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../../vendor/autoload.php';
 
 use Dotenv\Dotenv;
+use App\Utils\ApiResponseEnvelope;
 
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../../../');
 $dotenv->load();
@@ -33,7 +34,12 @@ if (!$isCli) {
     $provided   = $_SERVER['HTTP_X_CRON_TOKEN'] ?? '';
     if ($cronSecret === '' || !hash_equals($cronSecret, $provided)) {
         http_response_code(403);
-        echo json_encode(['error' => 'Forbidden']);
+        header('Content-Type: application/json');
+        echo json_encode(ApiResponseEnvelope::normalize([
+            'status' => 'error',
+            'message' => 'Forbidden',
+            'error' => 'Forbidden',
+        ], 403), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit(1);
     }
 }
@@ -114,5 +120,16 @@ $output = [
     'tasks'      => $results,
 ];
 
-echo json_encode($output, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . PHP_EOL;
+if ($isCli) {
+    echo json_encode($output, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . PHP_EOL;
+} else {
+    header('Content-Type: application/json');
+    $httpPayload = array_merge($output, [
+        'message' => empty($hasErrors) ? 'Cleanup completed' : 'Cleanup completed with errors',
+    ]);
+    echo json_encode(
+        ApiResponseEnvelope::normalize($httpPayload, 200),
+        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
+    );
+}
 exit(empty($hasErrors) ? 0 : 1);

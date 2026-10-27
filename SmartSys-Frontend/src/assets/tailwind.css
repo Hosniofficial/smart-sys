@@ -31,6 +31,14 @@
   .btn-outline {
     @apply border border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-blue-400 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-md transition;
   }
+
+  .metadata-label {
+    @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1;
+  }
+
+  .filter-input-v2 {
+    @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
+  }
 }
 
 @layer utilities {

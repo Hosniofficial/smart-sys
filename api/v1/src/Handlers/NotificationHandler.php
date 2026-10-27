@@ -297,15 +297,17 @@ class NotificationHandler extends BaseHandler
                     p.tenant_id,
                     p.name,
                     p.product_code AS sku,
-                    b.expiry_date,
+                    MIN(b.expiry_date) AS expiry_date,
                     u.id AS user_id
                 FROM products p
-                JOIN product_batches b ON b.product_id = p.id
+                JOIN product_expiry b
+                  ON b.product_id = p.id AND b.tenant_id = p.tenant_id
                 JOIN users u ON u.tenant_id = p.tenant_id
                 JOIN roles r ON r.id = u.role_id
                 WHERE p.id = ?
                   AND (r.name = 'admin' OR r.name = 'inventory_manager')
                   AND b.expiry_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
+                GROUP BY p.tenant_id, p.name, p.product_code, u.id
             ");
 
             $stmt->execute([$productId, $thresholdDays]);

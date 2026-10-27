@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import apiClient from '@/config/axios';
+import statementsService from '@/services/statements';
 
 const nowMs = () => Date.now();
 
@@ -51,7 +51,7 @@ export const useStatementStore = defineStore('statement', () => {
         };
       }
 
-      const response  = await apiClient.get(`/customers/${customerId}/statement`, { params });
+      const response  = await statementsService.getCustomerStatement(customerId, params);
       const statement = response?.data?.data || response?.data || null;
 
       customerStatements.value[cacheKey]          = statement;
@@ -101,7 +101,7 @@ export const useStatementStore = defineStore('statement', () => {
         };
       }
 
-      const response  = await apiClient.get(`/suppliers/${supplierId}/statement`, { params });
+      const response  = await statementsService.getSupplierStatement(supplierId, params);
       const statement = response?.data?.data || response?.data || null;
 
       supplierStatements.value[cacheKey]          = statement;

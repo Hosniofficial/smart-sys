@@ -1,9 +1,7 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     <!-- Top Progress Bar -->
-    <div v-if="isLoading || isLoadingSearch" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading || isLoadingSearch" />
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
 
       <!-- Page Header -->
@@ -13,7 +11,7 @@
         description="إدارة الحركات النقدية، إصدار سندات القبض والصرف، وتسوية الحسابات."
         :branches="canSelectBranch ? branches : []"
         :selectedBranch="selectedBranch"
-        @branch-changed="(val) => { selectedBranch.value = val; handleBranchChange(); }"
+        @branch-changed="handleBranchSelection"
       >
         <template #controls>
           <button v-if="canCreateVoucher" @click="onAddVoucher" class="h-9 px-6 rounded-md bg-blue-600 text-white text-xs font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-2">
@@ -112,9 +110,17 @@
               </div>
             </div>
             <div class="lg:col-span-1">
-              <button @click="fetchVouchers" class="h-9 w-full rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 transition-colors shadow-sm">
-                <i class="fas fa-sync-alt text-xs"></i>
-              </button>
+              <LoadingButton
+                text=""
+                loadingText=""
+                :showTextDuringLoad="false"
+                icon="fas fa-sync-alt"
+                :isLoading="isLoading"
+                variant="secondary"
+                class="h-9 w-full rounded-md border border-slate-200 bg-white p-0 text-slate-400 shadow-sm hover:text-blue-600"
+                aria-label="تحديث السندات"
+                @click="fetchVouchers"
+              />
             </div>
           </div>
         </div>
@@ -161,6 +167,7 @@
                 <td class="px-6 py-4 text-[11px] text-slate-400 italic truncate max-w-[200px]" :title="voucher.description">{{ voucher.description || '—' }}</td>
                 <td class="px-6 py-4 text-center">
                   <div class="flex items-center justify-center gap-2">
+                    <button @click="openVoucherDetails(voucher)" :aria-label="`عرض تفاصيل السند ${voucher.reference || voucher.id}`" title="عرض التفاصيل" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center justify-center shadow-sm"><i class="fas fa-eye text-[10px]"></i></button>
                     <button v-if="canEditVoucher && voucher.status !== 'cancelled'" @click="onEditVoucher(voucher)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center shadow-sm"><i class="fas fa-pen text-[10px]"></i></button>
                     <button v-if="canDeleteVoucher && voucher.status !== 'cancelled'" @click="onDeleteVoucher(voucher)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-all flex items-center justify-center shadow-sm" title="إلغاء السند وعكسه"><i class="fas fa-ban text-[10px]"></i></button>
                   </div>
@@ -185,10 +192,12 @@
                  <option :value="50">50</option>
                </select>
              </div>
-             <div class="flex items-center gap-1">
-               <button @click="previousPage()" :disabled="currentPage <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-               <button @click="nextPage(totalPages)" :disabled="currentPage >= totalPages" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-             </div>
+             <PaginationControls
+               :page="currentPage"
+               :total-pages="totalPages"
+               @previous="previousPage()"
+               @next="nextPage(totalPages)"
+             />
           </div>
         </div>
       </div>
@@ -214,6 +223,43 @@
       @save="isEditMode ? submitEditVoucher($event) : submitAddVoucher($event)"
     />
 
+    <HistoryDetailsModal
+      :show="showVoucherDetails"
+      @close="closeVoucherDetails"
+      :title="`تفاصيل ${selectedVoucher?.type === 'receipt' ? 'سند القبض' : 'سند الصرف'}`"
+      :subtitle="selectedVoucher?.reference || selectedVoucher?.reference_number || (route.query.id ? `رقم السند ${route.query.id}` : '')"
+      :icon="selectedVoucher?.type === 'receipt' ? 'fas fa-arrow-down-long' : 'fas fa-arrow-up-long'"
+      max-width="4xl"
+    >
+      <div v-if="voucherDetailsLoading" class="flex items-center justify-center gap-3 py-12 text-xs font-bold text-slate-400" role="status" aria-live="polite">
+        <i class="fas fa-circle-notch animate-spin text-sm"></i>
+        جاري تحميل تفاصيل السند...
+      </div>
+      <div v-else-if="voucherDetailsError" class="flex flex-col gap-3 rounded-lg border border-rose-100 bg-rose-50 p-4 text-xs font-bold text-rose-700 sm:flex-row sm:items-center sm:justify-between" role="alert">
+        <span>{{ voucherDetailsError }}</span>
+        <button @click="loadVoucherDetails(route.query.id)" class="shrink-0 text-rose-800 underline underline-offset-2">
+          إعادة المحاولة
+        </button>
+      </div>
+      <div v-else-if="selectedVoucher" class="space-y-4">
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          <div v-for="field in voucherDetailFields" :key="field.label" class="min-w-0 space-y-1 rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-2">
+            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">{{ field.label }}</p>
+            <p class="break-words text-[11px] font-bold leading-4 text-slate-800">{{ field.value || '—' }}</p>
+          </div>
+        </div>
+        <div class="rounded-xl border border-slate-100 bg-slate-50/50 p-4">
+          <p class="mb-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">الوصف</p>
+          <p class="whitespace-pre-wrap break-words text-xs font-medium text-slate-700">{{ selectedVoucher.description || selectedVoucher.notes || '—' }}</p>
+        </div>
+      </div>
+      <template #footer>
+        <div dir="rtl" class="mr-auto flex flex-row-reverse flex-wrap items-center gap-3">
+          <button @click="closeVoucherDetails" class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500 transition-colors hover:text-slate-800">إغلاق</button>
+        </div>
+      </template>
+    </HistoryDetailsModal>
+
     <!-- Delete Confirmation Modal -->
     <BaseModal :show="showDeleteModal" @close="showDeleteModal = false" maxWidth="sm" align="center" :zIndex="130">
       <template #header>
@@ -232,7 +278,14 @@
 
       <template #footer>
         <button @click="showDeleteModal = false" class="flex-1 h-9 text-xs font-bold text-slate-500 hover:text-slate-900">إلغاء</button>
-        <button @click="submitDeleteVoucher" :disabled="deleteLoading" class="flex-1 h-9 bg-rose-600 text-white rounded-md text-xs font-bold shadow-lg shadow-rose-900/20 disabled:opacity-50">تأكيد الإلغاء</button>
+        <LoadingButton
+          text="تأكيد الإلغاء"
+          :isLoading="deleteLoading"
+          loadingText="جاري الإلغاء..."
+          variant="danger"
+          class="flex-1 h-9"
+          @click="submitDeleteVoucher"
+        />
       </template>
     </BaseModal>
 
@@ -242,7 +295,9 @@
 
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import BaseModal from '@/components/BaseModal.vue';
+import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
 import { useAuthStore } from '@/stores/auth/authStore';
 import { useBranchStore } from '@/stores/branch/branchStore';
 import { useAccountStore } from '@/stores/account/accountStore';
@@ -264,9 +319,12 @@ import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { getLocalDateISO, isSettingEnabled } from '@/utils';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 
 const { breadcrumb } = useBreadcrumb();
 const authStore = useAuthStore();
+const route = useRoute();
+const router = useRouter();
 const pendingVoucherStorageKey = `pending_cash_voucher_create:${authStore.user?.tenant_id || 'no-tenant'}:${authStore.user?.id || 'no-user'}`;
 const readPendingVoucherRequest = () => {
   try {
@@ -313,6 +371,11 @@ const {
   onClear: () => { currentPage.value = 1; fetchVouchers(); },
 });
 const vouchers = ref([]);
+const selectedVoucher = ref(null);
+const showVoucherDetails = ref(false);
+const voucherDetailsLoading = ref(false);
+const voucherDetailsError = ref('');
+let voucherDetailsRequestId = 0;
 const isLoading = ref(false);
 const filterType = ref('all');
 const showFormModal = ref(false);
@@ -323,6 +386,12 @@ const editLoading = ref(false);
 const branches = computed(() => branchStore.branches);
 const pageError = ref('');
 const modalError = ref('');
+
+const handleBranchSelection = () => {
+  const pageWasReset = currentPage.value !== 1;
+  handleBranchChange();
+  if (!pageWasReset) fetchVouchers();
+};
 const deleteError = ref('');
 const listsLoading = ref(false);
 let fetchListsPromise = null;
@@ -338,6 +407,26 @@ const canCreateVoucher = computed(() => authStore.isSuperAdmin || userPermission
 const canEditVoucher = computed(() => authStore.isSuperAdmin || userPermissions.value.includes('voucher.edit'));
 const canDeleteVoucher = computed(() => authStore.isSuperAdmin || userPermissions.value.includes('voucher.delete'));
 const totalPages = computed(() => Math.ceil(totalCount.value / pageSize.value));
+const voucherDetailFields = computed(() => [
+  { label: 'المرجع', value: selectedVoucher.value?.reference || selectedVoucher.value?.reference_number },
+  { label: 'التاريخ', value: selectedVoucher.value?.date },
+  { label: 'النوع', value: selectedVoucher.value?.type === 'receipt' ? 'سند قبض' : 'سند صرف' },
+  { label: 'المبلغ', value: selectedVoucher.value ? formatPrice(selectedVoucher.value.amount) : '' },
+  { label: 'الحساب المتأثر', value: selectedVoucher.value?.account_name },
+  {
+    label: 'الفرع',
+    value: selectedVoucher.value?.branch_name
+      || branches.value.find(branch => String(branch.id) === String(selectedVoucher.value?.branch_id))?.name
+  },
+  {
+    label: 'طريقة الدفع',
+    value: selectedVoucher.value?.payment_method_name
+      || paymentStore.paymentMethods.find(method => String(method.id) === String(selectedVoucher.value?.payment_method_id))?.name
+  },
+  { label: 'الحالة', value: selectedVoucher.value?.status === 'cancelled' ? 'ملغى' : 'نشط' },
+  { label: 'العميل', value: selectedVoucher.value?.customer_name || selectedVoucher.value?.customer_id },
+  { label: 'المورد', value: selectedVoucher.value?.supplier_name || selectedVoucher.value?.supplier_id },
+]);
 const fetchVouchers = async () => {
   isLoading.value = true;
   pageError.value = '';
@@ -358,6 +447,55 @@ const fetchVouchers = async () => {
     vouchers.value = [];
     pageError.value = err?.message || 'فشل تحميل السندات';
   } finally { isLoading.value = false; }
+};
+const loadVoucherDetails = async (voucherId) => {
+  const id = Number(voucherId);
+  if (!Number.isInteger(id) || id <= 0) return;
+  const requestId = ++voucherDetailsRequestId;
+  voucherDetailsLoading.value = true;
+  voucherDetailsError.value = '';
+  showVoucherDetails.value = true;
+  try {
+    let voucher = vouchers.value.find(item => Number(item.id) === id);
+    if (!voucher) {
+      const result = await voucherStore.fetchVouchersList({
+        branchId: branchId.value || undefined,
+        page: 1,
+        perPage: 50,
+        force: true,
+      });
+      voucher = (Array.isArray(result) ? result : result?.data?.items || result?.items || [])
+        .find(item => Number(item.id) === id);
+    }
+    if (requestId !== voucherDetailsRequestId) return;
+    if (!voucher) {
+      throw new Error('السند غير موجود أو لا تملك صلاحية عرضه.');
+    }
+    selectedVoucher.value = voucher;
+  } catch (error) {
+    if (requestId === voucherDetailsRequestId) {
+      voucherDetailsError.value = error?.response?.data?.message || error.message || 'تعذر تحميل تفاصيل السند.';
+    }
+  } finally {
+    if (requestId === voucherDetailsRequestId) voucherDetailsLoading.value = false;
+  }
+};
+const openVoucherDetails = async (voucher) => {
+  if (!voucher?.id) return;
+  if (Number(route.query.id) === Number(voucher.id)) {
+    await loadVoucherDetails(voucher.id);
+    return;
+  }
+  await router.push({ name: 'CashVouchers', query: { ...route.query, id: String(voucher.id) } });
+};
+const closeVoucherDetails = async () => {
+  showVoucherDetails.value = false;
+  selectedVoucher.value = null;
+  voucherDetailsRequestId++;
+  if (!route.query.id) return;
+  const query = { ...route.query };
+  delete query.id;
+  await router.replace({ name: 'CashVouchers', query });
 };
 const performSearch = async (query) => {
   if (!query.trim()) { searchResults.value = []; return; }
@@ -584,12 +722,22 @@ const allAccounts = computed(() => accountStore.allAccounts);
 const validPaymentMethods = computed(() => paymentStore.paymentMethods.filter(pm => pm.account_id));
 const formatPrice = (v) => formatCurrencyLocale(v, 2);
 watch(filterType, () => { currentPage.value = 1; fetchVouchers(); });
+watch(() => route.query.id, (id) => {
+  if (Number(id) > 0) {
+    loadVoucherDetails(id);
+    return;
+  }
+  showVoucherDetails.value = false;
+  selectedVoucher.value = null;
+  voucherDetailsRequestId++;
+});
 onMounted(async () => {
   await Promise.all([branchStore.initialize(), ensureExemptionLoaded(), fetchSettings()]);
   loadFromLocalStorage();
   if (!canSelectBranch.value && authStore.user?.branch_id) branchStore.setSelectedBranch(authStore.user.branch_id);
   await fetchLists();
-  fetchVouchers();
+  await fetchVouchers();
+  if (Number(route.query.id) > 0) await loadVoucherDetails(route.query.id);
 });
 </script>
 
@@ -600,9 +748,6 @@ onMounted(async () => {
 @keyframes modalIn { from { opacity: 0; transform: scale(0.98) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 
 /* Form Inputs */
-.filter-input-v2 { @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all; }
-.pagination-btn-v2 { @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all; }
-
 /* Scrollbar */
 .custom-scroll::-webkit-scrollbar { width: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }

@@ -112,10 +112,14 @@
         <button type="button" @click="closeModal" class="px-6 py-3 rounded-xl border-2 border-slate-100 font-black text-slate-400 hover:bg-white transition-all text-xs">
           إلغاء
         </button>
-        <button @click="handleSubmit" class="px-10 py-3 bg-blue-600 text-white rounded-xl font-black text-xs shadow-xl shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-3" :disabled="isSubmitting">
-          <BaseSpinner v-if="isSubmitting" :size="16" color="#ffffff" />
-          <span>{{ isEditing ? 'حفظ التغييرات' : 'إضافة للمستودع' }}</span>
-        </button>
+        <LoadingButton
+          :text="isEditing ? 'حفظ التغييرات' : 'إضافة للمستودع'"
+          :isLoading="isSubmitting"
+          loadingText="جاري الحفظ..."
+          variant="primary"
+          class="px-10 py-3 rounded-xl text-xs"
+          @click="handleSubmit"
+        />
       </div>
     </div>
   </div>
@@ -125,7 +129,7 @@
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
 import { useToast } from '@/composables/useToast';
 import { searchProducts as apiSearchProducts } from '@/services/branchInventoryService';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import LoadingButton from '@/components/ui/LoadingButton.vue'
 
 // --- Props & Emits ---
 const props = defineProps({

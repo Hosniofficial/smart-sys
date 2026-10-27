@@ -9,3 +9,25 @@ export async function listCustomers(params = {}) {
   if (Array.isArray(data?.data?.items)) return data.data.items;
   return [];
 }
+
+export function getCustomer(id) {
+  return apiClient.get(`/customers/${id}`);
+}
+
+export function createCustomer(payload) {
+  return apiClient.post('/customers', payload);
+}
+
+export function updateCustomer(id, payload) {
+  return apiClient.put(`/customers/${id}`, payload);
+}
+
+export function deleteCustomer(id) {
+  return apiClient.delete(`/customers/${id}`);
+}
+
+export function recordCustomerPayment(customerId, payload, idempotencyKey) {
+  return apiClient.post(`/customers/${customerId}/payments`, payload, {
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+  });
+}

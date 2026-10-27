@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
 
     <!-- Global Loading Progress -->
-    <div v-if="statementLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="statementLoading" />
 
     <main class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       <PageHeader
@@ -299,10 +297,12 @@
                     <option :value="10">10 حركات</option><option :value="20">20 حركة</option><option :value="50">50 حركة</option>
                   </select>
                 </div>
-                <div class="flex items-center gap-1">
-                  <button @click="txPage=Math.max(1, txPage-1); applyFilter();" :disabled="txPage<=1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-                  <button @click="txPage=Math.min(txPages, txPage+1); applyFilter();" :disabled="txPage>=txPages" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-                </div>
+                <PaginationControls
+                  :page="txPage"
+                  :total-pages="txPages"
+                  @previous="txPage = Math.max(1, txPage - 1); applyFilter()"
+                  @next="txPage = Math.min(txPages, txPage + 1); applyFilter()"
+                />
               </div>
             </div>
 
@@ -554,11 +554,14 @@
                 </div>
                 <div class="flex items-center gap-3">
                   <button v-if="referencesItems.length" @click="exportReferencesCsv" class="px-4 py-1.5 rounded-md bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all">تصدير CSV</button>
-                  <div v-if="referencesItems.length" class="flex items-center gap-1">
-                    <button class="pagination-btn-v2" :disabled="refsPage <= 1" @click="refsPage = Math.max(1, refsPage - 1)"><i class="fas fa-chevron-right"></i></button>
-                    <span class="px-3 py-1 bg-white rounded border border-slate-200 text-[10px] font-bold">{{ refsPage }} / {{ referencesPages }}</span>
-                    <button class="pagination-btn-v2" :disabled="refsPage >= referencesPages" @click="refsPage = Math.min(referencesPages, refsPage + 1)"><i class="fas fa-chevron-left"></i></button>
-                  </div>
+                  <PaginationControls
+                    v-if="referencesItems.length"
+                    :page="refsPage"
+                    :total-pages="referencesPages"
+                    show-page-indicator
+                    @previous="refsPage = Math.max(1, refsPage - 1)"
+                    @next="refsPage = Math.min(referencesPages, refsPage + 1)"
+                  />
                 </div>
               </div>
 
@@ -633,11 +636,14 @@
                 </div>
                 <div class="flex flex-wrap items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                   <span v-if="referencesItems.length">إجمالي السجلات: <span class="text-slate-900 font-mono">{{ formatPriceEn(referencesItems.reduce((s, p) => s + Number(p.total_amount || p.paid_amount || 0), 0)) }}</span></span>
-                  <div v-if="referencesItems.length" class="flex items-center gap-1">
-                    <button class="pagination-btn-v2" :disabled="refsPage <= 1" @click="refsPage = Math.max(1, refsPage - 1)"><i class="fas fa-chevron-right"></i></button>
-                    <span class="px-3 py-1 bg-white rounded border border-slate-200 text-[10px] font-bold">{{ refsPage }} / {{ referencesPages }}</span>
-                    <button class="pagination-btn-v2" :disabled="refsPage >= referencesPages" @click="refsPage = Math.min(referencesPages, refsPage + 1)"><i class="fas fa-chevron-left"></i></button>
-                  </div>
+                  <PaginationControls
+                    v-if="referencesItems.length"
+                    :page="refsPage"
+                    :total-pages="referencesPages"
+                    show-page-indicator
+                    @previous="refsPage = Math.max(1, refsPage - 1)"
+                    @next="refsPage = Math.min(referencesPages, refsPage + 1)"
+                  />
                 </div>
               </div>
 
@@ -749,10 +755,14 @@
                         class="flex-1 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors rounded-md hover:bg-slate-50">
                   إلغاء
                 </button>
-                <button type="submit" :disabled="loading"
-                        class="flex-[2] h-10 bg-emerald-600 text-white rounded-md text-xs font-bold shadow-lg shadow-emerald-900/20 active:scale-95 transition-all disabled:opacity-50">
-                  {{ loading ? 'جاري...' : (hasPendingCustomerPayment ? 'إعادة المحاولة بنفس البيانات' : 'تأكيد التحصيل') }}
-                </button>
+                <LoadingButton
+                  type="submit"
+                  :text="hasPendingCustomerPayment ? 'إعادة المحاولة بنفس البيانات' : 'تأكيد التحصيل'"
+                  loadingText="جارٍ التسجيل..."
+                  variant="success"
+                  :isLoading="loading"
+                  class="flex-[2] h-10 rounded-md text-xs shadow-lg shadow-emerald-900/20"
+                />
               </div>
             </form>
           </div>
@@ -780,7 +790,9 @@ import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useDateValidation } from '@/composables/useDateValidation';
 import { usePendingIdempotentRequest } from '@/composables/usePendingIdempotentRequest';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import { getLocalDateISO } from '@/utils';
 import { getImageUrl } from '@/utils';
 
@@ -2039,14 +2051,10 @@ watch(() => route.query, (q) => {
   @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
 }
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-500 tracking-wide px-1 mb-1; }
+.metadata-label { @apply text-slate-500 tracking-wide mb-1; }
 
 .quick-range-pill {
   @apply px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-[10px] font-bold text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-all;
-}
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-30 transition-all;
 }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }

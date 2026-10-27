@@ -29,7 +29,7 @@
 
 # Block direct access to PHP files in sensitive directories
 <FilesMatch "\.(php|phtml|php3|php4|php5|phar)$">
-    <If "%{REQUEST_URI} =~ m|^/(scripts|config|logs|database|vendor|api|app)/|">
+    <If "%{REQUEST_URI} =~ m#(?:^|/)(?:scripts|config|logs|database|vendor|api|app)/#">
         <IfModule mod_authz_core.c>
             Require all denied
         </IfModule>

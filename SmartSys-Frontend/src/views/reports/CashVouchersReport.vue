@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar: High-precision indicator -->
-    <div v-if="isLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -19,9 +17,15 @@
         @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
-          <button @click="fetchReport" :disabled="isLoading" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
-            <i class="fas fa-sync-alt text-[10px]" :class="{'animate-spin': isLoading}"></i> تحديث البيانات
-          </button>
+          <LoadingButton
+            text="تحديث البيانات"
+            loadingText="جاري التحديث..."
+            icon="fas fa-sync-alt"
+            :isLoading="isLoading"
+            variant="secondary"
+            class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs shadow-sm hover:bg-slate-50"
+            @click="fetchReport"
+          />
           <button class="h-9 px-4 rounded-md bg-blue-600 text-white text-xs font-bold shadow-sm hover:bg-blue-700 transition-all flex items-center gap-2">
             <i class="fas fa-print text-[10px]"></i> طباعة التقرير
           </button>
@@ -186,6 +190,7 @@ import { useBranchStore } from '@/stores/branch/branchStore';
 import { useBranchIsolation } from '@/composables/useBranchIsolation';
 import { useAuthStore } from '@/stores/auth/authStore';
 import PageHeader from '@/components/PageHeader.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 // --- Logic Initialization (STRICTLY PRESERVED) ---
 ChartJS.register(Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement);
@@ -198,11 +203,17 @@ const branchIsolation = useBranchIsolation();
 const canSelectBranch = branchIsolation.isExempt;
 const branches = computed(() => branchStore.branches);
 const selectedBranch = computed({
-  get: () => canSelectBranch.value
-    ? branchStore.selectedBranchId ?? 'all'
-    : String(authStore.user?.branch_id || 'all'),
+  get: () => {
+    if (!canSelectBranch.value) {
+      return authStore.user?.branch_id ? String(authStore.user.branch_id) : 'all';
+    }
+    return branchStore.selectedBranchId ?? 'all';
+  },
   set: (val) => {
-    if (canSelectBranch.value) branchStore.setSelectedBranch(val === 'all' ? null : val);
+    if (canSelectBranch.value) {
+      const normalized = val === 'all' || val === null || val === undefined ? null : val;
+      branchStore.setSelectedBranch(normalized);
+    }
   }
 });
 const voucherStore = useVoucherStore();
@@ -232,7 +243,9 @@ const summary = computed(() => {
 
 const fetchReport = async () => {
   isLoading.value = true; error.value = null;
-  const branchId = selectedBranch.value !== 'all' ? selectedBranch.value : null;
+  const branchId = canSelectBranch.value
+    ? (selectedBranch.value !== 'all' ? selectedBranch.value : null)
+    : (authStore.user?.branch_id ? String(authStore.user.branch_id) : null);
 
   try {
     const list = await voucherStore.fetchVouchersList({ 
@@ -272,10 +285,10 @@ onMounted(async () => {
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
 .filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all;
+  @apply focus:ring-4 focus:ring-blue-500/5;
 }
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1; }
+.metadata-label { @apply mb-1; }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }

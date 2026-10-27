@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Handlers\SalesAnalyticsHandler;
-use App\Handlers\AnalyticsHandler;
 use PHPUnit\Framework\TestCase;
 
 use Slim\Psr7\Factory\ServerRequestFactory;
@@ -116,69 +115,6 @@ final class SalesAnalyticsReturnScopeTest extends TestCase
         self::assertTrue($decoded['data']['returns_cost_complete']);
         self::assertEquals(0, $decoded['data']['net_cogs']);
         self::assertEquals(600, $decoded['data']['gross_profit']);
-    }
-
-    public function testFinancialAnalyticsUsesSameNetCogsAsSalesReports(): void
-    {
-        $db = $this->databaseWithPurchaseReturnAndSale();
-        $db->exec("INSERT INTO returns (
-            id, tenant_id, return_type, created_at, return_date, total_amount,
-            tax_amount, grand_total, sale_id, status
-        ) VALUES (2, 3, 'sale', '2026-09-28 18:00:00', '2026-09-28', 900, 0, 900, 7, 'approved')");
-        $db->exec('INSERT INTO return_items VALUES (2, 2, 3, 6, 7, 7, 1, 900)');
-        $db->exec("INSERT INTO inventory_transactions (
-            tenant_id, product_id, unit_id, quantity, total_cost, movement_type, reference_type, reference_id
-        ) VALUES (3, 6, 7, 1, 1000, 'in', 'return', 2)");
-
-        $request = (new ServerRequestFactory())
-            ->createServerRequest('GET', '/api/v1/analytics/financials')
-            ->withAttribute('tenant_id', 3)
-            ->withQueryParams([
-                'start_date' => '2026-09-21',
-                'end_date' => '2026-09-29',
-                'branch_id' => 4,
-            ]);
-
-        $response = (new AnalyticsHandler($db))->analyzeFinancials($request, new Response());
-        $decoded = json_decode((string) $response->getBody(), true);
-        self::assertIsArray($decoded, (string) $response->getBody());
-        self::assertSame('success', $decoded['status'] ?? null);
-        self::assertEquals(600, $decoded['data']['kpis']['total_revenue']);
-        self::assertEquals(1000, $decoded['data']['kpis']['returns_cogs']);
-        self::assertSame(0, $decoded['data']['kpis']['returns_cost_unresolved_line_count']);
-        self::assertTrue($decoded['data']['kpis']['returns_cost_complete']);
-        self::assertEquals(0, $decoded['data']['kpis']['net_cogs']);
-        self::assertEquals(600, $decoded['data']['kpis']['gross_profit']);
-    }
-
-    public function testFinancialAnalyticsReportsUnresolvedReturnCost(): void
-    {
-        $db = $this->databaseWithPurchaseReturnAndSale();
-        $db->exec('UPDATE sales_items SET purchase_price = NULL WHERE sale_id = 7');
-        $db->exec("INSERT INTO returns (
-            id, tenant_id, return_type, created_at, return_date, total_amount,
-            tax_amount, grand_total, sale_id, status
-        ) VALUES (2, 3, 'sale', '2026-09-28 18:00:00', '2026-09-28', 300, 0, 300, 7, 'approved')");
-        $db->exec('INSERT INTO return_items VALUES (2, 2, 3, 6, 7, 7, 1, 300)');
-
-        $request = (new ServerRequestFactory())
-            ->createServerRequest('GET', '/api/v1/analytics/financials')
-            ->withAttribute('tenant_id', 3)
-            ->withQueryParams([
-                'start_date' => '2026-09-21',
-                'end_date' => '2026-09-29',
-                'branch_id' => 4,
-            ]);
-
-        $response = (new AnalyticsHandler($db))->analyzeFinancials($request, new Response());
-        $decoded = json_decode((string) $response->getBody(), true);
-
-        self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
-        self::assertSame('success', $decoded['status'] ?? null);
-        self::assertEquals(0, $decoded['data']['kpis']['returns_cogs']);
-        self::assertSame(1, $decoded['data']['kpis']['returns_cost_unresolved_line_count']);
-        self::assertEquals(1, $decoded['data']['kpis']['returns_cost_unresolved_quantity']);
-        self::assertFalse($decoded['data']['kpis']['returns_cost_complete']);
     }
 
     public function testSalesAnalyticsConvertsIsoUtcDateBoundsToTenantCalendarDays(): void

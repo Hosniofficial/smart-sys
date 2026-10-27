@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Global Loading Progress -->
-    <div v-if="isLoadingData" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-50">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoadingData" />
 
     <main class="max-w-[1600px] mx-auto p-6 lg:p-8 space-y-8">
       <PageHeader
@@ -33,15 +31,18 @@
                 <span class="text-slate-300">•</span>
                 <span class="font-mono text-slate-700">{{ currentTime }}</span>
               </span>
-              <button
-                @click="handleRefresh"
-                :disabled="isLoadingData"
+              <LoadingButton
+                text=""
+                loadingText=""
+                :showTextDuringLoad="false"
+                icon="fas fa-sync-alt"
+                :isLoading="isLoadingData"
+                variant="secondary"
+                class="h-9 w-9 shrink-0 rounded-lg border border-slate-200 bg-white p-0 text-slate-400 shadow-sm hover:text-blue-600"
                 aria-label="تحديث لوحة التحكم"
                 title="تحديث لوحة التحكم"
-                class="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 shadow-sm transition-colors hover:text-blue-600 disabled:cursor-wait disabled:opacity-60"
-              >
-                <i class="fas fa-sync-alt text-xs" :class="{ 'animate-spin': isLoadingData }"></i>
-              </button>
+                @click="handleRefresh"
+              />
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <span class="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-600 whitespace-nowrap">
@@ -326,9 +327,15 @@
         </div>
         <div class="p-6 bg-slate-50 flex gap-3">
           <button @click="openSessionModal = false" class="flex-1 h-10 text-xs font-bold text-slate-500 hover:text-slate-700 transition-colors">إلغاء</button>
-          <button @click="confirmOpenSession" :disabled="isOpeningSession || !selectedTerminalId" class="flex-[2] h-10 bg-blue-600 text-white rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
-            {{ isOpeningSession ? 'جارٍ الفتح...' : 'تأكيد وبدء العمل' }}
-          </button>
+          <LoadingButton
+            text="تأكيد وبدء العمل"
+            :isLoading="isOpeningSession"
+            :disabled="!selectedTerminalId"
+            loadingText="جارٍ الفتح..."
+            variant="primary"
+            class="flex-[2] h-10 rounded-lg"
+            @click="confirmOpenSession"
+          />
         </div>
       </div>
 
@@ -368,7 +375,14 @@
         </div>
         <div class="p-6 bg-slate-50 flex gap-3">
           <button @click="shiftState = 'active'" class="flex-1 h-10 text-xs font-bold text-slate-500">تراجع</button>
-          <button @click="confirmEndShift" class="flex-[2] h-10 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 shadow-sm transition-all">إغلاق وتصفية</button>
+          <LoadingButton
+            text="إغلاق وتصفية"
+            :isLoading="isClosingShift"
+            loadingText="جارٍ الإغلاق..."
+            variant="danger"
+            class="flex-[2] h-10 rounded-lg"
+            @click="confirmEndShift"
+          />
         </div>
       </div>
 
@@ -390,6 +404,7 @@ import { useSessionStore } from '@/stores/session/sessionStore';
 import { useShiftStore } from '@/stores/shift/shiftStore';
 import { useAnalyticsStore } from '@/stores/analytics/analyticsStore';
 import PageHeader from '@/components/PageHeader.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import Chart from 'chart.js/auto';
 import { Filler } from 'chart.js';
 import { localDateRangeToUTC, getLocalDateISO } from '@/utils';
@@ -445,6 +460,7 @@ const paymentMethods = computed(() => paymentStore.paymentMethods);
 const activeSessionId = ref(null);
 const openSessionModal = ref(false);
 const isOpeningSession = ref(false);
+const isClosingShift = ref(false);
 const openingCashAmount = ref(0);
 
 const adminSelectedBranch = computed({
@@ -777,6 +793,10 @@ const fetchDashboardData = async () => {
         force: true,
         signal: requestController.signal
       });
+
+      if (dashboardData?.status !== 'success') {
+        throw new Error(dashboardData?.message || 'فشل تحميل ملخص لوحة المعلومات');
+      }
 
       if (dashboardData) {
         summary = dashboardData.data;
@@ -1167,32 +1187,38 @@ const handleVarianceReasonChange = () => {
 };
 
 const confirmEndShift = async () => {
+  if (isClosingShift.value) return;
   if (closingCashInput.value === null || closingCashInput.value < 0) { showToast('الرجاء إدخال المبلغ الفعلي', 'error'); return; }
   const hasVariance = Math.abs(cashDifference.value) > 0.01;
   if (hasVariance && !varianceReason.value && !selectedVarianceReason.value) { showToast('الرجاء تحديد سبب الفرق', 'warning'); return; }
+  isClosingShift.value = true;
   try {
-    const reasonToSend = selectedVarianceReason.value === 'other' ? varianceReason.value : selectedVarianceReason.value;
-    const result = await sessionStore.closeSession(activeSessionId.value, closingCashInput.value, reasonToSend);
-    if (result?.status === 'success') {
-      activeSessionId.value = null;
-      const variance = result.data?.closing?.variance ?? null;
-      showToast(typeof variance === 'number' && variance !== 0 ? `تم الإغلاق. فرق الخزينة: ${variance.toFixed(2)}` : 'تم إغلاق الجلسة بنجاح.', variance !== 0 ? 'warning' : 'success');
-      try {
-        const wid = authStore.user?.branch_id || branchStore.selectedBranchId;
-        if (wid && selectedTerminalId.value) {
-          const shiftResult = await shiftStore.getCurrentShift(wid, selectedTerminalId.value, true);
-          currentShift.value = shiftResult?.status === 'success' && shiftResult.data?.id ? shiftResult.data : null;
-        }
-      } catch { /* non-critical */ }
-    } else {
-      showToast(result?.message || 'تعذر الإغلاق', 'error');
-    }
-  } catch (e) { showToast(e?.response?.data?.message || 'تعذر الإغلاق', 'error'); }
-  shiftState.value = 'active';
-  closingCashInput.value = null;
-  varianceReason.value = '';
-  selectedVarianceReason.value = '';
-  await fetchDashboardData();
+    try {
+      const reasonToSend = selectedVarianceReason.value === 'other' ? varianceReason.value : selectedVarianceReason.value;
+      const result = await sessionStore.closeSession(activeSessionId.value, closingCashInput.value, reasonToSend);
+      if (result?.status === 'success') {
+        activeSessionId.value = null;
+        const variance = result.data?.closing?.variance ?? null;
+        showToast(typeof variance === 'number' && variance !== 0 ? `تم الإغلاق. فرق الخزينة: ${variance.toFixed(2)}` : 'تم إغلاق الجلسة بنجاح.', variance !== 0 ? 'warning' : 'success');
+        try {
+          const wid = authStore.user?.branch_id || branchStore.selectedBranchId;
+          if (wid && selectedTerminalId.value) {
+            const shiftResult = await shiftStore.getCurrentShift(wid, selectedTerminalId.value, true);
+            currentShift.value = shiftResult?.status === 'success' && shiftResult.data?.id ? shiftResult.data : null;
+          }
+        } catch { /* non-critical */ }
+      } else {
+        showToast(result?.message || 'تعذر الإغلاق', 'error');
+      }
+    } catch (e) { showToast(e?.response?.data?.message || 'تعذر الإغلاق', 'error'); }
+    shiftState.value = 'active';
+    closingCashInput.value = null;
+    varianceReason.value = '';
+    selectedVarianceReason.value = '';
+    await fetchDashboardData();
+  } finally {
+    isClosingShift.value = false;
+  }
 };
 
 // ─── Device ───────────────────────────────────────────────────────────────────

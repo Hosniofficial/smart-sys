@@ -515,7 +515,7 @@ class WarrantyHandler extends BaseHandler
                 $stmt->execute([$tenantId, $id, $reason, $userId]);
             }
 
-            return $this->successResponse($response, ['status' => 'success'], 200);
+            return $this->successResponse($response, [], 200);
         } catch (Exception $e) {
             $this->logger->error('Warranty status change failed', ['message' => $e->getMessage()]);
             return $this->errorResponse($response, 'فشل في تغيير حالة طلب الضمان', 500);
@@ -553,7 +553,7 @@ class WarrantyHandler extends BaseHandler
             );
             $stmt->execute([$tenantId, $id, $note, $isInternal, $userId]);
 
-            return $this->successResponse($response, ['status' => 'success'], 200);
+            return $this->successResponse($response, [], 200);
         } catch (Exception $e) {
             $this->logger->error('Warranty note addition failed', ['message' => $e->getMessage()]);
             return $this->errorResponse($response, 'فشل في إضافة الملاحظة', 500);
@@ -653,7 +653,7 @@ class WarrantyHandler extends BaseHandler
             $stmt = $this->db->prepare("DELETE FROM warranty_attachments WHERE id = ? AND tenant_id = ?");
             $stmt->execute([$attId, $tenantId]);
 
-            return $this->successResponse($response, ['status' => 'success'], 200);
+            return $this->successResponse($response, [], 200);
         } catch (Exception $e) {
             $this->logger->error('Warranty attachment deletion failed', ['message' => $e->getMessage()]);
             return $this->errorResponse($response, 'فشل في حذف المرفق', 500);

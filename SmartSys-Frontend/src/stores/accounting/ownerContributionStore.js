@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia';
-import apiClient from '@/config/axios';
+import ownerContributionsService from '@/services/ownerContributions';
 
 export const useOwnerContributionStore = defineStore('ownerContribution', () => {
   const fetchAvailableTenants = async () => {
     try {
-      const response = await apiClient.get('/admin/owner-contribution-tenants');
+      const response = await ownerContributionsService.listAvailableTenants();
       return { status: 'success', data: response?.data?.data || [], message: null };
     } catch (error) {
       return {
@@ -17,7 +17,7 @@ export const useOwnerContributionStore = defineStore('ownerContribution', () => 
 
   const fetchContributions = async (params = {}) => {
     try {
-      const response = await apiClient.get('/setup/owner-contributions', { params });
+      const response = await ownerContributionsService.list(params);
       return { status: 'success', data: response?.data?.data || {}, message: null };
     } catch (error) {
       return {
@@ -30,7 +30,7 @@ export const useOwnerContributionStore = defineStore('ownerContribution', () => 
 
   const fetchContribution = async (id) => {
     try {
-      const response = await apiClient.get(`/setup/owner-contribution/${id}`);
+      const response = await ownerContributionsService.get(id);
       return { status: 'success', data: response?.data?.data || {}, message: null };
     } catch (error) {
       return {
@@ -43,7 +43,7 @@ export const useOwnerContributionStore = defineStore('ownerContribution', () => 
 
   const createContribution = async (payload) => {
     try {
-      const response = await apiClient.post('/setup/owner-contribution/create', payload);
+      const response = await ownerContributionsService.create(payload);
       return { status: 'success', data: response?.data?.data || {}, message: null };
     } catch (error) {
       const responseData = error.response?.data;
@@ -61,7 +61,7 @@ export const useOwnerContributionStore = defineStore('ownerContribution', () => 
 
   const voidContribution = async (id, payload) => {
     try {
-      const response = await apiClient.post(`/setup/owner-contribution/${id}/void`, payload);
+      const response = await ownerContributionsService.void(id, payload);
       return { status: 'success', data: response?.data?.data || {}, message: null };
     } catch (error) {
       return {

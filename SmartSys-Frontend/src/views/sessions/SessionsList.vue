@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="loading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -26,9 +24,17 @@
             <i class="fas fa-filter text-[10px]"></i>
             {{ showFilters ? 'إخفاء الفلاتر' : 'تصفية الجلسات' }}
           </button>
-          <button @click="fetchData" class="h-9 w-9 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 transition-colors">
-            <i class="fas fa-sync-alt text-xs" :class="{'animate-spin': loading}"></i>
-          </button>
+          <LoadingButton
+            text=""
+            loadingText=""
+            :showTextDuringLoad="false"
+            icon="fas fa-sync-alt"
+            :isLoading="loading"
+            variant="secondary"
+            class="h-9 w-9 rounded-md border border-slate-200 bg-white p-0 text-slate-400 hover:text-blue-600"
+            aria-label="تحديث الجلسات"
+            @click="fetchData"
+          />
           <button @click="openRenameDevice" class="h-9 px-4 rounded-md bg-white border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50">
             <i class="fas fa-edit ml-1.5 text-[10px]"></i> تسمية الجهاز
           </button>
@@ -236,10 +242,12 @@
                  <option :value="50">50</option>
                </select>
              </div>
-             <div class="flex items-center gap-1">
-               <button @click="goToPreviousPage()" :disabled="currentPage<=1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-               <button @click="goToNextPage()" :disabled="currentPage>=totalPages" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-             </div>
+             <PaginationControls
+               :page="currentPage"
+               :total-pages="totalPages"
+               @previous="goToPreviousPage()"
+               @next="goToNextPage()"
+             />
           </div>
         </div>
       </div>
@@ -375,6 +383,7 @@ import { getLocalDateISO } from '@/utils';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 
 const branchStore = useBranchStore();
 const authStore   = useAuthStore();
@@ -551,10 +560,6 @@ onMounted(async () => {
 
 .filter-input {
   @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
-}
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
 }
 
 .custom-scroll::-webkit-scrollbar { width: 4px; }

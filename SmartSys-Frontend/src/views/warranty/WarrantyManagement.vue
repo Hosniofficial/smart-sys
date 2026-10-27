@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="isLoading || creating || detailsLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading || detailsLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -78,9 +76,15 @@
           </div>
 
           <div class="lg:col-span-1">
-            <button @click="applyFilters" class="h-9 w-full rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 transition-colors shadow-sm">
-              <i class="fas fa-sync-alt text-xs" :class="{'animate-spin': isLoading}"></i>
-            </button>
+            <LoadingButton
+              text="تحديث النتائج"
+              loadingText="جاري التحديث..."
+              icon="fas fa-sync-alt"
+              :isLoading="isLoading"
+              variant="secondary"
+              class="h-9 w-full rounded-md border border-slate-200 bg-white text-slate-400 shadow-sm hover:text-blue-600"
+              @click="applyFilters"
+            />
           </div>
 
 
@@ -161,10 +165,12 @@
                  <option :value="50">50</option>
                </select>
              </div>
-             <div class="flex items-center gap-1">
-               <button @click="changePage(filters.page.value - 1)" :disabled="filters.page.value <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-               <button @click="changePage(filters.page.value + 1)" :disabled="filters.page.value >= filters.totalPages.value" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-             </div>
+             <PaginationControls
+               :page="filters.page.value"
+               :total-pages="filters.totalPages.value"
+               @previous="changePage(filters.page.value - 1)"
+               @next="changePage(filters.page.value + 1)"
+             />
           </div>
         </div>
       </div>
@@ -194,8 +200,8 @@
                 <i class="fas fa-user-search absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px]"></i>
                 
                 <div v-if="showCustomerDropdown" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-auto py-2">
-                  <div v-if="customerSearchResults.length === 0" class="px-4 py-2 text-[10px] text-slate-400 font-bold">{{ customerQuery.length < 2 ? 'اكتب حرفين على الأقل للبحث...' : 'لا توجد نتائج...' }}</div>
-                  <li v-for="c in customerSearchResults" :key="c.id" @mousedown.prevent="selectCustomer(c)" class="px-4 py-2.5 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 list-none transition-colors">
+                  <div v-if="filteredCustomerResults.length === 0" class="px-4 py-2 text-[10px] text-slate-400 font-bold">{{ customerQuery.length < 2 ? 'اكتب حرفين على الأقل للبحث...' : 'لا توجد نتائج...' }}</div>
+                  <li v-for="c in filteredCustomerResults" :key="c.id" @mousedown.prevent="selectCustomer(c)" class="px-4 py-2.5 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 list-none transition-colors">
                     <p class="text-xs font-bold text-slate-800">{{ c.name }}</p>
                     <p class="text-[9px] text-slate-400 font-mono">{{ c.phone || c.email || c.id }}</p>
                   </li>
@@ -279,7 +285,8 @@
                 <div class="md:col-span-6 relative">
                   <input v-model="it._productQuery" type="text" class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold" :class="{'border-rose-300': itemErrors[idx]?.product_id}" placeholder="بحث عن الصنف..." @input="debouncedProductSearch(idx, it._productQuery)" @focus="it._showProductDropdown = true; if (it._productQuery) debouncedProductSearch(idx, it._productQuery)" @blur="scheduleHideProductDropdown(it)" />
                   <div v-if="it._showProductDropdown" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-40 overflow-auto py-1">
-                    <div v-if="(it._productResults || []).length === 0" class="px-3 py-2 text-[10px] text-slate-400 font-bold">{{ (it._productQuery || '').length < 2 ? 'اكتب حرفين على الأقل للبحث...' : 'لا توجد نتائج...' }}</div>
+                    <div v-if="it._productSearchError" role="alert" class="px-3 py-2 text-[10px] text-rose-600 font-bold">{{ it._productSearchError }}</div>
+                    <div v-else-if="(it._productResults || []).length === 0" class="px-3 py-2 text-[10px] text-slate-400 font-bold">{{ (it._productQuery || '').length < 2 ? 'اكتب حرفين على الأقل للبحث...' : 'لا توجد نتائج...' }}</div>
                     <li v-for="p in it._productResults" :key="p.id" @mousedown.prevent="selectProduct(idx, p)" class="px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-[10px] font-bold border-b border-slate-50 last:border-0 list-none">{{ p.name }}</li>
                   </div>
                   <p v-if="itemErrors[idx]?.product_id" class="text-[9px] text-rose-500 font-bold mt-1 px-1">{{ itemErrors[idx].product_id }}</p>
@@ -315,19 +322,15 @@
       </template>
     </BaseModal>
 
-    <!-- Details Modal -->
-    <transition name="fade">
-      <div v-if="showDetails && details" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md" @click.self="closeDetails">
-        <div class="bg-white w-full max-w-5xl rounded-xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[92vh] animate-modalIn">
-          <div class="px-8 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <div class="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center text-white text-xs font-bold">{{ details.id }}</div>
-              <h3 class="text-sm font-bold text-slate-900 uppercase">ملف التذكرة الفنية</h3>
-            </div>
-            <button @click="closeDetails" class="text-slate-400 hover:text-slate-900 transition-colors"><i class="fas fa-times text-lg"></i></button>
-          </div>
-
-          <div class="p-8 overflow-y-auto custom-scroll space-y-10">
+    <HistoryDetailsModal
+      :show="showDetails && !!details"
+      @close="closeDetails"
+      :title="`ملف التذكرة الفنية #${details?.id || ''}`"
+      :subtitle="details?.product_serial || ''"
+      icon="fas fa-shield-halved"
+      maxWidth="5xl"
+    >
+          <div class="space-y-10">
             <!-- Header Identity Row -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
               <div v-for="info in [
@@ -380,13 +383,28 @@
                     <div class="space-y-1.5"><label class="metadata-label">تحديث الحالة</label><select v-model="statusChange.value" class="filter-input-v2 h-9 font-bold"><option value="open">مفتوح</option><option value="in_progress">قيد المعالجة</option><option value="pending_customer">بانتظار العميل</option><option value="resolved">تم الحل</option><option value="closed">مغلق</option></select></div>
                     <div class="space-y-1.5"><label class="metadata-label">ملاحظة التغيير</label><input v-model="statusChange.note" class="filter-input-v2 h-9" placeholder="اختياري..." /></div>
                   </div>
-                  <button @click="applyStatus" class="h-9 w-full bg-slate-900 text-white rounded-md text-[10px] font-bold uppercase tracking-widest shadow-sm">تطبيق تغيير الحالة</button>
+                  <LoadingButton
+                    text="تطبيق تغيير الحالة"
+                    :isLoading="isUpdatingStatus"
+                    loadingText="جاري التحديث..."
+                    variant="primary"
+                    class="h-9 w-full"
+                    @click="applyStatus"
+                  />
 
                   <div class="pt-6 border-t border-slate-200 space-y-4">
                     <textarea v-model="noteContent" rows="2" class="filter-input-v2 h-auto py-3 italic" placeholder="إضافة ملاحظة فنية جديدة..."></textarea>
                     <div class="flex items-center justify-between">
                       <label class="flex items-center gap-2 cursor-pointer group"><input type="checkbox" v-model="noteInternal" class="w-4 h-4 rounded border-slate-300 text-amber-500 focus:ring-0" /><span class="text-[10px] font-bold text-slate-400 group-hover:text-slate-900">ملاحظة داخلية للموظفين</span></label>
-                      <button @click="addNote" :disabled="!noteContent.trim()" class="h-9 px-8 bg-blue-600 text-white rounded-md text-[10px] font-bold uppercase">إرسال الملاحظة</button>
+                      <LoadingButton
+                        text="إرسال الملاحظة"
+                        :isLoading="isAddingNote"
+                        :disabled="!noteContent.trim()"
+                        loadingText="جاري الإرسال..."
+                        variant="primary"
+                        class="h-9 px-8"
+                        @click="addNote"
+                      />
                     </div>
                   </div>
                 </section>
@@ -411,13 +429,13 @@
                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">المرفقات والوثائق</h4>
                    <div class="grid grid-cols-2 gap-3">
                       <div v-for="a in details.attachments" :key="a.id" class="group bg-white p-3 rounded-lg border border-slate-200 shadow-sm transition-all hover:shadow-lg">
-                        <div v-if="isImage(a.file_name)" @click="openLightbox(fileUrl(a.file_name))" class="aspect-video rounded-md bg-slate-100 overflow-hidden cursor-zoom-in mb-3 border border-slate-50">
-                           <img :src="fileUrl(a.file_name)" class="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                        <div v-if="isImage(a.filename)" @click="openLightbox(fileUrl(a.filename))" class="aspect-video rounded-md bg-slate-100 overflow-hidden cursor-zoom-in mb-3 border border-slate-50">
+                           <img :src="fileUrl(a.filename)" class="w-full h-full object-cover transition-transform group-hover:scale-105" />
                         </div>
                         <div v-else class="aspect-video rounded-md bg-slate-100 flex items-center justify-center text-slate-300 mb-3"><i class="fas fa-file-pdf text-3xl"></i></div>
                         <p class="text-[9px] font-bold text-slate-600 truncate uppercase">{{ a.original_name }}</p>
                         <div class="flex justify-between mt-3 pt-2 border-t border-slate-50">
-                           <a :href="fileUrl(a.file_name)" target="_blank" class="text-[9px] font-bold text-blue-600 uppercase hover:underline">تحميل</a>
+                           <a :href="fileUrl(a.filename)" target="_blank" class="text-[9px] font-bold text-blue-600 uppercase hover:underline">تحميل</a>
                            <button @click="removeAttachment(a.id)" class="text-[9px] font-bold text-rose-500 uppercase hover:underline">حذف</button>
                         </div>
                       </div>
@@ -432,12 +450,10 @@
             </div>
           </div>
 
-          <div class="px-8 py-4 bg-slate-900 border-t border-white/10 flex justify-end shrink-0">
-             <button @click="closeDetails" class="h-9 px-8 rounded-md bg-white/10 text-white hover:bg-white/20 text-[11px] font-bold uppercase transition-all tracking-widest">إغلاق الملف</button>
-          </div>
-        </div>
-      </div>
-    </transition>
+      <template #footer>
+        <button @click="closeDetails" class="h-9 px-8 rounded-md bg-slate-900 text-white text-[11px] font-bold uppercase transition-all tracking-widest hover:bg-black">إغلاق الملف</button>
+      </template>
+    </HistoryDetailsModal>
 
     <!-- Lightbox -->
     <transition name="fade">
@@ -465,8 +481,10 @@ import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import AlertService from '@/services/AlertService';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseModal from '@/components/BaseModal.vue';
+import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 import { useWarrantyStore } from '@/stores/warranty/warrantyStore';
 
 const router = useRouter();
@@ -524,7 +542,7 @@ const form = ref({
   purchase_date: '',
   priority: 'medium',
   issue_description: '',
-  items: [{ product_id: null, quantity: 1, issue_notes: '', _productQuery: '', _productResults: [], _showProductDropdown: false, _productName: '' }]
+  items: [{ product_id: null, quantity: 1, issue_notes: '', _productQuery: '', _productResults: [], _productSearchError: '', _showProductDropdown: false, _productName: '' }]
 });
 
 // Customer autocomplete
@@ -534,6 +552,11 @@ const customerStore = useCustomerStore();
 const salesStore = useSalesStore();
 const customers = computed(() => customerStore.customers);
 const customerSearchResults = ref([]);
+const filteredCustomerResults = computed(() => {
+  return Array.isArray(customerSearchResults.value)
+    ? customerSearchResults.value.filter(c => c && c.id)
+    : [];
+});
 const productStore = useProductStore();
 const showCustomerDropdown = ref(false);
 let customerSearchAbortCtrl = null;
@@ -650,8 +673,9 @@ const searchCustomers = async (q) => {
   try {
     if (customerSearchAbortCtrl) customerSearchAbortCtrl.abort();
     customerSearchAbortCtrl = new AbortController();
-    const list = await customerStore.searchCustomers(q.trim());
-    customerSearchResults.value = list || [];
+    const result = await customerStore.searchCustomers(q.trim());
+    const list = result?.data;
+    customerSearchResults.value = Array.isArray(list) ? list : [];
   } catch (_) { 
     customerSearchResults.value = [];
   }
@@ -747,6 +771,10 @@ function selectInvoice(sale) {
 }
 
 const selectCustomer = (c) => {
+  if (!c || !c.id) {
+    console.warn('selectCustomer called with invalid customer:', c);
+    return;
+  }
   form.value.customer_id = c.id;
   customerQuery.value = c.name || c.phone || String(c.id);
   customerSelectionLabel.value = customerQuery.value;
@@ -760,15 +788,25 @@ let productSearchAbortCtrlMap = new Map();
 const searchProducts = async (idx, q) => {
   const it = form.value.items[idx];
   if (!it) return;
+  it._productSearchError = '';
   if (!q || q.trim().length < 2) { it._productResults = []; return; }
   try {
     const prev = productSearchAbortCtrlMap.get(idx);
     if (prev) prev.abort();
     const ctrl = new AbortController();
     productSearchAbortCtrlMap.set(idx, ctrl);
-    const list = await productStore.searchProducts({ query: q.trim(), limit: 20 });
-    it._productResults = list;
-  } catch (_) { /* ignore */ }
+    const result = await productStore.searchProducts({ query: q.trim(), limit: 20 });
+    if (result?.status !== 'success') {
+      it._productResults = [];
+      it._productSearchError = result?.message || 'تعذر البحث عن المنتجات.';
+      return;
+    }
+    it._productResults = Array.isArray(result.data) ? result.data.filter(product => product?.id) : [];
+  } catch (error) {
+    it._productResults = [];
+    it._productSearchError = error?.message || 'تعذر البحث عن المنتجات.';
+    console.error('Warranty product search failed:', error);
+  }
 };
 
 const debouncedProductSearch = debounce((idx, q) => {
@@ -792,6 +830,8 @@ const details = ref(null);
 const detailsLoading = ref(false);
 const statusChange = ref({ value: 'open', note: '' });
 const noteContent = ref('');
+const isUpdatingStatus = ref(false);
+const isAddingNote = ref(false);
 const noteInternal = ref(false);
 
 const timelineEvents = computed(() => {
@@ -815,8 +855,8 @@ const timelineEvents = computed(() => {
       type: 'note',
       id: `nt_${n.id || n.created_at}`,
       at: n.created_at || null,
-      by: n.created_by || null,
-      content: n.content || '',
+      by: n.created_by_name || n.created_by || null,
+      content: n.note || '',
       is_internal: !!n.is_internal,
     });
   }
@@ -893,7 +933,7 @@ function resetForm() {
   form.value = {
     customer_id: null, invoice_id: null, product_serial: '', purchase_date: '',
     priority: 'medium', issue_description: '',
-    items: [{ product_id: null, quantity: 1, issue_notes: '', _productQuery: '', _productResults: [], _showProductDropdown: false, _productName: '' }]
+    items: [{ product_id: null, quantity: 1, issue_notes: '', _productQuery: '', _productResults: [], _productSearchError: '', _showProductDropdown: false, _productName: '' }]
   };
   customerQuery.value = '';
   customerSelectionLabel.value = '';
@@ -904,7 +944,7 @@ function resetForm() {
 }
 
 function addItem() {
-  form.value.items.push({ product_id: null, quantity: 1, issue_notes: '', _productQuery: '', _productResults: [], _showProductDropdown: false, _productName: '' });
+  form.value.items.push({ product_id: null, quantity: 1, issue_notes: '', _productQuery: '', _productResults: [], _productSearchError: '', _showProductDropdown: false, _productName: '' });
 }
 
 function removeItem(idx) {
@@ -1043,29 +1083,51 @@ function closeDetails() {
   router.replace({ path: '/warranty', query: q });
 }
 
+watch(() => route.query.id, (id) => {
+  if (id && String(details.value?.id) !== String(id)) {
+    openDetails(id);
+    return;
+  }
+  if (!id && showDetails.value) {
+    showDetails.value = false;
+    details.value = null;
+    customerName.value = '';
+  }
+});
+
 async function applyStatus() {
-  if (!details.value) return;
-  const result = await warrantyStore.updateWarrantyStatus(details.value.id, statusChange.value.value, statusChange.value.note);
-  if (result.status === 'success') {
-    statusChange.value.note = '';
-    details.value = result.data;
-    await enrichDetailsNames();
-    await fetchList();
-  } else {
-    showToast(result.message || 'تعذر تغيير الحالة', 'error');
+  if (!details.value || isUpdatingStatus.value) return;
+  isUpdatingStatus.value = true;
+  try {
+    const result = await warrantyStore.updateWarrantyStatus(details.value.id, statusChange.value.value, statusChange.value.note);
+    if (result.status === 'success') {
+      statusChange.value.note = '';
+      details.value = result.data;
+      await enrichDetailsNames();
+      await fetchList();
+    } else {
+      showToast(result.message || 'تعذر تغيير الحالة', 'error');
+    }
+  } finally {
+    isUpdatingStatus.value = false;
   }
 }
 
 async function addNote() {
-  if (!details.value || !noteContent.value.trim()) return;
-  const result = await warrantyStore.addNote(details.value.id, noteContent.value, noteInternal.value);
-  if (result.status === 'success') {
-    noteContent.value = '';
-    noteInternal.value = false;
-    details.value = result.data;
-    await enrichDetailsNames();
-  } else {
-    showToast(result.message || 'تعذر إضافة الملاحظة', 'error');
+  if (!details.value || !noteContent.value.trim() || isAddingNote.value) return;
+  isAddingNote.value = true;
+  try {
+    const result = await warrantyStore.addNote(details.value.id, noteContent.value, noteInternal.value);
+    if (result.status === 'success') {
+      noteContent.value = '';
+      noteInternal.value = false;
+      details.value = result.data;
+      await enrichDetailsNames();
+    } else {
+      showToast(result.message || 'تعذر إضافة الملاحظة', 'error');
+    }
+  } finally {
+    isAddingNote.value = false;
   }
 }
 
@@ -1139,17 +1201,8 @@ function priorityClass(p) {
   @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
 }
 
-.filter-input-v2 {
-  @apply w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
-}
-
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1; }
 
 .status-badge { @apply px-2 py-0.5 rounded text-[9px] font-bold border inline-flex items-center justify-center; }
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
-}
 
 .dropdown-list { @apply absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-auto py-1; }
 .dropdown-item { @apply px-4 py-2 hover:bg-blue-50 cursor-pointer flex justify-between items-center transition-colors border-b border-slate-50 last:border-0; }

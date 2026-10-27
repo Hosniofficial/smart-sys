@@ -11,6 +11,7 @@ use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 use Psr\Container\ContainerInterface;
 use App\Database\DatabaseValidator;
 use App\Services\MonologHandler;
+use App\Utils\ApiResponseEnvelope;
 
 /**
  * Resolves tenant scope from JWT attributes or a validated X-Tenant-ID header.
@@ -56,10 +57,10 @@ class TenantMiddleware implements MiddlewareInterface
         $tenantId = $request->getHeaderLine('X-Tenant-ID');
         if (empty($tenantId)) {
             $response = new \Slim\Psr7\Response();
-            $response->getBody()->write(json_encode([
+            $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
                 'status' => 'error',
                 'message' => 'Missing X-Tenant-ID header'
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            ], 400), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             return $response
                 ->withHeader('Content-Type', 'application/json')
                 ->withStatus(400);
@@ -73,10 +74,10 @@ class TenantMiddleware implements MiddlewareInterface
 
             if (!$stmt->fetch()) {
                 $response = new \Slim\Psr7\Response();
-                $response->getBody()->write(json_encode([
+                $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
                     'status' => 'error',
                     'message' => 'Invalid or inactive tenant'
-                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                ], 403), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                 return $response
                     ->withHeader('Content-Type', 'application/json')
                     ->withStatus(403);
@@ -84,10 +85,10 @@ class TenantMiddleware implements MiddlewareInterface
         } catch (\Exception $e) {
             $this->logger->error('Tenant validation error', ['error' => $e->getMessage()]);
             $response = new \Slim\Psr7\Response();
-            $response->getBody()->write(json_encode([
+            $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
                 'status' => 'error',
                 'message' => 'Tenant validation failed'
-            ]));
+            ], 500)));
             return $response->withStatus(500);
         }
 

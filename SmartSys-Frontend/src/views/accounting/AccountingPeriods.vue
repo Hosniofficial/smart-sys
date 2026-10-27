@@ -2,31 +2,24 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-indigo-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="loading || saving" class="fixed top-0 left-0 right-0 h-0.5 bg-indigo-600/10 z-[110]">
-      <div class="h-full bg-indigo-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
-      <header class="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-200">
-        <div class="space-y-1">
-          <div class="flex items-center gap-2 text-slate-500 text-xs font-medium uppercase tracking-wider">
-            <span>المالية</span>
-            <i class="fas fa-chevron-left text-[8px]"></i>
-            <span class="text-slate-900">الفترات المحاسبية</span>
-          </div>
-          <h1 class="text-2xl font-bold tracking-tight text-slate-900">إدارة الفترات المحاسبية</h1>
-          <p class="text-sm text-slate-500 font-medium">أدر الفترات المحاسبية، وتحكّم في فتحها وإغلاقها وتحديد إمكانية تسجيل القيود والعمليات المالية خلالها.</p>
-        </div>
-
-        <div class="flex items-center gap-3">
+      <PageHeader
+        :breadcrumb="{ parent: 'المالية', current: 'الفترات المحاسبية' }"
+        title="إدارة الفترات المحاسبية"
+        description="أدر الفترات المحاسبية، وتحكّم في فتحها وإغلاقها وتحديد إمكانية تسجيل القيود والعمليات المالية خلالها."
+        :branches="[]"
+        :selected-branch="null"
+      >
+        <template #controls>
           <button @click="showCreate = true" class="h-9 px-6 rounded-md bg-indigo-600 text-white text-xs font-bold shadow-sm hover:bg-indigo-700 transition-all active:scale-95 flex items-center gap-2">
             <i class="fas fa-plus-circle text-[10px]"></i>
             إنشاء دورة جديدة
           </button>
-        </div>
-      </header>
+        </template>
+      </PageHeader>
 
       <!-- System Status Banner: Professional Alert Style -->
       <transition name="fade">
@@ -148,9 +141,15 @@
 
             <div class="px-8 py-4 bg-slate-50 border-t border-slate-100 flex gap-3">
               <button @click="showCreate = false" class="flex-1 h-10 text-xs font-bold text-slate-500">إلغاء</button>
-              <button @click="doCreate" :disabled="saving" class="flex-2 h-10 bg-indigo-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-indigo-900/20 active:scale-95 transition-all">
-                {{ saving ? 'جاري المعالجة...' : 'إنشاء الدورة' }}
-              </button>
+              <LoadingButton
+                text="إنشاء الدورة"
+                :isLoading="saving"
+                loadingText="جاري المعالجة..."
+                :disabled="saving"
+                variant="primary"
+                class="flex-2 h-10"
+                @click="doCreate"
+              />
             </div>
           </div>
         </div>
@@ -174,7 +173,15 @@
             </div>
             <div class="flex gap-3 pt-2">
               <button @click="closeTarget = null" class="flex-1 h-10 text-xs font-bold text-slate-500">تراجع</button>
-              <button @click="doClose(closeTarget.id)" :disabled="saving" class="flex-2 h-10 bg-rose-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-rose-900/20">تأكيد الإغلاق</button>
+              <LoadingButton
+                text="تأكيد الإغلاق"
+                :isLoading="saving"
+                loadingText="جاري الإغلاق..."
+                :disabled="saving"
+                variant="danger"
+                class="flex-2 h-10"
+                @click="doClose(closeTarget.id)"
+              />
             </div>
           </div>
         </div>
@@ -201,6 +208,8 @@ import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth/authStore'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import PageHeader from '@/components/PageHeader.vue'
+import AlertService from '@/services/AlertService'
 
 const authStore = useAuthStore()
 
@@ -273,7 +282,12 @@ const doClose = async (id) => {
 }
 
 const doReopen = async (id) => {
-  if (!confirm('هل أنت متأكد من إعادة فتح هذه الدورة؟')) return
+  const confirmed = await AlertService.confirm(
+    'هل أنت متأكد من إعادة فتح هذه الدورة؟',
+    'إعادة فتح الدورة',
+    { confirmText: 'إعادة الفتح', cancelText: 'إلغاء' }
+  )
+  if (!confirmed) return
   try {
     await api().put(`/accounting-periods/${id}/reopen`)
     showToast('تم إعادة فتح الدورة')
@@ -284,7 +298,12 @@ const doReopen = async (id) => {
 }
 
 const doDelete = async (id) => {
-  if (!confirm('حذف هذه الدورة؟')) return
+  const confirmed = await AlertService.confirm(
+    'حذف هذه الدورة؟',
+    'حذف الدورة المحاسبية',
+    { confirmText: 'حذف الدورة', cancelText: 'إلغاء' }
+  )
+  if (!confirmed) return
   try {
     await api().delete(`/accounting-periods/${id}`)
     showToast('تم الحذف')
@@ -301,10 +320,8 @@ onMounted(load)
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
 .filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all;
+  @apply focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500;
 }
-
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1; }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }

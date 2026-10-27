@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import apiClient from '@/config/axios';
+import vouchersService from '@/services/vouchers';
 import { useStatementStore } from '@/stores/statement/statementStore';
 import { useSalesStore } from '@/stores/sales/salesStore';
 
@@ -61,7 +61,7 @@ export const useVoucherStore = defineStore('voucher', () => {
         if (dateTo)   params.end_date   = dateTo;
         if (search)   params.search     = search;
 
-        const response = await apiClient.get('/cash-vouchers', { params });
+        const response = await vouchersService.list(params);
         const data  = response?.data?.data || response?.data || {};
         const items = Array.isArray(data?.items)
           ? data.items
@@ -102,7 +102,7 @@ export const useVoucherStore = defineStore('voucher', () => {
     if (branchId) params.branch_id = String(branchId);
     if (type)     params.type      = type;
 
-    const response = await apiClient.get('/cash-vouchers', { params });
+    const response = await vouchersService.list(params);
     const data     = response?.data?.data || response?.data || {};
     const items    = Array.isArray(data?.items)
       ? data.items
@@ -120,9 +120,7 @@ export const useVoucherStore = defineStore('voucher', () => {
    * @returns {{ status: 'success', data: Object }}
    */
   const createVoucher = async (payload, idempotencyKey) => {
-    const response = await apiClient.post('/cash-vouchers', payload, {
-      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
-    });
+    const response = await vouchersService.create(payload, idempotencyKey);
 
     // امسح قائمة السندات عشان الـ refetch يجيب البيانات الجديدة
     clearVouchersListCache();
@@ -148,7 +146,7 @@ export const useVoucherStore = defineStore('voucher', () => {
   const updateVoucher = async (voucherId, payload) => {
     if (!voucherId) throw new Error('Voucher ID is required');
 
-    const response = await apiClient.put(`/cash-vouchers/${voucherId}`, payload);
+    const response = await vouchersService.update(voucherId, payload);
 
     clearVouchersListCache();
     clearSearchCache();
@@ -172,7 +170,7 @@ export const useVoucherStore = defineStore('voucher', () => {
   const cancelVoucher = async (voucherId) => {
     if (!voucherId) throw new Error('Voucher ID is required');
 
-    await apiClient.delete(`/cash-vouchers/${voucherId}`);
+    await vouchersService.delete(voucherId);
 
     clearVouchersListCache();
     clearSearchCache();

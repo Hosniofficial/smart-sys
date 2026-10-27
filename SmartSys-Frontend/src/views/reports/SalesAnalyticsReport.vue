@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="isLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -19,9 +17,15 @@
         @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
-          <button @click="fetchAnalytics" :disabled="isLoading" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
-            <i class="fas fa-sync-alt text-[10px]" :class="{'animate-spin': isLoading}"></i> تحديث البيانات
-          </button>
+          <LoadingButton
+            text="تحديث البيانات"
+            loadingText="جاري التحديث..."
+            icon="fas fa-sync-alt"
+            :isLoading="isLoading"
+            variant="secondary"
+            class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs shadow-sm hover:bg-slate-50"
+            @click="fetchAnalytics"
+          />
         </template>
       </PageHeader>
 
@@ -188,6 +192,7 @@ import { getLocalDateISO } from '@/utils';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import { useBranchStore } from '@/stores/branch/branchStore';
 import PageHeader from '@/components/PageHeader.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 ChartJS.register(Title, Tooltip, Legend, LineElement, BarElement, CategoryScale, LinearScale, PointElement, ArcElement, Filler);
 
@@ -361,7 +366,7 @@ onMounted(async () => { await Promise.all([fetchSettings(), branchStore.fetchBra
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
 .filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all;
+  @apply focus:ring-4 focus:ring-blue-500/5;
 }
 
 .metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1; }

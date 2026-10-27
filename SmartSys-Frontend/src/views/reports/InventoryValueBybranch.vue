@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="loading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -65,17 +63,11 @@
           </div>
 
           <div class="flex-grow relative z-10 h-80">
-            <div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-20">
-              <div class="flex items-center gap-1">
-                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></div>
-                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.2s"></div>
-                <div class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" style="animation-delay: 0.4s"></div>
-              </div>
-            </div>
+            <BaseSpinner v-if="loading" overlay size="md" />
             <BarChart v-if="chartData && chartData.labels.length" :data="chartData" :options="chartOptions" />
             <div v-else class="h-full flex flex-col items-center justify-center text-slate-300 gap-3">
-               <i class="fas fa-sync-alt fa-spin text-2xl opacity-20"></i>
-               <p class="text-[10px] font-bold uppercase tracking-widest">بانتظار مزامنة البيانات...</p>
+               <i class="fas fa-chart-column text-2xl opacity-20"></i>
+               <p class="text-[10px] font-bold uppercase tracking-widest">لا توجد بيانات لعرضها</p>
             </div>
           </div>
         </div>
@@ -184,6 +176,7 @@ import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, Li
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useBranchStore } from '@/stores/branch/branchStore';
 import PageHeader from '@/components/PageHeader.vue';
+import BaseSpinner from '@/components/ui/BaseSpinner.vue';
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
 

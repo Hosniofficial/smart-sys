@@ -575,8 +575,6 @@ watch(() => props.serverError, (val) => { if (val) localError.value = ''; });
 
 <style scoped>
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1; }
-
 .form-input-v3 { @apply h-10 w-full bg-white border border-slate-200 rounded-md px-3 text-xs font-medium focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all; }
 
 .animate-modalIn { animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }

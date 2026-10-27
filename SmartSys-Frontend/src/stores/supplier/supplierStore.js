@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { listSuppliers } from '@/services/suppliers';
-import apiClient from '@/config/axios';
+import {
+  createSupplier as createSupplierRequest,
+  deleteSupplier as deleteSupplierRequest,
+  listSuppliers,
+  paySupplierDebt as paySupplierDebtRequest,
+  updateSupplier as updateSupplierRequest,
+} from '@/services/suppliers';
 
 const nowMs = () => Date.now();
 
@@ -210,7 +215,7 @@ export const useSupplierStore = defineStore('supplier', () => {
    */
   const createSupplier = async (payload) => {
     try {
-      const response    = await apiClient.post('/suppliers', payload);
+      const response    = await createSupplierRequest(payload);
       const newSupplier = response?.data?.data || response?.data;
 
       if (newSupplier) {
@@ -242,7 +247,7 @@ export const useSupplierStore = defineStore('supplier', () => {
    */
   const updateSupplier = async (id, payload) => {
     try {
-      const response = await apiClient.put(`/suppliers/${id}`, payload);
+      const response = await updateSupplierRequest(id, payload);
       const updated  = response?.data?.data || response?.data || {};
 
       const idx = suppliers.value.findIndex(s => String(s.id) === String(id));
@@ -275,7 +280,7 @@ export const useSupplierStore = defineStore('supplier', () => {
    */
   const deleteSupplier = async (id) => {
     try {
-      await apiClient.delete(`/suppliers/${id}`);
+      await deleteSupplierRequest(id);
 
       suppliers.value = suppliers.value.filter(s => String(s.id) !== String(id));
       delete detailsCache.value[String(id)];
@@ -298,9 +303,7 @@ export const useSupplierStore = defineStore('supplier', () => {
 
   const paySupplierDebt = async (payload, idempotencyKey) => {
     try {
-      const response = await apiClient.post('/purchases/pay-debt', payload, {
-        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
-      });
+      const response = await paySupplierDebtRequest(payload, idempotencyKey);
       suppliersFetchedAt.value = 0;
 
       return {

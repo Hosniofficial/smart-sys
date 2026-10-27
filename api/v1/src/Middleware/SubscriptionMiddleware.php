@@ -10,6 +10,7 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Slim\Psr7\Response;
 use App\Utils\SuperAdminHelper;
+use App\Utils\ApiResponseEnvelope;
 
 /**
  * Gates tenant requests on subscription status and end date.
@@ -152,7 +153,10 @@ class SubscriptionMiddleware implements MiddlewareInterface
             'code' => 'SUBSCRIPTION_REQUIRED',
             'message' => $message
         ], $extra);
-        $res->getBody()->write(json_encode($payload, JSON_UNESCAPED_UNICODE));
+        $res->getBody()->write(json_encode(
+            ApiResponseEnvelope::normalize($payload, 402),
+            JSON_UNESCAPED_UNICODE
+        ));
         return $res->withHeader('Content-Type', 'application/json');
     }
 

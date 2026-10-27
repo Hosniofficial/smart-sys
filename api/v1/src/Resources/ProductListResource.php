@@ -54,6 +54,10 @@ class ProductListResource
 
             'purchase_price'        => $includeCostData ? (float) $product['purchase_price'] : null,
             'sale_price'            => (float) $product['sale_price'],
+            'regular_sale_price'    => (float) $product['sale_price'],
+            'campaign_id'           => isset($product['campaign_id']) ? (int) $product['campaign_id'] : null,
+            'campaign_name'         => $product['campaign_name'] ?? null,
+            'campaign_price'        => isset($product['campaign_price']) ? (float) $product['campaign_price'] : null,
             'min_sale_price'        => (float) ($product['min_sale_price'] ?? 0),
             'fixed_discount_percentage' => (float) ($product['fixed_discount_percentage'] ?? 0),
 

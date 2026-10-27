@@ -37,12 +37,7 @@ export {
   logger
 } from './services/index.js';
 
-// Re-export PrintService methods for convenience
 export {
-  getPrintMode,
-  getQzPrinterName,
-  setQzPrinterName,
-  getAvailablePrinters,
   printDocument
 } from './services/PrintService.js';
 

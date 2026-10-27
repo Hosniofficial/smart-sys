@@ -84,7 +84,7 @@ SmartSys/
   ```
 
 - لا تشغّل `up` إلا على قاعدة تطوير/اختبار معروفة وبعد مراجعة migrations المعلقة. في البيئات المشتركة أو الإنتاجية يلزم اعتماد وخطة نسخة احتياطية واستعادة ومراجعة سجل القاعدة.
-- لا تستورد ملفات `database/production/` التاريخية؛ حالة الحزمة وشروطها موثقة في [database/production/README.md](../database/production/README.md).
+- لا توجد حزم SQL تاريخية أو أدوات نقل خاصة بمزود الاستضافة في المستودع؛ راجع [تعليمات قاعدة البيانات](../database/README.md) وإجراءات migrations.
 - تفاصيل سجل migrations وإجراءات التشغيل في [database/README.md](../database/README.md) و[database/migrations/README.md](../database/migrations/README.md).
 
 ## الاختبارات والتحقق

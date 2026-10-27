@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="loading || actionLoading || securityLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8 animate-fadeIn">
       
@@ -18,14 +16,15 @@
       >
         <template #controls>
           <div class="flex items-center gap-2">
-            <button 
-              @click="load" 
-              :disabled="loading" 
-              class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold transition-all flex items-center gap-2 shadow-sm hover:bg-slate-50 disabled:opacity-50"
-            >
-              <i class="fas fa-sync-alt text-[10px]" :class="{'animate-spin': loading}"></i>
-              <span>{{ loading ? 'جاري التحميل...' : 'تحديث البيانات' }}</span>
-            </button>
+            <LoadingButton
+              text="تحديث البيانات"
+              loadingText="جاري التحميل..."
+              icon="fas fa-sync-alt"
+              :isLoading="loading"
+              variant="secondary"
+              class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-700 text-xs shadow-sm hover:bg-slate-50"
+              @click="load"
+            />
             <button 
               @click="exportCsv" 
               :disabled="!Array.isArray(rows) || rows.length === 0" 
@@ -250,17 +249,13 @@
             صفحة <span class="text-slate-900">{{ page }}</span> من <span class="text-slate-900">{{ totalPages }}</span>
             <span class="mx-2 text-slate-200">|</span> إجمالي <span class="text-slate-900">{{ rows.length }}</span> سجل
           </div>
-          <div class="flex items-center gap-1">
-            <button @click="page--" :disabled="page <= 1" class="pagination-btn-v2">
-              <i class="fas fa-chevron-right text-[10px]"></i>
-            </button>
-            <div class="px-3 h-8 bg-white border border-slate-200 rounded flex items-center text-[10px] font-bold text-slate-700 font-mono shadow-sm">
-              {{ page }} / {{ totalPages }}
-            </div>
-            <button @click="page++" :disabled="page >= totalPages" class="pagination-btn-v2">
-              <i class="fas fa-chevron-left text-[10px]"></i>
-            </button>
-          </div>
+          <PaginationControls
+            :page="page"
+            :total-pages="totalPages"
+            show-page-indicator
+            @previous="page--"
+            @next="page++"
+          />
         </div>
       </div>
     </div>
@@ -290,14 +285,14 @@
 
       <template #footer>
         <button @click="closeDialogs" class="px-6 h-9 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">إلغاء</button>
-        <button 
+        <LoadingButton
           @click="submitActivate" 
-          :disabled="actionLoading" 
-          class="px-6 h-9 rounded-md bg-emerald-600 text-white text-xs font-bold shadow-sm hover:bg-emerald-700 transition-all active:scale-95 flex items-center justify-center gap-2"
-        >
-          <BaseSpinner v-if="actionLoading" :size="14" color="#fff" />
-          <span>تأكيد التفعيل</span>
-        </button>
+          text="تأكيد التفعيل"
+          :isLoading="actionLoading"
+          loadingText="جارٍ التفعيل..."
+          variant="success"
+          class="px-6 h-9 rounded-md"
+        />
       </template>
     </BaseModal>
 
@@ -324,14 +319,14 @@
 
       <template #footer>
         <button @click="closeDialogs" class="px-6 h-9 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">تراجع</button>
-        <button 
+        <LoadingButton
           @click="submitExpire" 
-          :disabled="actionLoading" 
-          class="px-6 h-9 rounded-md bg-rose-600 text-white text-xs font-bold shadow-sm hover:bg-rose-700 transition-all active:scale-95 flex items-center justify-center gap-2"
-        >
-          <BaseSpinner v-if="actionLoading" :size="14" color="#fff" />
-          <span>إيقاف الآن</span>
-        </button>
+          text="إيقاف الآن"
+          :isLoading="actionLoading"
+          loadingText="جارٍ الإيقاف..."
+          variant="danger"
+          class="px-6 h-9 rounded-md"
+        />
       </template>
     </BaseModal>
 
@@ -357,14 +352,15 @@
 
       <template #footer>
         <button @click="closeDialogs" class="px-6 h-9 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">إلغاء</button>
-        <button 
+        <LoadingButton
           @click="submitExtend" 
-          :disabled="actionLoading || !form.days" 
-          class="px-6 h-9 rounded-md bg-amber-500 text-white text-xs font-bold shadow-sm hover:bg-amber-600 transition-all active:scale-95 flex items-center justify-center gap-2"
-        >
-          <BaseSpinner v-if="actionLoading" :size="14" color="#fff" />
-          <span>تأكيد التمديد</span>
-        </button>
+          text="تأكيد التمديد"
+          :isLoading="actionLoading"
+          :disabled="!form.days"
+          loadingText="جارٍ التمديد..."
+          variant="warning"
+          class="px-6 h-9 rounded-md"
+        />
       </template>
     </BaseModal>
 
@@ -404,15 +400,14 @@
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-          <button 
+          <LoadingButton
             @click="refreshSecurityData" 
-            :disabled="securityLoading" 
-            class="h-9 px-4 bg-slate-900 text-white rounded-md font-bold text-xs hover:bg-black transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
-          >
-            <BaseSpinner v-if="securityLoading" :size="14" color="#fff" />
-            <i v-else class="fas fa-shield-virus text-[10px]"></i>
-            <span>تشغيل فحص فوري</span>
-          </button>
+            text="تشغيل فحص فوري"
+            :isLoading="securityLoading"
+            loadingText="جارٍ الفحص..."
+            variant="secondary"
+            class="h-9 px-4 rounded-md"
+          />
           <button 
             @click="blockSubscription" 
             :disabled="securityLoading" 
@@ -473,14 +468,15 @@
 
       <template #footer>
         <button @click="closeDialogs" class="px-6 h-9 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">إلغاء</button>
-        <button 
+        <LoadingButton
           @click="submitChangePlan" 
-          :disabled="actionLoading || !form.newPlan" 
-          class="px-6 h-9 rounded-md bg-indigo-600 text-white text-xs font-bold shadow-sm hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2"
-        >
-          <BaseSpinner v-if="actionLoading" :size="14" color="#fff" />
-          <span>تحديث الباقة</span>
-        </button>
+          text="تحديث الباقة"
+          :isLoading="actionLoading"
+          :disabled="!form.newPlan"
+          loadingText="جارٍ التحديث..."
+          variant="indigo"
+          class="px-6 h-9 rounded-md"
+        />
       </template>
     </BaseModal>
 
@@ -491,12 +487,13 @@
 import { ref, computed, onMounted } from 'vue'
 import BaseModal from '@/components/BaseModal.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import PaginationControls from '@/components/ui/PaginationControls.vue'
+import LoadingButton from '@/components/ui/LoadingButton.vue'
 import { useAdminStore } from '@/stores/admin/adminStore'
 import { useAuthStore } from '@/stores/auth/authStore'
 import { useBreadcrumb } from '@/composables/useBreadcrumb'
-import BaseSpinner from '@/components/ui/BaseSpinner.vue'
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue'
-import apiClient from '@/config/axios'
+import AlertService from '@/services/AlertService'
 
 // --- State & Stores (Strictly Preserved) ---
 const adminStore = useAdminStore()
@@ -578,10 +575,12 @@ async function refreshSecurityData() {
   if (!current.value) return
   securityLoading.value = true
   try {
-    const res = await apiClient.post(`/admin/subscriptions/${current.value.id}/security-check`)
-    if (res.data?.data) {
-      Object.assign(current.value, res.data.data)
+    const result = await adminStore.refreshSubscriptionSecurity(current.value.id)
+    if (result.status === 'success' && result.data) {
+      Object.assign(current.value, result.data)
       if (typeof window?.showToast === 'function') window.showToast('تم تحديث البيانات الأمنية', 'success')
+    } else {
+      if (typeof window?.showToast === 'function') window.showToast(result.message || 'فشل التحديث', 'error')
     }
   } catch (e) {
     if (typeof window?.showToast === 'function') window.showToast(e?.message || 'فشل التحديث', 'error')
@@ -590,7 +589,12 @@ async function refreshSecurityData() {
 
 async function blockSubscription() {
   if (!current.value) return
-  if (!confirm(`هل أنت متأكد من حظر اشتراك #${current.value.id}؟`)) return
+  const confirmed = await AlertService.confirm(
+    `هل أنت متأكد من حظر اشتراك #${current.value.id}؟`,
+    'حظر الاشتراك',
+    { confirmText: 'حظر الاشتراك', cancelText: 'إلغاء' }
+  )
+  if (!confirmed) return
   const result = await adminStore.blockSubscription(current.value.id)
   if (result.status === 'success') {
     if (typeof window?.showToast === 'function') window.showToast(result.message, 'success')
@@ -679,10 +683,6 @@ onMounted(() => load())
 
 .filter-input {
   @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
-}
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
 }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }

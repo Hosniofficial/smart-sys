@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
 
     <!-- Global Loading Progress -->
-    <div v-if="isLoading || statementLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading || statementLoading" />
 
     <main class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8 min-w-0">
       <PageHeader
@@ -96,9 +94,15 @@
                   <i class="fas fa-arrow-left text-[8px] text-slate-300"></i>
                   <span class="text-blue-700 font-mono mx-1">{{ endDate }}</span>
                 </p>
-                <button @click="applyFilter" :disabled="isLoading || statementLoading" class="h-9 w-full rounded-md bg-slate-100 text-slate-600 text-[11px] font-bold hover:bg-slate-200 disabled:opacity-50 transition-all md:col-span-2">
-                  <i class="fas fa-sync-alt text-[9px]"></i> تحديث النتائج
-                </button>
+                <LoadingButton
+                  text="تحديث النتائج"
+                  loadingText="جاري التحديث..."
+                  icon="fas fa-sync-alt"
+                  :isLoading="isLoading || statementLoading"
+                  variant="secondary"
+                  class="h-9 w-full rounded-md bg-slate-100 text-slate-600 text-[11px] hover:bg-slate-200 md:col-span-2"
+                  @click="applyFilter"
+                />
               </div>
             </div>
           </section>
@@ -355,11 +359,13 @@
             <!-- Table Footer Pagination -->
             <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
               <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">إجمالي الحركات: {{ totalRecords }} (الصفحة الحالية: {{ transactions.length }})</span>
-              <div class="flex items-center gap-1">
-                <button @click="page = Math.max(1, page - 1)" :disabled="page <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-                <span class="px-3 py-1 bg-white border border-slate-200 rounded text-[10px] font-bold font-mono">{{ page }} / {{ totalPages || 1 }}</span>
-                <button @click="page++" :disabled="page >= totalPages" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-              </div>
+              <PaginationControls
+                :page="page"
+                :total-pages="totalPages || 1"
+                show-page-indicator
+                @previous="page = Math.max(1, page - 1)"
+                @next="page++"
+              />
             </div>
           </div>
 
@@ -632,14 +638,14 @@
                 >
                   إلغاء
                 </button>
-                <button
+                <LoadingButton
                   type="submit"
-                  :disabled="paymentLoading"
-                  :class="type === 'customers' ? 'bg-emerald-600 shadow-emerald-900/20 hover:bg-emerald-700' : 'bg-indigo-600 shadow-indigo-900/20 hover:bg-indigo-700'"
-                  class="flex-[2] h-10 text-white rounded-md text-xs font-bold shadow-lg active:scale-95 transition-all disabled:opacity-50"
-                >
-                  {{ paymentLoading ? 'جاري...' : (pendingPayment ? 'إعادة المحاولة بنفس البيانات' : (type === 'customers' ? 'تأكيد التحصيل' : 'تأكيد السداد')) }}
-                </button>
+                  :text="pendingPayment ? 'إعادة المحاولة بنفس البيانات' : (type === 'customers' ? 'تأكيد التحصيل' : 'تأكيد السداد')"
+                  :isLoading="paymentLoading"
+                  loadingText="جاري..."
+                  :variant="type === 'customers' ? 'success' : 'indigo'"
+                  class="flex-[2] h-10"
+                />
               </div>
             </form>
           </div>
@@ -666,7 +672,9 @@ import { useSupplierStore } from '@/stores/supplier/supplierStore';
 import { usePendingIdempotentRequest } from '@/composables/usePendingIdempotentRequest';
 import { getLocalDateISO, getImageUrl } from '@/utils';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 // --- Core ---
 const route = useRoute();
@@ -1428,14 +1436,10 @@ watch(activeTab, async (tab) => {
   @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
 }
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-500 tracking-wide px-1 mb-1; }
+.metadata-label { @apply text-slate-500 tracking-wide mb-1; }
 
 .quick-range-pill {
   @apply px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-[10px] font-bold text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-all;
-}
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-30 transition-all;
 }
 
 .status-badge { @apply px-2 py-0.5 rounded text-[9px] font-bold border inline-flex items-center justify-center; }

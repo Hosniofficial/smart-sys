@@ -3,9 +3,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-indigo-100" dir="rtl">
 
     <!-- Top Progress Bar -->
-    <div v-if="isLoading || isLoadingSearch" class="fixed top-0 left-0 right-0 h-0.5 bg-indigo-600/10 z-[110]">
-      <div class="h-full bg-indigo-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading || isLoadingSearch" />
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
 
       <!-- Page Header Area -->
@@ -102,9 +100,17 @@
               </div>
             </div>
             <div class="lg:col-span-1">
-              <button @click="loadPurchases" class="h-9 w-full rounded-md border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 transition-colors shadow-sm">
-                <i class="fas fa-sync-alt text-xs"></i>
-              </button>
+              <LoadingButton
+                text=""
+                loadingText=""
+                :showTextDuringLoad="false"
+                icon="fas fa-sync-alt"
+                :isLoading="isLoading"
+                variant="secondary"
+                class="h-9 w-full rounded-md border border-slate-200 bg-white p-0 text-slate-400 shadow-sm hover:text-indigo-600"
+                aria-label="تحديث المشتريات"
+                @click="loadPurchases"
+              />
             </div>
           </div>
         </div>
@@ -150,7 +156,7 @@
                 </td>
                 <td class="px-6 py-4 text-center">
                   <div class="flex items-center justify-center gap-2">
-                    <button @click="viewPurchaseDetails(p)" title="تفاصيل الفاتورة" aria-label="تفاصيل الفاتورة" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center justify-center"><i class="fas fa-eye text-[10px]"></i></button>
+                    <button @click="openPurchaseDetails(p)" title="تفاصيل الفاتورة في تبويب" aria-label="تفاصيل الفاتورة في تبويب" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center justify-center"><i class="fas fa-eye text-[10px]"></i></button>
                     <button v-if="canEditPurchase && !['cancelled', 'canceled', 'rejected'].includes(p.dynamic_status || p.status) && !['posted', 'reversed'].includes(p.journal_status)" @click="openEditModal(p)" title="تعديل الفاتورة" aria-label="تعديل الفاتورة" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center"><i class="fas fa-pen text-[10px]"></i></button>
                     <button v-if="canDeletePurchase && !['cancelled', 'canceled', 'rejected'].includes(p.dynamic_status || p.status)" :title="Number(p.linked_payment_count || 0) > 0 ? 'الفاتورة مرتبطة بمدفوعات ولا يمكن إلغاؤها.' : (Number(p.linked_return_count || 0) > 0 ? 'الفاتورة مرتبطة بمرتجعات ولا يمكن إلغاؤها.' : 'إلغاء الفاتورة')" @click="confirmDelete(p)" class="w-8 h-8 rounded-lg border border-slate-200 transition-all flex items-center justify-center" :class="Number(p.linked_payment_count || 0) > 0 || Number(p.linked_return_count || 0) > 0 ? 'text-amber-600 border-amber-200 hover:bg-amber-50' : 'text-slate-400 hover:text-rose-600 hover:border-rose-200'"><i :class="Number(p.linked_payment_count || 0) > 0 || Number(p.linked_return_count || 0) > 0 ? 'fas fa-lock text-[10px]' : 'fas fa-trash-alt text-[10px]'"></i></button>
                   </div>
@@ -176,10 +182,12 @@
                 <option :value="50">50</option>
               </select>
             </div>
-            <div class="flex items-center gap-1">
-              <button @click="previousPage()" :disabled="currentPage <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-              <button @click="nextPage(totalPages)" :disabled="currentPage >= totalPages" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-            </div>
+            <PaginationControls
+              :page="currentPage"
+              :total-pages="totalPages"
+              @previous="previousPage()"
+              @next="nextPage(totalPages)"
+            />
           </div>
         </div>
       </div>
@@ -233,25 +241,42 @@
           </table>
         </div>
 
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div class="space-y-2 rounded-xl border border-slate-100 bg-slate-50/60 p-5">
-            <p class="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">التلخيص المالي</p>
-            <div class="flex justify-between text-xs font-bold text-slate-500"><span>إجمالي الفاتورة</span><span class="text-slate-900">{{ formatCurrency(selectedPurchase?.total_amount || 0) }}</span></div>
-            <div class="flex justify-between text-xs font-bold text-slate-500"><span>المدفوع</span><span class="text-emerald-600">{{ formatCurrency(selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0) }}</span></div>
-            <div v-if="Number(selectedPurchase?.return_amount || 0) > 0" class="flex justify-between text-xs font-bold text-slate-500"><span>قيمة المرتجعات</span><span class="text-orange-600">{{ formatCurrency(selectedPurchase.return_amount) }}</span></div>
-            <div class="flex justify-between border-t border-slate-200 pt-2 text-xs font-black"><span>المتبقي</span><span class="text-rose-600">{{ formatCurrency(selectedPurchase?.remaining_balance ?? ((selectedPurchase?.total_amount || 0) - (selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0))) }}</span></div>
+        <div class="flex flex-col md:flex-row gap-8">
+          <div class="flex-1 p-5 rounded-xl bg-slate-50/50 border border-slate-100">
+            <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">ملاحظات الفاتورة</p>
+            <p class="text-xs text-slate-600 italic">{{ selectedPurchase?.notes || 'لا توجد ملاحظات.' }}</p>
           </div>
-          <div class="flex items-center justify-center rounded-xl bg-slate-900 p-6 text-center text-white">
-            <div>
-              <p class="mb-1 text-[10px] font-bold text-slate-400">صافي الفاتورة</p>
-              <p class="text-3xl font-bold tracking-tight text-indigo-300">{{ formatCurrency(selectedPurchase?.total_amount || 0) }}</p>
+          <div class="w-full md:w-72 space-y-2.5 bg-slate-50 border border-slate-200 p-5 rounded-xl">
+            <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المجموع</span><span class="font-mono font-bold text-slate-700">{{ formatCurrency(selectedPurchase?.total_amount || 0) }}</span></div>
+            <div class="flex justify-between text-[11px] font-medium text-slate-500 pb-2.5 border-b border-slate-200"><span>المدفوع</span><span class="font-mono font-bold text-emerald-600">{{ formatCurrency(selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0) }}</span></div>
+            <!-- صافي الفاتورة مميز -->
+            <div class="flex justify-between items-center bg-indigo-600 text-white px-4 py-3 rounded-lg">
+              <span class="text-[11px] font-bold uppercase tracking-widest opacity-80">صافي الفاتورة</span>
+              <span class="text-xl font-bold font-mono tracking-tighter">{{ formatCurrency(selectedPurchase?.total_amount || 0) }}</span>
+            </div>
+            <div class="pt-1 space-y-2">
+              <div v-if="Number(selectedPurchase?.return_amount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
+                <span>قيمة المرتجعات</span>
+                <span class="font-mono font-bold text-amber-500">{{ formatCurrency(selectedPurchase.return_amount) }}</span>
+              </div>
+              <div v-if="(selectedPurchase?.remaining_balance ?? ((selectedPurchase?.total_amount || 0) - (selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0))) > 0" class="flex justify-between text-[11px] font-bold pt-1 border-t border-slate-200">
+                <span class="text-slate-500">المتبقي</span>
+                <span class="font-mono text-rose-600">{{ formatCurrency(selectedPurchase?.remaining_balance ?? ((selectedPurchase?.total_amount || 0) - (selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0))) }}</span>
+              </div>
             </div>
           </div>
         </div>
-        <p v-if="selectedPurchase?.notes" class="whitespace-pre-wrap rounded-lg border border-amber-100 bg-amber-50 p-4 text-xs text-amber-800">{{ selectedPurchase.notes }}</p>
       </div>
       <template #footer>
-        <div dir="rtl" class="mr-auto flex flex-row-reverse flex-wrap items-center gap-3">
+        <div class="mr-auto flex flex-row flex-wrap items-center gap-3">
+          <!-- طباعة الفاتورة -->
+          <button
+            @click="printPurchaseDetails"
+            class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-indigo-200 px-4 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
+          >
+            <i class="fas fa-print"></i> طباعة الفاتورة
+          </button>
+          <!-- إغلاق -->
           <button @click="closePurchaseDetails" class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md px-4 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-100">إغلاق</button>
         </div>
       </template>
@@ -319,9 +344,14 @@
         <button @click="showProductModal = false" class="flex-1 py-3 rounded-xl border-2 border-slate-200 font-bold text-slate-600 text-xs hover:bg-slate-50 transition-all">
           إلغاء
         </button>
-        <button @click="saveNewProduct" :disabled="isAddingProduct" class="flex-[2] py-3 rounded-xl bg-blue-600 text-white font-bold text-xs shadow-xl active:scale-95 disabled:opacity-50">
-          إضافة للمخزن
-        </button>
+        <LoadingButton
+          text="إضافة للمخزن"
+          :isLoading="isAddingProduct"
+          loadingText="جاري الإضافة..."
+          variant="primary"
+          class="flex-[2] py-3 rounded-xl"
+          @click="saveNewProduct"
+        />
       </template>
     </BaseModal>
 
@@ -331,6 +361,7 @@
 
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency'
 import { useTableFilters } from '@/composables/useTableFilters'
@@ -341,8 +372,10 @@ import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue'
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 import BaseModal from '@/components/BaseModal.vue';
-import { getLocalDateISO, isSettingEnabled } from '@/utils'
+import { getLocalDateISO, isSettingEnabled, printDocument } from '@/utils'
+import { buildPurchaseHtml } from '@/utils/printTemplates'
 import { useSessionExemption } from '@/composables/useCashierSessionGuard'
 import { useAuthStore } from '@/stores/auth/authStore'
 import { useBranchStore } from '@/stores/branch/branchStore'
@@ -360,6 +393,8 @@ const { showToast } = useToast()
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency()
 const { breadcrumb } = useBreadcrumb()
 const authStore = useAuthStore()
+const route = useRoute()
+const router = useRouter()
 const canCreatePurchase = computed(() =>
   authStore.isSuperAdmin || authStore.user?.permissions?.includes('purchase.create') === true
 )
@@ -605,18 +640,22 @@ const openEditModal = (p) => {
 };
 
 const viewPurchaseDetails = async (purchase) => {
-  if (!purchase?.id) return;
+  const purchaseId = Number(typeof purchase === 'object' ? purchase?.id : purchase)
+  if (!Number.isInteger(purchaseId) || purchaseId <= 0) return;
+  const purchaseRow = typeof purchase === 'object'
+    ? purchase
+    : purchases.value.find(item => Number(item.id) === purchaseId) || { id: purchaseId }
 
   const requestId = ++detailsRequestId;
-  selectedPurchase.value = purchase;
+  selectedPurchase.value = purchaseRow;
   detailsError.value = '';
   showDetailsModal.value = true;
   isLoadingDetails.value = true;
 
   try {
-    const details = await purchaseStore.fetchPurchaseDetails(purchase.id, { force: true });
+    const details = await purchaseStore.fetchPurchaseDetails(purchaseId, { force: true });
     if (requestId === detailsRequestId) {
-      selectedPurchase.value = { ...purchase, ...(details || {}) };
+      selectedPurchase.value = { ...purchaseRow, ...(details || {}) };
     }
   } catch (error) {
     if (requestId === detailsRequestId) {
@@ -628,20 +667,50 @@ const viewPurchaseDetails = async (purchase) => {
   }
 };
 
+const openPurchaseDetails = async (purchase) => {
+  if (!purchase?.id) return;
+  if (Number(route.query.id) === Number(purchase.id)) {
+    await viewPurchaseDetails(purchase);
+    return;
+  }
+  await router.push({ name: 'Purchases', query: { ...route.query, id: String(purchase.id) } });
+};
+
+const printPurchaseDetails = async () => {
+  if (!selectedPurchase.value) return;
+  const p = { ...selectedPurchase.value, items: selectedPurchase.value.items || [] };
+  await printDocument(buildPurchaseHtml(p));
+};
+
 const closePurchaseDetails = () => {
   detailsRequestId++;
   showDetailsModal.value = false;
   isLoadingDetails.value = false;
+  if (route.query.id) {
+    const query = { ...route.query };
+    delete query.id;
+    router.replace({ name: 'Purchases', query });
+  }
 };
 
-const handlePurchaseModalClose = () => {
+watch(() => route.query.id, async (id) => {
+  if (Number(id) > 0) {
+    await viewPurchaseDetails(Number(id));
+    return;
+  }
+  closePurchaseDetails();
+}, { immediate: true });
+
+const handlePurchaseModalClose = async () => {
   if (isSaving.value) {
     showToast('انتظر انتهاء حفظ الفاتورة قبل إغلاق النافذة.', 'warning');
     return;
   }
   if (pendingPurchaseRequest.value?.outcomeUnknown) {
-    const verifiedMissing = window.confirm(
-      'نتيجة الحفظ غير مؤكدة. لا تبدأ فاتورة جديدة قبل مراجعة قائمة المشتريات. هل تحققت من عدم إنشاء الفاتورة وتريد إلغاء إعادة المحاولة؟'
+    const verifiedMissing = await AlertService.confirm(
+      'نتيجة الحفظ غير مؤكدة. لا تبدأ فاتورة جديدة قبل مراجعة قائمة المشتريات. هل تحققت من عدم إنشاء الفاتورة وتريد إلغاء إعادة المحاولة؟',
+      'التحقق من نتيجة الحفظ',
+      { confirmText: 'تحققت، إغلاق', cancelText: 'إبقاء الفاتورة' }
     );
     if (!verifiedMissing) {
       restorePendingPurchaseForm();
@@ -752,7 +821,7 @@ const savePurchase = async (payload) => {
   }
 }
 
-const confirmDelete = (purchase) => {
+const confirmDelete = async (purchase) => {
   if (!canDeletePurchase.value || !purchase?.id) return;
   if (Number(purchase.linked_payment_count || 0) > 0) {
     showToast('لا يمكن إلغاء فاتورة مرتبطة بمدفوعات؛ استخدم مسار مرتجع المشتريات للحفاظ على الأثر المحاسبي.', 'warning');
@@ -762,7 +831,11 @@ const confirmDelete = (purchase) => {
     showToast('لا يمكن إلغاء فاتورة مرتبطة بمرتجعات؛ يجب الاحتفاظ بسجل الفاتورة والمرتجعات.', 'warning');
     return;
   }
-  if (AlertService.confirm('سيتم إلغاء الفاتورة غير المدفوعة مع الاحتفاظ بسجلها وعكس القيد والمخزون المتاح. هل تريد المتابعة؟')) {
+  if (await AlertService.confirm(
+    'سيتم إلغاء الفاتورة غير المدفوعة مع الاحتفاظ بسجلها وعكس القيد والمخزون المتاح. هل تريد المتابعة؟',
+    'تأكيد إلغاء الفاتورة',
+    { confirmText: 'إلغاء الفاتورة', cancelText: 'رجوع' }
+  )) {
     deletePurchase(purchase.id);
   }
 };
@@ -877,7 +950,7 @@ onMounted(async () => {
 
 /* Form Inputs */
 .filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all;
+  @apply focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500;
 }
 
 .form-input-modern {
@@ -889,10 +962,6 @@ onMounted(async () => {
 }
 
 /* Pagination */
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
-}
-
 /* Scrollbar */
 .custom-scroll::-webkit-scrollbar {
   width: 5px;

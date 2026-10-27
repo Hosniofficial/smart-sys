@@ -1,7 +1,13 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { listCustomers } from '@/services/customers';
-import apiClient from '@/config/axios';
+import {
+  createCustomer as createCustomerRequest,
+  deleteCustomer as deleteCustomerRequest,
+  getCustomer,
+  listCustomers,
+  recordCustomerPayment as recordCustomerPaymentRequest,
+  updateCustomer as updateCustomerRequest,
+} from '@/services/customers';
 import { useStatementStore } from '@/stores/statement/statementStore';
 import { useSalesStore } from '@/stores/sales/salesStore';
 
@@ -84,7 +90,7 @@ export const useCustomerStore = defineStore('customer', () => {
           if (id) {
             // جرب endpoint العميل المفرد أولاً
             try {
-              const response = await apiClient.get(`/customers/${id}`);
+              const response = await getCustomer(id);
               const customer = response?.data?.data || response?.data;
               if (customer) {
                 const existingIndex = customers.value.findIndex(c => String(c.id) === String(id));
@@ -213,7 +219,7 @@ export const useCustomerStore = defineStore('customer', () => {
    */
   const createCustomer = async (payload) => {
     try {
-      const response = await apiClient.post('/customers', payload);
+      const response = await createCustomerRequest(payload);
       const created  = response?.data?.data || response?.data;
 
       if (created) {
@@ -245,7 +251,7 @@ export const useCustomerStore = defineStore('customer', () => {
    */
   const updateCustomer = async (id, payload) => {
     try {
-      const response = await apiClient.put(`/customers/${id}`, payload);
+      const response = await updateCustomerRequest(id, payload);
       const updated  = response?.data?.data || response?.data || {};
 
       const idx = customers.value.findIndex(c => String(c.id) === String(id));
@@ -278,7 +284,7 @@ export const useCustomerStore = defineStore('customer', () => {
    */
   const deleteCustomer = async (id) => {
     try {
-      await apiClient.delete(`/customers/${id}`);
+      await deleteCustomerRequest(id);
 
       customers.value = customers.value.filter(c => String(c.id) !== String(id));
       delete detailsCache.value[String(id)];
@@ -309,9 +315,7 @@ export const useCustomerStore = defineStore('customer', () => {
         };
       }
  
-      const response = await apiClient.post(`/customers/${customerId}/payments`, payload, {
-        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
-      });
+      const response = await recordCustomerPaymentRequest(customerId, payload, idempotencyKey);
  
       if (response?.data?.status === 'success') {
         customersFetchedAt.value = 0;

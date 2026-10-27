@@ -33,6 +33,15 @@ function getBaseURL() {
   return '/smartsys/api/v1';
 }
 
+function finishGlobalLoader(config) {
+  if (!config?.meta?.loaderShown) return;
+
+  config.meta.loaderShown = false;
+  try {
+    useUiStore().hideLoader();
+  } catch (_) { /* store not ready */ }
+}
+
 const apiClient = axios.create({
   baseURL: getBaseURL(),
   headers: {
@@ -71,7 +80,11 @@ apiClient.interceptors.request.use(
     // Global loader
     try {
       const ui = useUiStore();
-      if (!config.meta?.skipLoader) ui.showLoader();
+      if (!config.meta?.skipLoader) {
+        config.meta = config.meta || {};
+        ui.showLoader();
+        config.meta.loaderShown = true;
+      }
     } catch (_) { /* store not ready */ }
 
     // Attach access token from memory (never from localStorage)
@@ -132,10 +145,7 @@ apiClient.interceptors.request.use(
   },
   (error) => {
     logger.error('[API] Request Error:', error);
-    try {
-      const ui = useUiStore();
-      if (!error.config?.meta?.skipLoader) ui.hideLoader();
-    } catch (_) { /* store not ready */ }
+    finishGlobalLoader(error.config);
     return Promise.reject(error);
   }
 );
@@ -217,10 +227,7 @@ function extractFirstValidJson(response) {
 apiClient.interceptors.response.use(
   (response) => {
     // Global loader end (unless skipped)
-    try {
-      const ui = useUiStore();
-      if (!response.config?.meta || !response.config.meta.skipLoader) ui.hideLoader();
-    } catch (_) { /* ignore */ }
+    finishGlobalLoader(response.config);
     
     logger.log(`[API] ${response.status} ${response.config.method.toUpperCase()} ${response.config.url}`);
     
@@ -251,10 +258,7 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config;
 
     // Ensure loader is hidden on error as well
-    try {
-      const ui = useUiStore();
-      if (!originalRequest?.meta || !originalRequest.meta.skipLoader) ui.hideLoader();
-    } catch (_) { /* ignore */ }
+    finishGlobalLoader(originalRequest);
 
     if (axios.isCancel(error) || error.code === 'ERR_CANCELED') {
       return Promise.reject(error);
@@ -390,7 +394,10 @@ if (!errorMessage) {
 
       error.message = errorMessage;
     } else if (error.request) {
-      logger.error('[API] No response from server:', error.request);
+      logger.error(`[API] No response from server: ${(originalRequest?.method || 'GET').toUpperCase()} ${(originalRequest?.url || 'unknown').split('?')[0]}`, {
+        code: error.code || 'NO_RESPONSE',
+        message: error.message,
+      });
       const isTimeout = error.code === 'ECONNABORTED';
       error.message = isTimeout ? 'انتهت مهلة الطلب، حاول مرة أخرى' : 'لا توجد استجابة من الخادم';
       if (typeof window.showToast === 'function') {

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import returnsService from '@/services/returns';
 import { useStatementStore } from '@/stores/statement/statementStore';
 import { useProductStore } from '@/stores/product/productStore';
 
@@ -87,7 +87,6 @@ export const useReturnStore = defineStore('return', () => {
 
       const promise = (async () => {
         try {
-          const endpoint = type === 'sales' ? '/returns/sale' : '/returns/purchase';
           const params   = { page: String(page), per_page: String(perPage) };
 
           if (branchId) params.branch_id = String(branchId);
@@ -99,7 +98,7 @@ export const useReturnStore = defineStore('return', () => {
           if (dateTo)   params.end_date   = dateTo;
           if (search)   params.search     = search;
 
-          const response = await apiClient.get(endpoint, { params, signal });
+          const response = await returnsService.list(type, params, signal);
           const raw      = response?.data?.data ?? response?.data ?? {};
           const list     = Array.isArray(raw) ? raw : (raw.items || []);
 
@@ -167,11 +166,7 @@ export const useReturnStore = defineStore('return', () => {
         };
       }
 
-      const endpoint = type === 'sales'
-        ? `/returns/sale/${returnId}`
-        : `/returns/purchase/${returnId}`;
-
-      const response = await apiClient.get(endpoint, { signal });
+      const response = await returnsService.get(type, returnId, signal);
       const data     = response?.data?.data || response?.data;
 
       detailsCache.value[cacheKey]          = data;
@@ -229,11 +224,10 @@ export const useReturnStore = defineStore('return', () => {
         };
       }
 
-      const endpoint = type === 'sales' ? '/returns/sale' : '/returns/purchase';
       const params   = { search: q, limit: String(limit) };
       if (branchId) params.branch_id = String(branchId);
 
-      const response = await apiClient.get(endpoint, { params, signal });
+      const response = await returnsService.search(type, params, signal);
       const data     = response?.data?.data || response?.data || [];
       const list     = Array.isArray(data) ? data : (data?.items || []);
 
@@ -263,7 +257,7 @@ export const useReturnStore = defineStore('return', () => {
    */
   const createReturn = async (payload) => {
     try {
-      const response = await apiClient.post('/returns', payload);
+      const response = await returnsService.create(payload);
 
       // ✅ تحديث تلقائي للكميات — امسح cache المنتجات في المستودع المتأثر
       const productStore = useProductStore();

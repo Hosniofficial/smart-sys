@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import inventoryService from '@/services/inventory';
 import { useProductStore } from '@/stores/product/productStore';
 
 const nowMs = () => Date.now();
@@ -77,9 +77,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
       const promise = (async () => {
         try {
-          const response  = await apiClient.get('/inventory/stock', {
-            params: { product_id: String(productId), branch_id: String(branchId) },
-          });
+          const response  = await inventoryService.getProductStock(productId, branchId);
           const data      = response?.data?.data || response?.data || [];
           const stockItem = Array.isArray(data)
             ? data.find(item => String(item.id) === String(productId))
@@ -203,7 +201,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       const branchId = payload?.branch_id ?? payload?.branchId;
       if (!branchId) throw new Error('Branch ID is required for stock adjustment');
 
-      const response = await apiClient.post(`/branches/${branchId}/adjustments`, payload);
+      const response = await inventoryService.adjustStock(branchId, payload);
 
       // clear cache for affected product and branch so it fetches from API
       const productId = payload?.product_id ?? payload?.productId;
@@ -240,7 +238,7 @@ export const useInventoryStore = defineStore('inventory', () => {
   // ─── transferStock ──────────────────────────────────────────────────────────
   const transferStock = async ({ product_id, from_branch_id, to_branch_id, quantity, notes = '' }) => {
     try {
-      const response = await apiClient.post(`/branches/${from_branch_id}/transfer`, {
+      const response = await inventoryService.transferStock(from_branch_id, {
         from_branch: from_branch_id,
         to_branch: to_branch_id,
         product_id,
@@ -285,14 +283,11 @@ export const useInventoryStore = defineStore('inventory', () => {
         };
       }
 
-      const response = await apiClient.get(
-        `/inventory/movements`,
-        { params: {
+      const response = await inventoryService.getProductMovements({
           product_id: String(productId),
           limit: String(limit),
           ...(branchId ? { branch_id: String(branchId) } : {})
-        } }
-      );
+        });
       const list = response?.data?.data || response?.data || [];
 
       historyCache.value[cacheKey]          = list;
@@ -330,9 +325,7 @@ export const useInventoryStore = defineStore('inventory', () => {
         };
       }
 
-      const response = await apiClient.get('/inventory/batches', {
-        params: { product_id: String(productId), branch_id: String(branchId) },
-      });
+      const response = await inventoryService.getProductBatches(productId, branchId);
       const data    = response?.data?.data || response?.data || {};
       const batches = { batches: data.batches || [], serials: data.serials || [] };
 
@@ -371,9 +364,7 @@ export const useInventoryStore = defineStore('inventory', () => {
         };
       }
 
-      const response = await apiClient.get('/inventory/stock', {
-        params: { branch_id: String(branchId) },
-      });
+      const response = await inventoryService.getStockSummary(branchId);
       const data    = response?.data?.data || response?.data || [];
       const summary = Array.isArray(data) ? data : (data?.items || []);
 
@@ -476,7 +467,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       const params = {};
       if (branchId) params.branch_id = String(branchId);
 
-      const response = await apiClient.get('/inventory/summary', { params });
+      const response = await inventoryService.getInventorySummary(params);
       const data = response?.data?.data || response?.data || {};
 
       summaryKpiCache.value[cacheKey]          = data;

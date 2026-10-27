@@ -72,7 +72,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
         try {
             MySqlSchemaDumpImporter::import(
                 self::$server,
-                dirname(__DIR__, 2) . '/database/production/smartsys_production_schema_20261003.sql'
+                __DIR__ . '/Fixtures/mysql_schema.sql'
             );
             self::$db = new PDO(
                 "mysql:host={$host};port={$port};dbname=" . self::$schema . ';charset=utf8mb4',
@@ -932,6 +932,22 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
 
     public function testInvoicePaymentLiquidityShortfallReturnsStructuredErrorAndRollsBack(): void
     {
+        self::$db->prepare(
+            "INSERT INTO purchases (tenant_id, supplier_id, invoice_number, invoice_date, total_amount, paid_amount, user_id, total_items, status, branch_id, payment_method_id, cost_center_id)
+             VALUES (?, ?, ?, NOW(), 100, 0, ?, 1, 'due', ?, ?, ?)"
+        )->execute([
+            self::$tenantId,
+            self::$supplierId,
+            'IT-LIQUIDITY-' . bin2hex(random_bytes(4)),
+            self::$userId,
+            self::$branchId,
+            self::$bankMethodId,
+            (int) self::$db->query(
+                'SELECT id FROM cost_centers WHERE tenant_id = ' . self::$tenantId . ' LIMIT 1'
+            )->fetchColumn(),
+        ]);
+        $purchaseId = (int) self::$db->lastInsertId();
+
         $originalMethodAccount = self::$db->prepare(
             'SELECT account_id FROM payment_methods WHERE id = ? AND tenant_id = ?'
         );
@@ -956,7 +972,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
             $costCenterId = (int) self::$db->query(
                 'SELECT id FROM cost_centers WHERE tenant_id = ' . self::$tenantId . ' LIMIT 1'
             )->fetchColumn();
-            $response = $this->requestInvoicePayment(self::$bankPurchaseId, [
+            $response = $this->requestInvoicePayment($purchaseId, [
                 'amount' => 10,
                 'payment_method_id' => self::$bankMethodId,
                 'payment_date' => date('Y-m-d'),
@@ -975,10 +991,10 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
             $paymentCount = self::$db->prepare(
                 'SELECT COUNT(*) FROM payments WHERE tenant_id = ? AND purchase_id = ?'
             );
-            $paymentCount->execute([self::$tenantId, self::$bankPurchaseId]);
+            $paymentCount->execute([self::$tenantId, $purchaseId]);
             self::assertSame(0, (int) $paymentCount->fetchColumn());
             self::assertEquals(0, (float) self::$db->query(
-                'SELECT paid_amount FROM purchases WHERE id = ' . self::$bankPurchaseId
+                'SELECT paid_amount FROM purchases WHERE id = ' . $purchaseId
             )->fetchColumn());
         } finally {
             self::$db->prepare(

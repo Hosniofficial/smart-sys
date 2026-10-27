@@ -207,6 +207,7 @@
         class="flex-1 overflow-x-hidden overflow-y-auto custom-scroll relative bg-slate-50"
         :class="{ 'md:mr-[72px]': sidebarCollapsed, 'md:mr-[256px]': !sidebarCollapsed }"
       >
+        <WorkspaceTabs />
         <slot></slot>
       </main>
     </div>
@@ -318,10 +319,11 @@ import { useAuthStore } from '@/stores/auth/authStore'
 import { useToast } from '@/composables/useToast'
 import { useActiveRoute } from '@/composables/useActiveRoute'
 import { getMenuItems } from '@/config/menuConfig'
-import apiClient from '@/config/axios'
+import notificationsService from '@/services/notifications'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import SectionPanel from '@/components/layout/SectionPanel.vue'
+import WorkspaceTabs from '@/components/layout/WorkspaceTabs.vue'
 import {
   Bell, User, LogOut, Menu, X, ChevronDown, Building
 } from 'lucide-vue-next'
@@ -388,12 +390,11 @@ const userRoleDisplay = computed(() => {
     : rawRole
   const roleNames = {
     'super_admin': 'مالك النظام',
-    'admin': 'مدير',
-    'manager': 'مشرف',
+    'admin': 'مسؤول المنشأة',
+    'manager': 'مدير الفرع',
     'cashier': 'كاشير',
     'inventory_clerk': 'مسؤول المخزون',
     'finance_officer': 'مسؤول مالي',
-    'branch_manager': 'مدير الفرع',
     'employee': 'موظف'
   }
   return roleNames[role] || role
@@ -450,9 +451,15 @@ async function logout() {
 }
 
 async function loadNotifications() {
+  // Prevent multiple concurrent requests
+  if (loadingNotifications.value) return
+
   loadingNotifications.value = true
   try {
-    const response = await apiClient.get('/notifications?page=1&per_page=10')
+    const response = await notificationsService.list(
+      { page: 1, per_page: 10 },
+      { skipLoader: true }
+    )
     if (response.data.status === 'success') {
       const responseData = response.data.data || {}
       const apiNotifications = Array.isArray(responseData.notifications) ? responseData.notifications : []
@@ -467,7 +474,10 @@ async function loadNotifications() {
       unreadCount.value = currentUnread
     }
   } catch (error) {
-    if (import.meta.env.DEV) console.error('Error loading notifications', error)
+    // Only log timeout errors in development
+    if (import.meta.env.DEV && error.code !== 'ECONNABORTED') {
+      console.error('Error loading notifications', error)
+    }
   } finally {
     loadingNotifications.value = false
   }
@@ -476,7 +486,7 @@ async function loadNotifications() {
 async function markNotificationAsRead(notification) {
   try {
     if (notification.is_read) return
-    const result = await apiClient.put(`/notifications/${notification.id}/read`)
+    const result = await notificationsService.markAsRead(notification.id)
     if (result.data?.status === 'success') {
       notification.is_read = 1
       unreadCount.value = notifications.value.filter(isUnread).length

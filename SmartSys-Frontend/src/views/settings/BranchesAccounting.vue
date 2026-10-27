@@ -2,9 +2,6 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="bulkSaving" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -51,9 +48,15 @@
           </div>
         </div>
 
-        <button @click="reload" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-500 text-[10px] font-bold uppercase tracking-widest hover:text-blue-600 hover:border-blue-200 transition-all flex items-center gap-2">
-          <i class="fas fa-sync-alt text-[10px]"></i> تحديث القوائم
-        </button>
+        <LoadingButton
+          text="تحديث القوائم"
+          loadingText="جاري التحديث..."
+          icon="fas fa-sync-alt"
+          :isLoading="isReloading"
+          variant="secondary"
+          class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-500 text-[10px] uppercase tracking-widest hover:text-blue-600 hover:border-blue-200"
+          @click="reload"
+        />
       </section>
 
       <!-- Main Mapping Table: Professional Audit Grid -->
@@ -171,6 +174,7 @@ const globalAccounts = computed(() => accountStore.globalAccounts);
 const accountSearch = ref('')
 const showMissingOnly = ref(false)
 const bulkSaving = ref(false)
+const isReloading = ref(false)
 
 const accLabel = (acc) => acc?.code ? `${acc.code} — ${acc.name}` : (acc?.name || '')
 
@@ -186,6 +190,8 @@ const filteredbranchs = computed(() => {
 })
 
 async function reload() {
+  if (isReloading.value) return
+  isReloading.value = true
   try {
     await Promise.all([
       accountStore.fetchGroupedAccounts(),
@@ -201,6 +207,8 @@ async function reload() {
   } catch (error) {
     console.error('Error loading data:', error)
     window.showToast && window.showToast('فشل تحميل البيانات', 'error')
+  } finally {
+    isReloading.value = false
   }
 }
 
@@ -253,10 +261,10 @@ onMounted(reload)
 <style scoped>
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1.5; }
+.metadata-label { @apply mb-1.5; }
 
 .filter-input-v2 {
-  @apply w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all;
+  @apply focus:ring-4 focus:ring-blue-500/5;
 }
 
 .filter-input-v3 {

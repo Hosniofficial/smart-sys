@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import apiClient from '@/config/axios';
+import { rbacService } from '@/services/rbac';
 
 export const useRoleStore = defineStore('role', () => {
   const cacheTtlMs = 60 * 60 * 1000;
@@ -19,7 +19,7 @@ export const useRoleStore = defineStore('role', () => {
 
     if (rolesRequest) return rolesRequest;
 
-    rolesRequest = apiClient.get('/rbac/roles')
+    rolesRequest = rbacService.listRoles()
       .then((response) => {
         const list = response?.data?.data;
         if (!Array.isArray(list)) {

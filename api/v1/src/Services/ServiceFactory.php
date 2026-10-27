@@ -5,16 +5,11 @@ declare(strict_types=1);
 namespace App\Services;
 
 use PDO;
-use App\Repositories\SettingsRepository;
-use App\Repositories\SaleRepository;
-use App\Repositories\PurchaseRepository;
-use App\Repositories\PaymentRepository;
 
 /**
  * ServiceFactory
  *
- * Centralises service instantiation to eliminate `new ServiceClass(...)` scattered
- * across handlers. Handlers call this factory instead of constructing services directly.
+ * Creates request-scoped domain services with tenant and user context.
  *
  * Why a factory instead of a DI container singleton?
  *   PurchaseService, ReturnService, and SalesService require per-request context
@@ -30,51 +25,9 @@ class ServiceFactory
 {
     private PDO $db;
 
-    // Shared singletons (stateless, safe to reuse across the request)
-    private ?AccountingService  $accounting   = null;
-    private ?CurrencyService    $currency     = null;
-    private ?SettingsRepository $settingsRepo = null;
-    private ?SaleRepository     $saleRepo     = null;
-    private ?PurchaseRepository $purchaseRepo = null;
-    private ?PaymentRepository  $paymentRepo  = null;
-
     public function __construct(PDO $db)
     {
         $this->db = $db;
-    }
-
-    // -------------------------------------------------------------------------
-    // Shared stateless services (singletons within the request)
-    // -------------------------------------------------------------------------
-
-    public function accounting(): AccountingService
-    {
-        return $this->accounting ??= new AccountingService($this->db);
-    }
-
-    public function currency(): CurrencyService
-    {
-        return $this->currency ??= new CurrencyService($this->db);
-    }
-
-    public function settings(): SettingsRepository
-    {
-        return $this->settingsRepo ??= new SettingsRepository($this->db);
-    }
-
-    public function sales_repo(): SaleRepository
-    {
-        return $this->saleRepo ??= new SaleRepository($this->db);
-    }
-
-    public function purchases_repo(): PurchaseRepository
-    {
-        return $this->purchaseRepo ??= new PurchaseRepository($this->db);
-    }
-
-    public function payments_repo(): PaymentRepository
-    {
-        return $this->paymentRepo ??= new PaymentRepository($this->db);
     }
 
     // -------------------------------------------------------------------------

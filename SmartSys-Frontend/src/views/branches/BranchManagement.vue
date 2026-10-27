@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="isLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -163,10 +161,12 @@
                    <option :value="50">50</option>
                  </select>
                </div>
-               <div class="flex items-center gap-1">
-                 <button @click="filters.previousPage()" :disabled="filters.page.value <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-                 <button @click="filters.nextPage(filters.totalPages.value)" :disabled="filters.page.value >= filters.totalPages.value" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-               </div>
+               <PaginationControls
+                 :page="filters.page.value"
+                 :total-pages="filters.totalPages.value"
+                 @previous="filters.previousPage()"
+                 @next="filters.nextPage(filters.totalPages.value)"
+               />
             </div>
           </div>
         </template>
@@ -203,6 +203,7 @@ import AlertService from '@/services/AlertService';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import { useTableFilters } from '@/composables/useTableFilters';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 
 const { showToast } = useToast();
 const { breadcrumb } = useBreadcrumb();
@@ -284,10 +285,6 @@ const handleDelete = async (branchId) => {
 
 <style scoped>
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
-}
 
 .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }

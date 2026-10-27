@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import approvalsService from '@/services/approvals';
 
 const nowMs = () => Date.now();
 
@@ -26,7 +26,7 @@ export const useApprovalsStore = defineStore('approvals', () => {
   });
 
   // ─── List Pending Approvals ───────────────────────────────────────
-  const listPending = async (params = {}) => {
+  const listPending = async (params = {}, options = {}) => {
     const cacheKey = `pending_${params.page || 1}_${params.limit || 20}_${params.branch_id || 'all'}`;
     
     if (inFlightRequests.value[cacheKey]) {
@@ -46,7 +46,7 @@ export const useApprovalsStore = defineStore('approvals', () => {
       loading.value = true;
       error.value = null;
       try {
-        const { data } = await apiClient.get('/sales/pending-approvals', { params });
+        const { data } = await approvalsService.listPending(params, options);
 
         const inner = data?.data;
         const items = Array.isArray(inner)
@@ -97,7 +97,7 @@ export const useApprovalsStore = defineStore('approvals', () => {
       if (paymentOverride.payment_method_id) payload.payment_method_id = paymentOverride.payment_method_id;
       if (paymentOverride.paid_amount != null) payload.paid_amount = paymentOverride.paid_amount;
 
-      const { data } = await apiClient.post(`/sales/${approvalId}/approve`, payload);
+      const { data } = await approvalsService.approve(approvalId, payload);
 
       pendingApprovals.value = pendingApprovals.value.filter(a => a.id !== approvalId);
       approvalCache.value = null;
@@ -119,7 +119,7 @@ export const useApprovalsStore = defineStore('approvals', () => {
   // ─── Reject ───────────────────────────────────────────────────────
   const reject = async (approvalId, note = '') => {
     try {
-      const { data } = await apiClient.post(`/sales/${approvalId}/reject`, { note });
+      const { data } = await approvalsService.reject(approvalId, note);
 
       pendingApprovals.value = pendingApprovals.value.filter(a => a.id !== approvalId);
       approvalCache.value = null;

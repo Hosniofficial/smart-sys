@@ -7,7 +7,7 @@ import Login from '../views/auth/Login.vue'
 import { useAuthStore } from '@/stores/auth/authStore'
 import { useSubscriptionStore } from '@/stores/subscriptions/subscriptionStore'
 import { checkAccessForPath } from '@/config/menuConfig'
-import apiClient from '@/config/axios'
+import setupService from '@/services/setup'
 
 const routes = [
   {
@@ -87,8 +87,21 @@ const routes = [
     name: 'SalesHistory',
     component: () => import('../views/sales/SalesHistory.vue'),
     meta: { 
-      requiresAuth: true
+      requiresAuth: true,
+      workspaceTab: 'sale'
     }
+  },
+  {
+    path: '/sales/quotations',
+    name: 'SalesQuotations',
+    component: () => import('../views/sales/SalesQuotations.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/sales/price-campaigns',
+    name: 'SalesPriceCampaigns',
+    component: () => import('../views/sales/SalesPriceCampaigns.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/sales/:id',
@@ -118,7 +131,8 @@ const routes = [
     name: 'ReturnsHistory',
     component: () => import('../views/returns/ReturnsHistory.vue'),
     meta: { 
-      requiresAuth: true
+      requiresAuth: true,
+      workspaceTab: 'return'
     }
   },
   {
@@ -142,7 +156,8 @@ const routes = [
     name: 'BranchDetails',
     component: () => import('../views/branches/BranchDetails.vue'),
     meta: { 
-      requiresAuth: true
+      requiresAuth: true,
+      workspaceTab: 'branch'
     }
   },
   {
@@ -158,7 +173,8 @@ const routes = [
     name: 'Purchases',
     component: () => import('../views/purchases/PurchaseManagement.vue'),
     meta: { 
-      requiresAuth: true
+      requiresAuth: true,
+      workspaceTab: 'purchase'
     }
   },
   {
@@ -166,7 +182,8 @@ const routes = [
     name: 'PurchaseHistory',
     component: () => import('../views/purchases/PurchaseHistory.vue'),
     meta: { 
-      requiresAuth: true
+      requiresAuth: true,
+      workspaceTab: 'purchase'
     }
   },
   {
@@ -181,6 +198,14 @@ const routes = [
     name: 'InventoryManagement',
     component: () => import('../views/inventory/InventoryManagement.vue'),
     meta: { 
+      requiresAuth: true
+    }
+  },
+  {
+    path: '/inventory/categories',
+    name: 'CategoriesManagement',
+    component: () => import('../views/inventory/CategoriesManagement.vue'),
+    meta: {
       requiresAuth: true
     }
   },
@@ -204,7 +229,7 @@ const routes = [
     path: '/contacts/:type/:id/details',
     name: 'ContactDetails',
     component: () => import('../views/contacts/ContactDetails.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true, workspaceTab: 'contact' }
   },
   {
     path: '/users',
@@ -214,6 +239,12 @@ const routes = [
       requiresAuth: true, 
       requiresAdmin: true
     }
+  },
+  {
+    path: '/role-permissions',
+    name: 'RolePermissionsManagement',
+    component: () => import('../views/admin/RolePermissionsManagement.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/settings',
@@ -358,7 +389,8 @@ const routes = [
     name: 'WarrantyManagement',
     component: () => import('../views/warranty/WarrantyManagement.vue'),
     meta: { 
-      requiresAuth: true
+      requiresAuth: true,
+      workspaceTab: 'warranty'
     }
   },
   {
@@ -401,7 +433,8 @@ const routes = [
     name: 'CashVouchers',
     component: () => import('@/views/vouchers/CashVouchers.vue'),
     meta: { 
-      requiresAuth: true
+      requiresAuth: true,
+      workspaceTab: 'voucher'
     }
   },
   {
@@ -592,7 +625,7 @@ router.beforeEach(async (to, from, next) => {
     // Check setup status from API for owners (not from cached user data)
     if (authStore.isOwner) {
       try {
-        const setupResponse = await apiClient.get('/setup/status');
+        const setupResponse = await setupService.getStatus();
         const setupData = setupResponse.data?.data || {};
         
         // is_setup_complete might be in tenant object

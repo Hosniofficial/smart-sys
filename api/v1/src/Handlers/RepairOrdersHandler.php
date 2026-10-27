@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Handlers;
 
 use App\Services\MonologHandler;
-use App\Services\SaleCreationService;
 use App\Repositories\SettingsRepository;
 use App\Utils\SuperAdminHelper;
+use App\Utils\PaginationHelper;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -52,37 +52,76 @@ final class RepairOrdersHandler extends BaseHandler
             }
             $branchId = $this->resolveBranchId($request, $tenantId);
             $query = $request->getQueryParams();
+
+            // ── Pagination ──────────────────────────────────────────────
+            [$page, $limit, $offset] = PaginationHelper::fromArray($query, 20, 200);
+
+            // ── Filters ──────────────────────────────────────────────────
             $status = trim((string) ($query['status'] ?? ''));
             if ($status !== '' && !in_array($status, self::STATUSES, true)) {
                 return $this->errorResponse($response, 'حالة أمر الصيانة غير صالحة.', 400);
             }
+            $search    = trim((string) ($query['q']         ?? ''));
+            $fromDate  = trim((string) ($query['from_date'] ?? ''));
+            $toDate    = trim((string) ($query['to_date']   ?? ''));
 
-            $sql = "SELECT ro.*, c.name AS customer_name, c.phone AS customer_phone, s.invoice_number
-                    FROM repair_orders ro
-                    JOIN customers c ON c.id = ro.customer_id AND c.tenant_id = ro.tenant_id
-                    LEFT JOIN sales s ON s.id = ro.invoice_id AND s.tenant_id = ro.tenant_id
-                    WHERE ro.tenant_id = ?";
+            // ── Build WHERE clause (shared between count + data queries) ─
+            $where  = ' WHERE ro.tenant_id = ?';
             $params = [$tenantId];
+
             if ($branchId !== null) {
-                $sql .= ' AND ro.branch_id = ?';
-                $params[] = $branchId;
+                $where    .= ' AND ro.branch_id = ?';
+                $params[]  = $branchId;
             }
             if ($status !== '') {
-                $sql .= ' AND ro.status = ?';
-                $params[] = $status;
+                $where    .= ' AND ro.status = ?';
+                $params[]  = $status;
             }
-            $search = trim((string) ($query['q'] ?? ''));
             if ($search !== '') {
-                $sql .= " AND (ro.order_number LIKE ? OR ro.serial_number LIKE ? OR ro.model LIKE ?
-                          OR c.name LIKE ? OR c.phone LIKE ?)";
+                $where .= " AND (ro.order_number LIKE ? OR ro.serial_number LIKE ? OR ro.model LIKE ?
+                            OR c.name LIKE ? OR c.phone LIKE ?)";
                 $like = '%' . $search . '%';
                 array_push($params, $like, $like, $like, $like, $like);
             }
-            $sql .= ' ORDER BY ro.id DESC LIMIT 200';
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
+            if ($fromDate !== '') {
+                $where    .= ' AND DATE(ro.received_at) >= ?';
+                $params[]  = $fromDate;
+            }
+            if ($toDate !== '') {
+                $where    .= ' AND DATE(ro.received_at) <= ?';
+                $params[]  = $toDate;
+            }
 
-            return $this->successResponse($response, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+            $joins = "FROM repair_orders ro
+                      JOIN customers c ON c.id = ro.customer_id AND c.tenant_id = ro.tenant_id
+                      LEFT JOIN sales s ON s.id = ro.invoice_id AND s.tenant_id = ro.tenant_id";
+
+            // ── Total count ───────────────────────────────────────────────
+            $countStmt = $this->db->prepare("SELECT COUNT(*) {$joins}{$where}");
+            $countStmt->execute($params);
+            $total = (int) $countStmt->fetchColumn();
+
+            // ── Data query ────────────────────────────────────────────────
+            $dataParams   = $params;
+            $dataParams[] = $limit;
+            $dataParams[] = $offset;
+
+            $dataStmt = $this->db->prepare(
+                "SELECT ro.*, c.name AS customer_name, c.phone AS customer_phone, s.invoice_number
+                 {$joins}{$where}
+                 ORDER BY ro.id DESC
+                 LIMIT ? OFFSET ?"
+            );
+            $dataStmt->execute($dataParams);
+            $items = $dataStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            return $this->successResponse($response, [
+                'items'       => $items,
+                'total'       => $total,
+                'page'        => $page,
+                'limit'       => $limit,
+                'total_pages' => (int) ceil($total / $limit),
+            ]);
         } catch (\DomainException $e) {
             return $this->errorResponse($response, $e->getMessage(), (int) $e->getCode() ?: 400);
         } catch (Throwable $e) {
@@ -433,7 +472,7 @@ final class RepairOrdersHandler extends BaseHandler
             if (!$paymentMethodId) {
                 return $this->errorResponse($response, 'أضف طريقة دفع للمستأجر قبل إصدار فاتورة الصيانة.', 422);
             }
-            $sale = (new SaleCreationService($this->db, (int) $tenantId, $userId))->createSale([
+            $sale = $this->services->saleCreation((int) $tenantId, $userId)->createSale([
                 'tenant_id' => (int) $tenantId,
                 'branch_id' => (int) $order['branch_id'],
                 'customer_id' => (int) $order['customer_id'],

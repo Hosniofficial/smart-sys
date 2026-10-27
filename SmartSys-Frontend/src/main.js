@@ -1,8 +1,10 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+import * as Sentry from '@sentry/vue'
 import './style.css'
 import './assets/tailwind.css'
 import App from './App.vue'
+import PageLoadingBar from '@/components/ui/PageLoadingBar.vue'
 import '@fortawesome/fontawesome-free/css/all.css'
 import router from './router'
 import apiClient from './config/axios'
@@ -12,6 +14,21 @@ import { validateMenuConfig } from '@/config/menuConfig'
 
 // Create app
 const app = createApp(App)
+app.component('PageLoadingBar', PageLoadingBar)
+
+if (import.meta.env.VITE_SENTRY_DSN) {
+  Sentry.init({
+    app,
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+    environment: import.meta.env.VITE_APP_ENV || import.meta.env.MODE,
+    sendDefaultPii: false,
+    integrations: [
+      Sentry.browserTracingIntegration({ router })
+    ],
+    tracesSampleRate: import.meta.env.PROD ? 0.1 : 0
+  })
+
+}
 
 // Initialize Pinia
 const pinia = createPinia()

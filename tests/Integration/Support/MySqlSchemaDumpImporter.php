@@ -26,7 +26,11 @@ final class MySqlSchemaDumpImporter
             $buffer .= $line . "\n";
             while (($statement = self::takeStatement($buffer, $delimiter)) !== null) {
                 $trimmed = trim($statement);
-                if ($trimmed !== '' && !str_starts_with($trimmed, '--')) {
+                $isMysqlDumpCharacterSetRestore = preg_match(
+                    '/^\/\*!\d+\s+SET\s+(?:@(?:OLD_CHARACTER_SET_CLIENT|saved_cs_client)\s*=|CHARACTER_SET_CLIENT\s*=)/i',
+                    $trimmed
+                ) === 1;
+                if ($trimmed !== '' && !str_starts_with($trimmed, '--') && !$isMysqlDumpCharacterSetRestore) {
                     $server->query($trimmed);
                     if ($server->field_count > 0) {
                         $server->store_result()?->free();

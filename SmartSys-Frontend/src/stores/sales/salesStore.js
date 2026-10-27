@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import salesService from '@/services/sales';
 import { useStatementStore } from '@/stores/statement/statementStore';
 
 const nowMs = () => Date.now();
@@ -12,6 +12,120 @@ export const useSalesStore = defineStore('sales', () => {
     salesList:      2 * 60 * 1000, // 2 دقيقة
     saleDetails:    5 * 60 * 1000, // 5 دقائق
     salesAnalytics: 1 * 60 * 1000, // دقيقة واحدة
+  };
+
+  const fetchQuotations = async ({ page = 1, perPage = 50, query = '', status = '' } = {}) => {
+    try {
+      const params = { page: String(page), per_page: String(perPage) };
+      if (query.trim()) params.q = query.trim();
+      if (status) params.status = status;
+      const response = await salesService.listQuotations(params);
+      return {
+        status: response?.data?.status || 'success',
+        data: response?.data?.data ?? response?.data,
+        message: response?.data?.message || null,
+      };
+    } catch (error) {
+      console.error('fetchQuotations failed:', error);
+      return {
+        status: 'error',
+        data: null,
+        message: error?.response?.data?.message || error.message || 'تعذر تحميل عروض الأسعار',
+      };
+    }
+  };
+
+  const fetchQuotation = async (quotationId) => {
+    try {
+      const response = await salesService.getQuotation(quotationId);
+      return {
+        status: response?.data?.status || 'success',
+        data: response?.data?.data ?? response?.data,
+        message: response?.data?.message || null,
+      };
+    } catch (error) {
+      console.error('fetchQuotation failed:', error);
+      return {
+        status: 'error',
+        data: null,
+        message: error?.response?.data?.message || error.message || 'تعذر تحميل عرض السعر',
+      };
+    }
+  };
+
+  const createQuotation = async (payload) => {
+    try {
+      const response = await salesService.createQuotation(payload);
+      return {
+        status: response?.data?.status || 'success',
+        data: response?.data?.data ?? response?.data,
+        message: response?.data?.message || null,
+      };
+    } catch (error) {
+      console.error('createQuotation failed:', error);
+      return {
+        status: 'error',
+        data: null,
+        message: error?.response?.data?.message || error.message || 'تعذر إنشاء عرض السعر',
+      };
+    }
+  };
+
+  const fetchPriceCampaigns = async ({ page = 1, perPage = 20, query = '', status = '' } = {}) => {
+    try {
+      const params = { page: String(page), per_page: String(perPage) };
+      if (query.trim()) params.q = query.trim();
+      if (status) params.status = status;
+      const response = await salesService.listPriceCampaigns(params);
+      return {
+        status: response?.data?.status || 'success',
+        data: response?.data?.data ?? response?.data,
+        message: response?.data?.message || null,
+      };
+    } catch (error) {
+      console.error('fetchPriceCampaigns failed:', error);
+      return {
+        status: 'error',
+        data: null,
+        message: error?.response?.data?.message || error.message || 'تعذر تحميل الحملات السعرية',
+      };
+    }
+  };
+
+  const createPriceCampaign = async (payload) => {
+    try {
+      const response = await salesService.createPriceCampaign(payload);
+      return {
+        status: response?.data?.status || 'success',
+        data: response?.data?.data ?? response?.data,
+        message: response?.data?.message || null,
+      };
+    } catch (error) {
+      console.error('createPriceCampaign failed:', error);
+      return {
+        status: 'error',
+        data: null,
+        message: error?.response?.data?.message || error.message || 'تعذر إنشاء الحملة السعرية',
+      };
+    }
+  };
+
+  const setPriceCampaignStatus = async (campaignId, status) => {
+    try {
+      const response = await salesService.updatePriceCampaignStatus(campaignId, status);
+      return {
+        status: response?.data?.status || 'success',
+        data: response?.data?.data ?? response?.data,
+        message: response?.data?.message || null,
+      };
+    } catch (error) {
+      console.error('setPriceCampaignStatus failed:', error);
+      return {
+        status: 'error',
+        data: null,
+        message: error?.response?.data?.message || error.message || 'تعذر تحديث حالة الحملة',
+      };
+    }
   };
 
   // ─── State ────────────────────────────────────────────────────────────────
@@ -87,7 +201,7 @@ export const useSalesStore = defineStore('sales', () => {
           if (order)         params.order          = order;
           if (includeTotals) params.include_totals = '1';
 
-          const response = await apiClient.get('/sales', { params });
+          const response = await salesService.list(params);
           const data     = response?.data?.data || response?.data || [];
           const list     = Array.isArray(data) ? data : (data?.items || []);
           const summary  = data.summary || {};
@@ -161,7 +275,7 @@ export const useSalesStore = defineStore('sales', () => {
         };
       }
 
-      const response = await apiClient.get(`/sales/${saleId}`);
+      const response = await salesService.get(saleId);
       const data     = response?.data?.data || response?.data;
 
       detailsCache.value[cacheKey]          = data;
@@ -209,7 +323,7 @@ export const useSalesStore = defineStore('sales', () => {
       const params = { q, limit: String(limit) };
       if (branchId) params.branch_id = String(branchId);
 
-      const response = await apiClient.get('/sales', { params });
+      const response = await salesService.list(params);
       const data     = response?.data?.data || response?.data || [];
       const list     = Array.isArray(data) ? data : (data?.items || []);
 
@@ -238,7 +352,7 @@ export const useSalesStore = defineStore('sales', () => {
    */
   const createSale = async (payload) => {
     try {
-      const response = await apiClient.post('/sales', payload);
+      const response = await salesService.create(payload);
 
     // امسح الـ cache عشان القائمة تتحدث
       clearSalesListCache();
@@ -266,7 +380,7 @@ export const useSalesStore = defineStore('sales', () => {
    */
   const payDebt = async (payload) => {
     try {
-      const response = await apiClient.post('/sales/pay-debt', payload);
+      const response = await salesService.payDebt(payload);
 
       // clear details cache for this invoice + list
       if (payload?.sale_id) {
@@ -293,9 +407,7 @@ export const useSalesStore = defineStore('sales', () => {
 
   const addSalePayment = async (payload, idempotencyKey) => {
     try {
-      const response = await apiClient.post('/sales/add-payment', payload, {
-        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
-      });
+      const response = await salesService.addPayment(payload, idempotencyKey);
 
       if (payload?.sale_id) {
         const cacheKey = String(payload.sale_id);
@@ -322,7 +434,7 @@ export const useSalesStore = defineStore('sales', () => {
 
   const voidSale = async (saleId, note = null) => {
     try {
-      const response = await apiClient.delete(`/sales/${saleId}`, { data: { note } });
+      const response = await salesService.void(saleId, note);
       delete detailsCache.value[String(saleId)];
       delete detailsCacheFetchedAt.value[String(saleId)];
       clearSalesListCache();
@@ -344,7 +456,7 @@ export const useSalesStore = defineStore('sales', () => {
 
   const updateSale = async (saleId, payload) => {
     try {
-      const response = await apiClient.put(`/sales/${saleId}`, payload);
+      const response = await salesService.update(saleId, payload);
       delete detailsCache.value[String(saleId)];
       delete detailsCacheFetchedAt.value[String(saleId)];
       clearSalesListCache();
@@ -409,11 +521,17 @@ export const useSalesStore = defineStore('sales', () => {
     // Read Actions
     fetchSalesList,
     fetchSaleDetails,
+    fetchQuotations,
+    fetchQuotation,
+    fetchPriceCampaigns,
     searchSales,
     getSaleById,
 
     // Write Actions
     createSale,
+    createQuotation,
+    createPriceCampaign,
+    setPriceCampaignStatus,
     payDebt,
     addSalePayment,
     updateSale,

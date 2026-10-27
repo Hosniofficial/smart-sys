@@ -3,9 +3,10 @@ import apiClient from '@/config/axios'
 const RepairOrdersService = {
   async list(params = {}) {
     const { data } = await apiClient.get('/repairs', { params })
-    if (data?.status !== 'success' || !Array.isArray(data?.data)) {
+    if (data?.status !== 'success' || !data?.data) {
       throw new Error(data?.message || 'تعذر تحميل أوامر الصيانة.')
     }
+    // Backend يُعيد { items, total, page, limit, total_pages }
     return data.data
   },
 

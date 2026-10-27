@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { listUsers } from '@/services/users';
+import {
+  changeCurrentUserPassword as changeCurrentUserPasswordRequest,
+  getCurrentUserProfile,
+  listUsers,
+  updateCurrentUserProfile as updateCurrentUserProfileRequest,
+} from '@/services/users';
 
 const CACHE_TTL = 15 * 60 * 1000;
 
@@ -52,8 +57,26 @@ export const useUserStore = defineStore('user', () => {
     }
   };
 
+  const fetchCurrentUserProfile = async () => {
+    const response = await getCurrentUserProfile();
+    return response?.data?.data ?? null;
+  };
+
+  const updateCurrentUserProfile = async (payload) => {
+    const response = await updateCurrentUserProfileRequest(payload);
+    return response?.data ?? {};
+  };
+
+  const changeCurrentUserPassword = async (payload) => {
+    const response = await changeCurrentUserPasswordRequest(payload);
+    return response?.data ?? {};
+  };
+
   return {
     users,
     fetchUsers,
+    fetchCurrentUserProfile,
+    updateCurrentUserProfile,
+    changeCurrentUserPassword,
   };
 });

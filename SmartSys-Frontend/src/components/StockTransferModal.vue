@@ -107,7 +107,7 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import apiClient from '../config/axios';
+import inventoryService from '@/services/inventory';
 import { useToast } from '@/composables/useToast';
 import LoadingButton from '@/components/ui/LoadingButton.vue'
 import { useBranchStore } from '@/stores/branch/branchStore';
@@ -171,7 +171,7 @@ const handleSubmit = async () => {
   };
 
   try {
-    const response = await apiClient.post(`/branches/${props.sourcebranchId}/transfer`, payload);
+    const response = await inventoryService.transferStock(props.sourcebranchId, payload);
     
     if (response.data.status === 'success') {
       showToast('تم إنشاء طلب النقل بنجاح!', 'success');

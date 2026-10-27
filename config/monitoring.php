@@ -6,13 +6,13 @@
  */
 
 $environment = $_ENV['APP_ENV'] ?? 'production';
-$debug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
+$sentryConfigured = filter_var($_ENV['SENTRY_ENABLED'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$sentryEnabled = false;
 
 // Initialize Sentry for error tracking (only if package is installed)
 $sentryDsn = $_ENV['SENTRY_DSN'] ?? null;
-$sentryEnabled = false;
 
-if ($sentryDsn && !$debug && @class_exists('\\Sentry\\ClientBuilder')) {
+if ($sentryConfigured && $sentryDsn && @class_exists('\\Sentry\\ClientBuilder')) {
     try {
         // Define E_CRITICAL if not available (for older PHP versions)
         if (!defined('E_CRITICAL')) {
@@ -40,11 +40,6 @@ if ($sentryDsn && !$debug && @class_exists('\\Sentry\\ClientBuilder')) {
             'attach_stacktrace' => true,
             'max_breadcrumbs' => 50,
             'before_send' => function($event, $hint) {
-                // Don't send events for local development
-                if (($_ENV['APP_ENV'] ?? 'production') === 'development') {
-                    return null;
-                }
-                
                 // Filter out sensitive data
                 if (isset($event['request']['headers']['Authorization'])) {
                     unset($event['request']['headers']['Authorization']);
@@ -62,7 +57,7 @@ if ($sentryDsn && !$debug && @class_exists('\\Sentry\\ClientBuilder')) {
 // Monolog Configuration for structured logging
 return [
     'sentry' => [
-        'enabled' => (bool)$sentryDsn && !$debug,
+        'enabled' => $sentryEnabled && (bool)$sentryDsn,
         'dsn' => $sentryDsn,
         'environment' => $environment,
         'traces_sample_rate' => (float)($_ENV['SENTRY_TRACES_SAMPLE_RATE'] ?? 0.1),
@@ -106,7 +101,7 @@ return [
     
     'error_handling' => [
         // Report errors to Sentry
-        'report_to_sentry' => (bool)$sentryDsn,
+        'report_to_sentry' => $sentryEnabled && (bool)$sentryDsn,
         
         // Enable error logging to file
         'log_errors' => true,

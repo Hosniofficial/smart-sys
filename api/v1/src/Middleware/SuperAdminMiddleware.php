@@ -10,6 +10,7 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Slim\Psr7\Response;
 use App\Utils\SuperAdminHelper;
+use App\Utils\ApiResponseEnvelope;
 
 /** Restricts a route group to platform-scoped super-admin identities. */
 class SuperAdminMiddleware implements MiddlewareInterface
@@ -21,10 +22,10 @@ class SuperAdminMiddleware implements MiddlewareInterface
 
         if (SuperAdminHelper::isNot(is_array($user) ? $user : null)) {
             $response = new Response();
-            $response->getBody()->write(json_encode([
+            $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
                 'status' => 'error',
                 'message' => 'Forbidden: super_admin only'
-            ], JSON_UNESCAPED_UNICODE));
+            ], 403), JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 

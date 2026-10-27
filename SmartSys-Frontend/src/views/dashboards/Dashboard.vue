@@ -3,9 +3,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress/Loading Bar (Subtle) -->
-    <div v-if="isLoading || isRefreshing" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-50">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading || isRefreshing" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -53,10 +51,17 @@
             </button>
           </div>
 
-          <button @click="refresh" :disabled="isRefreshing || isLoading" 
-            class="h-9 w-9 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-50 transition-all shadow-sm">
-            <i class="fas fa-sync-alt text-xs" :class="{ 'animate-spin': isRefreshing }"></i>
-          </button>
+          <LoadingButton
+            text=""
+            loadingText=""
+            :showTextDuringLoad="false"
+            icon="fas fa-sync-alt"
+            :isLoading="isRefreshing || isLoading"
+            variant="secondary"
+            class="h-9 w-9 rounded-md border border-slate-200 bg-white p-0 text-slate-500 shadow-sm hover:text-blue-600 hover:border-blue-200"
+            aria-label="تحديث لوحة التحكم"
+            @click="refresh"
+          />
         </template>
       </PageHeader>
 
@@ -140,13 +145,6 @@
           </div>
           <div class="relative px-5 py-6 h-[360px] sm:h-[390px]">
             <canvas ref="topProductsChart"></canvas>
-            <div
-              v-if="topProductsTotal > 0"
-              class="pointer-events-none absolute left-1/2 top-[46%] flex aspect-square w-32 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full bg-white text-center"
-            >
-              <span class="text-[10px] font-medium text-slate-400">إجمالي القيمة</span>
-              <span class="text-base font-bold text-slate-900">{{ compactNumberFormat.format(topProductsTotal) }}</span>
-            </div>
           </div>
         </div>
       </section>
@@ -258,6 +256,7 @@ import { useCompanyCurrency } from '@/composables/useCompanyCurrency'
 import { useBranchStore } from '@/stores/branch/branchStore'
 import { useSessionExemption } from '@/composables/useCashierSessionGuard'
 import PageHeader from '@/components/PageHeader.vue'
+import LoadingButton from '@/components/ui/LoadingButton.vue'
 
 Chart.register(Filler)
 
@@ -272,7 +271,10 @@ const { isExempt, ensureLoaded: ensureExemptionLoaded } = useSessionExemption()
 const branches = computed(() => branchStore.branches)
 const selectedBranch = computed({
   get: () => branchStore.selectedBranchId,
-  set: (val) => branchStore.setSelectedBranch(val)
+  set: (val) => {
+    const normalized = val === 'all' || val === null || val === undefined ? null : val
+    branchStore.setSelectedBranch(normalized)
+  }
 })
 
 const userChoseBranch = ref(
@@ -394,6 +396,7 @@ function initChart(chartRef, type, data, instanceRef) {
     animation: { duration: 650, easing: 'easeOutQuart' },
     interaction: { mode: 'index', intersect: false },
     indexAxis: type === 'bar' ? 'y' : 'x',
+    cutout: type === 'doughnut' ? '68%' : undefined,
     layout: { padding: type === 'doughnut' ? 8 : { top: 8, right: 4, bottom: 0, left: 4 } },
     plugins: {
       legend: {
@@ -498,10 +501,35 @@ function initChart(chartRef, type, data, instanceRef) {
 
   const ctx = canvas.getContext('2d')
   if (!ctx) return
+  const centerTextPlugin = type === 'doughnut' ? {
+    id: 'top-products-center-text',
+    afterDraw(chart) {
+      const arc = chart.getDatasetMeta(0).data[0]
+      if (!arc || topProductsTotal.value <= 0) return
+
+      const context = chart.ctx
+      const centerX = arc.x
+      const centerY = arc.y
+      const valueFontSize = Math.min(16, Math.max(12, chart.width / 22))
+
+      context.save()
+      context.textAlign = 'center'
+      context.textBaseline = 'middle'
+      context.direction = 'rtl'
+      context.fillStyle = '#94a3b8'
+      context.font = '500 10px Cairo, sans-serif'
+      context.fillText('إجمالي القيمة', centerX, centerY - 9)
+      context.fillStyle = '#0f172a'
+      context.font = `700 ${valueFontSize}px Cairo, sans-serif`
+      context.fillText(compactNumberFormat.format(topProductsTotal.value), centerX, centerY + 9)
+      context.restore()
+    }
+  } : null
   instanceRef.value = new Chart(ctx, {
     type,
     data: chartData,
-    options: { ...chartOptions, animation: false }
+    options: { ...chartOptions, animation: false },
+    plugins: centerTextPlugin ? [centerTextPlugin] : []
   })
 }
 
@@ -683,11 +711,11 @@ function refreshDashboardIfStale() {
   fetchDashboardData(true)
 }
 const onBranchChange = (id) => {
-  branchStore.setSelectedBranch(id)
-  userChoseBranch.value = (id !== null && id !== '' && id !== 'all')
+  const normalized = id === 'all' || id === null || id === undefined ? null : id
+  branchStore.setSelectedBranch(normalized)
+  userChoseBranch.value = (normalized !== null && normalized !== '' && normalized !== 'all')
+  fetchDashboardData(true)
 }
-
-watch(selectedBranch, () => { fetchDashboardData(true) })
 
 onMounted(async () => {
   await authStore.initialize?.();

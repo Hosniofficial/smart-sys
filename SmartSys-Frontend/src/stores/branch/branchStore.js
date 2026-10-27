@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import branchesService from '@/services/branches';
 
 export const useBranchStore = defineStore('branch', () => {
 
@@ -82,7 +82,7 @@ export const useBranchStore = defineStore('branch', () => {
 
     ongoingFetchPromise = (async () => {
       try {
-        const response = await apiClient.get('/branches');
+        const response = await branchesService.list();
         const raw      = response.data?.data ?? response.data ?? [];
         branches.value = Array.isArray(raw) ? raw : (raw?.items || []);
         cacheTimestamp = Date.now(); // ✅ Update cache timestamp
@@ -124,6 +124,26 @@ export const useBranchStore = defineStore('branch', () => {
     })();
 
     return ongoingFetchPromise;
+  };
+
+  const fetchBranchTransfers = async (branchId) => {
+    if (!branchId) throw new Error('Branch ID is required');
+    const response = await branchesService.listBranchTransfers(branchId);
+    const data = response?.data?.data ?? response?.data ?? [];
+    return Array.isArray(data) ? data : (Array.isArray(data?.items) ? data.items : []);
+  };
+
+  const fetchStockTransfers = async (branchId) => {
+    if (!branchId) throw new Error('Branch ID is required');
+    const response = await branchesService.listStockTransfers(branchId);
+    const data = response?.data?.data ?? response?.data ?? [];
+    return Array.isArray(data) ? data : (Array.isArray(data?.items) ? data.items : []);
+  };
+
+  const fetchStockTransfer = async (transferId) => {
+    if (!transferId) throw new Error('Transfer ID is required');
+    const response = await branchesService.getStockTransfer(transferId);
+    return response?.data?.data ?? response?.data ?? null;
   };
 
   /**
@@ -200,7 +220,7 @@ export const useBranchStore = defineStore('branch', () => {
    */
   const createBranch = async (payload) => {
     try {
-      const response = await apiClient.post('/branches', payload);
+      const response = await branchesService.create(payload);
       const responseData = response?.data?.data || response?.data;
 
       // Merge payload (has name/location/etc.) with response data (has id/account_id)
@@ -238,7 +258,7 @@ export const useBranchStore = defineStore('branch', () => {
    */
   const updateBranch = async (id, payload) => {
     try {
-      const response = await apiClient.put(`/branches/${id}`, payload);
+      const response = await branchesService.update(id, payload);
       const updated  = response?.data?.data || response?.data;
 
       const index = branches.value.findIndex(b => String(b.id) === String(id));
@@ -271,7 +291,7 @@ export const useBranchStore = defineStore('branch', () => {
    */
   const deleteBranch = async (id) => {
     try {
-      await apiClient.delete(`/branches/${id}`);
+      await branchesService.delete(id);
 
       branches.value = branches.value.filter(b => String(b.id) !== String(id));
       cacheTimestamp = Date.now(); // ✅ Update cache timestamp after mutation
@@ -323,6 +343,9 @@ export const useBranchStore = defineStore('branch', () => {
 
     // Read Actions
     fetchBranches,
+    fetchBranchTransfers,
+    fetchStockTransfers,
+    fetchStockTransfer,
     refreshBranches,  // ✅ Alias for fetchBranches(true)
     setSelectedBranch,
     setTemporaryBranch,

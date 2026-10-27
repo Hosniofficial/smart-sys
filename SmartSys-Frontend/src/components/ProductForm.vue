@@ -256,7 +256,8 @@
 <script setup>
 import { ref, watch, computed, onMounted } from 'vue';
 import { useAuthStore } from '@/stores/auth/authStore';
-import apiClient from '../config/axios';
+import productsService from '@/services/products';
+import catalogService from '@/services/catalog';
 import { useToast } from '@/composables/useToast';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
@@ -340,7 +341,7 @@ const isEditMode = computed(() => !!props.productData);
 
 const fetchUnits = async () => {
   try {
-    const response = await apiClient.get('/units');
+    const response = await catalogService.getUnits();
     units.value = response.data.data;
   } catch (error) {
     showToast('فشل في جلب الوحدات', 'error');
@@ -358,7 +359,7 @@ const addNewCategory = async () => {
   if (!targetBranchId) { showToast('الرجاء اختيار فرع أولاً قبل إضافة تصنيف.', 'warning'); return; }
   isAddingCategory.value = true;
   try {
-    await apiClient.post('/categories', { name: newCategoryName.value, branch_id: targetBranchId });
+    await catalogService.createCategory({ name: newCategoryName.value, branch_id: targetBranchId });
     showToast(`تم إضافة التصنيف بنجاح!`, 'success');
     newCategoryName.value = '';
     emit('category-added');
@@ -417,10 +418,10 @@ const handleSubmit = async () => {
     }
 
     if (isEditMode.value) {
-      await apiClient.put(`/products/${props.productData.id}`, payload);
+      await productsService.update(props.productData.id, payload);
       showToast('تم التحديث بنجاح!', 'success');
     } else {
-      const response = await apiClient.post('/products', payload);
+      const response = await productsService.create(payload);
       const activation = response.data?.data?.branch_activation || [];
       const setupRequired = activation.filter((branch) => branch.status === 'setup_required');
       if (setupRequired.length) {

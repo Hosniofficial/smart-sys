@@ -12,7 +12,7 @@ use App\Services\CostingService;
 use App\Services\ReturnCostingService;
 
 /**
- * Provides tenant-scoped sales trends, summaries, and payment breakdowns.
+ * Provides tenant-scoped sales analytics, summaries, and payment breakdowns.
  *
  * Queries sales, returns, and completed payments directly; CostingService and
  * ReturnCostingService provide inventory-cost figures. Routes and permissions
@@ -24,63 +24,6 @@ class SalesAnalyticsHandler extends BaseHandler
     {
         parent::__construct($db);
         $this->logger = MonologHandler::getInstance('analytics');
-    }
-
-    /** Aggregate monthly sales and product trends over the requested date range. */
-    public function analyzeTrends(Request $request, Response $response): Response
-    {
-        $tenantId = $this->extractTenantId($request);
-        if (!$tenantId) {
-            return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 400);
-        }
-
-        $filters = $request->getQueryParams();
-        $where   = ['s.tenant_id = ?', "LOWER(COALESCE(s.status, '')) NOT IN ('canceled', 'cancelled')"];
-        $params  = [$tenantId];
-
-        if (!empty($filters['start_date'])) {
-            $where[] = 's.date >= ?';
-            $params[] = $filters['start_date'];
-        }
-        if (!empty($filters['end_date'])) {
-            $where[] = 's.date <= ?';
-            $params[] = $filters['end_date'];
-        }
-
-        $whereClause = 'WHERE ' . implode(' AND ', $where);
-
-        $stmt = $this->db->prepare("
-            SELECT MONTH(s.date) as month, YEAR(s.date) as year,
-                   COUNT(DISTINCT s.id) as total_orders,
-                   SUM(si.quantity) as total_items,
-                   SUM(COALESCE(si.net_total, si.quantity * si.sale_price)) as total_revenue
-            FROM sales s
-            JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id
-            {$whereClause}
-            GROUP BY YEAR(s.date), MONTH(s.date)
-            ORDER BY year DESC, month DESC
-        ");
-        $stmt->execute($params);
-        $seasonalTrends = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $stmt = $this->db->prepare("
-            SELECT p.id, p.name, DATE_FORMAT(s.date, '%Y-%m') as month,
-                   SUM(si.quantity) as total_quantity,
-                   AVG(COALESCE(si.net_price, si.sale_price)) as avg_price
-            FROM sales s
-            JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id
-            JOIN products p ON p.id = si.product_id AND p.tenant_id = si.tenant_id
-            {$whereClause}
-            GROUP BY p.id, p.name, month
-            ORDER BY p.id, month DESC
-        ");
-        $stmt->execute($params);
-        $productTrends = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        return $this->successResponse($response, [
-            'seasonal_trends' => $seasonalTrends,
-            'product_trends'  => $productTrends,
-        ], 200);
     }
 
     /** Summarize daily sales, returns, costs, branches, payment methods, and recent invoices. */

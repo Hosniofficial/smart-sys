@@ -12,6 +12,7 @@ use App\Services\Transaction\TransactionManager;
 use App\Services\ServiceFactory;
 use App\Traits\AuthorizesRequests;
 use App\Utils\RequestHelper;
+use App\Utils\ApiResponseEnvelope;
 use App\Repositories\SettingsRepository;
 use App\Utils\SuperAdminHelper;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -260,6 +261,8 @@ class BaseHandler
         int $status = 200,
         bool $autoLog = true
     ): Response {
+        $data = ApiResponseEnvelope::normalize($data, $status);
+
         if ($autoLog && is_array($data) && ($data['status'] ?? null) === 'error') {
             $message = $data['message'] ?? 'Unknown error';
             $eventType = 'api_error';
@@ -306,11 +309,17 @@ class BaseHandler
     protected function successResponse(
         Response $response,
         array|null $data = [],
-        int $status = 200
+        int $status = 200,
+        ?string $message = null
     ): Response {
+        $message ??= is_array($data) && is_string($data['message'] ?? null)
+            ? $data['message']
+            : '';
+
         return $this->jsonResponse($response, [
             'status' => 'success',
             'data' => $data,
+            'message' => $message,
         ], $status, false);
     }
 

@@ -1,4 +1,13 @@
 import apiClient from '../config/axios';
+import productsService from '@/services/products';
+
+export const searchBulkAdjustmentProducts = async (query = '') => {
+  const normalizedQuery = query.trim();
+  const { data } = await productsService.search(
+    normalizedQuery ? { q: normalizedQuery, limit: 10 } : {},
+  );
+  return data;
+};
 
 /**
  * Bulk adjustments (JSON): distribute a single product across multiple branches.

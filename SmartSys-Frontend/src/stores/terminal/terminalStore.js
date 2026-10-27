@@ -45,6 +45,10 @@ export const useTerminalStore = defineStore('terminal', () => {
     const bid = branchId == null ? '' : String(branchId);
     if (!bid) return [];
 
+    if (status === 'all') {
+      return await terminalsService.list({ branch_id: bid, status });
+    }
+
     const fetchedAt = terminalsFetchedAtByBranch.value[bid] || 0;
 
     if (!force && isFresh(fetchedAt, TTL.terminals) && Array.isArray(terminalsByBranch.value[bid])) {
@@ -189,43 +193,6 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   };
 
-  // ─── deleteTerminal ───────────────────────────────────────────────────────
-  /**
-   * يحذف جهاز كاشير ويمسحه من الـ cache المحلي في كل الفروع
-   * الـ component يستخدمها هكذا:
-   *   const res = await terminalStore.deleteTerminal(id);
-   *   if (res.status === 'success') { ... }
-   */
-  const deleteTerminal = async (id) => {
-    try {
-      await terminalsService.delete(id);
-
-      // امسح الجهاز من كل الفروع + invalidate status لو اتحذف فعلاً
-      for (const bid of Object.keys(terminalsByBranch.value)) {
-        const originalLength = terminalsByBranch.value[bid].length;
-        terminalsByBranch.value[bid] = terminalsByBranch.value[bid].filter(
-          t => String(t.id) !== String(id)
-        );
-        if (terminalsByBranch.value[bid].length < originalLength) {
-          invalidateBranchStatus(bid);
-        }
-      }
-
-      return {
-        status: 'success',
-        data:   { id },
-        message: null
-      };
-    } catch (err) {
-      console.error('deleteTerminal failed:', err);
-      return {
-        status: 'error',
-        data:   null,
-        message: err.response?.data?.message || err.message
-      };
-    }
-  };
-
   // ─── Computed Getters ─────────────────────────────────────────────────────
   const getTerminalsForBranch = (branchId) => {
     const bid = branchId == null ? '' : String(branchId);
@@ -278,7 +245,6 @@ export const useTerminalStore = defineStore('terminal', () => {
     // Write Actions
     createTerminal,
     updateTerminal,
-    deleteTerminal,
     invalidateBranchStatus,
 
     // Cache

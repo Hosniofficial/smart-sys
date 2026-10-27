@@ -2,9 +2,6 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="isSubmitting" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -17,9 +14,15 @@
         :selectedBranch="null"
       >
         <template #controls>
-          <button @click="refreshData" class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
-            <i class="fas fa-sync-alt text-[10px]"></i> تحديث البيانات
-          </button>
+          <LoadingButton
+            text="تحديث البيانات"
+            loadingText="جاري التحديث..."
+            icon="fas fa-sync-alt"
+            :isLoading="isRefreshing"
+            variant="secondary"
+            class="h-9 px-4 rounded-md border border-slate-200 bg-white text-slate-600 text-xs shadow-sm hover:bg-slate-50"
+            @click="refreshData"
+          />
           <router-link to="/branches" class="h-9 px-4 rounded-md bg-white border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
             <i class="fas fa-arrow-right text-[10px]"></i> العودة للمستودعات
           </router-link>
@@ -207,11 +210,15 @@
                 <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shadow-inner"><i class="fas fa-info-circle"></i></div>
                 <p class="text-[11px] font-bold text-slate-400 leading-relaxed max-w-sm">سيتم إنشاء قيود تسوية (Stock Adjustment) منفصلة لكل فرع في النظام المحاسبي.</p>
              </div>
-             <button @click="submitBulk" :disabled="isSubmitting || !selectedProduct || totalQuantity === 0" class="h-12 px-12 bg-blue-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-3">
-                <BaseSpinner v-if="isSubmitting" :size="16" color="#fff" />
-                <i v-else class="fas fa-check-circle"></i>
-                تنفيذ التوزيع الآن
-             </button>
+             <LoadingButton
+               text="تنفيذ التوزيع الآن"
+               loadingText="جارٍ التوزيع..."
+               icon="fas fa-check-circle"
+               :isLoading="isSubmitting"
+               :disabled="!selectedProduct || totalQuantity === 0"
+               @click="submitBulk"
+               class="h-12 rounded-lg px-12 text-xs shadow-lg shadow-blue-900/20"
+             />
           </div>
         </section>
       </div>
@@ -274,11 +281,15 @@
                </div>
                
                <div class="pt-6 border-t border-slate-200">
-                 <button @click="submitCsv" :disabled="isSubmitting || !csvFile" class="w-full h-12 bg-slate-900 text-white rounded-lg text-[11px] font-bold uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center justify-center gap-3">
-                   <BaseSpinner v-if="isSubmitting" :size="16" color="#fff" />
-                   <i v-else class="fas fa-file-import"></i>
-                   بدء عملية المعالجة
-                 </button>
+                 <LoadingButton
+                   text="بدء عملية المعالجة"
+                   loadingText="جارٍ استيراد الملف..."
+                   icon="fas fa-file-import"
+                   :isLoading="isSubmitting"
+                   :disabled="!csvFile"
+                   @click="submitCsv"
+                   class="h-12 w-full rounded-lg text-[11px] tracking-widest shadow-lg"
+                 />
                </div>
             </div>
           </div>
@@ -308,7 +319,7 @@ import { useBranchStore } from '@/stores/branch/branchStore';
 import { useProductStore } from '@/stores/product/productStore';
 import { useBulkAdjustmentStore } from '@/stores/bulk/bulkAdjustmentStore';
 import AlertService from '@/services/AlertService';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
 
@@ -321,6 +332,7 @@ const bulkAdjustmentStore = useBulkAdjustmentStore();
 const productStore = useProductStore();
 const activeTab = ref('form');
 const isSubmitting = ref(false);
+const isRefreshing = ref(false);
 const totalQuantity = computed(() => rows.value.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0));
 
 // Product Search Logic
@@ -531,7 +543,16 @@ const fillEqualQuantities = () => {
     if (e.target === modal) closeModal();
   });
 };
-const refreshData = async () => { await loadBranches(); showToast('تم تحديث بيانات الفروع', 'success'); };
+const refreshData = async () => {
+  if (isRefreshing.value) return;
+  isRefreshing.value = true;
+  try {
+    await loadBranches();
+    showToast('تم تحديث بيانات الفروع', 'success');
+  } finally {
+    isRefreshing.value = false;
+  }
+};
 const formatFileSize = (b) => { if (b === 0) return '0 B'; const k = 1024, i = Math.floor(Math.log(b) / Math.log(k)); return parseFloat((b / Math.pow(k, i)).toFixed(2)) + ' ' + ['Bytes', 'KB', 'MB', 'GB'][i]; };
 const refreshHistory = () => AlertService.info('سجل التوزيعات سيتوفر قريباً');
 
@@ -564,16 +585,10 @@ onMounted(async () => {
 
 /* Dashboard Identity Controls */
 .tab-pill { @apply px-8 h-10 rounded-md text-[11px] font-bold transition-all flex items-center gap-2; }
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1; }
-
 .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
 /* Shared Select/Input Logic from LayoutRedesign */
-.filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
-}
-
 /* Transitions */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }

@@ -6,6 +6,7 @@ use App\Services\SecurityLogger;
 use App\Services\UserSessionService;
 use PDO;
 use App\Services\MonologHandler;
+use App\Utils\PaginationHelper;
 
 /**
  * Handles tenant user lookups, self-service profiles, and password changes.
@@ -34,11 +35,9 @@ class UsersHandler extends BaseHandler
         }
 
         $q = $request->getQueryParams();
-        $page = max(1, (int) ($q['page'] ?? 1));
-        $limit = min(1000, max(1, (int) ($q['limit'] ?? 10)));
+        [$page, $limit, $offset] = PaginationHelper::fromArray($q, 10, 1000);
         $search = $q['search'] ?? '';
         $roleId = $q['role_id'] ?? null;
-        $offset = ($page - 1) * $limit;
 
         $this->logger->info('Users list request', [
             'tenant_id' => $tenantId,
@@ -149,16 +148,12 @@ class UsersHandler extends BaseHandler
         ]);
 
         return $this->successResponse($response, [
-            'status' => 'success',
-            'message' => '',
-            'data' => [
-                'items' => $users,
-                'total' => $total,
-                'page' => $page,
-                'limit' => $limit,
-                'total_pages' => ceil($total / $limit)
-            ]
-        ], 200);
+            'items' => $users,
+            'total' => (int) $total,
+            'page' => $page,
+            'limit' => $limit,
+            'total_pages' => (int) ceil($total / $limit),
+        ]);
     }
 
     /** Change the authenticated user's password after verifying the current password. */

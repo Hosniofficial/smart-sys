@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="loading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -17,9 +15,17 @@
         :selectedBranch="null"
       >
         <template #controls>
-          <button @click="load" :disabled="loading" class="h-9 w-9 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 transition-colors shadow-sm">
-            <i class="fas fa-sync-alt text-[10px]" :class="{'animate-spin': loading}"></i>
-          </button>
+          <LoadingButton
+            text=""
+            loadingText=""
+            :showTextDuringLoad="false"
+            icon="fas fa-sync-alt"
+            :isLoading="loading"
+            variant="secondary"
+            class="h-9 w-9 rounded-md border border-slate-200 bg-white p-0 text-slate-400 shadow-sm hover:text-blue-600"
+            aria-label="تحديث طرق الدفع"
+            @click="load"
+          />
           <button @click="openCreate" class="h-9 px-4 rounded-md bg-blue-600 text-white text-xs font-bold shadow-sm hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-2">
             <i class="fas fa-plus-circle text-[10px]"></i>
             إضافة طريقة دفع
@@ -151,11 +157,13 @@
                   <span v-else class="text-[9px] text-slate-400">{{ m._kind === 'cash' ? 'السالب من إعداد POS والجلسة' : 'لا يسمح بالسالب' }}</span>
                 </td>
                 <td class="px-8 py-4 text-center">
-                  <button @click="saveMethod(m)" :disabled="m._saving" class="h-8 px-5 rounded-md bg-blue-600 text-white text-[10px] font-bold uppercase shadow-sm hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 mx-auto">
-                    <BaseSpinner v-if="m._saving" size="12" color="#fff" />
-                    <i v-else class="fas fa-save text-[9px]"></i>
-                    تحديث
-                  </button>
+                  <LoadingButton
+                    text="تحديث"
+                    loadingText="جارٍ الحفظ..."
+                    :isLoading="m._saving"
+                    @click="saveMethod(m)"
+                    class="mx-auto h-8 rounded-md px-5 text-[10px]"
+                  />
                 </td>
               </tr>
             </tbody>
@@ -247,10 +255,13 @@
 
           <div class="px-8 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3 shrink-0">
             <button @click="closeCreate" class="px-6 h-10 text-xs font-bold text-slate-500">إلغاء</button>
-            <button @click="create" :disabled="creating" class="px-10 h-10 bg-blue-600 text-white rounded-md text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all flex items-center gap-2">
-              <BaseSpinner v-if="creating" size="16" color="#fff" />
-              <span>تأكيد الإضافة</span>
-            </button>
+            <LoadingButton
+              text="تأكيد الإضافة"
+              loadingText="جارٍ الإضافة..."
+              :isLoading="creating"
+              @click="create"
+              class="px-10 h-10 rounded-md text-xs shadow-lg shadow-blue-900/20"
+            />
           </div>
         </div>
       </div>
@@ -264,7 +275,7 @@ import { ref, onMounted, computed } from 'vue';
 import { usePaymentStore } from '@/stores/payment/paymentStore';
 import { useAccountStore } from '@/stores/account/accountStore';
 import AlertService from '@/services/AlertService';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';;
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
@@ -420,12 +431,6 @@ onMounted(async () => {
 .filter-input-v3 {
   @apply w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
 }
-
-.filter-input-v2 {
-  @apply w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
-}
-
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1; }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }

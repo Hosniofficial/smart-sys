@@ -7,7 +7,6 @@ use App\Handlers\AccountingReportsHandler;
 use App\Handlers\AdminSettingsHandler;
 use App\Handlers\AdminSubscriptionHandler;
 use App\Handlers\AdvancedReportsHandler;
-use App\Handlers\AnalyticsHandler;
 use App\Handlers\AuditHandler;
 use App\Handlers\AuthHandler;
 use App\Handlers\BootstrapHandler;
@@ -29,6 +28,8 @@ use App\Handlers\RBACHandler;
 use App\Handlers\ReturnsHandler;
 use App\Handlers\SalesAnalyticsHandler;
 use App\Handlers\SalesHandler;
+use App\Handlers\SalesPriceCampaignsHandler;
+use App\Handlers\SalesQuotationsHandler;
 use App\Handlers\SessionsHandler;
 use App\Handlers\SetupHandler;
 use App\Handlers\ShiftsHandler;
@@ -67,7 +68,6 @@ use App\Services\SecurityEventDispatcher;
 use App\Services\AuthSessionService;
 use App\Services\UserSessionService;
 use App\Services\SecurityLogger;
-use App\Services\ServiceFactory;
 use DI\Container;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
@@ -98,7 +98,6 @@ return function (): Container {
         // ── Core Services ─────────────────────────────────────────────────────
         AccountingService::class => fn(PDO $pdo) => new AccountingService($pdo),
         CurrencyService::class   => fn(PDO $pdo) => new CurrencyService($pdo),
-        ServiceFactory::class    => fn(PDO $pdo) => new ServiceFactory($pdo),
 
         // ── Domain Services ───────────────────────────────────────────────────
         // Note: PurchaseService and ReturnService require tenantId + userId at
@@ -213,6 +212,8 @@ return function (): Container {
 
     ProductsHandler::class => fn(PDO $pdo) => new ProductsHandler($pdo),
     SalesHandler::class => fn(PDO $pdo) => new SalesHandler($pdo),
+    SalesPriceCampaignsHandler::class => fn(PDO $pdo) => new SalesPriceCampaignsHandler($pdo),
+    SalesQuotationsHandler::class => fn(PDO $pdo) => new SalesQuotationsHandler($pdo),
 
     UsersHandler::class => fn(PDO $pdo, SecurityLogger $securityLogger) =>
         new UsersHandler($pdo, $securityLogger),
@@ -244,7 +245,6 @@ return function (): Container {
     App\Handlers\SettingsHandler::class => fn(PDO $pdo) => new App\Handlers\SettingsHandler($pdo),
     ProductBranchHandler::class => fn(PDO $pdo) => new ProductBranchHandler($pdo),
     RBACHandler::class => fn(PDO $pdo) => new RBACHandler($pdo),
-    AnalyticsHandler::class => fn(PDO $pdo) => new AnalyticsHandler($pdo),
     SalesAnalyticsHandler::class => fn(PDO $pdo) => new SalesAnalyticsHandler($pdo),
     InventoryAnalyticsHandler::class => fn(PDO $pdo) => new InventoryAnalyticsHandler($pdo),
     PosAnalyticsHandler::class => fn(PDO $pdo) => new PosAnalyticsHandler($pdo),

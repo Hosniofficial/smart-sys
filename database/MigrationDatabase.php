@@ -12,8 +12,9 @@ final class MigrationDatabase
      * @return array{host:string,port:string,database:string,username:string,password:string}
      * @throws RuntimeException when no database name is explicitly configured.
      */
-    public static function resolveConfig(array $environment): array
+    public static function resolveConfig(array $environment, array $processEnvironment = []): array
     {
+        $environment = array_merge($environment, $processEnvironment);
         $database = self::firstConfigured($environment, 'DB_DATABASE', 'DB_NAME');
         if ($database === null) {
             throw new RuntimeException('DB_DATABASE (or legacy DB_NAME) must be configured before running migrations.');
@@ -29,9 +30,9 @@ final class MigrationDatabase
     }
 
     /** Create an exception-throwing PDO connection for migration and schema tooling. */
-    public static function connect(array $environment): PDO
+    public static function connect(array $environment, array $processEnvironment = []): PDO
     {
-        $config = self::resolveConfig($environment);
+        $config = self::resolveConfig($environment, $processEnvironment);
         $dsn = sprintf(
             'mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
             $config['host'],
@@ -39,11 +40,30 @@ final class MigrationDatabase
             $config['database']
         );
 
-        return new PDO($dsn, $config['username'], $config['password'], [
+        $connectionEnvironment = array_merge($environment, $processEnvironment);
+        $options = [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
-        ]);
+        ];
+        $sslCa = self::firstConfigured($connectionEnvironment, 'DB_SSL_CA');
+        if ($sslCa !== null) {
+            $verifyServerCertificate = self::firstConfigured(
+                $connectionEnvironment,
+                'DB_SSL_VERIFY_SERVER_CERT'
+            );
+            $verify = $verifyServerCertificate === null
+                ? true
+                : filter_var($verifyServerCertificate, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($verify === null) {
+                throw new RuntimeException('DB_SSL_VERIFY_SERVER_CERT must be a boolean value.');
+            }
+
+            $options[PDO::MYSQL_ATTR_SSL_CA] = $sslCa;
+            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = $verify;
+        }
+
+        return new PDO($dsn, $config['username'], $config['password'], $options);
     }
 
     /** Return the first non-empty configured value, preferring the canonical key. */

@@ -189,7 +189,10 @@ class SaleCreationService
         }
 
         return (int) $isOwner === 1
-            || $this->hasPrivilegedSaleRole($this->getUserRoleNames($tenantId));
+            || (bool) array_intersect(
+                $this->getUserRoleNames($tenantId),
+                ['admin', 'manager', 'branch_manager', 'super_admin']
+            );
     }
 
     /**
@@ -234,7 +237,7 @@ class SaleCreationService
     {
         return (bool) array_intersect(
             $roleNames,
-            ['admin', 'administrator', 'manager', 'branch_manager', 'supervisor', 'branch_supervisor', 'super_admin']
+            ['admin', 'manager', 'branch_manager', 'super_admin']
         );
     }
 
@@ -512,6 +515,19 @@ class SaleCreationService
                     || (float) $conversionFactor <= 0) {
                     throw new \DomainException('وحدة القياس المحددة غير مرتبطة بالمنتج.');
                 }
+                $activeCampaign = PriceCampaignService::findActivePrice(
+                    $this->pdo,
+                    $tenantId,
+                    $branchId,
+                    $productId,
+                    $unitId
+                );
+                if ($activeCampaign !== null) {
+                    $campaignPrice = (float) $activeCampaign['campaign_price'];
+                    $salePrice = min((float) $salePrice, $campaignPrice);
+                    $item['sale_price'] = $salePrice;
+                    $item['price_campaign_id'] = (int) $activeCampaign['campaign_id'];
+                }
                 $tracksStock = ProductBranchActivationGuard::assertSellableInBranch(
                     $this->pdo,
                     $tenantId,
@@ -522,13 +538,22 @@ class SaleCreationService
                 $item['product_type'] = strtolower((string) ($product['product_type'] ?? 'stock'));
                 $item['tracks_stock'] = $tracksStock;
                 $item['purchase_price'] = $tracksStock ? (float) $product['purchase_price'] : 0.0;
-                $item['catalog_sale_price'] = (float) $product['sale_price'];
-                $item['min_sale_price'] = (float) ($product['min_sale_price'] ?? 0);
+                $item['catalog_sale_price'] = $activeCampaign !== null
+                    ? (float) $activeCampaign['campaign_price'] / (float) $conversionFactor
+                    : (float) $product['sale_price'];
+                $item['min_sale_price'] = $activeCampaign !== null
+                    ? min(
+                        (float) ($product['min_sale_price'] ?? 0),
+                        (float) $activeCampaign['campaign_price'] / (float) $conversionFactor
+                    )
+                    : (float) ($product['min_sale_price'] ?? 0);
                 $item['fixed_discount_percentage'] = (float) ($product['fixed_discount_percentage'] ?? 0);
-                $item['manual_price_override'] = filter_var(
-                    $item['manual_price_override'] ?? false,
-                    FILTER_VALIDATE_BOOLEAN
-                );
+                $item['manual_price_override'] = $activeCampaign !== null
+                    ? $salePrice + 0.005 < (float) $activeCampaign['campaign_price']
+                    : filter_var(
+                        $item['manual_price_override'] ?? false,
+                        FILTER_VALIDATE_BOOLEAN
+                    );
                 $item['below_cost_confirmed'] = filter_var(
                     $item['below_cost_confirmed'] ?? false,
                     FILTER_VALIDATE_BOOLEAN

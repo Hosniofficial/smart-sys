@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import apiClient from '@/config/axios'
+import bootstrapService from '@/services/bootstrap'
 
 /**
  * Bootstrap Store
@@ -54,7 +54,7 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
       }
 
       console.log('[Bootstrap] Fetching POS data...')
-      const response = await apiClient.get('/bootstrap/pos')
+      const response = await bootstrapService.getPosData()
       
       if (response.data.status === 'success') {
         posData.value = response.data.data
@@ -96,7 +96,7 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
       }
 
       console.log('[Bootstrap] Fetching Payments data...')
-      const response = await apiClient.get('/bootstrap/payments')
+      const response = await bootstrapService.getPaymentsData()
       
       if (response.data.status === 'success') {
         paymentsData.value = response.data.data
@@ -138,7 +138,7 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
       }
 
       console.log('[Bootstrap] Fetching Sessions data...')
-      const response = await apiClient.get('/bootstrap/sessions')
+      const response = await bootstrapService.getSessionsData()
       
       if (response.data.status === 'success') {
         sessionsData.value = response.data.data
@@ -183,7 +183,7 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
       }
 
       console.log(`[Bootstrap] Fetching ${type} Management data...`)
-      const response = await apiClient.get(`/bootstrap/management/${type}`)
+      const response = await bootstrapService.getManagementData(type)
       
       if (response.data.status === 'success') {
         managementData.value[type] = response.data.data

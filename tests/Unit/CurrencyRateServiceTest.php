@@ -93,4 +93,26 @@ final class CurrencyRateServiceTest extends TestCase
             "SELECT provider FROM currency_exchange_rates WHERE quote_currency_code = 'EUR'"
         )->fetchColumn());
     }
+
+    public function testRejectsFutureRateDatesBeforePersistingAnyRates(): void
+    {
+        $futureDate = (new DateTimeImmutable('tomorrow', new DateTimeZone('UTC')))->format('Y-m-d');
+        $provider = static function (string $url) use ($futureDate): string {
+            return json_encode([
+                ['date' => $futureDate, 'base' => 'USD', 'quote' => 'EGP', 'rate' => 52.804],
+            ], JSON_THROW_ON_ERROR);
+        };
+
+        try {
+            (new CurrencyRateService($this->db, $provider))->refresh(7);
+            self::fail('Expected a future-dated rate to be rejected.');
+        } catch (RuntimeException $e) {
+            self::assertSame('Exchange-rate provider returned a future rate date.', $e->getMessage());
+        }
+
+        self::assertSame(
+            0,
+            (int) $this->db->query('SELECT COUNT(*) FROM currency_exchange_rates')->fetchColumn()
+        );
+    }
 }

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import { settingsService } from '@/services/settings';
 
 const nowMs = () => Date.now();
 
@@ -54,9 +54,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
       const promise = (async () => {
         try {
-          const response = await apiClient.get('/settings', {
-            meta: { suppress403: true }
-          });
+          const response = await settingsService.getSettings({ suppress403: true });
           // الـ API ممكن يرجع { data: {...} } أو { settings: {...} } أو flat object
           const raw  = response?.data?.data
                     || response?.data?.settings
@@ -116,7 +114,7 @@ export const useSettingsStore = defineStore('settings', () => {
     error.value = null;
     
     try {
-      const response = await apiClient.put('/settings', { settings: settingsObj });
+      const response = await settingsService.updateSettings(settingsObj);
 
       // حدّث الـ cache المحلي فوراً
       Object.assign(settings.value, settingsObj);
@@ -156,9 +154,7 @@ export const useSettingsStore = defineStore('settings', () => {
     error.value = null;
     
     try {
-      const response = await apiClient.post('/settings/logo', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const response = await settingsService.uploadLogo(formData);
 
       // حدّث الـ cache بأي settings جديدة إن وجدت في الـ response
       const returned = response?.data?.settings ?? response?.data?.data ?? {};

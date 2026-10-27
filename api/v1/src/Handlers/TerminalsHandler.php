@@ -60,7 +60,7 @@ class TerminalsHandler extends BaseHandler
                 ]);
             }
 
-            if ($status !== null && $status !== '') {
+            if ($status !== null && $status !== '' && $status !== 'all') {
                 $sql .= " AND status = ?";
                 $params[] = $status;
 

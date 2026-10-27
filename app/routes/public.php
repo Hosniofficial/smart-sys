@@ -6,16 +6,17 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use DI\Container;
 use Slim\App;
+use App\Utils\ApiResponseEnvelope;
 
 return function (App $app, Container $container): void {
 
     // ── Liveness probe (load balancer / uptime monitor) ───────────────────────
     // Lightweight — no DB call. Returns 200 if the PHP process is alive.
     $app->get('/check', function (Request $request, Response $response) {
-        $response->getBody()->write(json_encode([
+        $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
             'status'    => 'ok',
             'timestamp' => date('c'),
-        ], JSON_UNESCAPED_SLASHES));
+        ], 200), JSON_UNESCAPED_SLASHES));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
     });
 
@@ -102,6 +103,7 @@ return function (App $app, Container $container): void {
 
         $payload = [
             'status'    => $healthy ? 'ok' : 'error',
+            'message'   => $healthy ? 'Healthy' : 'Health checks failed',
             'timestamp' => date('c'),
             'version'   => $_ENV['APP_VERSION'] ?? '1.0.0',
             'env'       => $_ENV['APP_ENV']     ?? 'production',
@@ -110,7 +112,10 @@ return function (App $app, Container $container): void {
         ];
 
         $response->getBody()->write(
-            json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)
+            json_encode(
+                ApiResponseEnvelope::normalize($payload, $healthy ? 200 : 503),
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
+            )
         );
 
         return $response

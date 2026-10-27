@@ -32,5 +32,20 @@ return function (RouteCollectorProxy $group, Container $container): void {
         // ── Roles ─────────────────────────────────────────────────────────────
         $group->get('/roles', [$handler, 'getRoles'])
             ->add(PermissionMiddleware::require(Permissions::ROLE_VIEW, $db));
+
+        $group->get('/permissions', [$handler, 'getPermissionCatalog'])
+            ->add(PermissionMiddleware::require(Permissions::PERMISSION_VIEW, $db));
+
+        $group->get('/roles/{id:[0-9]+}/permissions', [$handler, 'getRolePermissions'])
+            ->add(PermissionMiddleware::require(Permissions::ROLE_VIEW, $db));
+
+        $group->put('/roles/{id:[0-9]+}/permissions', [$handler, 'updateRolePermissions'])
+            ->add(PermissionMiddleware::require(Permissions::PERMISSION_ASSIGN, $db));
+
+        $group->get('/users/{id:[0-9]+}/permissions', [$handler, 'getUserPermissions'])
+            ->add(PermissionMiddleware::require(Permissions::PERMISSION_VIEW, $db));
+
+        $group->put('/users/{id:[0-9]+}/permissions', [$handler, 'updateUserPermissions'])
+            ->add(PermissionMiddleware::require(Permissions::PERMISSION_ASSIGN, $db));
     });
 };

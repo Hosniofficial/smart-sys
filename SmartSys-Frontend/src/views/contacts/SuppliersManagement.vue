@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-indigo-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="isLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-indigo-600/10 z-[110]">
-      <div class="h-full bg-indigo-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading" />
     
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -172,10 +170,12 @@
                    <option :value="50">50</option>
                  </select>
                </div>
-               <div class="flex items-center gap-1">
-                 <button @click="filters.previousPage()" :disabled="filters.page.value <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-                 <button @click="filters.nextPage(filters.totalPages.value)" :disabled="filters.page.value >= filters.totalPages.value" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-               </div>
+               <PaginationControls
+                 :page="filters.page.value"
+                 :total-pages="filters.totalPages.value"
+                 @previous="filters.previousPage()"
+                 @next="filters.nextPage(filters.totalPages.value)"
+               />
             </div>
           </div>
         </div>
@@ -209,7 +209,13 @@
             <div class="space-y-1.5"><label class="metadata-label">العنوان</label><textarea rows="2" v-model="selectedContact.address" class="filter-input-v2 h-auto py-2"></textarea></div>
             <div class="pt-4 border-t border-slate-100 flex justify-end gap-3">
               <button type="button" @click="showFormModal = false" class="px-6 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">إلغاء</button>
-              <button type="submit" class="px-10 h-10 bg-indigo-600 text-white rounded-md text-xs font-bold shadow-lg shadow-indigo-900/20 active:scale-95 transition-all">حفظ البيانات</button>
+              <LoadingButton
+                type="submit"
+                text="حفظ البيانات"
+                loadingText="جارٍ الحفظ..."
+                :isLoading="isSavingContact"
+                class="px-10 h-10 rounded-md text-xs shadow-lg shadow-blue-900/20"
+              />
             </div>
           </form>
         </div>
@@ -265,7 +271,15 @@
             <div class="space-y-1.5"><label class="metadata-label">ملاحظات</label><textarea v-model="paymentData.notes" :disabled="hasPendingSupplierPayment" rows="2" class="filter-input-v2 h-auto py-2 italic" placeholder="مرجع شيك، تحويل بنكي..."></textarea></div>
             <div class="pt-4 border-t border-slate-100 flex gap-3">
               <button type="button" @click="showPaymentModal = false" :disabled="isSubmittingSupplierPayment" class="flex-1 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors disabled:opacity-50">إلغاء</button>
-              <button type="submit" :disabled="isSubmittingSupplierPayment || isLoadingSupplierPurchases" class="flex-[2] h-10 bg-indigo-600 text-white rounded-md text-xs font-bold shadow-lg shadow-indigo-900/20 active:scale-95 transition-all disabled:opacity-50">{{ isSubmittingSupplierPayment ? 'جارٍ التسجيل...' : 'تأكيد السداد' }}</button>
+              <LoadingButton
+                type="submit"
+                text="تأكيد السداد"
+                loadingText="جارٍ التسجيل..."
+                variant="success"
+                :isLoading="isSubmittingSupplierPayment"
+                :disabled="isLoadingSupplierPurchases"
+                class="flex-[2] h-10 rounded-md text-xs shadow-lg shadow-emerald-900/20"
+              />
             </div>
           </form>
         </div>
@@ -280,6 +294,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useToast } from '@/composables/useToast';
 import { getLocalDateISO } from '@/utils';
 import { useRouter } from 'vue-router';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import AlertService from '@/services/AlertService';
@@ -298,6 +313,7 @@ import { usePaymentStore } from '@/stores/payment/paymentStore';
 import { usePurchaseStore } from '@/stores/purchase/purchaseStore';
 import { useStatementStore } from '@/stores/statement/statementStore';
 import PageHeader from '@/components/PageHeader.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 // --- Logic Initialization ---
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
@@ -336,6 +352,7 @@ const contacts = computed(() => supplierStore.suppliers);
 const search = ref('');
 const showFormModal = ref(false);
 const isLoading = ref(false);
+const isSavingContact = ref(false);
 const selectedContact = ref(null);
 const viewMode = ref('cards'); 
 const showPaymentModal = ref(false);
@@ -456,13 +473,19 @@ const deleteContact = async (c) => {
 };
 
 const handleFormSubmit = async (formData) => {
+  if (isSavingContact.value) return;
+  isSavingContact.value = true;
   try {
     if (formData.id) await supplierStore.updateSupplier(formData.id, formData);
     else await supplierStore.createSupplier(formData);
     showToast('تم الحفظ بنجاح', 'success');
     showFormModal.value = false;
     fetchContacts();
-  } catch (e) { showToast(e.response?.data?.message || 'خطأ في الحفظ', 'error'); }
+  } catch (e) {
+    showToast(e.response?.data?.message || 'خطأ في الحفظ', 'error');
+  } finally {
+    isSavingContact.value = false;
+  }
 };
 
 const openPaymentModal = async (c) => {
@@ -616,10 +639,8 @@ onMounted(async () => {
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
 .filter-input-v2 {
-  @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all;
+  @apply focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500;
 }
-
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1; }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }

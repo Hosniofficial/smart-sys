@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import apiClient from '@/config/axios';
+import authService from '@/services/auth';
 import { useSubscriptionStore } from '@/stores/subscriptions/subscriptionStore';
 
 // ⚠️ Import router directly — NEVER use useRouter() inside a Pinia store.
@@ -107,14 +108,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const _doSilentRefresh = async () => {
     try {
-      const response = await apiClient.post(
-        '/auth/refresh',
-        {},
-        {
-          meta: { skipLoader: true },
-          _isRefreshRequest: true,  // ← prevents interceptor retry loop
-        }
-      );
+      const response = await authService.refresh();
 
       if (response.data?.status === 'success' && response.data?.data?.access_token) {
         const newAccessToken = response.data.data.access_token;
@@ -300,11 +294,7 @@ export const useAuthStore = defineStore('auth', () => {
       formData.append('username', username);
       formData.append('password', password);
 
-      const response = await apiClient.post('/auth/login', formData.toString(), {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        },
-      });
+      const response = await authService.login(formData.toString());
 
       if (response.data?.status === 'success' && response.data?.data) {
         const { access_token, user: userData } = response.data.data;
@@ -343,7 +333,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function register(userData) {
     try {
-      const response = await apiClient.post('/auth/register', userData);
+      const response = await authService.register(userData);
       if (response.data?.status === 'success') {
         return { status: 'success', data: response.data?.data || null, message: 'تم إنشاء الحساب بنجاح' };
       }
@@ -357,11 +347,31 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function requestPasswordReset(email) {
+    const response = await authService.requestPasswordReset(email);
+    return response?.data ?? {};
+  }
+
+  async function resetPassword(payload) {
+    const response = await authService.resetPassword(payload);
+    return response?.data ?? {};
+  }
+
+  async function verifyEmail(emailToken) {
+    const response = await authService.verifyEmail(emailToken);
+    return response?.data ?? {};
+  }
+
+  async function resendVerificationEmail(emailAddress, purpose = 'registration') {
+    const response = await authService.resendVerificationEmail(emailAddress, purpose);
+    return response?.data ?? {};
+  }
+
   // ── logout ───────────────────────────────────────────────────────────────────
 
   async function logout() {
     try {
-      await apiClient.post('/auth/logout', {}).catch((err) => {
+      await authService.logout().catch((err) => {
         console.warn('Server logout failed, proceeding with local logout:', err?.message);
       });
     } catch (error) {
@@ -376,7 +386,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logoutAllDevices() {
     try {
-      await apiClient.post('/auth/logout-all-devices', {}).catch((err) => {
+      await authService.logoutAllDevices().catch((err) => {
         console.warn('logoutAllDevices API call failed:', err?.message);
       });
     } catch (error) {
@@ -423,6 +433,10 @@ export const useAuthStore = defineStore('auth', () => {
     getTokenPayload,
     login,
     register,
+    requestPasswordReset,
+    resetPassword,
+    verifyEmail,
+    resendVerificationEmail,
     logout,
     logoutAllDevices,
     clearAuthData,

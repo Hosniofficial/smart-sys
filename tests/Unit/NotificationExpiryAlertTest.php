@@ -22,7 +22,11 @@ final class NotificationExpiryAlertTest extends TestCase
         $db = $this->createMock(PDO::class);
         $db->expects(self::once())
             ->method('prepare')
-            ->with(self::stringContains('DATE_ADD(CURDATE(), INTERVAL ? DAY)'))
+            ->with(self::logicalAnd(
+                self::stringContains('JOIN product_expiry b'),
+                self::stringContains('DATE_ADD(CURDATE(), INTERVAL ? DAY)'),
+                self::logicalNot(self::stringContains('product_batches'))
+            ))
             ->willReturn($statement);
 
         (new NotificationHandler($db))->sendExpiryAlert(42, 15);

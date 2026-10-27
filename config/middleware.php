@@ -7,6 +7,7 @@ use App\Middleware\HttpsEnforcementMiddleware;
 use App\Middleware\RequestRateLimiter;
 use App\Middleware\SecurityHeadersMiddleware;
 use App\Exceptions\ForbiddenException;
+use App\Utils\ApiResponseEnvelope;
 use DI\Container;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -138,7 +139,10 @@ return function (App $app, Container $container): void {
         ];
 
         $response->getBody()->write(
-            json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            json_encode(
+                ApiResponseEnvelope::normalize($payload, $statusCode),
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            )
         );
 
         return $response->withStatus($statusCode);

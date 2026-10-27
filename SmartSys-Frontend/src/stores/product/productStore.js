@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import productsService from '@/services/products';
+import inventoryService from '@/services/inventory';
 
 const nowMs = () => Date.now();
 
@@ -65,7 +66,7 @@ export const useProductStore = defineStore('product', () => {
           const params = {};
           if (branchId) params.branch_id = String(branchId);
           
-          const response    = await apiClient.get('/products', { params });
+          const response    = await productsService.list(params);
           const list        = response?.data?.data || response?.data || [];
           const newProducts = Array.isArray(list) ? list : (list?.items || []);
 
@@ -125,7 +126,7 @@ export const useProductStore = defineStore('product', () => {
       if (branchId)   params.branch_id    = String(branchId);
       if (categoryId) params.category_id  = String(categoryId);
 
-      const response = await apiClient.get('/products/search', { params });
+      const response = await productsService.search(params);
       const results  = response?.data?.data || response?.data || [];
       const list     = Array.isArray(results) ? results : (results?.items || []);
 
@@ -157,9 +158,7 @@ export const useProductStore = defineStore('product', () => {
 
     if (!force && cached && isFresh(cachedAt, TTL.inventory)) return cached;
 
-    const response     = await apiClient.get('/inventory/stock', {
-      params: { product_id: String(productId), branch_id: String(branchId) },
-    });
+    const response     = await inventoryService.getProductStock(productId, branchId);
     const data         = response?.data?.data || response?.data || [];
     const inventoryItem = Array.isArray(data)
       ? data.find(item => String(item.id) === String(productId))
@@ -180,9 +179,7 @@ export const useProductStore = defineStore('product', () => {
 
     if (!force && cached && isFresh(cachedAt, TTL.batches)) return cached;
 
-    const response = await apiClient.get('/inventory/batches', {
-      params: { product_id: String(productId), branch_id: String(branchId) },
-    });
+    const response = await inventoryService.getProductBatches(productId, branchId);
     const data     = response?.data?.data || response?.data || {};
     const batches  = { batches: data.batches || [], serials: data.serials || [] };
 
@@ -201,9 +198,7 @@ export const useProductStore = defineStore('product', () => {
 
     if (!force && cached && isFresh(cachedAt, TTL.glStatus)) return cached;
 
-    const response   = await apiClient.get('/product-branch/status', {
-      params: { branch_id: String(branchId) },
-    });
+    const response   = await productsService.getBranchStatus(branchId);
     const data       = response?.data?.data || response?.data || {};
     const glProducts = data.products || [];
 
@@ -225,10 +220,7 @@ export const useProductStore = defineStore('product', () => {
     try {
       if (!productId || !branchId) throw new Error('Product ID and Branch ID are required');
 
-      const response = await apiClient.post('/product-branch/activate', {
-        product_id: productId,
-        branch_id:  Number(branchId),
-      });
+      const response = await productsService.activateInBranch(productId, branchId);
 
     // امسح GL status cache للفرع + products cache (+ all branches cache)
       const bid = String(branchId);
@@ -266,7 +258,7 @@ export const useProductStore = defineStore('product', () => {
    */
   const postOpeningBalance = async (payload) => {
     try {
-      const response = await apiClient.post('/product-branch/opening-balance/post', payload);
+      const response = await productsService.postOpeningBalance(payload);
 
       // ✅ استخدام invalidateCacheForBranch للتوحيد
       if (payload?.branch_id) {
@@ -291,9 +283,7 @@ export const useProductStore = defineStore('product', () => {
   const fetchActiveOpeningBalances = async (branchId) => {
     try {
       if (!branchId) throw new Error('Branch ID is required');
-      const response = await apiClient.get('/product-branch/opening-balances', {
-        params: { branch_id: String(branchId) },
-      });
+      const response = await productsService.listOpeningBalances(branchId);
       const data = response?.data?.data || response?.data || {};
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
@@ -313,10 +303,7 @@ export const useProductStore = defineStore('product', () => {
   const reverseOpeningBalance = async ({ productId, branchId } = {}) => {
     try {
       if (!productId || !branchId) throw new Error('Product ID and branch ID are required');
-      const response = await apiClient.post('/product-branch/opening-balance/reverse', {
-        product_id: Number(productId),
-        branch_id: Number(branchId),
-      });
+      const response = await productsService.reverseOpeningBalance(productId, branchId);
       invalidateCacheForBranch(branchId);
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
@@ -343,7 +330,7 @@ export const useProductStore = defineStore('product', () => {
     try {
       if (!id) throw new Error('Product ID is required');
 
-      const response = await apiClient.delete(`/products/${id}`);
+      const response = await productsService.delete(id);
 
     // امسح المنتج من كل branch cache
       Object.keys(products.value).forEach(branchKey => {
@@ -386,7 +373,7 @@ export const useProductStore = defineStore('product', () => {
   // ─── createProduct ────────────────────────────────────────────────────────
   const createProduct = async (payload) => {
     try {
-      const response = await apiClient.post('/products', payload);
+      const response = await productsService.create(payload);
       
       const newProduct = response?.data?.data || response?.data;
       if (newProduct) {
@@ -419,9 +406,7 @@ export const useProductStore = defineStore('product', () => {
     try {
       if (!productId) throw new Error('Product ID is required');
 
-      const response = await apiClient.get(`/products/${productId}`, {
-        params: branchId ? { branch_id: String(branchId) } : undefined
-      });
+      const response = await productsService.get(productId, branchId);
       const data = response?.data?.data || response?.data;
 
       return {

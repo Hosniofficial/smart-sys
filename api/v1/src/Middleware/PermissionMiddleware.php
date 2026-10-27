@@ -6,6 +6,7 @@ namespace App\Middleware;
 
 use App\Security\PermissionResolver;
 use App\Utils\SuperAdminHelper;
+use App\Utils\ApiResponseEnvelope;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -165,12 +166,12 @@ class PermissionMiddleware implements MiddlewareInterface
     private function deny(Request $request, string $message, int $status): Response
     {
         $response = new SlimResponse();
-        $response->getBody()->write(json_encode([
+        $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
             'status'   => 'error',
             'message'  => $message,
             'required' => $this->permissions,
             'mode'     => $this->mode,
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        ], $status), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         return $response
             ->withHeader('Content-Type', 'application/json')

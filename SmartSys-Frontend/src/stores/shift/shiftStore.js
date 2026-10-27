@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import { getCurrentShift as getCurrentShiftRequest } from '@/services/shifts';
 
 const nowMs = () => Date.now();
 
@@ -40,12 +40,7 @@ export const useShiftStore = defineStore('shift', () => {
       isLoading.value = true;
       error.value = null;
 
-      const response = await apiClient.get('/shifts/current', {
-        params: {
-          branch_id: branchId,
-          terminal_id: terminalId,
-        },
-      });
+      const response = await getCurrentShiftRequest(branchId, terminalId);
 
       currentShift.value = response?.data?.data || null;
       currentShiftFetchedAt.value = nowMs();

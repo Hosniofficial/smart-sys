@@ -15,5 +15,8 @@ export default {
   // إنشاء طريقة دفع جديدة
   async createPaymentMethod(payload) {
     return await apiClient.post('/payment-methods', payload);
-  }
+  },
+  async getPayments(endpoint, params, signal) {
+    return await apiClient.get(endpoint, { params, signal });
+  },
 };

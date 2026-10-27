@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-rose-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="isLoadingReturns || isLoadingDetails" class="fixed top-0 left-0 right-0 h-0.5 bg-rose-600/10 z-[110]">
-      <div class="h-full bg-rose-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoadingReturns || isLoadingDetails" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -137,7 +135,7 @@
                 <tr v-for="n in 5" :key="n" class="animate-pulse"><td v-for="m in 7" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td></tr>
               </template>
               <tr v-else-if="!rows.length"><td colspan="7" class="py-20 text-center text-slate-300"><i class="fas fa-box-open text-3xl mb-4 opacity-20"></i><p class="text-xs font-bold uppercase tracking-widest">لا توجد فواتير مرتجعات حتى الآن</p></td></tr>
-              <tr v-for="r in rows" :key="r.id" class="hover:bg-rose-50/10 transition-all group">
+              <tr v-for="r in rows" :key="r.id" class="hover:bg-blue-50/20 transition-all group">
                 <td class="px-6 py-4 text-xs font-bold text-slate-900 font-mono tracking-wider">{{ r.return_number || ('RET-' + String(r.id).padStart(4, '0')) }}</td>
                 <td class="px-4 py-4 text-xs font-bold text-slate-400 font-mono">{{ r.invoice_number || '-' }}</td>
                 <td class="px-4 py-4 text-[10px] font-mono text-slate-400 whitespace-nowrap">{{ formatReturnDateTime(r.return_date, r.created_at) }}</td>
@@ -151,7 +149,7 @@
                   </span>
                 </td>
                 <td class="px-4 py-4 text-center">
-                  <button @click="viewReturnDetails(r)" :disabled="isLoadingDetails" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center mx-auto"><i class="fas fa-eye text-[10px]"></i></button>
+                  <button @click="openReturnDetails(r)" :disabled="isLoadingDetails" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center mx-auto" :aria-label="`فتح تفاصيل المرتجع ${r.return_number || r.id} في تبويب`"><i class="fas fa-eye text-[10px]"></i></button>
                 </td>
               </tr>
             </tbody>
@@ -166,7 +164,12 @@
           </div>
           <div class="flex items-center gap-3">
              <div class="flex items-center gap-2"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">النتائج:</span><select v-model.number="filters.perPage.value" class="h-8 border border-slate-200 rounded px-2 text-[10px] font-bold outline-none"><option :value="10">10</option><option :value="20">20</option><option :value="50">50</option></select></div>
-             <div class="flex items-center gap-1"><button @click="filters.previousPage()" :disabled="filters.page.value<=1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button><button @click="filters.nextPage(totalPages)" :disabled="filters.page.value>=totalPages" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button></div>
+             <PaginationControls
+               :page="filters.page.value"
+               :total-pages="totalPages"
+               @previous="filters.previousPage()"
+               @next="filters.nextPage(totalPages)"
+             />
           </div>
         </div>
       </div>
@@ -175,7 +178,7 @@
     <!-- Details Modal -->
     <HistoryDetailsModal
       :show="showDetailsModal && !!selectedReturn"
-      @close="showDetailsModal = false"
+      @close="closeReturnDetails"
       :title="`تفاصيل المرتجع ${selectedReturn?.return_number || ('RET-' + String(selectedReturn?.id).padStart(4, '0'))}`"
       icon="fas fa-undo"
     >
@@ -190,60 +193,69 @@
 
         <div class="overflow-x-auto rounded-xl border border-slate-100 shadow-sm">
           <table class="w-full text-right text-xs">
-            <thead><tr class="bg-slate-50 border-b border-slate-100 font-bold text-slate-400 uppercase"><th class="px-4 py-3">الصنف</th><th class="px-4 py-3 text-center">الكمية</th><th class="px-4 py-3 text-center">سعر الوحدة</th><th class="px-4 py-3 text-left">الإجمالي</th></tr></thead>
-            <tbody class="divide-y divide-slate-50 font-medium">
-              <tr v-for="item in returnItems" :key="item.id || item.product_id">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-100">
+                <th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">الصنف</th>
+                <th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase text-center">الكمية</th>
+                <th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase text-center">سعر الوحدة</th>
+                <th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">الإجمالي</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-50">
+              <tr v-for="item in returnItems" :key="item.id || item.product_id" class="hover:bg-blue-50/20 transition-all">
                 <td class="px-4 py-3">
                   <p class="font-bold text-slate-800">{{ item.product_name || item.name || 'منتج غير معروف' }}</p>
                   <p v-if="item.product_code" class="text-[9px] text-slate-400 font-mono">{{ item.product_code }}</p>
                 </td>
                 <td class="px-4 py-3 text-center font-bold text-slate-500">{{ item.quantity ?? item.qty ?? '-' }}</td>
-                <td class="px-4 py-3 text-center text-slate-700 font-mono">{{ formatPrice(returnItemUnitPrice(item)) }}</td>
-                <td class="px-4 py-3 text-left font-bold font-mono">{{ formatPrice(returnItemTotal(item)) }}</td>
+                <td class="px-4 py-3 text-center text-slate-700 font-mono font-bold">{{ formatPrice(returnItemUnitPrice(item)) }}</td>
+                <td class="px-4 py-3 font-bold font-mono text-slate-900">{{ formatPrice(returnItemTotal(item)) }}</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
-            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">التفصيل المالي</p>
-            <div class="flex justify-between text-xs font-bold text-slate-500">
-              <span>إجمالي المرتجع</span>
-              <span class="font-mono text-slate-900">{{ formatPrice(selectedReturn?.grand_total ?? selectedReturn?.total_amount ?? selectedReturn?.total ?? 0) }}</span>
-            </div>
-            <div v-if="Number(selectedReturn?.tax_amount) > 0" class="flex justify-between text-xs font-bold text-slate-500">
-              <span>الضريبة</span>
-              <span class="font-mono text-indigo-600">{{ formatPrice(selectedReturn?.tax_amount) }}</span>
-            </div>
-            <div v-if="Number(selectedReturn?.discount_value ?? selectedReturn?.discount_amount) > 0" class="flex justify-between text-xs font-bold text-slate-500">
-              <span>الخصم</span>
-              <span class="font-mono text-rose-500">- {{ formatPrice(selectedReturn?.discount_value ?? selectedReturn?.discount_amount) }}</span>
-            </div>
-            <div v-if="returnOffsetAmount > 0" class="flex justify-between text-xs font-bold text-slate-500">
-              <span>المبلغ المُقاصّ</span>
-              <span class="font-mono text-slate-700">{{ formatPrice(returnOffsetAmount) }}</span>
-            </div>
-            <div v-if="returnCashRefundAmount > 0" class="flex justify-between text-xs font-bold text-slate-500">
-              <span>{{ Number(selectedReturn?.is_cash) === 1 ? 'المبلغ المسترد نقدًا' : 'المبلغ المسترد' }}</span>
-              <span class="font-mono text-emerald-600">{{ formatPrice(returnCashRefundAmount) }}</span>
-            </div>
-            <div class="flex justify-between text-xs font-bold border-t border-slate-200 pt-2">
-              <span class="text-slate-700">صافي التسوية</span>
-              <span class="font-mono text-slate-900">{{ formatPrice(returnNetSettlementAmount) }}</span>
-            </div>
-          </div>
-          <div v-if="selectedReturn?.notes || selectedReturn?.remarks" class="p-4 bg-amber-50 border border-amber-100 rounded-xl">
+        <div class="flex flex-col md:flex-row gap-6">
+          <div v-if="selectedReturn?.notes || selectedReturn?.remarks" class="flex-1 p-4 bg-amber-50 border border-amber-100 rounded-xl">
             <p class="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-2">سبب الإرجاع</p>
             <p class="text-xs text-amber-800 whitespace-pre-wrap">{{ selectedReturn?.notes || selectedReturn?.remarks }}</p>
+          </div>
+          <div class="w-full md:w-72 space-y-2.5 bg-slate-50 border border-slate-200 p-5 rounded-xl">
+            <div class="flex justify-between text-[11px] font-medium text-slate-500">
+              <span>إجمالي المرتجع</span>
+              <span class="font-mono font-bold text-slate-700">{{ formatPrice(selectedReturn?.grand_total ?? selectedReturn?.total_amount ?? selectedReturn?.total ?? 0) }}</span>
+            </div>
+            <div v-if="Number(selectedReturn?.tax_amount) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
+              <span>الضريبة</span>
+              <span class="font-mono font-bold text-indigo-600">{{ formatPrice(selectedReturn?.tax_amount) }}</span>
+            </div>
+            <div v-if="Number(selectedReturn?.discount_value ?? selectedReturn?.discount_amount) > 0" class="flex justify-between text-[11px] font-medium text-slate-500 pb-2.5 border-b border-slate-200">
+              <span>الخصم</span>
+              <span class="font-mono font-bold text-rose-500">- {{ formatPrice(selectedReturn?.discount_value ?? selectedReturn?.discount_amount) }}</span>
+            </div>
+            <!-- صافي التسوية pill مميز -->
+            <div class="flex justify-between items-center bg-indigo-600 text-white px-4 py-3 rounded-lg">
+              <span class="text-[11px] font-bold uppercase tracking-widest opacity-80">صافي التسوية</span>
+              <span class="text-xl font-bold font-mono tracking-tighter">{{ formatPrice(returnNetSettlementAmount) }}</span>
+            </div>
+            <div class="pt-1 space-y-2">
+              <div v-if="returnOffsetAmount > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
+                <span>المبلغ المُقاصّ</span>
+                <span class="font-mono font-bold text-slate-700">{{ formatPrice(returnOffsetAmount) }}</span>
+              </div>
+              <div v-if="returnCashRefundAmount > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
+                <span>{{ Number(selectedReturn?.is_cash) === 1 ? 'المبلغ المسترد نقدًا' : 'المبلغ المسترد' }}</span>
+                <span class="font-mono font-bold text-emerald-600">{{ formatPrice(returnCashRefundAmount) }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       <template #footer>
-        <div dir="rtl" class="mr-auto flex flex-row-reverse flex-wrap items-center gap-3">
-          <button @click="printReturnDetails" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-indigo-600 px-5 text-xs font-bold text-white shadow-lg shadow-indigo-900/20"><i class="fas fa-print"></i> طباعة المرتجع</button>
-          <button @click="showDetailsModal = false" class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500 transition-colors hover:text-slate-800">إغلاق</button>
+        <div class="mr-auto flex flex-row flex-wrap items-center gap-3">
+          <button @click="printReturnDetails" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-indigo-200 px-4 text-xs font-bold text-indigo-700 hover:bg-indigo-50"><i class="fas fa-print"></i> طباعة المرتجع</button>
+          <button @click="closeReturnDetails" class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500 transition-colors hover:text-slate-800">إغلاق</button>
         </div>
       </template>
     </HistoryDetailsModal>
@@ -254,9 +266,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useHistoryFilters } from '@/composables/useHistoryFilters';
-import { useLoader } from '@/composables/useLoader';
 import { useToast } from '@/composables/useToast';
 import { useBranchIsolation } from '@/composables/useBranchIsolation';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
@@ -271,8 +282,8 @@ import { buildReturnHtml } from '@/utils/printTemplates';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 
-const { showLoader, hideLoader } = useLoader();
 const { showToast } = useToast();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const { breadcrumb } = useBreadcrumb();
@@ -284,6 +295,7 @@ const supplierStore = useSupplierStore();
 const bootstrapStore = useBootstrapStore();
 
 const route = useRoute();
+const router = useRouter();
 const detailsAbortCtrl = ref(null);
 const showDetailsModal = ref(false);
 const selectedReturn = ref(null);
@@ -485,7 +497,7 @@ const fetchReturns = async (forceRefresh = false) => {
       rows.value = [];
       filters.total.value = 0;
     }
-  } finally { if (currentCtrl === returnsAbortCtrl) isLoadingReturns.value = false; hideLoader(); }
+  } finally { if (currentCtrl === returnsAbortCtrl) isLoadingReturns.value = false; }
 };
 
 const resetFilters = () => { filters.resetFilters(); type.value = 'sales'; fetchReturns(); };
@@ -495,7 +507,7 @@ const viewReturnDetails = async (returnRow) => {
   if (detailsAbortCtrl.value) detailsAbortCtrl.value.abort();
   detailsAbortCtrl.value = new AbortController();
   const currentCtrl = detailsAbortCtrl.value;
-  isLoadingDetails.value = true; showLoader();
+  isLoadingDetails.value = true;
   try {
     const response = await returnStore.fetchReturnDetails(returnRow.id, type.value, { signal: currentCtrl.signal });
     if (currentCtrl !== detailsAbortCtrl.value) return;
@@ -508,7 +520,29 @@ const viewReturnDetails = async (returnRow) => {
     if (e?.name !== 'AbortError' && e?.name !== 'CanceledError' && e?.code !== 'ERR_CANCELED') {
       showToast('فشل في تحميل تفاصيل المرتجع', 'error');
     }
-  } finally { if (currentCtrl === detailsAbortCtrl.value) isLoadingDetails.value = false; hideLoader(); }
+  } finally { if (currentCtrl === detailsAbortCtrl.value) isLoadingDetails.value = false; }
+};
+
+const openReturnDetails = async (returnRow) => {
+  if (!returnRow?.id) return;
+  if (Number(route.query.id) === Number(returnRow.id) && route.query.type === type.value) {
+    await viewReturnDetails(returnRow);
+    return;
+  }
+
+  await router.push({
+    name: 'ReturnsHistory',
+    query: { ...route.query, id: String(returnRow.id), type: type.value }
+  });
+};
+
+const closeReturnDetails = async () => {
+  showDetailsModal.value = false;
+  if (!route.query.id) return;
+
+  const query = { ...route.query };
+  delete query.id;
+  await router.replace({ name: 'ReturnsHistory', query });
 };
 
 const printReturnDetails = async () => {
@@ -529,6 +563,15 @@ watch([filters.customerFilter, type, filters.dateFrom, filters.dateTo], () => {
   filters.page.value = 1; fetchReturns(); 
 });
 watch(filters.page, () => { if (isMounting) return; fetchReturns(); });
+watch([() => route.query.id, () => route.query.type], async ([id, routeType]) => {
+  if (routeType === 'sales' || routeType === 'purchases') type.value = routeType;
+  if (Number(id) > 0) {
+    await viewReturnDetails({ id: Number(id) });
+    return;
+  }
+  showDetailsModal.value = false;
+  selectedReturn.value = null;
+});
 watch([filters.customerFilter, type, customers, suppliers], () => {
   const list = type.value === 'sales' ? (customers.value || []) : (suppliers.value || []);
   const found = list.find(x => String(x.id) === String(filters.customerFilter.value));
@@ -536,6 +579,7 @@ watch([filters.customerFilter, type, customers, suppliers], () => {
 });
 
 onMounted(async () => {
+  if (route.query.type === 'sales' || route.query.type === 'purchases') type.value = route.query.type;
   try {
     const data = await bootstrapStore.fetchPaymentsData();
     if (data.customers) customerStore.customers = data.customers;
@@ -587,10 +631,6 @@ onUnmounted(() => { if (returnsAbortCtrl) returnsAbortCtrl.abort(); if (searchDe
 }
 
 /* Pagination */
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
-}
-
 /* Scrollbar */
 .custom-scroll::-webkit-scrollbar {
   width: 5px;

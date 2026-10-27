@@ -2,32 +2,29 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar: High-precision indicator -->
-    <div v-if="loading || loadingCustomers || loadingSuppliers || bulkCustomersInProgress || bulkSuppliersInProgress" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="loading || loadingCustomers || loadingSuppliers" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
-      <header class="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-200">
-        <div class="space-y-1">
-          <div class="flex items-center gap-2 text-slate-500 text-xs font-medium uppercase tracking-wider">
-            <span>النظام والتدقيق</span>
-            <i class="fas fa-chevron-left text-[8px]"></i>
-            <span class="text-slate-900">سلامة البيانات</span>
-          </div>
-          <h1 class="text-2xl font-bold tracking-tight text-slate-900">الربط والنزاهة المحاسبية</h1>
-          <p class="text-sm text-slate-500 font-medium">اكتشف مشكلات الربط مع دليل الحسابات، وراجعها وعالجها لضمان تسجيل القيود المحاسبية الآلية بشكل صحيح.</p>
-        </div>
-
-        <div class="flex items-center gap-3">
-          <button @click="refreshAll" :disabled="loading" class="h-9 px-6 rounded-md bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200 hover:bg-black transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50">
-            <BaseSpinner v-if="loading" :size="14" color="#fff" :margin="0" />
-            <i v-else class="fas fa-sync-alt text-[10px]"></i>
-            تحديث الحالة العامة
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        :breadcrumb="{ parent: 'النظام والتدقيق', current: 'سلامة البيانات' }"
+        title="الربط والنزاهة المحاسبية"
+        description="اكتشف مشكلات الربط مع دليل الحسابات، وراجعها وعالجها لضمان تسجيل القيود المحاسبية الآلية بشكل صحيح."
+        :branches="[]"
+        :selected-branch="null"
+      >
+        <template #controls>
+          <LoadingButton
+            text="تحديث الحالة العامة"
+            :isLoading="loading"
+            loadingText="جارٍ التحديث..."
+            icon="fas fa-sync-alt"
+            variant="primary"
+            class="h-9 px-6"
+            @click="refreshAll"
+          />
+        </template>
+      </PageHeader>
 
       <!-- Integrity Status KPIs: Diagnostic Metric Grid -->
       <section class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
@@ -75,14 +72,27 @@
                <h2 class="text-xs font-bold text-slate-900 uppercase tracking-widest">فجوات ربط حسابات العملاء</h2>
             </div>
             <div class="flex items-center gap-2">
-              <button @click="fetchCustomers" :disabled="loadingCustomers" class="h-8 w-8 rounded border border-slate-200 bg-white text-slate-400 hover:text-blue-600 transition-all active:scale-95 shadow-sm">
-                 <i class="fas fa-rotate text-[10px]" :class="{'animate-spin': loadingCustomers}"></i>
-              </button>
-              <button @click="fixAllCustomers" :disabled="loadingCustomers || customers.length === 0 || bulkCustomersInProgress" 
-                class="h-8 px-4 bg-rose-600 text-white text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-rose-900/20 hover:bg-rose-700 transition-all active:scale-95 disabled:opacity-40">
-                <i class="fas fa-magic ml-1.5"></i>
-                {{ bulkCustomersInProgress ? `جاري المعالجة (${bulkCustomersDone}/${bulkCustomersTotal})` : 'إصلاح الربط الجماعي' }}
-              </button>
+              <LoadingButton
+                text=""
+                loadingText=""
+                :showTextDuringLoad="false"
+                icon="fas fa-rotate"
+                :isLoading="loadingCustomers"
+                variant="secondary"
+                class="h-8 w-8 rounded border border-slate-200 bg-white p-0 text-slate-400 shadow-sm hover:text-blue-600"
+                aria-label="تحديث بيانات العملاء"
+                @click="fetchCustomers"
+              />
+              <LoadingButton
+                text="إصلاح الربط الجماعي"
+                :isLoading="bulkCustomersInProgress"
+                :loadingText="`جاري المعالجة (${bulkCustomersDone}/${bulkCustomersTotal})`"
+                :disabled="loadingCustomers || customers.length === 0"
+                icon="fas fa-magic"
+                variant="danger"
+                class="h-8 px-4"
+                @click="fixAllCustomers"
+              />
             </div>
           </div>
 
@@ -122,10 +132,14 @@
                   <td class="px-4 py-4 text-[10px] text-slate-400 font-mono tracking-tighter">{{ c.phone || '—' }}</td>
                   <td class="px-4 py-4 font-mono font-bold text-slate-900">{{ formatCurrency(c.balance) }}</td>
                   <td class="px-8 py-4 text-center">
-                    <button @click="ensureCustomerAccount(c)" :disabled="processingCustomerIds.has(c.id)" 
-                      class="h-7 px-3 rounded bg-white border border-rose-200 text-rose-600 text-[10px] font-bold hover:bg-rose-600 hover:text-white transition-all shadow-sm active:scale-95 disabled:opacity-40">
-                      {{ processingCustomerIds.has(c.id) ? 'جاري...' : 'إصلاح الربط' }}
-                    </button>
+                    <LoadingButton
+                      text="إصلاح الربط"
+                      :isLoading="processingCustomerIds.has(c.id)"
+                      loadingText="جاري..."
+                      variant="danger"
+                      class="h-7 px-3"
+                      @click="ensureCustomerAccount(c)"
+                    />
                   </td>
                 </tr>
               </tbody>
@@ -141,14 +155,27 @@
                <h2 class="text-xs font-bold text-slate-900 uppercase tracking-widest">فجوات ربط حسابات الموردين</h2>
             </div>
             <div class="flex items-center gap-2">
-              <button @click="fetchSuppliers" :disabled="loadingSuppliers" class="h-8 w-8 rounded border border-slate-200 bg-white text-slate-400 hover:text-blue-600 transition-all active:scale-95 shadow-sm">
-                 <i class="fas fa-rotate text-[10px]" :class="{'animate-spin': loadingSuppliers}"></i>
-              </button>
-              <button @click="fixAllSuppliers" :disabled="loadingSuppliers || suppliers.length === 0 || bulkSuppliersInProgress" 
-                class="h-8 px-4 bg-amber-600 text-white text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-amber-900/20 hover:bg-amber-700 transition-all active:scale-95 disabled:opacity-40">
-                <i class="fas fa-wrench ml-1.5"></i>
-                {{ bulkSuppliersInProgress ? `جاري المعالجة (${bulkSuppliersDone}/${bulkSuppliersTotal})` : 'إصلاح الربط الجماعي' }}
-              </button>
+              <LoadingButton
+                text=""
+                loadingText=""
+                :showTextDuringLoad="false"
+                icon="fas fa-rotate"
+                :isLoading="loadingSuppliers"
+                variant="secondary"
+                class="h-8 w-8 rounded border border-slate-200 bg-white p-0 text-slate-400 shadow-sm hover:text-blue-600"
+                aria-label="تحديث بيانات الموردين"
+                @click="fetchSuppliers"
+              />
+              <LoadingButton
+                text="إصلاح الربط الجماعي"
+                :isLoading="bulkSuppliersInProgress"
+                :loadingText="`جاري المعالجة (${bulkSuppliersDone}/${bulkSuppliersTotal})`"
+                :disabled="loadingSuppliers || suppliers.length === 0"
+                icon="fas fa-wrench"
+                variant="warning"
+                class="h-8 px-4"
+                @click="fixAllSuppliers"
+              />
             </div>
           </div>
 
@@ -188,10 +215,14 @@
                   <td class="px-4 py-4 text-[10px] text-slate-400 font-mono tracking-tighter">{{ s.phone || '—' }}</td>
                   <td class="px-4 py-4 font-mono font-bold text-slate-900">{{ formatCurrency(s.balance) }}</td>
                   <td class="px-8 py-4 text-center">
-                    <button @click="ensureSupplierAccount(s)" :disabled="processingSupplierIds.has(s.id)" 
-                      class="h-7 px-3 rounded bg-white border border-amber-200 text-amber-600 text-[10px] font-bold hover:bg-amber-600 hover:text-white transition-all shadow-sm active:scale-95 disabled:opacity-40">
-                      {{ processingSupplierIds.has(s.id) ? 'جاري...' : 'إصلاح الربط' }}
-                    </button>
+                    <LoadingButton
+                      text="إصلاح الربط"
+                      :isLoading="processingSupplierIds.has(s.id)"
+                      loadingText="جاري..."
+                      variant="warning"
+                      class="h-7 px-3"
+                      @click="ensureSupplierAccount(s)"
+                    />
                   </td>
                 </tr>
               </tbody>
@@ -208,8 +239,9 @@
 // تم الحفاظ على كافة الـ imports، الـ refs، الـ functions، والـ lifecycle hooks الأصلية.
 import { ref, onMounted } from 'vue';
 import { useAdminStore } from '@/stores/admin/adminStore';
-import BaseSpinner from '@/components/ui/BaseSpinner.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
+import PageHeader from '@/components/PageHeader.vue';
 
 const adminStore = useAdminStore();
 const customers = ref([]);

@@ -3,7 +3,10 @@
     <router-view v-slot="{ Component }">
       <transition name="fade" mode="out-in">
         <div>
-          <component :is="Component" />
+          <component
+            :is="Component"
+            :key="route.meta.workspaceTab && ['branch', 'contact'].includes(route.meta.workspaceTab) ? route.fullPath : undefined"
+          />
         </div>
       </transition>
     </router-view>
@@ -12,7 +15,10 @@
   <router-view v-else v-slot="{ Component }">
     <transition name="fade" mode="out-in">
       <div>
-        <component :is="Component" />
+        <component
+          :is="Component"
+          :key="route.meta.workspaceTab && ['branch', 'contact'].includes(route.meta.workspaceTab) ? route.fullPath : undefined"
+        />
       </div>
     </transition>
   </router-view>
@@ -49,7 +55,14 @@ const router = useRouter()
 const route = useRoute()
 
 const showLayout = computed(() => {
-  const publicRoutes = ['/', '/login', '/register', '/forgot-password']
+  const publicRoutes = [
+    '/',
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/verify-email',
+    '/reset-password',
+  ]
   return !publicRoutes.includes(route.path)
 })
 </script>

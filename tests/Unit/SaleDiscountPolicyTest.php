@@ -156,7 +156,7 @@ final class SaleDiscountPolicyTest extends TestCase
     public function testManualPriceOverrideStillEnforcesMinimumSalePrice(): void
     {
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('يلزم تأكيد المشرف');
+        $this->expectExceptionMessage('يلزم تأكيد مدير الفرع');
 
         SaleDiscountPolicy::assertAllowed(
             [$this->item([
@@ -208,7 +208,7 @@ final class SaleDiscountPolicyTest extends TestCase
     public function testMinimumPriceOverrideRequiresExplicitConfirmation(): void
     {
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('يلزم تأكيد المشرف');
+        $this->expectExceptionMessage('يلزم تأكيد مدير الفرع');
 
         SaleDiscountPolicy::assertAllowed(
             [$this->item([
@@ -243,7 +243,7 @@ final class SaleDiscountPolicyTest extends TestCase
     public function testRequiresSupervisorConfirmationForSaleBelowCost(): void
     {
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('يلزم تأكيد المشرف');
+        $this->expectExceptionMessage('يلزم تأكيد مدير الفرع');
 
         SaleDiscountPolicy::assertAllowed(
             [$this->item([
@@ -281,7 +281,7 @@ final class SaleDiscountPolicyTest extends TestCase
     public function testChecksBelowCostAfterInvoiceDiscount(): void
     {
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('يلزم تأكيد المشرف');
+        $this->expectExceptionMessage('يلزم تأكيد مدير الفرع');
 
         SaleDiscountPolicy::assertAllowed(
             [$this->item([

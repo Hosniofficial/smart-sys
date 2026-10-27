@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="loading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -117,7 +115,7 @@
                   <div class="relative dropdown-container">
                     <input type="text" v-model="row.branch_search" @input="filterbranchs(idx)" @focus="showbranchDropdown(idx)"
                            class="h-8 w-44 bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" placeholder="بحث المخزن..." />
-                    <div v-if="row.showbranchList" class="absolute top-full right-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-2xl z-50 overflow-hidden py-1">
+                    <div v-if="row.showbranchList" class="absolute top-full right-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-2xl z-20 overflow-hidden py-1">
                       <div v-for="branch in filteredbranchs(idx)" :key="branch.id" @click="selectbranch(idx, branch)" class="px-4 py-2 hover:bg-slate-50 cursor-pointer flex justify-between items-center transition-colors">
                         <span class="text-[11px] font-bold text-slate-700">{{ branch.name }}</span>
                         <span class="text-[9px] font-mono text-slate-400">#{{ branch.id }}</span>
@@ -130,7 +128,7 @@
                   <div class="relative dropdown-container">
                     <input type="text" v-model="row.product_search" @input="filterProducts(idx)" @focus="showProductDropdown(idx)"
                            class="h-8 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" placeholder="اسم المنتج أو الكود..." />
-                    <div v-if="row.showProductList" class="absolute top-full right-0 mt-1 w-80 bg-white border border-slate-200 rounded-lg shadow-2xl z-50 overflow-hidden py-1">
+                    <div v-if="row.showProductList" class="absolute top-full right-0 mt-1 w-80 bg-white border border-slate-200 rounded-lg shadow-2xl z-20 overflow-hidden py-1">
                       <div v-for="product in filteredProducts(idx)" :key="product.id" @click="selectProduct(idx, product)" class="px-4 py-2 hover:bg-slate-50 cursor-pointer flex justify-between items-center border-b border-slate-50 last:border-0">
                         <span class="text-[11px] font-bold text-slate-700 truncate max-w-[200px]">{{ product.name }}</span>
                         <span class="text-[9px] font-mono text-slate-400">{{ product.barcode }}</span>
@@ -143,7 +141,7 @@
                   <div class="relative dropdown-container">
                     <input type="text" v-model="row.unit_search" @input="filterUnits(idx)" @focus="showUnitDropdown(idx)" :disabled="!row.product_id"
                            class="h-8 w-24 bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 disabled:opacity-30" placeholder="الوحدة" />
-                    <div v-if="row.showUnitList" class="absolute top-full right-0 mt-1 w-32 bg-white border border-slate-200 rounded-lg shadow-2xl z-50 overflow-hidden py-1">
+                    <div v-if="row.showUnitList" class="absolute top-full right-0 mt-1 w-32 bg-white border border-slate-200 rounded-lg shadow-2xl z-20 overflow-hidden py-1">
                       <div v-for="unit in filteredUnits(idx)" :key="unit.id" @click="selectUnit(idx, unit)" class="px-4 py-2 hover:bg-slate-50 cursor-pointer text-[11px] font-bold text-slate-700">{{ unit.name }}</div>
                     </div>
                   </div>
@@ -375,7 +373,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSetupStore } from '@/stores/setup/setupStore'
 import { useProductStore } from '@/stores/product/productStore'
-import apiClient from '@/config/axios'
+import { useCatalogStore } from '@/stores/catalog/catalogStore'
 import ExcelJS from 'exceljs'
 import AlertService from '@/services/AlertService'
 import { useBranchStore } from '@/stores/branch/branchStore'
@@ -386,6 +384,7 @@ import PageHeader from '@/components/PageHeader.vue';
 
 // Stores
 const productStore = useProductStore();
+const catalogStore = useCatalogStore();
 const branchStore = useBranchStore();
 const setupStore = useSetupStore();
 const { breadcrumb } = useBreadcrumb();
@@ -1090,11 +1089,10 @@ onMounted(async () => {
     // Load data using stores
     const [productsRes, unitsRes] = await Promise.all([
       productStore.fetchProducts({ force: true }),
-      apiClient.get('/units')
+      catalogStore.fetchUnits()
     ])
     products.value = productsRes.status === 'success' ? productsRes.data : []
-    const rawUnits = unitsRes?.data?.data ?? unitsRes?.data ?? []
-    units.value = Array.isArray(rawUnits) ? rawUnits : []
+    units.value = Array.isArray(unitsRes) ? unitsRes : []
   } catch (e) {
     console.error('Error loading master data', e)
   }
@@ -1132,8 +1130,6 @@ onUnmounted(() => {
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
 
 /* Dashboard Identity Controls */
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1; }
-
 /* Custom Toggle Switch Style */
 .custom-toggle { @apply flex items-center gap-3 cursor-pointer select-none; }
 .toggle-indicator { @apply w-4 h-4 rounded border-2 border-slate-200 bg-white transition-all; }
@@ -1147,10 +1143,6 @@ onUnmounted(() => {
 
 @keyframes modalIn { from { opacity: 0; transform: scale(0.98) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 .animate-modalIn { animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
-}
 
 .slide-down-enter-active, .slide-down-leave-active { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 .slide-down-enter-from, .slide-down-leave-to { opacity: 0; transform: translateY(-10px); }

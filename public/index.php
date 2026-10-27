@@ -14,6 +14,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use Dotenv\Dotenv;
+use App\Utils\ApiResponseEnvelope;
 
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../');
 $dotenv->load();
@@ -151,11 +152,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     if (!empty($invalidHeaders)) {
         http_response_code(403);
         header('Content-Type: application/json');
-        echo json_encode([
+        echo json_encode(ApiResponseEnvelope::normalize([
             'status' => 'error',
             'message' => 'Requested CORS headers are not allowed.',
             'invalid_headers' => $invalidHeaders,
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        ], 403), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;
     }
 

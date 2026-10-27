@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import { listCostCenters } from '@/services/costCenters';
 
 export const useCostCenterStore = defineStore('costCenter', () => {
   const costCenters = ref([]);
@@ -18,7 +18,7 @@ export const useCostCenterStore = defineStore('costCenter', () => {
     loading.value = true;
     error.value = null;
     try {
-      const response = await apiClient.get('/cost-centers');
+      const response = await listCostCenters();
       costCenters.value = response.data?.data || response.data || [];
       
       // Auto-select first cost center if none selected

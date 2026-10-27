@@ -116,6 +116,29 @@ final class SaleCreationInputValidationTest extends TestCase
                 batch_number TEXT, expiry_date TEXT, serial TEXT, tenant_id INTEGER,
                 created_at TEXT, created_by INTEGER
             );
+            CREATE TABLE sales_price_campaigns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL,
+                branch_id INTEGER,
+                name TEXT NOT NULL,
+                campaign_type TEXT NOT NULL DEFAULT 'custom',
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL,
+                priority INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_by INTEGER NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE sales_price_campaign_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL,
+                campaign_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                unit_id INTEGER NOT NULL,
+                campaign_price NUMERIC NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
             CREATE TABLE invoice_approvals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, sale_id INTEGER,
                 action TEXT, previous_status TEXT, new_status TEXT, note TEXT, action_by INTEGER

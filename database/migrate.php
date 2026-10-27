@@ -29,9 +29,11 @@ require_once __DIR__ . '/MigrationDatabase.php';
 require_once __DIR__ . '/MigrationHistoryGuard.php';
 
 try {
-    $pdo = MigrationDatabase::connect($_ENV);
+    $processEnvironment = getenv();
+    $pdo = MigrationDatabase::connect($_ENV, is_array($processEnvironment) ? $processEnvironment : []);
 } catch (PDOException | RuntimeException $e) {
-    die("❌ فشل الاتصال بقاعدة البيانات: " . $e->getMessage() . "\n");
+    fwrite(STDERR, "❌ فشل الاتصال بقاعدة البيانات: " . $e->getMessage() . "\n");
+    exit(1);
 }
 
 // Migration history is initialized only by `up` after the fresh-database guard passes.
@@ -74,6 +76,19 @@ $migrations = [
     '030_grant_owner_contribution_permissions_to_admin_roles',
     '031_revoke_sessions_after_password_change',
     '032_create_repair_orders',
+    '033_consolidate_branch_manager_role',
+    '034_manage_branch_categories',
+    '035_add_tenant_permission_overrides',
+    '036_add_arabic_permission_names',
+    '037_create_sales_quotations',
+    '038_create_sales_price_campaigns',
+    '039_rename_admin_role_display_name',
+    '040_add_missing_data_integrity_constraints',
+    '041_remove_reviewed_unused_columns',
+    '042_finalize_schema_requirement_cleanup',
+    '043_add_remaining_requested_foreign_keys',
+    '044_remove_redundant_product_active_flag',
+    '045_drop_confirmed_unused_tables',
 ];
 
 // ──────────────────────────────────────────────────────────

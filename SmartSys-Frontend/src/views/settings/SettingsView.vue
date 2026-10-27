@@ -166,10 +166,15 @@
                       <h4 class="text-xs font-bold text-slate-800">أسعار الصرف المرجعية</h4>
                       <p class="mt-1 text-[10px] text-slate-500">مقابل العملة الأساسية {{ exchangeRates.base_currency_code || general.currency }}.</p>
                     </div>
-                    <button type="button" @click="refreshCurrencyRates" :disabled="currencyRatesLoading" class="h-8 rounded-md border border-slate-200 px-3 text-[10px] font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-50">
-                      <i :class="currencyRatesLoading ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'" class="ml-1"></i>
-                      تحديث الأسعار
-                    </button>
+                    <LoadingButton
+                      text="تحديث الأسعار"
+                      loadingText="جاري التحديث..."
+                      icon="fas fa-sync-alt"
+                      :isLoading="currencyRatesLoading"
+                      variant="secondary"
+                      class="h-8 rounded-md border border-slate-200 px-3 text-[10px] text-blue-700 hover:bg-blue-50"
+                      @click="refreshCurrencyRates"
+                    />
                   </div>
                   <p v-if="currencyRatesError" class="mt-3 text-[10px] font-bold text-rose-600">{{ currencyRatesError }}</p>
                   <div v-else-if="exchangeRates.rates?.length" class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
@@ -456,31 +461,7 @@
               <div class="xl:col-span-7 space-y-8">
                 <div class="bg-white border border-slate-200 rounded-xl p-8 space-y-8 shadow-sm">
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div class="space-y-1.5"><label class="metadata-label">آلية الطباعة</label><select v-model="printMode" class="filter-input-v2 h-10 font-bold"><option value="browser">متصفح (نافذة النظام)</option><option value="qztray" :disabled="isProductionBuild">طباعة مباشرة (QZ Tray — تطوير فقط)</option></select></div>
                     <div class="space-y-1.5"><label class="metadata-label">قالب الفاتورة</label><select v-model="printTemplate" class="filter-input-v2 h-10 font-bold"><option value="thermal-compact">حراري مختصر (80mm)</option><option value="a4-professional">A4 احترافي</option></select></div>
-                  </div>
-                  <p v-if="isProductionBuild" class="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold">
-                    الطباعة المباشرة عبر QZ Tray متوقفة في الإنتاج حتى استكمال تكامل شهادة موثوقة وموقّع خادمي. استخدم طباعة المتصفح حاليًا.
-                  </p>
-
-                  <!-- اختيار طابعة QZ Tray في بيئة التطوير -->
-                  <div v-if="printMode === 'qztray'" class="pt-4 border-t border-slate-50 space-y-3">
-                    <div class="flex items-center justify-between">
-                      <label class="metadata-label">اختر الطابعة</label>
-                      <button type="button" @click="loadQzPrinters" :disabled="qzPrintersLoading" class="text-[10px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 disabled:opacity-50">
-                        <i :class="qzPrintersLoading ? 'fas fa-spinner fa-spin' : 'fas fa-sync'"></i>
-                        {{ qzPrintersLoading ? 'جاري البحث...' : 'تحديث الطابعات' }}
-                      </button>
-                    </div>
-                    <select v-model="qzPrinterName" class="filter-input-v2 h-10 font-bold" :disabled="qzPrintersLoading">
-                      <option value="">— طابعة النظام الافتراضية —</option>
-                      <option v-for="p in qzPrinters" :key="p" :value="p">{{ p }}</option>
-                    </select>
-                    <p v-if="qzConnectError" class="text-[9px] text-rose-500 font-bold"><i class="fas fa-exclamation-circle ml-1"></i>{{ qzConnectError }}</p>
-                    <div class="p-3 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-[10px] font-bold">
-                      <i class="fas fa-info-circle ml-1"></i>
-                      يتطلب تشغيل تطبيق <strong>QZ Tray</strong> على الجهاز. <a href="https://qz.io" target="_blank" class="underline">تحميل QZ Tray</a>
-                    </div>
                   </div>
 
                   <!-- ✅ RESTORED: إظهار الترويسة/التذييل -->
@@ -536,7 +517,7 @@ import { useBranchStore } from '@/stores/branch/branchStore';
 import { useRoleStore } from '@/stores/role/roleStore';
 import { useAccountStore } from '@/stores/account/accountStore';
 import { useSettingsStore } from '@/stores/settings/settingsStore'
-import { getAvailablePrinters, getQzPrinterName, setQzPrinterName, printDocument } from '@/utils';
+import { printDocument } from '@/utils';
 import { getBuilderByTemplate, buildReturnHtml, buildPurchaseHtml } from '@/utils/printTemplates';
 import { clearPrintConfigCache } from '@/utils/printTemplates/printConfig';
 import { getImageUrl } from '@/utils';
@@ -589,27 +570,6 @@ const filteredTabs = computed(() => {
   if (!q) return tabs
   return tabs.filter(t => t.label.includes(q) || t.id.includes(q))
 })
-
-// ─── Print Mode ───────────────────────────────────────────────────────────────
-const isProductionBuild = import.meta.env.PROD
-const printMode       = ref('browser')
-const qzPrinterName   = ref('')
-const qzPrinters      = ref([])
-const qzPrintersLoading = ref(false)
-const qzConnectError  = ref('')
-
-const loadQzPrinters = async () => {
-  qzPrintersLoading.value = true
-  qzConnectError.value = ''
-  try {
-    qzPrinters.value = await getAvailablePrinters()
-    if (!qzPrinters.value.length) qzConnectError.value = 'لم يتم العثور على طابعات — تأكد من تشغيل QZ Tray'
-  } catch {
-    qzConnectError.value = 'فشل الاتصال بـ QZ Tray — تأكد من تثبيته وتشغيله'
-  } finally {
-    qzPrintersLoading.value = false
-  }
-}
 
 // ─── Settings State ───────────────────────────────────────────────────────────
 const general = ref({
@@ -712,7 +672,7 @@ watch(() => posSession.value.enforceForRoles, (vals) => {
 
 // ─── Role Translations ────────────────────────────────────────────────────────
 const roleTranslations = {
-  super_admin: 'مدير النظام', admin: 'مدير', manager: 'مدير الفرع',
+  super_admin: 'مدير النظام', admin: 'مسؤول المنشأة', manager: 'مدير الفرع',
   user: 'مستخدم', cashier: 'كاشير', finance_officer: 'مسؤول مالي',
   inventory_clerk: 'مسؤول المخزون', accountant: 'محاسب',
   inventory: 'مخزون', client: 'عميل',
@@ -733,12 +693,13 @@ function sectionKeyFromTab(tabId) {
   }[tabId] || null
 }
 
-function setActiveTab(tabId) {
+async function setActiveTab(tabId) {
   const currentKey = sectionKeyFromTab(activeTab.value)
   if (currentKey && isSectionDirty(currentKey)) {
-    const ok = AlertService.confirm(
+    const ok = await AlertService.confirm(
       'هناك تغييرات غير محفوظة في هذا القسم. هل تريد المتابعة بدون حفظ؟',
-      'تغييرات غير محفوظة'
+      'تغييرات غير محفوظة',
+      { confirmText: 'المتابعة دون حفظ', cancelText: 'البقاء في القسم' }
     )
     if (!ok) return
   }
@@ -774,12 +735,13 @@ async function saveActiveTab() {
   else if (key === 'accounting')  await saveAccountingSettings()
 }
 
-function discardActiveTab() {
+async function discardActiveTab() {
   const key = sectionKeyFromTab(activeTab.value)
   if (!key || !isSectionDirty(key)) return
-  const ok = AlertService.confirm(
+  const ok = await AlertService.confirm(
     'سيتم تجاهل التغييرات غير المحفوظة في هذا القسم. هل أنت متأكد؟',
-    'تجاهل التغييرات'
+    'تجاهل التغييرات',
+    { confirmText: 'تجاهل التغييرات', cancelText: 'إلغاء' }
   )
   if (!ok) return
   resetSectionToSnapshot(key)
@@ -923,8 +885,6 @@ async function fetchSettings() {
         showTaxInPrice:    s['invoice.show_tax_in_price'] !== '0',
       }
 
-      printMode.value    = isProductionBuild ? 'browser' : (s['print.mode'] || 'browser')
-      qzPrinterName.value = s['print.qztray_printer'] || getQzPrinterName()
       printers.value = {
         printHeader: s['printer.print_header'] !== '0',
         printFooter: s['printer.print_footer'] !== '0',
@@ -1152,8 +1112,6 @@ async function savePrinterSettings() {
   isSaving.value = true
   try {
     const settings = {
-      'print.mode':              isProductionBuild ? 'browser' : printMode.value,
-      'print.qztray_printer':   qzPrinterName.value,
       'printer.print_header':   printers.value.printHeader ? '1' : '0',
       'printer.print_footer': printers.value.printFooter ? '1' : '0',
       'print.header_text':    printTexts.value.headerText,
@@ -1162,8 +1120,6 @@ async function savePrinterSettings() {
     }
     const response = await settingsStore.updateSettings(settings)
     if (response.status === 'success') {
-      localStorage.setItem('print.mode',                 isProductionBuild ? 'browser' : printMode.value)
-      setQzPrinterName(qzPrinterName.value)
       localStorage.setItem('pos_print_template',         printTemplate.value)
       localStorage.setItem('pos_print_header_enabled',   printers.value.printHeader ? '1' : '0')
       localStorage.setItem('pos_print_footer_enabled',   printers.value.printFooter ? '1' : '0')
@@ -1339,12 +1295,14 @@ const previewHtml = computed(() => {
 })
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
-onBeforeRouteLeave((to, from, next) => {
+onBeforeRouteLeave(async () => {
   if (isDirty.value) {
-    const ok = confirm('لديك تغييرات غير محفوظة، هل تريد المغادرة؟');
-    if (!ok) return next(false);
+    return await AlertService.confirm(
+      'لديك تغييرات غير محفوظة، هل تريد المغادرة؟',
+      'تغييرات غير محفوظة',
+      { confirmText: 'المغادرة دون حفظ', cancelText: 'البقاء في الصفحة' }
+    )
   }
-  next();
 });
 
 onMounted(async () => {
@@ -1362,14 +1320,12 @@ onMounted(async () => {
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
 .filter-input-v2 {
-  @apply w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all;
+  @apply focus:ring-4 focus:ring-blue-500/5;
 }
 
 .filter-input-v3 {
   @apply w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all;
 }
-
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1; }
 
 .setting-toggle-row { @apply flex items-center justify-between cursor-pointer transition-all; }
 
@@ -1387,11 +1343,6 @@ onMounted(async () => {
 }
 [dir="rtl"] .ios-toggle:checked::before {
   @apply -translate-x-4;
-}
-
-/* ✅ RESTORED: pagination buttons used by the Users pagination footer */
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
 }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }

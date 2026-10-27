@@ -18,6 +18,7 @@ use DomainException;
 use UnexpectedValueException;
 use App\Services\JwtBlacklistService;
 use App\Services\MonologHandler;
+use App\Utils\ApiResponseEnvelope;
 use App\Services\SecurityLogger;
 use App\Services\UserSessionService;
 use App\Utils\SuperAdminHelper;
@@ -207,7 +208,10 @@ class JwtAuthMiddleware implements MiddlewareInterface
             if ($errorCode !== null) {
                 $error['error_code'] = $errorCode;
             }
-            $response->getBody()->write(json_encode($error, JSON_UNESCAPED_UNICODE));
+            $response->getBody()->write(json_encode(
+                ApiResponseEnvelope::normalize($error, $statusCode),
+                JSON_UNESCAPED_UNICODE
+            ));
 
             return $response
                 ->withHeader('Content-Type', 'application/json')

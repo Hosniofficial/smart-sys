@@ -10,6 +10,7 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 use PDO;
 use App\Utils\RequestHelper;
+use App\Utils\ApiResponseEnvelope;
 use Slim\Psr7\Response as SlimResponse;
 
 /**
@@ -103,11 +104,11 @@ class RequestRateLimiter implements MiddlewareInterface
                 ->withStatus(429, 'Too Many Requests')
                 ->withHeader('Content-Type', 'application/json')
                 ->withHeader('Retry-After', (string)max(1, $retryAfter));
-            $response->getBody()->write(json_encode([
+            $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
                 'status' => 'error',
                 'message' => 'Too many requests. Please try again later.',
                 'retry_after' => max(1, $retryAfter),
-            ]));
+            ], 429)));
             return $response;
         }
 

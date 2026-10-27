@@ -1,8 +1,9 @@
 import { ref, computed } from 'vue';
 import { SessionsService } from '@/services/sessions';
 import { useAuthStore } from '@/stores/auth/authStore';
-import apiClient from '@/config/axios';
+import { settingsService } from '@/services/settings';
 import { getDeviceIdentity, isSettingEnabled } from '@/utils';
+import AlertService from '@/services/AlertService';
 
 /**
  * Cashier Session Guard
@@ -29,7 +30,7 @@ export function useCashierSessionGuard() {
     return async () => {
       if (done) return;
       try {
-        const { data } = await apiClient.get('/settings', { meta: { skipLoader: true } });
+        const { data } = await settingsService.getSettings({ skipLoader: true });
         if (data && data.status === 'success') {
           const s = data.data || {};
           sessionsEnabled.value = isSettingEnabled(s['pos.sessions.enabled']);
@@ -94,7 +95,10 @@ export function useCashierSessionGuard() {
         const msg = !branchId && !enforceSessionForMe.value
           ? 'لا توجد جلسة كاشير مفتوحة. هل تريد فتح جلسة الآن (بدون تحديد مخزن)؟'
           : 'لا توجد جلسة كاشير مفتوحة لهذا المخزن. هل تريد فتح جلسة الآن؟';
-        const ok = window.confirm(msg);
+        const ok = await AlertService.confirm(msg, 'جلسة الكاشير', {
+          confirmText: 'فتح الجلسة',
+          cancelText: 'إلغاء',
+        });
         if (!ok) return false;
       }
 
@@ -156,7 +160,7 @@ export function useSessionExemption() {
           done = true;
           return;
         }
-        const { data } = await apiClient.get('/settings', { meta: { skipLoader: true } });
+        const { data } = await settingsService.getSettings({ skipLoader: true });
         const s = (data && data.status === 'success') ? (data.data || {}) : {};
         const usersCsv = String(s['cashier_session_exempt_users'] || '').trim();
         const rolesCsv = String(s['cashier_session_exempt_roles'] || '').trim();

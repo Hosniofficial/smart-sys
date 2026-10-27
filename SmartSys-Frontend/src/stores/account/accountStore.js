@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/config/axios';
+import accountsService from '@/services/accounts';
 
 const nowMs = () => Date.now();
 
@@ -58,7 +58,7 @@ export const useAccountStore = defineStore('account', () => {
 
       const promise = (async () => {
         try {
-          const response = await apiClient.get('/accounts/grouped');
+          const response = await accountsService.listGrouped();
           const payload  = response?.data?.data || response?.data || {};
 
           accounts.value = {
@@ -169,7 +169,7 @@ export const useAccountStore = defineStore('account', () => {
 
       // وإلا ابحث عبر الـ API مع fallback للفلتر المحلي
       try {
-        const response = await apiClient.get('/accounts', { params: { q } });
+        const response = await accountsService.search(q);
         const results  = response?.data?.data || response?.data || [];
         const list     = Array.isArray(results) ? results : (results?.items || []);
 

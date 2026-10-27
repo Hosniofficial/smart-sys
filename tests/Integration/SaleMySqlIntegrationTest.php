@@ -65,7 +65,7 @@ final class SaleMySqlIntegrationTest extends TestCase
         try {
             MySqlSchemaDumpImporter::import(
                 self::$server,
-                dirname(__DIR__, 2) . '/database/production/smartsys_production_schema_20261003.sql'
+                __DIR__ . '/Fixtures/mysql_schema.sql'
             );
             self::$db = new PDO(
                 "mysql:host={$host};port={$port};dbname=" . self::$schema . ';charset=utf8mb4',

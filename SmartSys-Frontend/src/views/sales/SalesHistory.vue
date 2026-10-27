@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="isLoadingList || isLoadingDetails || isMarkingPaid || isVoidingSale || isUpdatingSale" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoadingList || isLoadingDetails" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -199,32 +197,32 @@
                 </td>
               </tr>
               <tr v-for="sale in sales" :key="sale.id" class="hover:bg-blue-50/20 transition-all group">
-                <td class="px-6 py-4">
+                <td class="px-6 py-3">
                   <input type="checkbox" :value="sale.id" v-model="filters.selectedIds.value" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20" />
                 </td>
-                <td class="px-4 py-4 text-xs font-bold text-slate-900">{{ sale.invoice_number || '#' + sale.id }}</td>
-                <td class="px-4 py-4 text-[10px] font-mono text-slate-400">{{ formatDateTime(sale.created_at) }}</td>
-                <td class="px-4 py-4 text-xs font-bold text-slate-700 truncate max-w-[150px]">{{ sale.customer_name || 'عميل نقدي' }}</td>
-                <td class="px-4 py-4 text-center">
-                  <span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-500">{{ sale.total_items }}</span>
+                <td class="px-4 py-3 text-[11px] font-bold text-slate-900">{{ sale.invoice_number || '#' + sale.id }}</td>
+                <td class="px-4 py-3 text-[10px] font-mono text-slate-400">{{ formatDateTime(sale.created_at) }}</td>
+                <td class="px-4 py-3 text-[11px] font-bold text-slate-700 truncate max-w-[150px]">{{ sale.customer_name || 'عميل نقدي' }}</td>
+                <td class="px-4 py-3 text-center">
+                  <span class="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-500">{{ sale.total_items }}</span>
                 </td>
-                <td class="px-4 py-4 text-xs font-bold text-blue-600">{{ formatPrice(getSaleGross(sale)) }}</td>
-                <td class="px-4 py-4 text-[10px] font-bold whitespace-nowrap">
+                <td class="px-4 py-3 text-[11px] font-bold text-blue-600">{{ formatPrice(getSaleGross(sale)) }}</td>
+                <td class="px-4 py-3 text-[9px] font-bold whitespace-nowrap">
                   <div class="text-emerald-700">مدفوع: {{ formatPrice(getSalePaid(sale)) }}</div>
                   <div class="text-rose-600 mt-1">متبقي: {{ formatPrice(getSaleRemaining(sale)) }}</div>
                 </td>
-                <td class="px-4 py-4 text-center">
+                <td class="px-4 py-3 text-center">
                   <div class="flex items-center justify-center gap-2">
-                    <span :class="[getDynamicStatusClass(sale.dynamic_status)]" class="px-2 py-0.5 rounded text-[9px] font-bold border">
+                    <span :class="[getDynamicStatusClass(sale.dynamic_status)]" class="px-2 py-0.5 rounded text-[8px] font-bold border">
                       {{ getStatusLabel(sale.status === 'canceled' ? 'canceled' : sale.dynamic_status) }}
                     </span>
-                    <span v-if="getAgeBadge(sale)" :class="[getAgeBadge(sale).cls]" class="px-1.5 py-0.5 rounded text-[8px] font-bold border">
+                    <span v-if="getAgeBadge(sale)" :class="[getAgeBadge(sale).cls]" class="px-1.5 py-0.5 rounded text-[7px] font-bold border">
                       {{ getAgeBadge(sale).label }}
                     </span>
                   </div>
                 </td>
-                <td class="px-4 py-4 text-center">
-                  <button @click="viewSaleDetails(sale.id)" :disabled="isLoadingDetails" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center mx-auto disabled:opacity-50">
+                <td class="px-4 py-3 text-center">
+                  <button @click="openSaleDetails(sale.id)" :disabled="isLoadingDetails" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center mx-auto disabled:opacity-50" :aria-label="`فتح تفاصيل فاتورة البيع ${sale.invoice_number || sale.id} في تبويب`">
                     <i class="fas fa-eye text-[10px]"></i>
                   </button>
                 </td>
@@ -249,10 +247,12 @@
                  <option :value="50">50</option>
                </select>
              </div>
-             <div class="flex items-center gap-1">
-               <button @click="filters.previousPage()" :disabled="filters.page.value<=1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-               <button @click="filters.nextPage(totalPages)" :disabled="filters.page.value>=totalPages" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-             </div>
+             <PaginationControls
+               :page="filters.page.value"
+               :total-pages="totalPages"
+               @previous="filters.previousPage()"
+               @next="filters.nextPage(totalPages)"
+             />
           </div>
         </div>
       </div>
@@ -261,7 +261,7 @@
     <!-- Details Modal -->
     <HistoryDetailsModal
       :show="showDetailsModal && !!selectedSale"
-      @close="showDetailsModal = false"
+      @close="closeSaleDetails"
       :title="`تفاصيل فاتورة البيع ${selectedSale?.invoice_number || '#' + selectedSale?.id}`"
       icon="fas fa-receipt"
     >
@@ -333,11 +333,11 @@
                 <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">المنتج</th>
                 <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase text-center">الكمية</th>
                 <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">سعر الوحدة</th>
-                <th class="px-2 py-3 text[10px] font-bold text-slate-400 uppercase">الإجمالي الأصلي</th>
+                <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">قبل الخصم</th>
                 <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">الخصم</th>
                 <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">الضريبة</th>
-                <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">الصافي للوحدة</th>
-                <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">الإجمالي</th>
+                <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">سعر بعد الخصم</th>
+                <th class="px-2 py-3 text-[10px] font-bold text-slate-400 uppercase">صافي السطر</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
@@ -362,26 +362,27 @@
             <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">ملاحظات الفاتورة</p>
             <p class="text-xs text-slate-600 italic">{{ selectedSale?.notes || 'لا توجد ملاحظات.' }}</p>
           </div>
-          <div class="w-full md:w-72 space-y-3 bg-slate-900 p-6 rounded-xl text-white">
-            <div class="flex justify-between text-[11px] font-medium text-slate-400"><span>الإجمالي الفرعي</span><span>{{ formatPrice(subTotalNet) }}</span></div>
-            <div class="flex justify-between text-[11px] font-medium text-slate-400"><span>الخصومات</span><span class="text-rose-400">- {{ formatPrice(totalDiscount) }}</span></div>
-            <div class="flex justify-between text-[11px] font-medium text-slate-400 pb-3 border-b border-white/10"><span>الضريبة ({{ taxRateDisplay }}%)</span><span>{{ formatPrice(finalNetTotal * (taxRate / 100)) }}</span></div>
-            <div class="flex justify-between items-end pt-1">
-              <span class="text-xs font-bold uppercase tracking-widest text-blue-400">الصافي</span>
-              <span class="text-2xl font-bold tracking-tighter">{{ formatPrice(finalNetTotal * (1 + taxRate / 100)) }}</span>
+          <div class="w-full md:w-72 space-y-2.5 bg-slate-50 border border-slate-200 p-5 rounded-xl">
+            <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المجموع</span><span class="font-mono font-bold text-slate-700">{{ formatPrice(subTotalNet) }}</span></div>
+            <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>الخصومات</span><span class="font-mono font-bold text-rose-500">- {{ formatPrice(totalDiscount) }}</span></div>
+            <div class="flex justify-between text-[11px] font-medium text-slate-500 pb-2.5 border-b border-slate-200"><span>الضريبة ({{ taxRateDisplay }}%)</span><span class="font-mono font-bold text-slate-700">{{ formatPrice(finalNetTotal * (taxRate / 100)) }}</span></div>
+            <!-- سطر الصافي مميز -->
+            <div class="flex justify-between items-center bg-blue-600 text-white px-4 py-3 rounded-lg">
+              <span class="text-[11px] font-bold uppercase tracking-widest opacity-80">الصافي</span>
+              <span class="text-xl font-bold font-mono tracking-tighter">{{ formatPrice(finalNetTotal * (1 + taxRate / 100)) }}</span>
             </div>
-            <div class="pt-3 border-t border-white/10 space-y-2">
-              <div class="flex justify-between text-[11px] font-medium text-slate-300">
+            <div class="pt-1 space-y-2">
+              <div class="flex justify-between text-[11px] font-medium text-slate-500">
                 <span>صافي التحصيل</span>
-                <span>{{ formatPrice(getSalePaid(selectedSale)) }}</span>
+                <span class="font-mono font-bold text-emerald-600">{{ formatPrice(getSalePaid(selectedSale)) }}</span>
               </div>
-              <div v-if="Number(selectedSale?.return_amount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-300">
+              <div v-if="Number(selectedSale?.return_amount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
                 <span>قيمة المرتجعات</span>
-                <span class="text-amber-300">{{ formatPrice(selectedSale.return_amount) }}</span>
+                <span class="font-mono font-bold text-amber-500">{{ formatPrice(selectedSale.return_amount) }}</span>
               </div>
-              <div class="flex justify-between text-[11px] font-bold text-rose-300">
-                <span>المتبقي</span>
-                <span>{{ formatPrice(getSaleRemaining(selectedSale)) }}</span>
+              <div v-if="getSaleRemaining(selectedSale) > 0" class="flex justify-between text-[11px] font-bold pt-1 border-t border-slate-200">
+                <span class="text-slate-500">المتبقي</span>
+                <span class="font-mono text-rose-600">{{ formatPrice(getSaleRemaining(selectedSale)) }}</span>
               </div>
             </div>
           </div>
@@ -389,48 +390,73 @@
       </div>
 
       <template #footer>
-        <div dir="rtl" class="mr-auto flex flex-row-reverse flex-wrap items-center gap-3">
-        <button
-          v-if="canEditSelectedSale && !isEditingSale"
-          @click="openSaleEdit"
-          class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-blue-200 px-4 text-xs font-bold text-blue-700 hover:bg-blue-50"
-        >
-          <i class="fas fa-edit ml-1.5"></i>تعديل الفاتورة
-        </button>
-        <button
-          v-if="isEditingSale"
-          @click="cancelSaleEdit"
-          :disabled="isUpdatingSale"
-          class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500"
-        >
-          إلغاء التعديل
-        </button>
-        <button
-          v-if="isEditingSale"
-          @click="submitSaleEdit"
-          :disabled="isUpdatingSale"
-          class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md bg-blue-600 px-5 text-xs font-bold text-white disabled:opacity-50"
-        >
-          {{ isUpdatingSale ? 'جارٍ الحفظ...' : 'حفظ التعديلات' }}
-        </button>
-        <button
-          v-if="canVoidSelectedSale && !isEditingSale"
-          @click="voidSelectedSale"
-          :disabled="isVoidingSale"
-          class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-rose-200 px-4 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-        >
-          <i class="fas fa-ban ml-1.5"></i>{{ isVoidingSale ? 'جارٍ الإلغاء...' : 'إلغاء البيع' }}
-        </button>
-        <!-- زر تحصيل دفعة — يظهر فقط للفواتير غير المدفوعة أو المدفوعة جزئياً -->
-        <button
-          v-if="canCollectPayment && !isEditingSale"
-          @click="openCollectModal"
-          class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-emerald-200 px-4 text-xs font-bold text-emerald-700 transition-all hover:bg-emerald-50"
-        >
-          <i class="fas fa-hand-holding-usd text-[10px]"></i> تحصيل دفعة
-        </button>
-        <button v-if="!isEditingSale" @click="printSaleDetails" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-indigo-600 px-5 text-xs font-bold text-white shadow-lg shadow-indigo-900/20"><i class="fas fa-print"></i> طباعة الفاتورة</button>
-        <button @click="showDetailsModal = false" :disabled="isUpdatingSale" class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500 disabled:opacity-50">إغلاق</button>
+        <div class="mr-auto flex flex-row flex-wrap items-center gap-3">
+
+          <!-- تعديل الفاتورة -->
+          <button
+            v-if="canEditSelectedSale && !isEditingSale"
+            @click="openSaleEdit"
+            class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-blue-200 px-4 text-xs font-bold text-blue-700 hover:bg-blue-50"
+          >
+            <i class="fas fa-edit ml-1.5"></i>تعديل الفاتورة
+          </button>
+
+          <!-- أزرار وضع التعديل -->
+          <button
+            v-if="isEditingSale"
+            @click="cancelSaleEdit"
+            :disabled="isUpdatingSale"
+            class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500"
+          >
+            إلغاء التعديل
+          </button>
+          <LoadingButton
+            v-if="isEditingSale"
+            type="button"
+            text="حفظ التعديلات"
+            loadingText="جارٍ الحفظ..."
+            :isLoading="isUpdatingSale"
+            @click="submitSaleEdit"
+            class="h-10 shrink-0 rounded-md px-5 text-xs"
+          />
+
+          <!-- 1. تحصيل دفعة — الأولوية الأولى -->
+          <button
+            v-if="canCollectPayment && !isEditingSale"
+            @click="openCollectModal"
+            class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-emerald-600 px-4 text-xs font-bold text-white shadow-sm shadow-emerald-900/20 transition-all hover:bg-emerald-700"
+          >
+            <i class="fas fa-hand-holding-usd text-[10px]"></i> تحصيل دفعة
+          </button>
+
+          <!-- 2. إلغاء الفاتورة -->
+          <button
+            v-if="canVoidSelectedSale && !isEditingSale"
+            @click="voidSelectedSale"
+            :disabled="isVoidingSale"
+            class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-rose-200 px-4 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+          >
+            <i class="fas fa-ban ml-1.5"></i>{{ isVoidingSale ? 'جارٍ الإلغاء...' : 'إلغاء الفاتورة' }}
+          </button>
+
+          <!-- 3. طباعة الفاتورة -->
+          <button
+            v-if="!isEditingSale"
+            @click="printSaleDetails"
+            class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-indigo-200 px-4 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
+          >
+            <i class="fas fa-print"></i> طباعة الفاتورة
+          </button>
+
+          <!-- 4. إغلاق -->
+          <button
+            @click="closeSaleDetails"
+            :disabled="isUpdatingSale"
+            class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500 disabled:opacity-50"
+          >
+            إغلاق
+          </button>
+
         </div>
       </template>
     </HistoryDetailsModal>
@@ -546,13 +572,14 @@
                 >
                   إلغاء
                 </button>
-                <button
+                <LoadingButton
                   type="submit"
-                  :disabled="isCollecting"
-                  class="flex-[2] h-10 bg-emerald-600 text-white rounded-md text-xs font-bold shadow-lg shadow-emerald-900/20 active:scale-95 transition-all disabled:opacity-50"
-                >
-                  {{ isCollecting ? 'جاري التحصيل...' : 'تأكيد التحصيل' }}
-                </button>
+                  text="تأكيد التحصيل"
+                  loadingText="جاري التحصيل..."
+                  variant="success"
+                  :isLoading="isCollecting"
+                  class="flex-[2] h-10 rounded-md text-xs shadow-lg shadow-emerald-900/20"
+                />
               </div>
             </form>
           </div>
@@ -566,7 +593,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useHistoryFilters } from '@/composables/useHistoryFilters';
 import { useSessionExemption } from '@/composables/useCashierSessionGuard';
 import { useBranchIsolation } from '@/composables/useBranchIsolation';
@@ -581,13 +608,13 @@ import { useBootstrapStore } from '@/stores/bootstrap/bootstrapStore';
 import { useCostCenterStore } from '@/stores/costCenter/costCenterStore';
 import AlertService from '@/services/AlertService';
 import { useToast } from '@/composables/useToast';
-import { useLoader } from '@/composables/useLoader';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { getLocalDateISO, printDocument } from '@/utils';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
+import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 const { showToast } = useToast();
-const { showLoader, hideLoader } = useLoader();
 const authStore = useAuthStore();
 const branchStore = useBranchStore();
 const branchIsolation = useBranchIsolation();
@@ -598,6 +625,7 @@ const paymentStore = usePaymentStore();
 const bootstrapStore = useBootstrapStore();
 const costCenterStore = useCostCenterStore();
 const route = useRoute();
+const router = useRouter();
 const { ensureLoaded: ensureExemptionLoaded } = useSessionExemption();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const { breadcrumb } = useBreadcrumb();
@@ -804,7 +832,6 @@ const submitCollectPayment = async () => {
   }
 
   isCollecting.value = true;
-  showLoader();
   try {
     const formPayload = {
       sale_id: Number(sale.id),
@@ -859,7 +886,6 @@ const submitCollectPayment = async () => {
     showToast(e?.response?.data?.message || e?.message || 'فشل التحصيل', 'error');
   } finally {
     isCollecting.value = false;
-    hideLoader();
   }
 };
 
@@ -963,7 +989,6 @@ const fetchSalesHistory = async (forceRefresh = false) => {
   if (listAbortCtrl) listAbortCtrl.abort();
   listAbortCtrl = new AbortController();
   isLoadingList.value = true;
-  showLoader();
   try {
     const params = filters.getApiParams({ includeTotals: true, force: forceRefresh });
     if (!canSelectBranch.value) {
@@ -1007,14 +1032,13 @@ const fetchSalesHistory = async (forceRefresh = false) => {
       isDataStale.value = true;
       showToast('⚠️ فشل تحديث البيانات. البيانات المعروضة قد تكون قديمة. حاول مرة أخرى.', 'warning');
     }
-  } finally { isLoadingList.value = false; hideLoader(); }
+  } finally { isLoadingList.value = false; }
 };
 
 const viewSaleDetails = async (saleId) => {
   if (detailsAbortCtrl) detailsAbortCtrl.abort();
   detailsAbortCtrl = new AbortController();
   isLoadingDetails.value = true;
-  showLoader();
   try {
     const payload = await salesStore.fetchSaleDetails(saleId);
     const saleData = payload?.data || payload;
@@ -1024,7 +1048,29 @@ const viewSaleDetails = async (saleId) => {
   } catch (e) {
     const isAborted = e?.name === 'CanceledError' || e?.name === 'AbortError' || e?.message === 'canceled';
     if (!isAborted) showToast('فشل في تحميل تفاصيل الفاتورة', 'error');
-  } finally { isLoadingDetails.value = false; hideLoader(); }
+  } finally { isLoadingDetails.value = false; }
+};
+
+const openSaleDetails = async (saleId) => {
+  if (Number(route.query.id) === Number(saleId)) {
+    await viewSaleDetails(saleId);
+    return;
+  }
+
+  await router.push({
+    name: 'SalesHistory',
+    query: { ...route.query, id: String(saleId) }
+  });
+};
+
+const closeSaleDetails = async () => {
+  if (isUpdatingSale.value) return;
+  showDetailsModal.value = false;
+  if (!route.query.id) return;
+
+  const query = { ...route.query };
+  delete query.id;
+  await router.replace({ name: 'SalesHistory', query });
 };
 
 const openSaleEdit = async () => {
@@ -1055,7 +1101,6 @@ const submitSaleEdit = async () => {
   }
 
   isUpdatingSale.value = true;
-  showLoader();
   try {
     const payload = {
       sale_date: saleEditForm.value.sale_date,
@@ -1076,7 +1121,6 @@ const submitSaleEdit = async () => {
     await fetchSalesHistory(true);
   } finally {
     isUpdatingSale.value = false;
-    hideLoader();
   }
 };
 
@@ -1090,7 +1134,6 @@ const voidSelectedSale = async () => {
   if (!confirmed) return;
 
   isVoidingSale.value = true;
-  showLoader();
   try {
     const result = await salesStore.voidSale(sale.id, 'إلغاء من سجل المبيعات');
     if (result?.status !== 'success') {
@@ -1104,7 +1147,6 @@ const voidSelectedSale = async () => {
     await fetchSalesHistory(true);
   } finally {
     isVoidingSale.value = false;
-    hideLoader();
   }
 };
 
@@ -1130,7 +1172,7 @@ const markSelectedAsPaid = async () => {
   if (!batchPaymentMethodId) { showToast('لا توجد طريقة دفع متاحة لتحصيل الفواتير المحددة', 'error'); return; }
   const confirmed = await AlertService.confirm(`سيتم تعليم ${payable.length} فاتورة كمسددة. هل تريد المتابعة؟`, 'تسديد الفواتير');
   if (!confirmed) return;
-  isMarkingPaid.value = true; showLoader();
+  isMarkingPaid.value = true;
   let ok = 0, fail = 0;
   for (const s of payable) {
     try {
@@ -1181,7 +1223,7 @@ const markSelectedAsPaid = async () => {
       fail++;
     }
   }
-  hideLoader(); isMarkingPaid.value = false;
+  isMarkingPaid.value = false;
   showToast(`تمت معالجة ${ok} بنجاح، وفشل ${fail}${fail ? '؛ ستبقى الفواتير الفاشلة محددة لإعادة المحاولة' : ''}`, fail ? 'warning' : 'success');
   if (!fail) filters.clearSelection();
   fetchSalesHistory();
@@ -1278,7 +1320,12 @@ watch(() => filters.customerFilter.value, (nv) => {
 });
 
 watch(() => route.query.id, async (nv) => {
-  if (Number(nv || 0) > 0) { try { await viewSaleDetails(Number(nv)); } catch {} }
+  if (Number(nv || 0) > 0) {
+    try { await viewSaleDetails(Number(nv)); } catch {}
+    return;
+  }
+  showDetailsModal.value = false;
+  selectedSale.value = null;
 });
 
 onMounted(async () => {
@@ -1372,10 +1419,6 @@ onUnmounted(() => {
 }
 
 /* Pagination */
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
-}
-
 /* Scrollbar */
 .custom-scroll::-webkit-scrollbar {
   width: 5px;

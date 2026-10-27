@@ -137,6 +137,18 @@ final class CurrencyRateService
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $quoteDate)) {
                 throw new RuntimeException('Exchange-rate provider returned an invalid rate date.');
             }
+            $parsedDate = \DateTimeImmutable::createFromFormat('!Y-m-d', $quoteDate, new \DateTimeZone('UTC'));
+            $dateErrors = \DateTimeImmutable::getLastErrors();
+            if (
+                $parsedDate === false
+                || $parsedDate->format('Y-m-d') !== $quoteDate
+                || ($dateErrors !== false && ($dateErrors['warning_count'] > 0 || $dateErrors['error_count'] > 0))
+            ) {
+                throw new RuntimeException('Exchange-rate provider returned an invalid rate date.');
+            }
+            if ($parsedDate > new \DateTimeImmutable('today', new \DateTimeZone('UTC'))) {
+                throw new RuntimeException('Exchange-rate provider returned a future rate date.');
+            }
             if ($rateDate !== null && $rateDate !== $quoteDate) {
                 throw new RuntimeException('Exchange-rate provider returned rates from different dates.');
             }

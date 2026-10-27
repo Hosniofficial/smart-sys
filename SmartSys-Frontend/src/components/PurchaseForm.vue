@@ -547,8 +547,6 @@ watch(() => props.initialData, (newVal) => {
 
 <style scoped>
 
-.metadata-label { @apply block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1; }
-
 .form-input-v3 { @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-xs font-medium focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all; }
 
 </style>

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Handlers\AdvancedReportsHandler;
 use App\Handlers\SalesAnalyticsHandler;
-use App\Handlers\InventoryAnalyticsHandler;
 use App\Handlers\PosAnalyticsHandler;
 use App\Middleware\PermissionMiddleware;
 use App\Security\Permissions;
@@ -18,7 +17,6 @@ return function (RouteCollectorProxy $group, Container $container): void {
     $group->group('/reports', function (RouteCollectorProxy $group) use ($container, $db) {
 
         $salesH     = $container->get(SalesAnalyticsHandler::class);
-        $inventoryH = $container->get(InventoryAnalyticsHandler::class);
         $posH       = $container->get(PosAnalyticsHandler::class);
         $advanced   = $container->get(AdvancedReportsHandler::class);
 

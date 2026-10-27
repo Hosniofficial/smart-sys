@@ -2,9 +2,7 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
     <!-- Top Progress Bar -->
-    <div v-if="isLoading" class="fixed top-0 left-0 right-0 h-0.5 bg-blue-600/10 z-[110]">
-      <div class="h-full bg-blue-600 animate-[loading_2s_ease-in-out_infinite] w-1/3"></div>
-    </div>
+    <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
@@ -136,7 +134,7 @@
                       <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 font-mono">{{ product.product_code || '--' }}</span>
                     </td>
                     <td class="px-4 py-4">
-                      <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{{ product.category_name || 'غير مصنف' }}</span>
+                      <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{{ product.category_name || 'بدون تصنيف' }}</span>
                     </td>
                     <td class="px-4 py-4 text-left">
                       <span class="text-sm font-bold font-mono tracking-tighter text-blue-600">{{ formatCurrencyLocale(product.sale_price, 2) }}</span>
@@ -174,10 +172,12 @@
                      <option :value="50">50</option>
                    </select>
                  </div>
-                 <div class="flex items-center gap-1">
-                   <button @click="filters.previousPage()" :disabled="filters.page.value <= 1" class="pagination-btn-v2"><i class="fas fa-chevron-right"></i></button>
-                   <button @click="filters.nextPage(filters.totalPages.value)" :disabled="filters.page.value >= filters.totalPages.value" class="pagination-btn-v2"><i class="fas fa-chevron-left"></i></button>
-                 </div>
+                 <PaginationControls
+                   :page="filters.page.value"
+                   :total-pages="filters.totalPages.value"
+                   @previous="filters.previousPage()"
+                   @next="filters.nextPage(filters.totalPages.value)"
+                 />
               </div>
             </div>
           </template>
@@ -244,6 +244,7 @@ import { useCatalogStore } from '@/stores/catalog/catalogStore';
 import { useProductStore } from '@/stores/product/productStore';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
+import PaginationControls from '@/components/ui/PaginationControls.vue';
 
 const { showToast } = useToast();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
@@ -311,7 +312,7 @@ const exportProducts = () => {
   if (!productList.length) { showToast('لا توجد منتجات للتصدير', 'warning'); return; }
   const rows = [['ID', 'الاسم', 'الباركود', 'التصنيف', 'سعر البيع', 'الحالة']];
   productList.forEach(p => {
-    const cat = categories.value.find(c => c.id === p.category_id)?.name || 'غير مصنف';
+    const cat = categories.value.find(c => c.id === p.category_id)?.name || 'بدون تصنيف';
     rows.push([p.id, p.name, p.barcode || '', cat, p.sale_price, p.active === 1 ? 'نشط' : 'غير نشط']);
   });
   const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -439,10 +440,6 @@ onMounted(async () => {
 
 <style scoped>
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
-
-.pagination-btn-v2 {
-  @apply w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-200 disabled:opacity-40 transition-all;
-}
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }

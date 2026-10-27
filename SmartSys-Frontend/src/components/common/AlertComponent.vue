@@ -44,7 +44,7 @@
               </div>
               
               <!-- Question / Confirm Icon -->
-              <div v-else-if="type === 'confirm'" class="w-10 h-10 rounded-lg bg-slate-900 text-white flex items-center justify-center text-sm shadow-sm">
+              <div v-else-if="type === 'confirm'" class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center text-sm shadow-sm">
                 <i class="fas fa-circle-question"></i>
               </div>
             </div>
@@ -168,7 +168,7 @@ const confirmButtonClass = computed(() => {
     case 'success':
       return 'bg-emerald-600 text-white hover:bg-emerald-700'
     case 'confirm':
-      return 'bg-slate-900 text-white hover:bg-black'
+      return 'bg-blue-600 text-white hover:bg-blue-700'
     default:
       return 'bg-blue-600 text-white hover:bg-blue-700'
   }

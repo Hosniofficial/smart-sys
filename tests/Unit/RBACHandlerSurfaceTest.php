@@ -19,7 +19,20 @@ final class RBACHandlerSurfaceTest extends TestCase
         );
 
         self::assertEqualsCanonicalizing(
-            ['__construct', 'getUsers', 'createUser', 'updateUser', 'deleteUser', 'getRoles', 'hasPermission'],
+            [
+                '__construct',
+                'createUser',
+                'deleteUser',
+                'getPermissionCatalog',
+                'getRolePermissions',
+                'getRoles',
+                'getUserPermissions',
+                'getUsers',
+                'hasPermission',
+                'updateRolePermissions',
+                'updateUser',
+                'updateUserPermissions',
+            ],
             $publicMethods
         );
     }
