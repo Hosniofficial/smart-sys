@@ -204,7 +204,7 @@ final class PermissionResolver
      * Resolve the role identity exposed to authentication clients.
      * Explicit assignments take precedence over users.role_id.
      *
-     * @return array{id:int,name:string}|null
+     * @return array{id:int,name:string,role_code?:string,sort_order?:int}|null
      */
     public static function getEffectiveRole(PDO $db, int $userId): ?array
     {

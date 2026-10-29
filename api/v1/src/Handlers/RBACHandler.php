@@ -551,6 +551,7 @@ class RBACHandler extends BaseHandler
         }
 
         try {
+            $roleSort = $this->roleSortExpression('r');
             $stmt = $this->db->prepare("
                 SELECT
                     r.*,
@@ -579,7 +580,7 @@ class RBACHandler extends BaseHandler
                        )
                    )
                 GROUP BY r.id
-                ORDER BY COALESCE(r.sort_order, 1000), COALESCE(r.tenant_id, 0) DESC, r.name
+                ORDER BY {$roleSort}, COALESCE(r.tenant_id, 0) DESC, r.name
             ");
             $stmt->execute([$tenantId, $tenantId, $tenantId, $tenantId]);
             $roles = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -1006,6 +1007,21 @@ class RBACHandler extends BaseHandler
         );
         $stmt->execute(['permissions', $column]);
         return $stmt->fetchColumn() !== false;
+    }
+
+    private function roleSortExpression(string $alias): string
+    {
+        $stmt = $this->db->query(
+            "SELECT 1 FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = 'roles'
+               AND column_name = 'sort_order'
+             LIMIT 1"
+        );
+
+        return $stmt->fetchColumn() !== false
+            ? "COALESCE({$alias}.sort_order, 1000)"
+            : '1000';
     }
 
     private function getCallerAssignablePermissions(
