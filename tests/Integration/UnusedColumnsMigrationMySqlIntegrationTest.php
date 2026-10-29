@@ -82,6 +82,19 @@ final class UnusedColumnsMigrationMySqlIntegrationTest extends TestCase
         }
 
         self::$db->exec('DELETE FROM device_fingerprints');
+        self::$db->exec(
+            'CREATE PROCEDURE migration_test_unused_column_reference()
+             SELECT close_reason FROM cashier_sessions LIMIT 1'
+        );
+        try {
+            $migration->up();
+            self::fail('Migration should refuse to drop a column referenced by a stored routine.');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('routine migration_test_unused_column_reference', $error->getMessage());
+        } finally {
+            self::$db->exec('DROP PROCEDURE IF EXISTS migration_test_unused_column_reference');
+        }
+
         $migration->up();
         $migration->up();
 

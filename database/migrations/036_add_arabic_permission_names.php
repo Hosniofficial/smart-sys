@@ -5,6 +5,8 @@ declare(strict_types=1);
 /** Give every permission in the current catalog an Arabic display name. */
 final class AddArabicPermissionNames
 {
+    public const REQUIRES_BACKUP_CONFIRMATION = true;
+
     private PDO $pdo;
 
     public function __construct(PDO $pdo)

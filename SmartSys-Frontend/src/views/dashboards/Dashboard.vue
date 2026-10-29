@@ -270,10 +270,13 @@ const { isExempt, ensureLoaded: ensureExemptionLoaded } = useSessionExemption()
 
 const branches = computed(() => branchStore.branches)
 const selectedBranch = computed({
-  get: () => branchStore.selectedBranchId,
+  get: () => branchStore.selectedBranchId ?? null,
   set: (val) => {
-    const normalized = val === 'all' || val === null || val === undefined ? null : val
-    branchStore.setSelectedBranch(normalized)
+    const normalized = val === 'all' || val === null || val === undefined ? null : Number(val)
+    const current = branchStore.selectedBranchId
+    if (String(current ?? 'all') !== String(normalized ?? 'all')) {
+      branchStore.setSelectedBranch(normalized)
+    }
   }
 })
 

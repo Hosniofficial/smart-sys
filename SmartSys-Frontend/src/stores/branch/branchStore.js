@@ -159,18 +159,32 @@ export const useBranchStore = defineStore('branch', () => {
    *   branchStore.setSelectedBranch(branchId);
    */
   const setSelectedBranch = (branchId) => {
-    if (branchId === null || branchId === undefined || branchId === '' || branchId === 'all') {
+    const normalized = branchId === null || branchId === undefined || branchId === '' || branchId === 'all'
+      ? null
+      : Number(branchId);
+
+    if (normalized === null) {
+      if (selectedBranchId.value === null) {
+        localStorage.setItem('selectedBranchId', 'all');
+        return true;
+      }
       selectedBranchId.value = null;
       localStorage.setItem('selectedBranchId', 'all');
       return true;
     }
-    const exists = branches.value.find(b => String(b.id) === String(branchId));
-    if (exists) {
-      selectedBranchId.value = exists.id;
-      localStorage.setItem('selectedBranchId', String(exists.id));
+
+    const exists = branches.value.find(b => String(b.id) === String(normalized));
+    if (!exists) return false;
+
+    const nextId = Number(exists.id);
+    if (String(selectedBranchId.value) === String(nextId)) {
+      localStorage.setItem('selectedBranchId', String(nextId));
       return true;
     }
-    return false;
+
+    selectedBranchId.value = nextId;
+    localStorage.setItem('selectedBranchId', String(nextId));
+    return true;
   };
 
   // ─── loadFromStorage ──────────────────────────────────────────────────────

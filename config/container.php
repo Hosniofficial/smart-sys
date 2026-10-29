@@ -125,6 +125,7 @@ return function (): Container {
         $options = [
             'ip_whitelist' => $rl['ip_whitelist'] ?? [],
             'trust_proxy' => $rl['trust_proxy'] ?? false,
+            'trusted_proxies' => $rl['trusted_proxies'] ?? [],
             'headers' => $rl['headers'] ?? [
                 'enabled' => false,
                 'limit' => 'X-RateLimit-Limit',

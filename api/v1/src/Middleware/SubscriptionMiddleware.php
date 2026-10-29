@@ -11,6 +11,7 @@ use Psr\Http\Server\RequestHandlerInterface;
 use Slim\Psr7\Response;
 use App\Utils\SuperAdminHelper;
 use App\Utils\ApiResponseEnvelope;
+use App\Services\MonologHandler;
 
 /**
  * Gates tenant requests on subscription status and end date.
@@ -21,10 +22,12 @@ use App\Utils\ApiResponseEnvelope;
 class SubscriptionMiddleware implements MiddlewareInterface
 {
     private \PDO $db;
+    private $logger;
 
     public function __construct($db)
     {
         $this->db = $db instanceof \Database ? $db->pdo : $db;
+        $this->logger = MonologHandler::getInstance('subscription');
     }
 
     /** Resolve the tenant subscription before forwarding the request. */
@@ -48,18 +51,6 @@ class SubscriptionMiddleware implements MiddlewareInterface
             } else {
                 return $this->upgradeResponse('Tenant ID missing');
             }
-        }
-
-        // IMMEDIATE BLOCK FOR EXPIRED SUBSCRIPTIONS - NO EXCEPTIONS
-        try {
-            $stmt = $this->db->prepare("SELECT id, status, end_date FROM subscriptions WHERE tenant_id = ? AND status = 'expired' LIMIT 1");
-            $stmt->execute([$tenantId]);
-            $expired = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-            if ($expired) {
-                return $this->upgradeResponse('Subscription expired');
-            }
-        } catch (\Throwable $e) {
         }
 
         try {
@@ -120,7 +111,11 @@ class SubscriptionMiddleware implements MiddlewareInterface
                 $ins->execute([$tenantId, $trialPlanId, $start->format('Y-m-d H:i:s'), $end->format('Y-m-d H:i:s')]);
                 $subId = (int)$this->db->lastInsertId();
                 $this->insertEvent($subId, 'created', ['auto_trial' => true]);
-                return $handler->handle($request);
+                $sub = [
+                    'id' => $subId,
+                    'plan_id' => $trialPlanId,
+                    'end_date' => $end->format('Y-m-d H:i:s'),
+                ];
             }
 
             $endAt = new \DateTimeImmutable($sub['end_date']);
@@ -139,10 +134,31 @@ class SubscriptionMiddleware implements MiddlewareInterface
                 $this->maybeSendReminder((int)$sub['id']);
             }
 
-            return $handler->handle($request);
         } catch (\Throwable $e) {
-            return $handler->handle($request);
+            $this->logger->error('Subscription verification failed; request blocked.', [
+                'tenant_id' => (int) $tenantId,
+                'exception' => $e,
+            ]);
+            return $this->serviceUnavailableResponse();
         }
+
+        return $handler->handle($request);
+    }
+
+    private function serviceUnavailableResponse(): ResponseInterface
+    {
+        $response = new Response(503);
+        $response->getBody()->write(json_encode(
+            ApiResponseEnvelope::normalize([
+                'status' => 'error',
+                'message' => 'Subscription verification is temporarily unavailable.',
+            ], 503),
+            JSON_UNESCAPED_UNICODE
+        ));
+
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Cache-Control', 'no-store');
     }
 
     private function upgradeResponse(string $message, array $extra = []): ResponseInterface

@@ -26,6 +26,7 @@ class RequestRateLimiter implements MiddlewareInterface
     private array $rules;
     private array $ipWhitelist = [];
     private bool $trustProxy = false;
+    private array $trustedProxies = [];
     private array $headersConfig = [
         'enabled' => false,
         'limit' => 'X-RateLimit-Limit',
@@ -45,6 +46,7 @@ class RequestRateLimiter implements MiddlewareInterface
         ];
         $this->ipWhitelist = $options['ip_whitelist'] ?? [];
         $this->trustProxy = (bool)($options['trust_proxy'] ?? false);
+        $this->trustedProxies = $options['trusted_proxies'] ?? [];
         if (!empty($options['headers']) && is_array($options['headers'])) {
             $this->headersConfig = array_merge($this->headersConfig, $options['headers']);
         }
@@ -122,7 +124,7 @@ class RequestRateLimiter implements MiddlewareInterface
 
     private function getClientIP(Request $request): string
     {
-        return RequestHelper::getClientIp($request, $this->trustProxy);
+        return RequestHelper::getClientIp($request, $this->trustProxy, $this->trustedProxies);
     }
 
     private function isWhitelisted(string $ip): bool

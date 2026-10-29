@@ -67,11 +67,11 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
         return $response;
     }
 
-    /** Return whether the path matches an excluded prefix. */
+    /** Exempt only the exact health endpoint paths from HTTPS redirects. */
     private function isPathExcluded(string $path): bool
     {
         foreach ($this->excludePaths as $excludePath) {
-            if ($path === $excludePath || strpos($path, $excludePath) === 0) {
+            if ($path === $excludePath) {
                 return true;
             }
         }

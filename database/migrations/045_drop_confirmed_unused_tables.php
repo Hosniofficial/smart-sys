@@ -7,6 +7,8 @@ declare(strict_types=1);
  */
 final class DropConfirmedUnusedTables
 {
+    public const REQUIRES_BACKUP_CONFIRMATION = true;
+
     private const TABLES = [
         'documents',
         'payment_transactions',

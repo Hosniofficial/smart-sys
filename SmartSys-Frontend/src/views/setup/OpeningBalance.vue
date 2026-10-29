@@ -374,7 +374,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSetupStore } from '@/stores/setup/setupStore'
 import { useProductStore } from '@/stores/product/productStore'
 import { useCatalogStore } from '@/stores/catalog/catalogStore'
-import ExcelJS from 'exceljs'
 import AlertService from '@/services/AlertService'
 import { useBranchStore } from '@/stores/branch/branchStore'
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
@@ -780,6 +779,7 @@ async function onFileSelected(event) {
           sample: { headers, data: rows }
         }
       } else {
+        const { default: ExcelJS } = await import('exceljs')
         const workbook = new ExcelJS.Workbook()
         await workbook.xlsx.load(e.target.result)
         const worksheet = workbook.getWorksheet(1)
@@ -829,6 +829,7 @@ async function importFile() {
           jsonData.push(row)
         }
       } else {
+        const { default: ExcelJS } = await import('exceljs')
         const workbook = new ExcelJS.Workbook()
         await workbook.xlsx.load(e.target.result)
         const worksheet = workbook.getWorksheet(1)

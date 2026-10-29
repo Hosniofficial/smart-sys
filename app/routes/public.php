@@ -20,24 +20,50 @@ return function (App $app, Container $container): void {
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
     });
 
-    // ── Readiness / full health check ─────────────────────────────────────────
-    // Returns 200 if all critical checks pass, 503 otherwise.
-    // Used by monitoring tools (UptimeRobot, Grafana, Prometheus, etc.)
-    //
-    // Checks:
-    //   database     — PDO ping
-    //   logs         — log directory writable
-    //   disk         — free disk space (warn < 500 MB)
-    //   subscriptions — active tenant count (business metric)
-    //   expired_tokens — blacklist table size (maintenance metric)
+    // Public readiness response intentionally excludes operational details.
     $app->get('/health', function (Request $request, Response $response) use ($container) {
+        $healthy = true;
+        try {
+            $db = $container->get(PDO::class);
+            $db->query('SELECT 1');
+        } catch (\Throwable $e) {
+            $healthy = false;
+        }
+
+        $payload = [
+            'status' => $healthy ? 'ok' : 'error',
+            'message' => $healthy ? 'Healthy' : 'Health checks failed',
+            'timestamp' => date('c'),
+        ];
+        $response->getBody()->write(json_encode(
+            ApiResponseEnvelope::normalize($payload, $healthy ? 200 : 503),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        ));
+
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Cache-Control', 'no-store, no-cache')
+            ->withStatus($healthy ? 200 : 503);
+    });
+
+    // Detailed diagnostics require a dedicated secret and are not exposed by default.
+    $app->get('/health/details', function (Request $request, Response $response) use ($container) {
+        $expectedToken = (string) ($_ENV['HEALTH_DETAILS_TOKEN'] ?? getenv('HEALTH_DETAILS_TOKEN') ?: '');
+        $providedToken = $request->getHeaderLine('X-Health-Token');
+        if (
+            $expectedToken === ''
+            || $providedToken === ''
+            || !hash_equals($expectedToken, $providedToken)
+        ) {
+            return $response->withStatus(404);
+        }
+
         $checks  = [];
         $healthy = true;
         $db      = null;
 
-        // 1. Database ping
         try {
-            $db   = $container->get(PDO::class);
+            $db = $container->get(PDO::class);
             $db->query('SELECT 1');
             $checks['database'] = ['status' => 'ok'];
         } catch (\Throwable $e) {
@@ -45,14 +71,12 @@ return function (App $app, Container $container): void {
             $healthy = false;
         }
 
-        // 2. Log directory writable
         $logDir = __DIR__ . '/../../logs';
         $logOk  = is_dir($logDir) && is_writable($logDir);
         $checks['logs'] = $logOk
             ? ['status' => 'ok']
             : ['status' => 'warn', 'message' => 'Log directory not writable'];
 
-        // 3. Disk space
         $freeBytes = @disk_free_space(__DIR__);
         $freeMB    = $freeBytes !== false ? (int) round($freeBytes / 1024 / 1024) : null;
         $diskStatus = ($freeMB === null || $freeMB > 500) ? 'ok' : 'warn';
@@ -62,7 +86,6 @@ return function (App $app, Container $container): void {
         }
         $checks['disk'] = ['status' => $diskStatus, 'free_mb' => $freeMB];
 
-        // 4. Active subscriptions (business metric — non-critical)
         if ($db) {
             try {
                 $stmt = $db->query("SELECT COUNT(*) FROM subscriptions WHERE status IN ('active','trial')");
@@ -72,7 +95,6 @@ return function (App $app, Container $container): void {
             }
         }
 
-        // 5. JWT blacklist size (maintenance — warn if > 10k rows, should be pruned by cron)
         if ($db) {
             try {
                 $stmt = $db->query("SELECT COUNT(*) FROM jwt_blacklist WHERE expires_at < NOW()");
@@ -87,7 +109,6 @@ return function (App $app, Container $container): void {
             }
         }
 
-        // 6. Idempotency keys cleanup check
         if ($db) {
             try {
                 $stmt = $db->query("SELECT COUNT(*) FROM payment_idempotency_keys WHERE expires_at < NOW()");

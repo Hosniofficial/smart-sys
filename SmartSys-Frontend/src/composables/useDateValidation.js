@@ -29,29 +29,14 @@ import { useToast } from '@/composables/useToast';
  * ```
  */
 
-interface DateValidationOptions {
-  allowFutureDate?: boolean;           // Allow end date to be in future (default: false)
-  maxDaysRange?: number;               // Maximum range in days (default: 365, set to 0 to disable)
-  minDate?: Date;                      // Absolute minimum date (default: 1 year ago)
-  maxDate?: Date;                      // Absolute maximum date (default: today + 1 day)
-  showToast?: boolean;                 // Show toast notification on error (default: true)
-  returnErrors?: boolean;              // Return detailed error info instead of just boolean (default: false)
-}
-
-interface ValidationResult {
-  valid: boolean;
-  error?: string;
-  errorAr?: string;
-}
-
-export function useDateValidation(defaultOptions?: DateValidationOptions) {
+export function useDateValidation(defaultOptions = {}) {
   const { showToast } = useToast();
   
   // Store last error for debugging
   const validationError = ref<string | null>(null);
   const validationErrorAr = ref<string | null>(null);
   
-  const defaultOpts: DateValidationOptions = {
+  const defaultOpts = {
     allowFutureDate: false,
     maxDaysRange: 365,
     showToast: true,
@@ -62,7 +47,7 @@ export function useDateValidation(defaultOptions?: DateValidationOptions) {
   /**
    * Normalize date string to Date object (handling YYYY-MM-DD format)
    */
-  const normalizeDate = (dateValue: string | Date | null | undefined): Date | null => {
+  const normalizeDate = (dateValue) => {
     if (!dateValue) return null;
     
     if (dateValue instanceof Date) {
@@ -88,7 +73,7 @@ export function useDateValidation(defaultOptions?: DateValidationOptions) {
   /**
    * Check if date is today or earlier (ignoring time)
    */
-  const isDateTodayOrEarlier = (date: Date): boolean => {
+  const isDateTodayOrEarlier = (date) => {
     const today = new Date();
     const todayNormalized = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const dateNormalized = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -98,7 +83,7 @@ export function useDateValidation(defaultOptions?: DateValidationOptions) {
   /**
    * Calculate days between two dates
    */
-  const daysBetween = (start: Date, end: Date): number => {
+  const daysBetween = (start, end) => {
     const msPerDay = 24 * 60 * 60 * 1000;
     return Math.floor((end.getTime() - start.getTime()) / msPerDay);
   };
@@ -107,10 +92,10 @@ export function useDateValidation(defaultOptions?: DateValidationOptions) {
    * Main validation function
    */
   const validateDateRange = (
-    startDateInput: string | Date | null | undefined,
-    endDateInput: string | Date | null | undefined,
-    options?: DateValidationOptions
-  ): boolean => {
+    startDateInput,
+    endDateInput,
+    options
+  ) => {
     const opts = { ...defaultOpts, ...options };
     const result = validateDateRangeDetailed(startDateInput, endDateInput, opts);
     
@@ -132,10 +117,10 @@ export function useDateValidation(defaultOptions?: DateValidationOptions) {
    * Detailed validation function that returns error info
    */
   const validateDateRangeDetailed = (
-    startDateInput: string | Date | null | undefined,
-    endDateInput: string | Date | null | undefined,
-    options?: DateValidationOptions
-  ): ValidationResult => {
+    startDateInput,
+    endDateInput,
+    options
+  ) => {
     const opts = { ...defaultOpts, ...options };
     
     // Parse dates

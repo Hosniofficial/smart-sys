@@ -39,7 +39,11 @@ return [
         'max_attempts' => (int)($_ENV['RATE_LIMIT_MAX_ATTEMPTS'] ?? 60),
         'window' => (int)($_ENV['RATE_LIMIT_WINDOW'] ?? 60),
         'cache_prefix' => 'rate_limit_',
-        'trust_proxy' => ($_ENV['TRUST_PROXY'] ?? 'true') === 'true',
+        'trust_proxy' => filter_var($_ENV['TRUST_PROXY'] ?? 'false', FILTER_VALIDATE_BOOLEAN),
+        'trusted_proxies' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) ($_ENV['TRUSTED_PROXY_IPS'] ?? ''))
+        ))),
         'ip_whitelist' => [
             '127.0.0.1',
             '::1',

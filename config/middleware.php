@@ -40,7 +40,10 @@ return function (App $app, Container $container): void {
     // Body parsing must be early to handle JSON before other middleware
     $app->addBodyParsingMiddleware();
     
-    $app->add(new SecurityHeadersMiddleware());
+    $app->add(new SecurityHeadersMiddleware(
+        headers: $securityConfig['security_headers'] ?? [],
+        cspDirectives: $securityConfig['csp'] ?? []
+    ));
 
     $httpsEnabled = ($_ENV['HTTPS_ENFORCEMENT_ENABLED'] ?? 'true') === 'true';
     $app->add(new HttpsEnforcementMiddleware(

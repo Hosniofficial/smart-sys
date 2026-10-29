@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    name: PHP ${{ matrix.php }} tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.1', '8.2']
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: inventory_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: inventory_test
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      RUN_MYSQL_MIGRATION_TESTS: '1'
+      RUN_MYSQL_CASH_VOUCHER_TESTS: '1'
+      RUN_MYSQL_SUPPLIER_PAYMENT_TESTS: '1'
+      RUN_MYSQL_REPAIR_TESTS: '1'
+      RUN_MYSQL_SALES_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: curl, gd, mbstring, mysqli, pdo_mysql, pdo_sqlite, sodium, xml, zip
+          coverage: none
+          tools: composer:v2
+      - name: Validate Composer files
+        run: composer validate --no-check-publish
+      - name: Install PHP dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+      - name: Audit PHP dependencies
+        run: composer audit --no-interaction
+      - name: Run PHP tests
+        run: vendor/bin/phpunit --colors=never
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: SmartSys-Frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: SmartSys-Frontend
+        run: npm ci
+      - name: Build frontend
+        working-directory: SmartSys-Frontend
+        run: npm run build

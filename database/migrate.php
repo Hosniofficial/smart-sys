@@ -27,6 +27,7 @@ if (file_exists(__DIR__ . '/../.env')) {
 
 require_once __DIR__ . '/MigrationDatabase.php';
 require_once __DIR__ . '/MigrationHistoryGuard.php';
+require_once __DIR__ . '/MigrationSafetyGuard.php';
 
 try {
     $processEnvironment = getenv();
@@ -99,7 +100,7 @@ $command = $argv[1] ?? 'status';
 
 switch ($command) {
     case 'up':
-        runMigrationsUp($pdo, $migrations);
+        runMigrationsUp($pdo, $migrations, array_slice($argv, 2));
         break;
         
     case 'down':
@@ -127,9 +128,44 @@ switch ($command) {
 // الدوال
 // ──────────────────────────────────────────────────────────
 
-function runMigrationsUp(PDO $pdo, array $migrations): void
+function runMigrationsUp(PDO $pdo, array $migrations, array $options = []): void
 {
     prepareMigrationLedger($pdo, $migrations);
+    $executed = executedMigrations($pdo);
+    $pending = array_values(array_diff($migrations, $executed));
+    $irreversible = [];
+
+    foreach ($pending as $migration) {
+        $filePath = __DIR__ . "/migrations/{$migration}.php";
+        if (!file_exists($filePath)) {
+            throw new RuntimeException("Migration file is missing: {$filePath}");
+        }
+
+        require_once $filePath;
+        $className = migrationClassName($migration);
+        if (!class_exists($className)) {
+            throw new RuntimeException("Migration class {$className} is missing from {$filePath}.");
+        }
+
+        if (MigrationSafetyGuard::requiresBackupConfirmation($className)) {
+            $irreversible[] = $migration;
+        }
+    }
+
+    $backupReference = '';
+    foreach ($options as $option) {
+        if (strpos($option, '--backup-reference=') === 0) {
+            $backupReference = substr($option, strlen('--backup-reference='));
+        }
+    }
+    MigrationSafetyGuard::assertConfirmed(
+        $irreversible,
+        in_array('--confirm-irreversible', $options, true),
+        $backupReference
+    );
+    if ($irreversible !== []) {
+        echo 'Irreversible migrations authorized with backup reference: ' . trim($backupReference) . "\n";
+    }
 
     echo "\n" . str_repeat("=", 60) . "\n";
     echo "🚀 تشغيل Migrations\n";
@@ -158,15 +194,20 @@ function runMigrationsUp(PDO $pdo, array $migrations): void
                 throw new RuntimeException("Migration file is missing: {$filePath}");
             }
             
-            require $filePath;
+            require_once $filePath;
             
             // الحصول على اسم الكلاس من اسم الملف (تحويل snake_case إلى PascalCase)
-            $className = implode('', array_map('ucfirst', explode('_', preg_replace('/^\d+_/', '', $migration))));
+            $className = migrationClassName($migration);
             
             if (!class_exists($className)) {
                 throw new RuntimeException("Migration class {$className} is missing from {$filePath}.");
             }
-            
+
+            function migrationClassName(string $migration): string
+            {
+                return implode('', array_map('ucfirst', explode('_', preg_replace('/^\d+_/', '', $migration))));
+            }
+
             $migrator = new $className($pdo);
             
             if (!method_exists($migrator, 'up')) {
@@ -412,6 +453,8 @@ function showHelp()
     echo str_repeat("=", 60) . "\n\n";
     echo "الاستخدام:\n";
     echo "  php database/migrate.php up      - تشغيل جميع الـ migrations\n";
+    echo "  php database/migrate.php up --confirm-irreversible --backup-reference=backup-id\n";
+    echo "      تطبيق migrations غير القابلة للعكس بعد التحقق من استعادة النسخة الاحتياطية\n";
     echo "  php database/migrate.php down    - التراجع عن آخر migration\n";
     echo "  php database/migrate.php status  - عرض حالة الـ migrations\n";
     echo "  php database/migrate.php baseline 003_insert_core_data --confirm-applied-001-003\n";

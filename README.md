@@ -43,7 +43,7 @@ SmartSys/
 
 ## المتطلبات
 
-- PHP 8.1+
+- PHP 8.1+ (يوصى باستخدام إصدار ما زال مدعومًا أمنيًا، مثل PHP 8.2+ للإنتاج)
 - Composer 2
 - MySQL 8+
 - Node.js 20.19+
@@ -109,6 +109,16 @@ vendor/bin/phpunit --testsuite Unit
 Set-Location SmartSys-Frontend
 npm run build
 ```
+
+يتحقق GitHub Actions من PHP 8.1 و8.2، واختبارات MySQL المعزولة، وبناء الواجهة عند كل push وpull request.
+
+قبل تشغيل migrations غير القابلة للعكس على قاعدة قائمة، اختبر استعادة نسخة احتياطية على staging ثم مرر معرّفها صراحةً:
+
+```powershell
+php database/migrate.php up --confirm-irreversible --backup-reference=backup-id-2026-10-27
+```
+
+راجع [إرشادات قاعدة البيانات](database/README.md) قبل أي ترحيل.
 
 ## إرشادات النمط والعمل
 

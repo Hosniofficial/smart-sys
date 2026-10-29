@@ -26,7 +26,7 @@ class AuthHandler extends BaseHandler
     private ?JwtBlacklistService $jwtBlacklistService;
     private ?SecurityLogger $securityLogger;
     private AuthSessionService $authSession;
-    private \PHPGangsta_GoogleAuthenticator $ga;
+    private \PragmaRX\Google2FA\Google2FA $ga;
     private TwoFactorEncryptionService $twoFaEncryption;
 
     public function __construct(
@@ -41,7 +41,7 @@ class AuthHandler extends BaseHandler
         $this->jwtBlacklistService = $jwtBlacklistService;
         $this->securityLogger = $securityLogger;
         $this->authSession = $authSession ?? new AuthSessionService($db);
-        $this->ga = new \PHPGangsta_GoogleAuthenticator();
+        $this->ga = new \PragmaRX\Google2FA\Google2FA();
         $this->twoFaEncryption = new TwoFactorEncryptionService();
     }
 
@@ -166,7 +166,14 @@ class AuthHandler extends BaseHandler
                     ], 200);
                 }
 
-                if (empty($user['two_fa_secret']) || !$this->ga->verifyCode((string) $this->twoFaEncryption->decrypt($user['two_fa_secret']), $twoFactorCode)) {
+                if (
+                    empty($user['two_fa_secret'])
+                    || !$this->ga->verifyKey(
+                        (string) $this->twoFaEncryption->decrypt($user['two_fa_secret']),
+                        $twoFactorCode,
+                        1
+                    )
+                ) {
                     $this->logger->warning('Invalid 2FA code during login', [
                         'user_id' => $user['id'],
                         'ip' => $clientIp

@@ -7,6 +7,8 @@ declare(strict_types=1);
  */
 final class RemoveReviewedUnusedColumns
 {
+    public const REQUIRES_BACKUP_CONFIRMATION = true;
+
     private const COLUMNS = [
         'account_device_associations' => [
             'first_associated_at',
@@ -116,25 +118,68 @@ final class RemoveReviewedUnusedColumns
     {
         $definitions = [];
         foreach ([
-            ['SELECT VIEW_DEFINITION FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE()'],
-            ['SELECT ACTION_STATEMENT FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE()'],
-            ['SELECT cc.CHECK_CLAUSE
+            [
+                'object' => 'view',
+                'query' => 'SELECT TABLE_NAME, VIEW_DEFINITION
+                            FROM information_schema.VIEWS
+                            WHERE TABLE_SCHEMA = DATABASE()',
+            ],
+            [
+                'object' => 'trigger',
+                'query' => 'SELECT TRIGGER_NAME, ACTION_STATEMENT
+                            FROM information_schema.TRIGGERS
+                            WHERE TRIGGER_SCHEMA = DATABASE()',
+            ],
+            [
+                'object' => 'routine',
+                'query' => 'SELECT ROUTINE_NAME, ROUTINE_DEFINITION
+                            FROM information_schema.ROUTINES
+                            WHERE ROUTINE_SCHEMA = DATABASE()',
+            ],
+            [
+                'object' => 'event',
+                'query' => 'SELECT EVENT_NAME, EVENT_DEFINITION
+                            FROM information_schema.EVENTS
+                            WHERE EVENT_SCHEMA = DATABASE()',
+            ],
+        ] as $query) {
+            $statement = $this->pdo->query($query['query']);
+            foreach ($statement->fetchAll(PDO::FETCH_NUM) as [$name, $definition]) {
+                if ($definition === null) {
+                    throw new RuntimeException(
+                        "Cannot verify whether {$query['object']} {$name} references {$table}.{$column}."
+                    );
+                }
+                $definitions[] = [
+                    'object' => $query['object'],
+                    'name' => (string) $name,
+                    'definition' => (string) $definition,
+                ];
+            }
+        }
+
+        $checkConstraints = $this->pdo->prepare(
+            'SELECT tc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
              FROM information_schema.CHECK_CONSTRAINTS cc
              JOIN information_schema.TABLE_CONSTRAINTS tc
                ON tc.CONSTRAINT_SCHEMA = cc.CONSTRAINT_SCHEMA
               AND tc.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
-             WHERE tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = ?'],
-        ] as $query) {
-            $statement = $this->pdo->prepare($query[0]);
-            $statement->execute(str_contains($query[0], 'TABLE_CONSTRAINTS') ? [$table] : []);
-            array_push($definitions, ...$statement->fetchAll(PDO::FETCH_COLUMN));
+             WHERE tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = ?'
+        );
+        $checkConstraints->execute([$table]);
+        foreach ($checkConstraints->fetchAll(PDO::FETCH_NUM) as [$name, $definition]) {
+            $definitions[] = [
+                'object' => 'check constraint',
+                'name' => (string) $name,
+                'definition' => (string) $definition,
+            ];
         }
 
         $columnPattern = '/(?<![A-Za-z0-9_])' . preg_quote($column, '/') . '(?![A-Za-z0-9_])/i';
-        foreach ($definitions as $definition) {
-            if (preg_match($columnPattern, (string) $definition) === 1) {
+        foreach ($definitions as $entry) {
+            if (preg_match($columnPattern, $entry['definition']) === 1) {
                 throw new RuntimeException(
-                    "Refusing to remove {$table}.{$column}; a view, trigger, or check constraint references it."
+                    "Refusing to remove {$table}.{$column}; {$entry['object']} {$entry['name']} references it."
                 );
             }
         }

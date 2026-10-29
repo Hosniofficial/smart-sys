@@ -205,14 +205,17 @@ const branches = computed(() => branchStore.branches);
 const selectedBranch = computed({
   get: () => {
     if (!canSelectBranch.value) {
-      return authStore.user?.branch_id ? String(authStore.user.branch_id) : 'all';
+      return authStore.user?.branch_id ? String(authStore.user.branch_id) : null;
     }
-    return branchStore.selectedBranchId ?? 'all';
+    return branchStore.selectedBranchId ?? null;
   },
   set: (val) => {
     if (canSelectBranch.value) {
-      const normalized = val === 'all' || val === null || val === undefined ? null : val;
-      branchStore.setSelectedBranch(normalized);
+      const normalized = val === 'all' || val === null || val === undefined ? null : Number(val);
+      const current = branchStore.selectedBranchId;
+      if (String(current ?? 'all') !== String(normalized ?? 'all')) {
+        branchStore.setSelectedBranch(normalized);
+      }
     }
   }
 });
@@ -243,9 +246,13 @@ const summary = computed(() => {
 
 const fetchReport = async () => {
   isLoading.value = true; error.value = null;
-  const branchId = canSelectBranch.value
-    ? (selectedBranch.value !== 'all' ? selectedBranch.value : null)
-    : (authStore.user?.branch_id ? String(authStore.user.branch_id) : null);
+
+  const userBranchId = authStore.user?.branch_id ? String(authStore.user.branch_id) : null;
+  const selectedBranchId = canSelectBranch.value
+    ? (selectedBranch.value && selectedBranch.value !== 'all' ? String(selectedBranch.value) : null)
+    : userBranchId;
+
+  const branchId = selectedBranchId || userBranchId || (branchStore.branches?.[0]?.id ? String(branchStore.branches[0].id) : null);
 
   try {
     const list = await voucherStore.fetchVouchersList({ 

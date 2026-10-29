@@ -122,4 +122,16 @@ final class AuthSessionServiceTest extends TestCase
         self::assertStringContainsString('Path=/api/v1/auth', $cleared);
         self::assertStringContainsString('Max-Age=0', $cleared);
     }
+
+    public function testRefreshCookieDefaultsToSecureWhenHttpsConfigurationIsMissing(): void
+    {
+        unset($_ENV['HTTPS_ENFORCEMENT_ENABLED']);
+        $service = new AuthSessionService(new PDO('sqlite::memory:'));
+
+        $cookie = $service->setRefreshTokenCookie(new Response(), 'refresh-token')->getHeaderLine('Set-Cookie');
+        self::assertStringContainsString('Secure', $cookie);
+
+        $clearedCookie = $service->clearRefreshTokenCookie(new Response())->getHeaderLine('Set-Cookie');
+        self::assertStringContainsString('Secure', $clearedCookie);
+    }
 }

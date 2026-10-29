@@ -104,9 +104,17 @@ const onSelectChange = (e) => {
   const branchId = val === 'all' || val === '' ? null : val
 
   if (props.branchSelectionMode === 'required') {
-    if (branchId !== null) branchStore.setTemporaryBranch(branchId)
+    if (branchId !== null) {
+      const current = branchStore.selectedBranchId
+      if (String(current) !== String(branchId)) {
+        branchStore.setTemporaryBranch(branchId)
+      }
+    }
   } else {
-    branchStore.setSelectedBranch(branchId)
+    const current = branchStore.selectedBranchId
+    if (String(current ?? 'all') !== String(branchId ?? 'all')) {
+      branchStore.setSelectedBranch(branchId)
+    }
   }
 
   emit('branch-changed', branchId)

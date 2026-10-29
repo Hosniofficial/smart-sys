@@ -27,7 +27,8 @@ class SecurityHeadersMiddleware implements MiddlewareInterface
     public function __construct(
         array $headers = [],
         ?LoggerInterface $logger = null,
-        bool $isProduction = false
+        bool $isProduction = false,
+        array $cspDirectives = []
     ) {
         $this->logger = $logger;
         $this->isProduction = $isProduction;
@@ -59,12 +60,12 @@ class SecurityHeadersMiddleware implements MiddlewareInterface
             'Expires' => '0',
         ];
 
-        $this->cspDirectives = [
+        $this->cspDirectives = $cspDirectives ?: [
             // Default policy for loading resources
             'default-src' => ["'self'"],
 
             // JavaScript sources
-            'script-src' => ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+            'script-src' => ["'self'", "'unsafe-inline'"],
 
             // CSS sources
             'style-src' => ["'self'", "'unsafe-inline'", 'fonts.googleapis.com', 'cdn.jsdelivr.net'],

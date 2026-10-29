@@ -7,6 +7,8 @@ declare(strict_types=1);
  */
 final class RemoveRedundantProductActiveFlag
 {
+    public const REQUIRES_BACKUP_CONFIRMATION = true;
+
     private const COLUMN = 'is_active_product';
     private const INDEX = 'idx_is_active_product';
 

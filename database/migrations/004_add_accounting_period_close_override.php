@@ -7,6 +7,8 @@ require_once __DIR__ . '/../MigrationDatabase.php';
 /** Adds the narrowly scoped permission used to override accounting-period close blockers. */
 class AddAccountingPeriodCloseOverride
 {
+    public const REQUIRES_BACKUP_CONFIRMATION = true;
+
     private PDO $pdo;
 
     public function __construct(?PDO $pdo = null)

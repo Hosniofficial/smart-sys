@@ -30,7 +30,7 @@ declare(strict_types=1);
 
 // Set error reporting
 error_reporting(E_ALL);
-ini_set('display_errors', '1');
+ini_set('display_errors', PHP_SAPI === 'cli' ? '1' : '0');
 ini_set('log_errors', '1');
 
 // Load environment
@@ -47,15 +47,14 @@ $dotenv->load();
 // Verify cron secret if running via HTTP
 if (php_sapi_name() !== 'cli') {
     $cronSecret = $_ENV['CRON_SECRET'] ?? null;
-    $providedSecret = $_SERVER['HTTP_X_CRON_TOKEN'] ?? $_GET['token'] ?? null;
+    $providedSecret = $_SERVER['HTTP_X_CRON_TOKEN'] ?? '';
 
-    if (!$cronSecret || $providedSecret !== $cronSecret) {
+    if (!$cronSecret || !hash_equals($cronSecret, $providedSecret)) {
         http_response_code(403);
         header('Content-Type: application/json');
         echo json_encode(ApiResponseEnvelope::normalize([
             'status' => 'error',
-            'message' => 'Unauthorized - Invalid cron token',
-            'error' => 'Unauthorized - Invalid cron token'
+            'message' => 'Forbidden',
         ], 403), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit(1);
     }
@@ -132,15 +131,18 @@ try {
         'code' => $e->getCode()
     ]);
 
-    $message = 'ERROR: Database connection failed - ' . $e->getMessage();
+    $logger->error('Database connection failed in notification batch processor', [
+        'error' => $e->getMessage(),
+        'code' => $e->getCode(),
+    ]);
     if (PHP_SAPI === 'cli') {
-        echo sprintf("[%s] %s\n", date('Y-m-d H:i:s'), $message);
+        echo sprintf("[%s] ERROR: Database connection failed - %s\n", date('Y-m-d H:i:s'), $e->getMessage());
     } else {
         http_response_code(500);
         header('Content-Type: application/json');
         echo json_encode(ApiResponseEnvelope::normalize([
             'status' => 'error',
-            'message' => $message,
+            'message' => 'Notification batch processing failed.',
         ], 500), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
@@ -152,15 +154,14 @@ try {
         'trace' => $e->getTraceAsString()
     ]);
 
-    $message = 'ERROR: ' . $e->getMessage();
     if (PHP_SAPI === 'cli') {
-        echo sprintf("[%s] %s\n", date('Y-m-d H:i:s'), $message);
+        echo sprintf("[%s] ERROR: %s\n", date('Y-m-d H:i:s'), $e->getMessage());
     } else {
         http_response_code(500);
         header('Content-Type: application/json');
         echo json_encode(ApiResponseEnvelope::normalize([
             'status' => 'error',
-            'message' => $message,
+            'message' => 'Notification batch processing failed.',
         ], 500), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 

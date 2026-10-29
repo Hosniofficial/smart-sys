@@ -9,7 +9,6 @@
         "vlucas/phpdotenv": "^5.6",
         "firebase/php-jwt": "^7.0",
         "dompdf/dompdf": "^3.1",
-        "phpgangsta/googleauthenticator": "dev-master#505c2af8337b559b33557f37cda38e5f843f3768",
         "pusher/pusher-php-server": "^7.2",
         "monolog/monolog": "^2.11",
         "phpmailer/phpmailer": "^6.10",
@@ -17,8 +16,8 @@
         "php-di/php-di": "^7.1",
         "nikic/php-parser": "^5.7",
         "stripe/stripe-php": "^19.4",
-        "paypal/rest-api-sdk-php": "^1.6",
-        "sentry/sentry": "^4.0"
+        "sentry/sentry": "^4.0",
+        "pragmarx/google2fa": "^9.1"
     },
     "autoload": {
         "psr-4": {
@@ -35,7 +34,7 @@
     },
     "config": {
         "platform": {
-            "php": "8.0.30"
+            "php": "8.1.0"
         }
     },
     "require-dev": {

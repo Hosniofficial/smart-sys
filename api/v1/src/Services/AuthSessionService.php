@@ -149,7 +149,7 @@ final class AuthSessionService
     /** Add the configured HttpOnly refresh-token cookie to a response. */
     public function setRefreshTokenCookie(Response $response, string $token): Response
     {
-        $secure = ($_ENV['HTTPS_ENFORCEMENT_ENABLED'] ?? 'false') === 'true' ? '; Secure' : '';
+        $secure = ($_ENV['HTTPS_ENFORCEMENT_ENABLED'] ?? 'true') === 'true' ? '; Secure' : '';
         $sameSite = '; SameSite=Strict';
         $path = '; Path=' . $this->getRefreshCookiePath();
         $maxAge = '; Max-Age=' . $this->refreshTokenExpiry;
@@ -163,7 +163,7 @@ final class AuthSessionService
     /** Clear the refresh-token cookie using the same path and security attributes. */
     public function clearRefreshTokenCookie(Response $response): Response
     {
-        $secure = ($_ENV['HTTPS_ENFORCEMENT_ENABLED'] ?? 'false') === 'true' ? '; Secure' : '';
+        $secure = ($_ENV['HTTPS_ENFORCEMENT_ENABLED'] ?? 'true') === 'true' ? '; Secure' : '';
         $sameSite = '; SameSite=Strict';
         $path = '; Path=' . $this->getRefreshCookiePath();
 

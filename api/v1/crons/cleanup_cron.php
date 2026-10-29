@@ -56,7 +56,17 @@ try {
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     ]);
 } catch (\PDOException $e) {
-    echo '[CLEANUP] DB connection failed: ' . $e->getMessage() . PHP_EOL;
+    error_log('[CLEANUP] DB connection failed: ' . $e->getMessage());
+    if ($isCli) {
+        echo '[CLEANUP] DB connection failed: ' . $e->getMessage() . PHP_EOL;
+    } else {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode(ApiResponseEnvelope::normalize([
+            'status' => 'error',
+            'message' => 'Cleanup failed.',
+        ], 500), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
     exit(1);
 }
 
@@ -69,6 +79,7 @@ try {
     $stmt->execute();
     $results['jwt_blacklist'] = ['deleted' => $stmt->rowCount(), 'status' => 'ok'];
 } catch (\Throwable $e) {
+    error_log('[CLEANUP] JWT blacklist cleanup failed: ' . $e->getMessage());
     $results['jwt_blacklist'] = ['status' => 'error', 'message' => $e->getMessage()];
 }
 
@@ -78,6 +89,7 @@ try {
     $stmt->execute();
     $results['idempotency_keys'] = ['deleted' => $stmt->rowCount(), 'status' => 'ok'];
 } catch (\Throwable $e) {
+    error_log('[CLEANUP] Idempotency-key cleanup failed: ' . $e->getMessage());
     $results['idempotency_keys'] = ['status' => 'error', 'message' => $e->getMessage()];
 }
 
@@ -87,6 +99,7 @@ try {
     $stmt->execute();
     $results['refresh_tokens'] = ['deleted' => $stmt->rowCount(), 'status' => 'ok'];
 } catch (\Throwable $e) {
+    error_log('[CLEANUP] Refresh-token cleanup failed: ' . $e->getMessage());
     $results['refresh_tokens'] = ['status' => 'error', 'message' => $e->getMessage()];
 }
 
@@ -96,6 +109,7 @@ try {
     $stmt->execute();
     $results['login_attempts'] = ['deleted' => $stmt->rowCount(), 'status' => 'ok'];
 } catch (\Throwable $e) {
+    error_log('[CLEANUP] Login-attempt cleanup failed: ' . $e->getMessage());
     $results['login_attempts'] = ['status' => 'error', 'message' => $e->getMessage()];
 }
 
@@ -106,6 +120,7 @@ try {
     $stmt->execute([$retentionDays]);
     $results['security_events'] = ['deleted' => $stmt->rowCount(), 'status' => 'ok'];
 } catch (\Throwable $e) {
+    error_log('[CLEANUP] Security-event cleanup failed: ' . $e->getMessage());
     $results['security_events'] = ['status' => 'error', 'message' => $e->getMessage()];
 }
 
@@ -124,11 +139,18 @@ if ($isCli) {
     echo json_encode($output, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . PHP_EOL;
 } else {
     header('Content-Type: application/json');
+    foreach ($output['tasks'] as &$task) {
+        if (($task['status'] ?? '') === 'error') {
+            unset($task['message']);
+        }
+    }
+    unset($task);
     $httpPayload = array_merge($output, [
         'message' => empty($hasErrors) ? 'Cleanup completed' : 'Cleanup completed with errors',
     ]);
+    http_response_code(empty($hasErrors) ? 200 : 500);
     echo json_encode(
-        ApiResponseEnvelope::normalize($httpPayload, 200),
+        ApiResponseEnvelope::normalize($httpPayload, empty($hasErrors) ? 200 : 500),
         JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
     );
 }
