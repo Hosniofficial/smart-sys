@@ -579,7 +579,7 @@ class RBACHandler extends BaseHandler
                        )
                    )
                 GROUP BY r.id
-                ORDER BY COALESCE(r.tenant_id, 0) DESC, r.name
+                ORDER BY COALESCE(r.sort_order, 1000), COALESCE(r.tenant_id, 0) DESC, r.name
             ");
             $stmt->execute([$tenantId, $tenantId, $tenantId, $tenantId]);
             $roles = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];

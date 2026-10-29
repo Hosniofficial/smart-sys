@@ -90,6 +90,7 @@ $migrations = [
     '043_add_remaining_requested_foreign_keys',
     '044_remove_redundant_product_active_flag',
     '045_drop_confirmed_unused_tables',
+    '046_add_role_codes_and_sort_order',
 ];
 
 // ──────────────────────────────────────────────────────────

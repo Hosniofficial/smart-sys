@@ -58,7 +58,7 @@ final class PermissionResolverTest extends TestCase
         $this->db->exec("INSERT INTO users VALUES
             (1, 10, 4, 0), (2, 10, 1, 1), (3, 10, 2, 0),
             (4, 10, 3, 0), (5, 10, 1, 0), (6, 10, 4, 0),
-            (7, 0, 1, 0)");
+            (7, 0, 1, 0), (8, 20, 4, 0)");
         $this->db->exec("INSERT INTO roles VALUES
             (1, 'super_admin', NULL, 1), (2, 'admin', NULL, 1),
             (3, 'cashier', 20, 0), (4, 'employee', NULL, 1),
@@ -71,7 +71,7 @@ final class PermissionResolverTest extends TestCase
             (3, 1, NULL), (4, 1, NULL), (5, 1, NULL), (6, 2, NULL)");
         $this->db->exec("INSERT INTO users_role VALUES
             (1, 4, 10), (2, 2, 10), (3, 3, 10), (4, 4, 20),
-            (5, 1, 10), (6, 6, 10)");
+            (5, 1, 10), (6, 6, 10), (8, 4, 20)");
     }
 
     public function testResolvesGlobalAndSameTenantRolePermissions(): void
@@ -210,6 +210,22 @@ final class PermissionResolverTest extends TestCase
         self::assertSame(
             ['purchase.view'],
             PermissionResolver::getGrantedPermissionNames($this->db, 1)
+        );
+    }
+
+    public function testTenantRoleOverridesDoNotCrossTenantBoundaries(): void
+    {
+        $this->db->exec("INSERT INTO permission_overrides
+            (tenant_id, subject_type, subject_id, permission_id, effect, reason, created_by)
+            VALUES (10, 'role', 4, 2, 'allow', 'Tenant A scope test', 99)");
+
+        self::assertSame(
+            ['purchase.view', 'sale.view'],
+            PermissionResolver::getGrantedPermissionNames($this->db, 1)
+        );
+        self::assertSame(
+            ['sale.view'],
+            PermissionResolver::getGrantedPermissionNames($this->db, 8)
         );
     }
 

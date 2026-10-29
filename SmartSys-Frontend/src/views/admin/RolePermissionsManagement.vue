@@ -47,7 +47,7 @@
               >
                 <option value="" disabled>اختر الدور</option>
                 <option v-for="role in roles" :key="role.id" :value="String(role.id)">
-                  {{ roleLabel(role.name, role.display_name) }}
+                  {{ roleLabel(role) }}
                 </option>
               </select>
             </label>
@@ -283,8 +283,9 @@ const protectedNames = new Set([
 ])
 
 const roleLabels = {
-  admin: 'مدير النظام', manager: 'مدير الفروع', cashier: 'كاشير',
+  super_admin: 'مدير المنصة', admin: 'مسؤول المنشأة', manager: 'مدير الفروع', cashier: 'كاشير',
   inventory_clerk: 'مسؤول المخزون', finance_officer: 'مسؤول مالي',
+  branch_manager: 'مدير الفرع',
 }
 
 const roleDescriptions = {
@@ -324,8 +325,8 @@ const categoryLabels = {
   other:                  'صلاحيات أخرى',
 }
 
-const roleLabel       = (name, fallback = name) => roleLabels[name] || fallback || name
-const roleDescription = role => roleDescriptions[role.name] || roleLabel(role.name, role.display_name)
+const roleLabel       = role => roleLabels[role.role_code || role.name] || role.display_name || role.name
+const roleDescription = role => roleDescriptions[role.role_code || role.name] || roleLabel(role)
 const categoryLabel   = name => categoryLabels[name] || name
 const permissionLabel = p => p.display_name || p.name
 const isProtected     = name => protectedNames.has(name)
