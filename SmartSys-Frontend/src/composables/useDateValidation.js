@@ -33,8 +33,8 @@ export function useDateValidation(defaultOptions = {}) {
   const { showToast } = useToast();
   
   // Store last error for debugging
-  const validationError = ref<string | null>(null);
-  const validationErrorAr = ref<string | null>(null);
+  const validationError = ref(null);
+  const validationErrorAr = ref(null);
   
   const defaultOpts = {
     allowFutureDate: false,

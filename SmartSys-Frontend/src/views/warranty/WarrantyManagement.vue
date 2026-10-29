@@ -177,22 +177,20 @@
     </div>
 
     <!-- Create Warranty Modal -->
-    <BaseModal :show="showCreate" @close="showCreate = false; resetForm()" maxWidth="4xl">
-      <template #header>
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white"><i class="fas fa-plus text-xs"></i></div>
-          <div>
-            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-tight">فتح تذكرة ضمان جديدة</h3>
-            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-0.5">تسجيل طلب صيانة وضمان جديد</p>
-          </div>
-        </div>
-      </template>
+    <HistoryDetailsModal
+      :show="showCreate"
+      @close="showCreate = false; resetForm()"
+      title="فتح تذكرة ضمان جديدة"
+      subtitle="تسجيل طلب صيانة وضمان جديد"
+      icon="fas fa-shield-halved"
+      maxWidth="3xl"
+    >
 
       <!-- Content -->
-      <div class="space-y-10">
+      <div class="space-y-6">
         <!-- Step 1: Customer & Invoice Info -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div class="space-y-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="space-y-4">
             <div class="space-y-1.5 relative">
               <label class="metadata-label">العميل المستهدف <span class="text-rose-500">*</span></label>
               <div class="relative group">
@@ -216,7 +214,7 @@
             </div>
           </div>
 
-          <div class="space-y-6">
+          <div class="space-y-4">
             <div class="space-y-1.5"><label class="metadata-label">أولوية المعالجة <span class="text-rose-500">*</span></label><select v-model="form.priority" class="filter-input-v2 h-10 font-bold"><option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high">مرتفعة</option><option value="urgent">عاجل</option></select><p v-if="errors.priority" class="text-[9px] text-rose-500 font-bold px-1">{{ errors.priority }}</p></div>
             <div class="space-y-1.5 relative">
               <label class="metadata-label">فاتورة البيع المرجعية <span class="text-slate-400 font-normal normal-case">(اختياري)</span></label>
@@ -306,9 +304,10 @@
       </div>
 
       <template #footer>
-        <div class="flex justify-end gap-3">
-          <button @click="showCreate = false; resetForm()" class="px-6 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">إلغاء</button>
+        <div class="mr-auto flex items-center gap-3">
+          <button type="button" @click="showCreate = false; resetForm()" class="inline-flex h-10 items-center justify-center px-4 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors">إلغاء</button>
           <LoadingButton
+            type="button"
             text="تسجيل طلب الضمان"
             :isLoading="creating"
             loadingText="جاري التسجيل..."
@@ -320,7 +319,7 @@
           />
         </div>
       </template>
-    </BaseModal>
+    </HistoryDetailsModal>
 
     <HistoryDetailsModal
       :show="showDetails && !!details"
@@ -480,7 +479,6 @@ import { useDateValidation } from '@/composables/useDateValidation';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import AlertService from '@/services/AlertService';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
-import BaseModal from '@/components/BaseModal.vue';
 import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
