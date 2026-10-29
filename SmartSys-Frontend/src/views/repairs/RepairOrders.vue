@@ -219,12 +219,45 @@
             <option v-for="branch in branches" :key="branch.id" :value="String(branch.id)">{{ branch.name }}</option>
           </select>
         </label>
-        <label class="space-y-1.5">
+        <label class="space-y-1.5 relative">
           <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">العميل <span class="text-rose-500">*</span></span>
-          <select v-model="createForm.customer_id" class="filter-input" required>
-            <option value="" disabled>اختر العميل</option>
-            <option v-for="customer in customers" :key="customer.id" :value="String(customer.id)">{{ customer.name }} — {{ customer.phone }}</option>
-          </select>
+          <div class="relative">
+            <input
+              v-model="customerQuery"
+              type="search"
+              class="filter-input pl-8"
+              required
+              autocomplete="off"
+              placeholder="ابحث باسم العميل أو الهاتف..."
+              @focus="showCustomerDropdown = true"
+            />
+            <button
+              v-if="customerQuery"
+              type="button"
+              class="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+              aria-label="مسح العميل"
+              @click="clearCustomerSelection"
+            >
+              <i class="fas fa-times text-[10px]"></i>
+            </button>
+          </div>
+          <div
+            v-if="showCustomerDropdown && filteredCustomers.length"
+            class="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg"
+          >
+            <button
+              v-for="customer in filteredCustomers"
+              :key="customer.id"
+              type="button"
+              class="block w-full px-3 py-2 text-right text-xs font-bold text-slate-700 hover:bg-blue-50"
+              @mousedown.prevent="selectCustomer(customer)"
+            >
+              {{ customer.name }}
+            </button>
+          </div>
+          <p v-if="createForm.customer_id && selectedCustomer" class="mt-1 text-[10px] font-bold text-emerald-600">
+            تم اختيار: {{ selectedCustomer.name }}
+          </p>
         </label>
         <label class="space-y-1.5">
           <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">نوع الجهاز <span class="text-rose-500">*</span></span>
@@ -525,6 +558,8 @@ const onBranchChange = (newBranchId) => {
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const customers     = ref([])
+const customerQuery = ref('')
+const showCustomerDropdown = ref(false)
 const products      = ref([])
 const orders        = ref([])
 const statusCounts  = ref({ in_repair: 0, ready: 0, delivered: 0 })
@@ -647,6 +682,34 @@ const editForm   = reactive({
   labor_product_id: '', labor_amount: 0,
   expected_completion_date: '', parts: [],
 })
+
+const selectedCustomer = computed(() =>
+  customers.value.find(customer => String(customer.id) === String(createForm.customer_id)) || null
+)
+
+const filteredCustomers = computed(() => {
+  const query = customerQuery.value.trim().toLowerCase()
+  if (!query) return customers.value.slice(0, 20)
+  return customers.value
+    .filter(customer => {
+      const name = String(customer.name || '').toLowerCase()
+      const phone = String(customer.phone || '').toLowerCase()
+      return name.includes(query) || phone.includes(query)
+    })
+    .slice(0, 20)
+})
+
+function selectCustomer(customer) {
+  createForm.customer_id = String(customer.id)
+  customerQuery.value = customer.name || ''
+  showCustomerDropdown.value = false
+}
+
+function clearCustomerSelection() {
+  createForm.customer_id = ''
+  customerQuery.value = ''
+  showCustomerDropdown.value = false
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatDateTime(value) {
@@ -836,6 +899,7 @@ async function createOrder() {
     // Close modal and reset form
     showCreate.value = false
     Object.assign(createForm, emptyCreate())
+    clearCustomerSelection()
 
     // Reload list
     await loadOrders()

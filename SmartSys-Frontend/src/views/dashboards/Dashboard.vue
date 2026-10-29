@@ -322,7 +322,7 @@ const quickAccessLinks = ref([
   { text: 'تحليلات المبيعات',  icon: 'fa fa-chart-bar',       to: '/reports/sales-analytics' },
   { text: 'نقطة البيع',        icon: 'fa fa-cash-register',   to: '/sales/pos' },
   { text: 'إدارة المخزون',     icon: 'fa fa-warehouse',       to: '/inventory' },
-  { text: 'كل التقارير',       icon: 'fa fa-chart-pie',       to: '/reports/sales-analytics', highlighted: true }
+  { text: 'كل التقارير',       icon: 'fa fa-chart-pie',       to: '/reports/accounting', highlighted: true }
 ])
 
 function formatCurrency(value) {
