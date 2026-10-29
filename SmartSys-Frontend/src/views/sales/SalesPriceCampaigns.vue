@@ -16,12 +16,11 @@
       >
         <template #controls>
           <button
-            @click="showForm = !showForm"
-            :class="[showForm ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 border-slate-200']"
-            class="h-9 px-4 rounded-md border text-xs font-bold transition-all flex items-center gap-2 shadow-sm"
+            @click="showForm = true"
+            class="h-9 px-4 rounded-md bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-all flex items-center gap-2 shadow-sm"
           >
-            <i class="fas" :class="showForm ? 'fa-times' : 'fa-plus'"></i>
-            {{ showForm ? 'إغلاق النموذج' : 'إنشاء حملة' }}
+            <i class="fas fa-plus"></i>
+            إنشاء حملة
           </button>
         </template>
       </PageHeader>
@@ -44,11 +43,16 @@
         </div>
       </section>
 
-      <!-- Form Section with border highlight -->
-      <transition name="slide-down">
-        <div v-if="showForm" class="bg-white border-2 border-blue-200 rounded-xl shadow-sm overflow-hidden animate-fadeIn">
-          <div class="p-6 space-y-6 border-b border-blue-100 bg-blue-50/30">
-            <form class="space-y-5" @submit.prevent="createCampaign">
+      <!-- Create Campaign Modal -->
+      <HistoryDetailsModal
+        :show="showForm"
+        @close="showForm = false"
+        title="إنشاء حملة أسعار جديدة"
+        subtitle="حدد بيانات الحملة والمنتجات والأسعار الترويجية"
+        icon="fas fa-tags"
+        maxWidth="4xl"
+      >
+            <form id="campaign-create-form" class="space-y-5" @submit.prevent="createCampaign">
               <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <label class="space-y-1.5">
                   <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">اسم الحملة <span class="text-rose-500">*</span></span>
@@ -150,10 +154,20 @@
 
               <div v-if="formError" role="alert" class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{{ formError }}</div>
 
-              <div class="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <button type="button" class="h-10 rounded-lg border border-slate-200 px-4 text-xs font-bold text-slate-600" :disabled="isSaving" @click="showForm = false">إلغاء</button>
+            </form>
+            <template #footer>
+              <div class="mr-auto flex items-center gap-3">
+                <button
+                  type="button"
+                  class="inline-flex h-10 items-center justify-center px-4 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors"
+                  :disabled="isSaving"
+                  @click="showForm = false"
+                >
+                  إلغاء
+                </button>
                 <LoadingButton
                   type="submit"
+                  form="campaign-create-form"
                   text="حفظ الحملة"
                   loadingText="جارٍ الحفظ..."
                   :isLoading="isSaving"
@@ -161,10 +175,8 @@
                   class="h-10 rounded-lg px-5 text-xs"
                 />
               </div>
-            </form>
-          </div>
-        </div>
-      </transition>
+            </template>
+      </HistoryDetailsModal>
 
       <!-- Search & Filter Controls -->
       <div class="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row">
@@ -267,6 +279,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import PageHeader from '@/components/PageHeader.vue';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
+import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
 import { useToast } from '@/composables/useToast';
 import { useBranchStore } from '@/stores/branch/branchStore';
 import { useProductStore } from '@/stores/product/productStore';
