@@ -129,6 +129,14 @@ switch ($command) {
 // الدوال
 // ──────────────────────────────────────────────────────────
 
+function migrationClassName(string $migration): string
+{
+    return implode('', array_map(
+        'ucfirst',
+        explode('_', preg_replace('/^\d+_/', '', $migration))
+    ));
+}
+
 function runMigrationsUp(PDO $pdo, array $migrations, array $options = []): void
 {
     prepareMigrationLedger($pdo, $migrations);
@@ -202,11 +210,6 @@ function runMigrationsUp(PDO $pdo, array $migrations, array $options = []): void
             
             if (!class_exists($className)) {
                 throw new RuntimeException("Migration class {$className} is missing from {$filePath}.");
-            }
-
-            function migrationClassName(string $migration): string
-            {
-                return implode('', array_map('ucfirst', explode('_', preg_replace('/^\d+_/', '', $migration))));
             }
 
             $migrator = new $className($pdo);
