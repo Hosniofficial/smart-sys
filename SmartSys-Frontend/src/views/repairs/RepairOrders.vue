@@ -219,7 +219,7 @@
             <option v-for="branch in branches" :key="branch.id" :value="String(branch.id)">{{ branch.name }}</option>
           </select>
         </label>
-        <label class="space-y-1.5 relative">
+        <label ref="customerSearchContainer" class="space-y-1.5 relative">
           <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">العميل <span class="text-rose-500">*</span></span>
           <div class="relative">
             <input
@@ -502,7 +502,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
 import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue'
@@ -560,6 +560,7 @@ const onBranchChange = (newBranchId) => {
 const customers     = ref([])
 const customerQuery = ref('')
 const showCustomerDropdown = ref(false)
+const customerSearchContainer = ref(null)
 const products      = ref([])
 const orders        = ref([])
 const statusCounts  = ref({ in_repair: 0, ready: 0, delivered: 0 })
@@ -709,6 +710,12 @@ function clearCustomerSelection() {
   createForm.customer_id = ''
   customerQuery.value = ''
   showCustomerDropdown.value = false
+}
+
+function closeCustomerDropdownOnOutsideClick(event) {
+  if (!customerSearchContainer.value?.contains(event.target)) {
+    showCustomerDropdown.value = false
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1001,6 +1008,7 @@ watch(() => filters.searchQuery.value, () => {
 
 // ─── Mount ────────────────────────────────────────────────────────────────────
 onMounted(async () => {
+  document.addEventListener('pointerdown', closeCustomerDropdownOnOutsideClick)
   try {
     await branchStore.fetchBranches()
     const branchId = branchStore.selectedBranchId
@@ -1020,6 +1028,11 @@ onMounted(async () => {
 
   isMounting = false
   await loadOrders()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', closeCustomerDropdownOnOutsideClick)
+  if (searchTimer) clearTimeout(searchTimer)
 })
 </script>
 

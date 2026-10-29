@@ -4,29 +4,39 @@
     <!-- Top Progress Bar -->
     <PageLoadingBar :active="profileLoading || passwordLoading" />
 
-    <div class="max-w-6xl mx-auto p-6 lg:p-10 space-y-8 animate-fadeIn">
+    <div class="max-w-[1440px] mx-auto p-4 sm:p-6 lg:p-10 space-y-8 animate-fadeIn">
       
       <!-- Profile Hero Banner -->
-      <div class="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-6">
-        <div class="flex flex-col sm:flex-row items-center gap-5 text-center sm:text-right">
-          <div class="w-16 h-16 bg-slate-900 text-white rounded-xl flex items-center justify-center text-xl font-bold font-mono tracking-wider shadow-sm shrink-0">
-            {{ userInitials }}
-          </div>
-          <div class="space-y-1">
-            <div class="flex items-center justify-center sm:justify-start gap-2">
-              <h1 class="text-lg font-bold text-slate-900">{{ profileForm.name || authUser?.name || 'مستخدم النظام' }}</h1>
-              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold border border-blue-100 bg-blue-50 text-blue-600">
-                حساب نشط
-              </span>
+      <div class="profile-hero relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="absolute inset-x-0 top-0 h-1 bg-gradient-to-l from-blue-600 via-indigo-500 to-cyan-400"></div>
+        <div class="relative p-6 sm:p-8">
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-7">
+            <div class="flex flex-col sm:flex-row items-center gap-5 text-center sm:text-right">
+              <div class="profile-avatar">{{ userInitials }}</div>
+              <div class="space-y-2">
+                <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                  <h1 class="text-2xl font-black tracking-tight text-slate-900">{{ profileForm.name || authUser?.name || 'مستخدم النظام' }}</h1>
+                  <span class="status-pill"><span class="status-dot"></span> حساب نشط</span>
+                </div>
+                <p class="text-xs text-slate-500 font-medium">مركز إدارة الهوية والوصول إلى نظام SmartSys ERP</p>
+                <div class="flex flex-wrap justify-center sm:justify-start gap-2 pt-1">
+                  <span class="identity-chip"><i class="fas fa-user-tag"></i>{{ roleLabel }}</span>
+                  <span class="identity-chip"><i class="fas fa-at"></i>{{ authUser?.username || 'بدون اسم مستخدم' }}</span>
+                  <span class="identity-chip"><i class="fas fa-calendar-check"></i>ملف مستخدم موثّق</span>
+                </div>
+              </div>
             </div>
-            <p class="text-xs text-slate-400 font-medium">
-              إدارة بياناتك الشخصية، معلومات الاتصال، وإعدادات أمان الدخول.
-            </p>
+            <div class="text-center sm:text-left">
+              <div class="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">معرّف المستخدم</div>
+              <div class="font-mono text-lg font-black text-slate-900">#{{ authUser?.id || '---' }}</div>
+              <div class="mt-2 text-[10px] text-slate-400 font-bold">آخر تحديث للبيانات من حسابك</div>
+            </div>
           </div>
-        </div>
-
-        <div class="text-left font-mono text-[11px] font-bold text-slate-400 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100">
-          USER_REF: #{{ authUser?.id || '---' }}
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8 pt-5 border-t border-slate-100">
+            <div class="hero-metric"><i class="fas fa-id-card text-blue-500"></i><div><span>اكتمال الملف</span><strong>{{ profileCompletion }}%</strong></div><div class="metric-track"><span :style="{ width: `${profileCompletion}%` }"></span></div></div>
+            <div class="hero-metric"><i class="fas fa-envelope-circle-check text-emerald-500"></i><div><span>بيانات الاتصال</span><strong>{{ profileForm.email ? 'مكتملة' : 'تحتاج تحديثاً' }}</strong></div></div>
+            <div class="hero-metric"><i class="fas fa-shield-halved text-indigo-500"></i><div><span>حالة الأمان</span><strong>محمية</strong></div></div>
+          </div>
         </div>
       </div>
 
@@ -37,7 +47,7 @@
         <div class="lg:col-span-8 space-y-6">
           
           <!-- Personal Information Card -->
-          <section class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+          <section class="profile-card bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
             <div class="flex items-center gap-3 pb-4 border-b border-slate-100">
               <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xs">
                 <i class="fas fa-user-gear"></i>
@@ -120,7 +130,7 @@
           </section>
 
           <!-- Password Security Card -->
-          <section class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+          <section class="profile-card bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
             <div class="flex items-center gap-3 pb-4 border-b border-slate-100">
               <div class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center text-xs">
                 <i class="fas fa-shield-halved"></i>
@@ -287,6 +297,16 @@ const userInitials = computed(() => {
   return (a + b).toUpperCase() || (name[0] ? name[0].toUpperCase() : 'U')
 })
 
+const roleLabel = computed(() => {
+  const role = authUser.value?.role_name || authUser.value?.role_display_name || authUser.value?.role || authUser.value?.role_code
+  return role || 'مستخدم النظام'
+})
+
+const profileCompletion = computed(() => {
+  const fields = [profileForm.name, profileForm.email, profileForm.phone]
+  return Math.round((fields.filter(field => String(field || '').trim()).length / fields.length) * 100)
+})
+
 async function fetchMe() {
   try {
     const me = await userStore.fetchCurrentUserProfile()
@@ -383,6 +403,69 @@ onMounted(() => {
 
 .filter-input {
   @apply h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all;
+}
+
+.profile-hero {
+  background:
+    radial-gradient(circle at 8% 15%, rgba(59, 130, 246, 0.08), transparent 28%),
+    radial-gradient(circle at 90% 100%, rgba(99, 102, 241, 0.06), transparent 30%),
+    #fff;
+}
+
+.profile-avatar {
+  @apply w-24 h-24 rounded-2xl bg-slate-950 text-white flex items-center justify-center text-2xl font-black font-mono tracking-widest shadow-lg ring-4 ring-blue-50 shrink-0;
+}
+
+.status-pill {
+  @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black border border-emerald-100 bg-emerald-50 text-emerald-700;
+}
+
+.status-dot {
+  @apply w-1.5 h-1.5 rounded-full bg-emerald-500;
+}
+
+.identity-chip {
+  @apply inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-500;
+}
+
+.identity-chip i {
+  @apply text-blue-500 text-[9px];
+}
+
+.hero-metric {
+  @apply relative min-h-[58px] rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3 flex items-center gap-3;
+}
+
+.hero-metric > i {
+  @apply text-sm;
+}
+
+.hero-metric > div:not(.metric-track) {
+  @apply flex flex-col gap-0.5 min-w-0;
+}
+
+.hero-metric span {
+  @apply text-[9px] font-bold text-slate-400;
+}
+
+.hero-metric strong {
+  @apply text-xs font-black text-slate-800;
+}
+
+.metric-track {
+  @apply absolute bottom-0 right-0 left-0 h-1 bg-slate-200/70 overflow-hidden rounded-b-xl;
+}
+
+.metric-track span {
+  @apply block h-full bg-blue-500 transition-all duration-500;
+}
+
+.profile-card {
+  @apply transition-shadow duration-200;
+}
+
+.profile-card:hover {
+  @apply shadow-md;
 }
 
 .custom-scroll::-webkit-scrollbar { width: 5px; }
