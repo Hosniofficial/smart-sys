@@ -693,6 +693,7 @@ import AlertService from '@/services/AlertService';
 import { useToast } from '@/composables/useToast';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { getLocalDateISO, isSettingEnabled, printDocument } from '@/utils';
+import { formatDateTimeUsingNativeLocale } from '@/utils/formatters/date';
 import { getBuilderByTemplate } from '@/utils/printTemplates';
 import { resolvePrintOptions } from '@/utils/printTemplates/branchPrintSettings';
 import PageHeader from '@/components/PageHeader.vue';
@@ -715,7 +716,7 @@ const router = useRouter();
 const { ensureLoaded: ensureExemptionLoaded } = useSessionExemption();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const { breadcrumb } = useBreadcrumb();
-const formatPrice = (amount) => formatCurrencyLocale(amount, 2);
+const formatPrice = formatCurrencyLocale;
 
 const taxRate = ref(0);
 const detailTaxRate = computed(() => Number(selectedSale.value?.taxRate ?? taxRate.value) || 0);
@@ -1034,8 +1035,14 @@ watch(showDetailsModal, (val) => {
 
 const formatDateTime = (dateTimeString) => {
   if (!dateTimeString) return '';
-  const date = dateTimeString instanceof Date ? dateTimeString : new Date(dateTimeString);
-  return date.toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true });
+  return formatDateTimeUsingNativeLocale(dateTimeString, 'en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
 };
 
 const getStatusLabel = (status) => {

@@ -183,7 +183,7 @@ const selectedBranch = computed({
   set: (value) => branchStoreInstance.setSelectedBranch(value === 'all' ? null : value)
 })
 
-const formatCurrency = (n) => formatCurrencyLocale(n, 2)
+const formatCurrency = formatCurrencyLocale;
 
 const loadData = async () => {
   loading.value = true

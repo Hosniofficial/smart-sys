@@ -411,7 +411,7 @@ const handleBranchChange = (newBranchId) => {
   branchStore.setSelectedBranch(newBranchId);
   fetchContacts(); // Reload data with new branch
 };
-const formatPrice = (amount) => formatCurrencyLocale(amount, 2);
+const formatPrice = formatCurrencyLocale;
 
 const contacts = ref([]);
 const search = ref('');

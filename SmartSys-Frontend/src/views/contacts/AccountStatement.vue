@@ -773,6 +773,7 @@ import LoadingButton from '@/components/ui/LoadingButton.vue';
 import { getLocalDateISO } from '@/utils';
 import { getImageUrl } from '@/utils';
 import { formatDateForLocale } from '@/utils/formatters/date';
+import { formatPriceEnUSFixedTwoDecimals } from '@/utils/formatters/numbers';
 
 // Core Composables
 const route = useRoute();
@@ -1246,10 +1247,10 @@ const displayStatusLabel = (item, fallbackCode, fallbackLabel) => {
     return fallbackLabel || statusTextLocal(fallbackCode) || '-';
 };
 
-const formatDate = (date) => date ? formatDateForLocale(date, 'en-GB') : new Date(date).toLocaleDateString('en-GB');
-const formatDateEn = (date) => date ? formatDateForLocale(date, 'en-GB') : '';
-const formatPrice = (amount) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(amount || 0));
-const formatPriceEn = (amount) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(amount || 0));
+const formatDate = (date) => formatDateForLocale(date, 'en-GB');
+const formatDateEn = formatDate;
+const formatPrice = formatPriceEnUSFixedTwoDecimals;
+const formatPriceEn = formatPrice;
 const referenceParts = (transaction) => {
     const [type = '', id = ''] = String(transaction?.reference || '').split('#');
     return { type: type.toLowerCase(), id: transaction?.referenceId ?? id };

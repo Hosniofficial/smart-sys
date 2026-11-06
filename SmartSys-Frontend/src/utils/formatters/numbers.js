@@ -43,6 +43,31 @@ export const formatNumber = (value, decimals = 2) => {
   });
 };
 
+export const formatNumberEnUS = (value, options = {}) =>
+  (Number(value) || 0).toLocaleString('en-US', options);
+
+export const compactNumberFormatArEG = new Intl.NumberFormat('ar-EG', {
+  notation: 'compact',
+  maximumFractionDigits: 1
+});
+
+export const formatPriceEnUSMinimumTwoDecimals = (value) => {
+  if (!value) return '0';
+  return Number(value).toLocaleString('en-US', { minimumFractionDigits: 2 });
+};
+
+export const formatPriceEnUSFixedTwoDecimalsOrZero = (value) =>
+  new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(Number(value) || 0);
+
+export const formatPriceEnUSFixedTwoDecimals = (value) =>
+  new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(Number(value || 0));
+
 /**
  * Format a percentage value
  * @param {number|string} value - The percentage value (0-100)
@@ -85,6 +110,11 @@ export const formatPriceEn = formatPrice;
 export default {
   formatCurrency,
   formatNumber,
+  formatNumberEnUS,
+  compactNumberFormatArEG,
+  formatPriceEnUSMinimumTwoDecimals,
+  formatPriceEnUSFixedTwoDecimalsOrZero,
+  formatPriceEnUSFixedTwoDecimals,
   formatPercentage,
   formatPrice,
   formatPriceEn

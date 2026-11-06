@@ -157,6 +157,8 @@ import { useRouter } from 'vue-router';
 import PageHeader from '@/components/PageHeader.vue';
 import { useSalesStore } from '@/stores/sales/salesStore';
 import { useToast } from '@/composables/useToast';
+import { formatLocalDateDayEnUS } from '@/utils/formatters/date';
+import { formatPriceEnUSFixedTwoDecimalsOrZero } from '@/utils/formatters/numbers';
 
 const salesStore = useSalesStore();
 const router = useRouter();
@@ -234,15 +236,9 @@ async function convertQuotation(quote) {
   }
 }
 
-function formatDate(value) {
-  if (!value) return '-';
-  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('en-US');
-}
+const formatDate = formatLocalDateDayEnUS;
 
-function formatPrice(value) {
-  return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value) || 0);
-}
+const formatPrice = formatPriceEnUSFixedTwoDecimalsOrZero;
 
 function formatMoney(value, currencyCode = 'EGP') {
   const amount = Number(value) || 0;

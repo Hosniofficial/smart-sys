@@ -1043,7 +1043,7 @@ const translateMovementNote = (note, movementType = '') => {
   return prefix ? prefix.ar : note;
 };
 
-const formatCurrency = v => formatCurrencyLocale(v, 2);
+const formatCurrency = formatCurrencyLocale;
 
 const formatDate = date => { if (!date) return '—'; return new Date(date).toLocaleDateString('ar-SA'); };
 

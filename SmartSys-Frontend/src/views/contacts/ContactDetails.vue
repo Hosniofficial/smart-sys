@@ -649,6 +649,7 @@ import { useSupplierStore } from '@/stores/supplier/supplierStore';
 import { usePendingIdempotentRequest } from '@/composables/usePendingIdempotentRequest';
 import { getLocalDateISO, getImageUrl } from '@/utils';
 import { formatDateForLocale } from '@/utils/formatters/date';
+import { formatPriceEnUSFixedTwoDecimals } from '@/utils/formatters/numbers';
 import PageHeader from '@/components/PageHeader.vue';
 import PaginationControls from '@/components/ui/PaginationControls.vue';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
@@ -871,9 +872,9 @@ watch([invoices, payments], () => {}, { deep: true });
 // Formatting Helpers
 
 const formatDate    = (v) => v ? formatDateForLocale(v, 'en-GB') : '-';
-const formatDateEn  = (v) => v ? formatDateForLocale(v, 'en-GB') : '-';
-const formatPrice   = (v) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v || 0));
-const formatPriceEn = (v) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v || 0));
+const formatDateEn  = formatDate;
+const formatPrice   = formatPriceEnUSFixedTwoDecimals;
+const formatPriceEn = formatPrice;
 const formatNumber  = (v) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(v) || 0);
 
 const statusText = (s) => {

@@ -402,6 +402,8 @@ import LoadingButton from '@/components/ui/LoadingButton.vue';
 import Chart from 'chart.js/auto';
 import { Filler } from 'chart.js';
 import { localDateRangeToUTC, getLocalDateISO } from '@/utils';
+import { formatTimeUsingNativeLocale } from '@/utils/formatters/date';
+import { compactNumberFormatArEG, formatNumberEnUS } from '@/utils/formatters/numbers';
 import { useBranchIsolation } from '@/composables/useBranchIsolation';
 import { useRequiredBranch } from '@/composables/useRequiredBranch';
 
@@ -512,7 +514,7 @@ const topProductsTotal = computed(() => topProducts.value.reduce(
   (total, product) => total + (Number(product?.quantity) || 0),
   0
 ));
-const compactNumberFormat = new Intl.NumberFormat('ar-EG', { notation: 'compact', maximumFractionDigits: 1 });
+const compactNumberFormat = compactNumberFormatArEG;
 
 // Charts
 const salesChart = ref(null);
@@ -589,8 +591,8 @@ const sessionStatus = computed(() => activeSessionId.value
   : { active: false, text: 'الجلسة مغلقة', color: 'text-amber-600', bgColor: 'bg-amber-100', icon: 'fas fa-exclamation-triangle' }
 );
 
-const formatPrice = (v) => formatCurrencyLocale(v, 2);
-const formatNumber = (v) => (Number(v) || 0).toLocaleString('en-US');
+const formatPrice = formatCurrencyLocale;
+const formatNumber = formatNumberEnUS;
 
 const resolveQueryRange = (today) => {
   const useLocal = activeSessionId.value !== null;
@@ -625,7 +627,7 @@ const formatRelativeTime = (date) => {
 
 const updateDateTime = () => {
   const now = new Date();
-  currentTime.value = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  currentTime.value = formatTimeUsingNativeLocale(now, 'en-US', { hour: '2-digit', minute: '2-digit' });
   currentDate.value = now.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
 };
 
@@ -661,7 +663,7 @@ function initChart(chartRef, type, data, instanceRef) {
   }
 
   if (!ctx) return;
-  const numberFormat = new Intl.NumberFormat('ar-EG', { notation: 'compact', maximumFractionDigits: 1 });
+  const numberFormat = compactNumberFormatArEG;
   const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#f43f5e'];
   const lineGradient = (context) => {
     const area = context.chart.chartArea;

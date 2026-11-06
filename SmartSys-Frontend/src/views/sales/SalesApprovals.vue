@@ -347,6 +347,7 @@ import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue'
 import { useApprovalsStore } from '@/stores/approvals/approvalsStore'
 import { useToast } from '@/composables/useToast'
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency'
+import { formatDateTimeUsingNativeLocale } from '@/utils/formatters/date'
 import { useBreadcrumb } from '@/composables/useBreadcrumb'
 import { useBranchStore } from '@/stores/branch/branchStore'
 import { useSalesStore } from '@/stores/sales/salesStore'
@@ -447,11 +448,11 @@ const getSaleGrossTotal = (sale) => {
   return Math.max(0, Math.round((net + tax + Number.EPSILON) * 100) / 100)
 }
 
-const formatPrice = (amount) => formatCurrencyLocale(amount, 2)
+const formatPrice = formatCurrencyLocale;
 const formatDateTime = (val) => {
   if (!val) return ''
   try {
-    return new Date(val).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true })
+    return formatDateTimeUsingNativeLocale(val, 'en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true })
   } catch { return String(val) }
 }
 

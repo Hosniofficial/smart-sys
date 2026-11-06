@@ -354,7 +354,7 @@
                     </tr>
 
                     <tr v-for="t in transfers" :key="t.id" class="hover:bg-blue-50/10 transition-all group">
-                      <td class="px-6 py-4 text-xs font-mono text-slate-400">{{ new Date(t.createdAt).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true }) }}</td>
+                      <td class="px-6 py-4 text-xs font-mono text-slate-400">{{ formatTransferDateTime(t.createdAt) }}</td>
                       <td class="px-4 py-4">
                         <div class="font-bold text-slate-900 text-xs">{{ t.productName }}</div>
                         <span class="text-[9px] text-slate-400 font-mono block mt-0.5" v-if="t.barcode">{{ t.barcode }}</span>
@@ -442,7 +442,7 @@
                     </tr>
 
                     <tr v-for="t in stockTransfers" :key="t.id" class="hover:bg-blue-50/10 transition-all group">
-                      <td class="px-6 py-4 text-xs font-mono text-slate-400">{{ new Date(t.createdAt).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true }) }}</td>
+                      <td class="px-6 py-4 text-xs font-mono text-slate-400">{{ formatTransferDateTime(t.createdAt) }}</td>
                       <td class="px-4 py-4 text-xs font-bold text-slate-900">{{ t.productName }}</td>
                       <td class="px-4 py-4">
                         <div class="flex items-center gap-2 text-xs font-bold">
@@ -709,6 +709,15 @@ import BaseSpinner from '@/components/ui/BaseSpinner.vue';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import { useBranchStore } from '@/stores/branch/branchStore';
 import { useProductStore } from '@/stores/product/productStore';
+
+const formatTransferDateTime = (value) => new Date(value).toLocaleString('en-US', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: true
+});
 
 // Services & Router
 const route = useRoute();

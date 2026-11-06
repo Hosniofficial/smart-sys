@@ -216,7 +216,7 @@
                 <td class="px-6 py-4 text-center">
                   <div class="flex flex-col items-center">
                     <span class="text-[10px] font-bold text-slate-700">{{ p.createdByName || '-' }}</span>
-                    <span class="text-[9px] font-mono text-slate-400 mt-1 uppercase">{{ p.createdAt ? new Date(p.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '' }}</span>
+                    <span class="text-[9px] font-mono text-slate-400 mt-1 uppercase">{{ formatTimeUsingNativeLocale(p.createdAt, 'en-US', { hour: '2-digit', minute: '2-digit' }) }}</span>
                   </div>
                 </td>
               </tr>
@@ -256,6 +256,7 @@
 import logger from '@/utils/services/logger'
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { getLocalDateISO } from '@/utils';
+import { formatTimeUsingNativeLocale } from '@/utils/formatters/date';
 import { useAuthStore } from '@/stores/auth/authStore';
 import { useBranchStore } from '@/stores/branch/branchStore';
 import { useBranchIsolation } from '@/composables/useBranchIsolation';

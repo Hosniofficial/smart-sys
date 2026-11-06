@@ -407,6 +407,11 @@ import PaginationControls from '@/components/ui/PaginationControls.vue';
 import { printDocument } from '@/utils';
 import { buildReturnHtml } from '@/utils/printTemplates';
 import { resolvePrintOptions } from '@/utils/printTemplates/branchPrintSettings';
+import {
+  formatDateUsingNativeLocale,
+  formatDateTimeUsingNativeLocale,
+  formatReturnDateTime
+} from '@/utils/formatters/date';
 import { useTableFilters } from '@/composables/useTableFilters';
 import { useSearchDropdown } from '@/composables/useSearchDropdown';
 
@@ -612,7 +617,7 @@ const stats = computed(() => {
 });
 
 // Formatting Helpers
-const formatPrice = (amount) => formatCurrencyLocale(amount, 2);
+const formatPrice = formatCurrencyLocale;
 const returnStatusLabel = (status, apiLabel = null) => {
   const labels = {
     approved: 'معتمدة',
@@ -635,23 +640,8 @@ const returnStatusClass = (status) => {
   };
   return classes[String(status || '').toLowerCase()] || 'bg-slate-100 text-slate-600 border-slate-200';
 };
-const formatDate = (date) => date ? new Date(date).toLocaleDateString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
-const formatDateTime = (date) => date ? new Date(date).toLocaleString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '';
-const formatReturnDateTime = (returnDate, createdAt) => {
-  const dateValue = String(returnDate || createdAt || '');
-  if (!dateValue) return '';
-  const datePart = dateValue.slice(0, 10);
-  const directTime = dateValue.match(/[T ](\d{2}:\d{2}(?::\d{2})?)/)?.[1];
-  const createdTime = String(createdAt || '').match(/[T ](\d{2}:\d{2}(?::\d{2})?)/)?.[1];
-  const time = directTime || createdTime;
-  if (!time) return formatDate(datePart);
-  const normalizedTime = time.length === 5 ? `${time}:00` : time;
-  const date = new Date(`${datePart}T${normalizedTime}`);
-  return Number.isNaN(date.getTime())
-    ? formatDate(datePart)
-    : date.toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true });
-};
-
+const formatDate = (date) => formatDateUsingNativeLocale(date, 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const formatDateTime = (date) => formatDateTimeUsingNativeLocale(date, 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
 // API: Load Returns List
 const loadReturns = async (forceRefresh = false) => {
   isLoading.value = true;

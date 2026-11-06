@@ -1,21 +1,20 @@
 import { getPrintConfig } from './printConfig';
 import { esc, fmt, getCompanyData } from './printHelpers';
+import { formatDateTimeUsingNativeLocale } from '../formatters/date.js';
 
 export const buildSessionHtml = (session, options = {}) => {
   const cfg = getPrintConfig(options.config);
   const summary = session.summary || {};
   const transactions = Array.isArray(session.transactions) ? session.transactions : [];
   const company = getCompanyData(session);
-  const formatDateTime = (value) => value
-    ? new Date(value).toLocaleString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    })
-    : '—';
+  const formatDateTime = (value) => formatDateTimeUsingNativeLocale(value, 'en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  }) || '—';
   const formatTime = (value) => value
     ? new Date(value).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
     : '—';

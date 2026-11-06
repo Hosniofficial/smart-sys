@@ -292,6 +292,7 @@ import { useToast } from '@/composables/useToast';
 import { useSalesStore } from '@/stores/sales/salesStore';
 
 import { usePurchaseStore } from '@/stores/purchase/purchaseStore';
+import { formatPriceEnUSMinimumTwoDecimals } from '@/utils/formatters/numbers';
 
 const props = defineProps({
 
@@ -321,13 +322,7 @@ const localError = ref('');
 
 const displayError = computed(() => localError.value || props.serverError);
 
-const formatPrice = (amount) => {
-
-  if (!amount) return '0';
-
-  return Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2 });
-
-};
+const formatPrice = formatPriceEnUSMinimumTwoDecimals;
 
 const updateAccount = () => {
 

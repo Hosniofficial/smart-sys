@@ -250,6 +250,8 @@ import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import PageHeader from '@/components/PageHeader.vue';
 import PaginationControls from '@/components/ui/PaginationControls.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
+import { formatNumberEnUS } from '@/utils/formatters/numbers';
+import { formatDateUsingNativeLocale } from '@/utils/formatters/date';
 
 ChartJS.register(Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement, Filler);
 
@@ -387,9 +389,9 @@ const exportCsv = () => {
   setTimeout(() => window.URL.revokeObjectURL(url), 0);
 };
 
-const formatCurrency = (v) => formatCurrencyLocale(v, 2);
-const formatNumber = (v) => (Number(v) || 0).toLocaleString('en-US');
-const formatDate = (v, o = {}) => v ? new Date(v).toLocaleDateString('en-US', o) : '';
+const formatCurrency = formatCurrencyLocale;
+const formatNumber = formatNumberEnUS;
+const formatDate = (v, o = {}) => formatDateUsingNativeLocale(v, 'en-US', o);
 const movementValue = (mv) => (Number(mv.in || 0) - Number(mv.out || 0)) * Number(mv.cost || 0);
 const getMovementTypeClass = (t) => ({ purchase: 'text-emerald-600 border-emerald-100 bg-emerald-50', sale: 'text-blue-600 border-blue-100 bg-blue-50', saleCancel: 'text-rose-600 border-rose-100 bg-rose-50', openingBalanceReversal: 'text-rose-600 border-rose-100 bg-rose-50', return: 'text-amber-600 border-amber-100 bg-amber-50', adjustment: 'text-purple-600 border-purple-100 bg-purple-50' }[t] || 'text-slate-400 bg-slate-50 border-slate-100');
 const getMovementTypeLabel = (t) => ({

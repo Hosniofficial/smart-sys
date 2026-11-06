@@ -2,6 +2,11 @@
 export {
   formatCurrency,
   formatNumber,
+  formatNumberEnUS,
+  compactNumberFormatArEG,
+  formatPriceEnUSMinimumTwoDecimals,
+  formatPriceEnUSFixedTwoDecimalsOrZero,
+  formatPriceEnUSFixedTwoDecimals,
   formatPercentage,
   formatPrice,
   formatPriceEn
@@ -15,7 +20,13 @@ export {
   localDateEndToUTCISO,
   localDateRangeToUTC,
   formatDateTime,
-  formatDate
+  formatDate,
+  formatDateUsingNativeLocale,
+  formatTimeUsingNativeLocale,
+  formatDateTimeUsingNativeLocale,
+  formatDateTimeWithSqlSpace,
+  formatReturnDateTime,
+  formatLocalDateDayEnUS
 } from './date.js';
 
 export {

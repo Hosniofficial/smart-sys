@@ -347,6 +347,7 @@
 </template>
 
 <script setup>
+import { formatNumberEnUS } from '@/utils/formatters/numbers';
 import logger from '@/utils/services/logger'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSetupStore } from '@/stores/setup/setupStore'
@@ -1012,10 +1013,10 @@ function handleClickOutside(event) {
 }
 
 function formatNumber(n) {
-  return (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 4 })
+  return formatNumberEnUS(n, { maximumFractionDigits: 4 })
 }
 function formatMoney(n) {
-  return (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return formatNumberEnUS(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 function formatFileSize(bytes) {
   if (!bytes) return '0 B'

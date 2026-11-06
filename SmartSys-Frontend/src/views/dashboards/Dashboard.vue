@@ -246,6 +246,8 @@ import { useCompanyCurrency } from '@/composables/useCompanyCurrency'
 import { useBranchStore } from '@/stores/branch/branchStore'
 import { useSessionExemption } from '@/composables/useCashierSessionGuard'
 import PageHeader from '@/components/PageHeader.vue'
+import { formatTimeUsingNativeLocale } from '@/utils/formatters/date'
+import { compactNumberFormatArEG } from '@/utils/formatters/numbers'
 
 Chart.register(Filler)
 
@@ -282,7 +284,7 @@ const salesChartInstance = shallowRef(null)
 const topProductsChartInstance = shallowRef(null)
 const posPerformanceChartInstance = shallowRef(null)
 const topProductsTotal = ref(0)
-const compactNumberFormat = new Intl.NumberFormat('ar-EG', { notation: 'compact', maximumFractionDigits: 1 })
+const compactNumberFormat = compactNumberFormatArEG
 
 const username = computed(() => authStore.user?.name || 'مدير المحل')
 const isAdmin = computed(() => authStore.isAdmin)
@@ -314,9 +316,7 @@ const quickAccessLinks = ref([
   { text: 'جلسات الكاشير',     icon: 'fa fa-clock',           to: '/sessions', highlighted: true }
 ])
 
-function formatCurrency(value) {
-  return formatCurrencyLocale(value, 2)
-}
+const formatCurrency = formatCurrencyLocale;
 
 function setDefaultKpiValues() {
   unresolvedReturnCostLineCount.value = 0
@@ -381,7 +381,7 @@ function initChart(chartRef, type, data, instanceRef) {
     bar: 'أداء البائعين'
   }
 
-  const numberFormat = new Intl.NumberFormat('ar-EG', { notation: 'compact', maximumFractionDigits: 1 })
+  const numberFormat = compactNumberFormatArEG
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -689,7 +689,7 @@ async function fetchDashboardData(refresh = false) {
     if (requestId === dashboardRequestId) {
       dashboardLastFetchAt = Date.now()
       isLoading.value = false; isRefreshing.value = false
-      lastUpdated.value = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      lastUpdated.value = formatTimeUsingNativeLocale(new Date(), 'en-US', { hour: '2-digit', minute: '2-digit' })
     }
   }
 }

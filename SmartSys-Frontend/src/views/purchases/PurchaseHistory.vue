@@ -338,6 +338,7 @@ import { buildPurchaseHtml } from '@/utils/printTemplates';
 import { resolvePrintOptions } from '@/utils/printTemplates/branchPrintSettings';
 import PageHeader from '@/components/PageHeader.vue';
 import PaginationControls from '@/components/ui/PaginationControls.vue';
+import { formatDateTimeWithSqlSpace } from '@/utils/formatters/date';
 
 const { showToast } = useToast();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
@@ -425,14 +426,15 @@ const kpiDiscount = computed(() => {
 });
 const totalPages = computed(() => Math.max(1, Math.ceil((filters.total.value || 0) / filters.perPage.value)));
 
-const formatPrice = (amount) => formatCurrencyLocale(amount, 2);
-const formatDateTime = (value) => {
-  if (!value) return '';
-  const parsed = new Date(String(value).replace(' ', 'T'));
-  return Number.isNaN(parsed.getTime())
-    ? String(value)
-    : parsed.toLocaleString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
-};
+const formatPrice = formatCurrencyLocale;
+const formatDateTime = (value) => formatDateTimeWithSqlSpace(value, {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: true
+});
 
 const itemUnitPrice = (item) => Number(item?.price ?? item?.unitPrice ?? item?.purchasePrice ?? 0) || 0;
 const itemTotal = (item) => Number(item?.total ?? item?.subtotal ?? (itemUnitPrice(item) * Number(item?.quantity ?? item?.qty ?? 0))) || 0;

@@ -179,6 +179,8 @@ import { Line as LineChart, Bar as BarChart, Doughnut as DoughnutChart } from 'v
 import { Chart as ChartJS, Title, Tooltip, Legend, LineElement, BarElement, CategoryScale, LinearScale, PointElement, ArcElement, Filler } from 'chart.js';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { getLocalDateISO } from '@/utils';
+import { formatNumberEnUS } from '@/utils/formatters/numbers';
+import { formatDateUsingNativeLocale } from '@/utils/formatters/date';
 
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import { useBranchStore } from '@/stores/branch/branchStore';
@@ -296,9 +298,9 @@ const doughnutOptions = {
   cutout: '75%' 
 };
 
-const formatCurrency = (v) => formatCurrencyLocale(v, 2);
-const formatNumber = (v) => (Number(v) || 0).toLocaleString('en-US');
-const formatDate = (v, o = {}) => v ? new Date(v).toLocaleDateString('en-US', o) : '';
+const formatCurrency = formatCurrencyLocale;
+const formatNumber = formatNumberEnUS;
+const formatDate = (v, o = {}) => formatDateUsingNativeLocale(v, 'en-US', o);
 
 const toNumber = (value) => Number(value) || 0;
 

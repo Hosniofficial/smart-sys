@@ -240,6 +240,8 @@ import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, Li
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import { useReportsStore } from '@/stores/reports/reportsStore';
 import { getLocalDateISO } from '@/utils';
+import { formatNumberEnUS } from '@/utils/formatters/numbers';
+import { formatTimeUsingNativeLocale } from '@/utils/formatters/date';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import { useBranchStore } from '@/stores/branch/branchStore';
@@ -321,9 +323,9 @@ const salesByPaymentChart = computed(() => ({
 const chartOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, indexAxis: 'y', scales: { x: { grid: { color: '#f1f5f9', drawBorder: false }, ticks: { font: { family: 'Cairo', size: 10, weight: 'bold' }, color: '#94a3b8' } }, y: { grid: { display: false }, ticks: { font: { family: 'Cairo', size: 10, weight: 'bold' }, color: '#94a3b8' } } } };
 const doughnutOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '75%' };
 
-const formatCurrency = (v) => formatCurrencyLocale(v, 2);
-const formatNumber = (v) => (Number(v) || 0).toLocaleString('en-US');
-const formatTime = (ts) => ts ? new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '';
+const formatCurrency = formatCurrencyLocale;
+const formatNumber = formatNumberEnUS;
+const formatTime = (ts) => formatTimeUsingNativeLocale(ts, 'en-US', { hour: '2-digit', minute: '2-digit' });
 
 const getPaymentMethodStyle = (m) => {
     const s = String(m || '').toLowerCase();

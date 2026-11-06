@@ -307,6 +307,7 @@ import { useToast } from '@/composables/useToast';
 import { useBranchStore } from '@/stores/branch/branchStore';
 import { useProductStore } from '@/stores/product/productStore';
 import { useSalesStore } from '@/stores/sales/salesStore';
+import { formatLocalDateDayEnUS } from '@/utils/formatters/date';
 
 const salesStore = useSalesStore();
 const productStore = useProductStore();
@@ -515,11 +516,7 @@ function formatPrice(value) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(Number(value) || 0);
 }
 
-function formatDate(value) {
-  if (!value) return '-';
-  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('en-US');
-}
+const formatDate = formatLocalDateDayEnUS;
 
 function priorityLabel(value) {
   const priority = Number(value) || 0;

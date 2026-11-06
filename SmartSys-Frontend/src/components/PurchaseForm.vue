@@ -310,7 +310,7 @@ const { showToast } = useToast();
 
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 
-const formatCurrency = (v) => formatCurrencyLocale(v, 2);
+const formatCurrency = formatCurrencyLocale;
 
 // refs لمنتقيات التاريخ
 const purchaseDateRef = ref(null);

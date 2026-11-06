@@ -710,7 +710,7 @@ const expensesList = computed(() => accountStore.allAccounts.filter(a => a.code?
 const allAccounts = computed(() => accountStore.allAccounts);
 
 const validPaymentMethods = computed(() => paymentStore.paymentMethods.filter(pm => pm.accountId));
-const formatPrice = (v) => formatCurrencyLocale(v, 2);
+const formatPrice = formatCurrencyLocale;
 watch(filterType, () => { currentPage.value = 1; fetchVouchers(); });
 watch(() => route.query.id, (id) => {
   if (Number(id) > 0) {

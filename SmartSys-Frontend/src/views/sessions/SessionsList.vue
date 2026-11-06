@@ -368,6 +368,10 @@ import { useHistoryFilters } from '@/composables/useHistoryFilters';
 import { getLocalDateISO, printDocument } from '@/utils';
 import { buildSessionHtml } from '@/utils/printTemplates';
 import { resolvePrintOptions } from '@/utils/printTemplates/branchPrintSettings';
+import {
+  formatDateTimeUsingNativeLocale,
+  formatTimeUsingNativeLocale
+} from '@/utils/formatters/date';
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
@@ -384,7 +388,7 @@ const { showToast } = useToast();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const { validateDateRange } = useDateValidation();
 const { breadcrumb } = useBreadcrumb();
-const formatCurrency = (amount) => formatCurrencyLocale(amount, 2);
+const formatCurrency = formatCurrencyLocale;
 
 const filters = useHistoryFilters('sessions_hist_filters');
 filters.loadFromLocalStorage();
@@ -549,9 +553,9 @@ watch([dateFrom, dateTo, perPage, selectedBranch, () => filters.statusFilter.val
 watch([sessionType, deviceFilter, hasVariance], () => { currentPage.value = 1; fetchData(); });
 watch(currentPage, fetchData);
 
-const formatDateTime = (v) => v ? new Date(v).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
+const formatDateTime = (v) => formatDateTimeUsingNativeLocale(v, 'en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true }) || '—';
 const formatDate = (v) => v ? new Date(v).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
-const formatTime = (v) => v ? new Date(v).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '';
+const formatTime = (v) => formatTimeUsingNativeLocale(v, 'en-US', { hour: '2-digit', minute: '2-digit' });
 
 const deviceLabel = (row) => row?.deviceName || (localStorage.getItem('pos_device_name') || '').trim() || (row?.deviceId ? `Device ${row.deviceId}` : '—');
 const statusLabel = (s) => ({ open: 'نشطة', closed: 'مغلقة', cancelled: 'ملغاة' }[s] || s);

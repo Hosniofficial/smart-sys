@@ -337,6 +337,7 @@ import LoadingButton from '@/components/ui/LoadingButton.vue'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
 import { getLocalDateISO } from '@/utils';
 import { useReturnStore } from '@/stores/return/returnStore';
+import { formatPriceEnUSMinimumTwoDecimals } from '@/utils/formatters/numbers';
 
 const props = defineProps({
   type: { type: String, required: true }, // 'sales' or 'purchases'
@@ -556,10 +557,7 @@ const priceKey = computed(() => 'returnUnitPrice');
 const displayPriceKey = priceKey;
 const placeholderText = computed(() => props.type === 'sales' ? 'أدخل رقم فاتورة المبيعات أو ID...' : 'أدخل رقم فاتورة المشتريات أو ID...');
 
-function formatPrice(amount) {
-  if (!amount) return '0';
-  return Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2 });
-}
+const formatPrice = formatPriceEnUSMinimumTwoDecimals;
 
 // دالة للكشف عن المنتجات المكررة
 function hasDuplicateProduct(productId) {

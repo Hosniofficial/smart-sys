@@ -285,6 +285,11 @@ import { resolvePrintOptions } from '@/utils/printTemplates/branchPrintSettings'
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import PaginationControls from '@/components/ui/PaginationControls.vue';
+import {
+  formatDateUsingNativeLocale,
+  formatDateTimeUsingNativeLocale,
+  formatReturnDateTime
+} from '@/utils/formatters/date';
 
 const { showToast } = useToast();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
@@ -372,23 +377,9 @@ const kpiDiscount = computed(() => {
 });
 const totalPages = computed(() => Math.max(1, Math.ceil((filters.total.value || 0) / filters.perPage.value)));
 
-const formatPrice = (amount) => formatCurrencyLocale(amount, 2);
-const formatDate = (date) => date ? new Date(date).toLocaleDateString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
-const formatDateTime = (date) => date ? new Date(date).toLocaleString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '';
-const formatReturnDateTime = (returnDate, createdAt) => {
-  const dateValue = String(returnDate || createdAt || '');
-  if (!dateValue) return '';
-  const datePart = dateValue.slice(0, 10);
-  const directTime = dateValue.match(/[T ](\d{2}:\d{2}(?::\d{2})?)/)?.[1];
-  const createdTime = String(createdAt || '').match(/[T ](\d{2}:\d{2}(?::\d{2})?)/)?.[1];
-  const time = directTime || createdTime;
-  if (!time) return formatDate(datePart);
-  const normalizedTime = time.length === 5 ? `${time}:00` : time;
-  const date = new Date(`${datePart}T${normalizedTime}`);
-  return Number.isNaN(date.getTime())
-    ? formatDate(datePart)
-    : date.toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true });
-};
+const formatPrice = formatCurrencyLocale;
+const formatDate = (date) => formatDateUsingNativeLocale(date, 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const formatDateTime = (date) => formatDateTimeUsingNativeLocale(date, 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
 const isPurchaseReturn = computed(() => {
   const returnType = String(selectedReturn.value?.returnType || selectedReturn.value?.type || '').toLowerCase();
   return type.value === 'purchases'

@@ -191,6 +191,7 @@ import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, Li
 
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
+import { formatNumberEnUS } from '@/utils/formatters/numbers';
 import { useBranchStore } from '@/stores/branch/branchStore';
 import PageHeader from '@/components/PageHeader.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
@@ -284,8 +285,8 @@ const chartOptions = {
   } 
 };
 
-const formatCurrency = (v) => formatCurrencyLocale(v, 2);
-const formatNumber = (v) => (Number(v) || 0).toLocaleString('en-US');
+const formatCurrency = formatCurrencyLocale;
+const formatNumber = formatNumberEnUS;
 const getRowClass = (item) => {
     if (item.quantity === 0) return 'bg-rose-50/20 border-r-rose-500';
     if (item.quantity <= item.lowStockThreshold) return 'bg-amber-50/20 border-r-amber-500';

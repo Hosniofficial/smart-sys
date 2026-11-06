@@ -256,9 +256,7 @@ const bulkSuppliersDone = ref(0);
 const bulkCustomersTotal = ref(0);
 const bulkSuppliersTotal = ref(0);
 
-function formatCurrency(val) {
-  return formatCurrencyLocale(val, 2);
-}
+const formatCurrency = formatCurrencyLocale;
 
 async function fetchCustomers() {
   loadingCustomers.value = true;

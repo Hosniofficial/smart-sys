@@ -176,6 +176,7 @@ import { Line as LineChart } from 'vue-chartjs';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import { getLocalDateISO } from '@/utils';
+import { formatDateUsingNativeLocale } from '@/utils/formatters/date';
 import { useVoucherStore } from '@/stores/voucher/voucherStore';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import { useBranchStore } from '@/stores/branch/branchStore';
@@ -261,8 +262,8 @@ const fetchReport = async () => {
   }
 };
 
-const formatCurrency = (v) => formatCurrencyLocale(v, 2);
-const formatDate = (v) => v ? new Date(v).toLocaleDateString('en-US') : '';
+const formatCurrency = formatCurrencyLocale;
+const formatDate = (v) => formatDateUsingNativeLocale(v, 'en-US');
 const voucherTypeLabel = (t) => (t === 'receipt' || t === 'قبض') ? 'سند قبض' : 'سند صرف';
 const voucherTypeClass = (t) => (t === 'receipt' || t === 'قبض') ? 'text-emerald-600 border-emerald-100 bg-emerald-50' : 'text-rose-600 border-rose-100 bg-rose-50';
 

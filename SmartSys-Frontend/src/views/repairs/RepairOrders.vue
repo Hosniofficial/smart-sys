@@ -506,7 +506,7 @@ const productStore  = useProductStore()
 const branchIsolation = useBranchIsolation()
 const { showToast } = useToast()
 const { formatCurrencyLocale } = useCompanyCurrency()
-const formatPrice = (amount) => formatCurrencyLocale(amount, 2)
+const formatPrice = formatCurrencyLocale;
 
 // Filters (reuse composable like SalesHistory)
 const filters = useHistoryFilters('repairs_hist_filters')

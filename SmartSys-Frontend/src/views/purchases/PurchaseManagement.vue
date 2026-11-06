@@ -376,6 +376,7 @@ import { ensureCashSupplier } from '@/services/suppliers'
 import { useSettingsStore } from '@/stores/settings/settingsStore'
 import { useBootstrapStore } from '@/stores/bootstrap/bootstrapStore'
 import AlertService from '@/services/AlertService'
+import { formatDateTimeWithSqlSpace } from '@/utils/formatters/date'
 
 const { showToast } = useToast()
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency()
@@ -901,15 +902,16 @@ const getPurchaseStatus = (s) => {
   return map[status] || { text: status || 'غير محددة', class: 'bg-slate-50 text-slate-500 border-slate-100' };
 };
 
-const formatCurrency = (v) => formatCurrencyLocale(v, 2);
+const formatCurrency = formatCurrencyLocale;
 
-const formatDateTime = (value) => {
-  if (!value) return '';
-  const parsed = new Date(String(value).replace(' ', 'T'));
-  return Number.isNaN(parsed.getTime())
-    ? String(value)
-    : parsed.toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true });
-};
+const formatDateTime = (value) => formatDateTimeWithSqlSpace(value, {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: true
+});
 
 onMounted(async () => {
   await branchStore.initialize();

@@ -1031,6 +1031,7 @@ import BusyIndicator from '@/components/ui/BusyIndicator.vue';
 import BaseModal from '@/components/BaseModal.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { getLocalDateISO, isSettingEnabled, printDocument } from '@/utils';
+import { formatDateUsingNativeLocale } from '@/utils/formatters/date';
 import { getBuilderByTemplate } from '@/utils/printTemplates';
 import { resolvePrintOptions } from '@/utils/printTemplates/branchPrintSettings';
 import { useCashierSessionGuard } from '@/composables/useCashierSessionGuard';
@@ -1067,7 +1068,7 @@ const salesStore = useSalesStore();
 const bootstrapStore = useBootstrapStore();
 const { ensureOpenSession } = useCashierSessionGuard();
 const { formatCurrencyLocale, fetchSettings, currencyCode } = useCompanyCurrency();
-const formatPrice = (amount) => formatCurrencyLocale(amount, 2);
+const formatPrice = formatCurrencyLocale;
 const userChoseBranch = ref(localStorage.getItem('selectedBranchId') !== null && localStorage.getItem('selectedBranchId') !== 'all');
 
 const canApproveBelowCost = computed(() => {
@@ -1585,7 +1586,7 @@ const isExpiringSoon = (expiryDate) => {
   const diff = Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
   return diff <= 30 && diff > 0;
 };
-const formatDate = (date) => date ? new Date(date).toLocaleDateString('en-US') : '-';
+const formatDate = (date) => formatDateUsingNativeLocale(date, 'en-US') || '-';
 const loadAllSettings = async () => {
   try {
     const settings = await fetchSettings();
