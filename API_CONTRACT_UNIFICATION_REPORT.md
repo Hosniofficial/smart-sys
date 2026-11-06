@@ -11,7 +11,7 @@
 
 - `composer test`: PASS — 436 tests, 1,226 assertions, 48 skipped.
 - PHP syntax check: PASS — all 252 PHP files under `api/v1/src` and `tests` linted.
-- `npm.cmd run build`: PASS — 2,305 frontend modules transformed. The project has no frontend test script. The build passed when run on its own; a concurrent attempt ran out of memory.
+- `npm.cmd run build`: PASS — 2,305 frontend modules transformed. The project has no frontend test script.
 - `git diff --check`: PASS (Git reported existing line-ending normalization warnings only).
 - Live public `GET /smartsys/health`: PASS — returned HTTP 200 with the complete response envelope.
 - Live unauthenticated `GET /api/v1/sales`: PASS — returned HTTP 401 with the complete `status`, `message`, `data`, `errors`, and `meta` envelope.
@@ -22,10 +22,20 @@
 ## Remaining risks and notes
 
 - Since the contract change is applied directly to v1, any unlisted third-party consumer still expecting snake_case keys or pagination outside `meta` must be migrated.
-- The suite still skips 48 backend tests; the frontend has build validation only, not an automated test runner.
+- The suite skips 48 test cases: MySQL integration tests require explicitly enabled isolated MySQL schemas, and some migration tests require the unavailable PDO SQLite driver. The frontend has build validation only, not an automated test runner.
 - Authenticated end-to-end behavior and external consumers remain unverified. Run the operational acceptance suite in a staging environment with test accounts before production rollout.
 - The build may report existing large-chunk warnings; they do not fail the build.
-- The file inventory below is the complete Git working-tree snapshot relative to `HEAD` as of this report update. It includes carried-over local changes from earlier work in this workspace; Git history alone cannot attribute those changes to a particular request.
+
+## Follow-up API consumer audit
+
+- Reviewed the API response/request middleware placement and scanned the 282 route declarations under `app/routes` plus the 212 frontend JS/Vue/TS source files for response-unwrapping and pagination patterns.
+- Fixed two confirmed frontend consumer mismatches: the Upgrade page was reading the public plans list one level too deep, and purchase invoice search was looking for `items` at the wrong level of the purchase-store result.
+- Re-ran validation after those fixes: all 436 backend tests passed (48 skipped), all 252 PHP files linted, `npm.cmd run build` passed, and `git diff --check` passed.
+- This was a repository-wide static/contract audit, not a live authenticated business-workflow test. Login, permissions, sales, purchases, payments, reports, and approvals still require staging test accounts for operational sign-off.
+
+## Original contract unification commit inventory
+
+- The file inventory below records the paths included in commit `24c0730` relative to its parent. It includes carried-over local changes from earlier work in the workspace; Git history alone cannot attribute every path to the API contract task.
 
 ## Changed and untracked files
 

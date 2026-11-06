@@ -232,15 +232,17 @@ async function loadPlans() {
     
     // Try to fetch from /plans endpoint
     const response = await subscriptionStore.fetchPublicPlans()
-    
-    if (response.status === 'success' && Array.isArray(response.data)) {
+    const planData = response?.data
+    const planList = Array.isArray(planData) ? planData : planData?.items
+
+    if (response?.status === 'success' && Array.isArray(planList)) {
       // Filter out trial and promotional plans (only paid plans)
-      const filteredPlans = response.data.data.filter(p =>
+      const filteredPlans = planList.filter(p =>
         !p.code.toLowerCase().includes('trial') && 
         !p.code.toLowerCase().includes('promo') &&
         parseFloat(p.price) > 0
       )
-      plans.value = filteredPlans.length > 0 ? filteredPlans : response.data
+      plans.value = filteredPlans.length > 0 ? filteredPlans : planList
       if (import.meta.env.DEV) {
         logger.debug('[Upgrade Page] Loaded plans from API:', plans.value.length)
       }

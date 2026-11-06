@@ -552,7 +552,7 @@ const performSearch = async (query) => {
   try {
     const response = await purchaseStore.fetchPurchases({ branchId: branchId.value || undefined, search: query.trim(), perPage: 50 });
     if (response?.status === 'success') {
-      searchResults.value = Array.isArray(response.data) ? response.data : (response.data?.data?.items || []);
+      searchResults.value = Array.isArray(response.data) ? response.data : (response.data?.items || []);
     }
   } catch { searchResults.value = []; } finally { isLoadingSearch.value = false; }
 };
