@@ -38,15 +38,19 @@ export function useCompanyCurrency() {
       
       // Parse settings into an object
       let parsedSettings = {};
+      const settingsData = response?.data;
+      const settingsList = Array.isArray(settingsData)
+        ? settingsData
+        : (Array.isArray(settingsData?.items) ? settingsData.items : null);
       
-      if (Array.isArray(response.data)) {
+      if (settingsList) {
         // If data is an array of {key, value} objects
-        response.data.data.forEach(item => {
-          parsedSettings[item.key] = item.value;
+        settingsList.forEach(item => {
+          if (item?.key) parsedSettings[item.key] = item.value;
         });
-      } else if (typeof response.data === 'object') {
+      } else if (settingsData && typeof settingsData === 'object') {
         // If data is already an object
-        parsedSettings = response.data;
+        parsedSettings = settingsData;
       }
 
       globalCachedSettings = parsedSettings;
