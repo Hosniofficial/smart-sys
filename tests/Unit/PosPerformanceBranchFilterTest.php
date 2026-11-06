@@ -28,9 +28,9 @@ final class PosPerformanceBranchFilterTest extends TestCase
         self::assertSame(200, $response->getStatusCode());
         self::assertSame('success', $body['status'] ?? null);
         self::assertCount(1, $body['data']['data'] ?? []);
-        self::assertSame(4, $body['data']['data'][0]['user_id']);
-        self::assertSame(1, $body['data']['data'][0]['orders_count']);
-        self::assertEquals(1500, $body['data']['data'][0]['total_sales']);
+        self::assertSame(4, $body['data']['data'][0]['userId']);
+        self::assertSame(1, $body['data']['data'][0]['ordersCount']);
+        self::assertEquals(1500, $body['data']['data'][0]['totalSales']);
     }
 
     public function testPosPerformanceUsesApprovalDateForApprovedInvoices(): void
@@ -55,8 +55,8 @@ final class PosPerformanceBranchFilterTest extends TestCase
         $body = json_decode((string) $response->getBody(), true);
 
         self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
-        self::assertSame(2, $body['data']['data'][0]['orders_count']);
-        self::assertEquals(2800, $body['data']['data'][0]['total_sales']);
+        self::assertSame(2, $body['data']['data'][0]['ordersCount']);
+        self::assertEquals(2800, $body['data']['data'][0]['totalSales']);
     }
 
     public function testMalformedBranchFilterIsRejectedInsteadOfWideningScope(): void
@@ -142,7 +142,7 @@ final class PosPerformanceBranchFilterTest extends TestCase
         $body = json_decode((string) $response->getBody(), true);
 
         self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
-        self::assertEquals(1500, $body['data']['data'][0]['total_sales']);
-        self::assertEquals(600, $body['data']['data'][0]['net_sales']);
+        self::assertEquals(1500, $body['data']['data'][0]['totalSales']);
+        self::assertEquals(600, $body['data']['data'][0]['netSales']);
     }
 }

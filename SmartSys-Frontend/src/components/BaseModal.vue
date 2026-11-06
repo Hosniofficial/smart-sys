@@ -27,7 +27,6 @@
         @click.self="closeOnClickOutside && $emit('close')"
       >
         <div :class="contentClass">
-          <!-- Modal Header -->
           <div v-if="$slots.header || showCloseButton" :class="headerClass">
             <slot name="header"></slot>
             <button 
@@ -40,12 +39,10 @@
             </button>
           </div>
 
-          <!-- Modal Body -->
           <div :class="bodyClass">
             <slot></slot>
           </div>
 
-          <!-- Modal Footer -->
           <div v-if="$slots.footer" :class="footerClass">
             <slot name="footer"></slot>
           </div>

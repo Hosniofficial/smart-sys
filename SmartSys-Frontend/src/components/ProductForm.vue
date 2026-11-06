@@ -7,7 +7,6 @@
         <p class="text-sm text-blue-700 font-medium">اختر فرعًا أولاً لعرض التصنيفات وإدارتها</p>
       </div>
 
-      <!-- Section 1: Basic Information -->
       <section class="space-y-6">
         <header class="flex items-center gap-3 px-1">
           <span class="w-1 h-4 bg-blue-600 rounded-full"></span>
@@ -24,7 +23,7 @@
           <div v-if="isEditMode" class="space-y-1.5 group">
             <label class="metadata-label">كود التتبع الداخلي (SKU)</label>
             <div class="relative">
-              <input type="text" v-model="form.product_code" class="form-input-v3 font-mono text-indigo-600" style="padding-right: 2rem;" placeholder="PRD-000" />
+              <input type="text" v-model="form.productCode" class="form-input-v3 font-mono text-indigo-600" style="padding-right: 2rem;" placeholder="PRD-000" />
               <i class="fas fa-hashtag absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] pointer-events-none"></i>
             </div>
           </div>
@@ -39,7 +38,7 @@
 
           <div class="space-y-1.5">
             <label class="metadata-label">الوحدة الأساسية <span class="text-rose-500">*</span></label>
-            <select v-model="form.unit_id" class="form-input-v3 font-bold appearance-none" :class="{'border-rose-400': errors.unit_id}">
+            <select v-model="form.unitId" class="form-input-v3 font-bold appearance-none" :class="{'border-rose-400': errors.unitId}">
               <option :value="null">-- اختر الوحدة --</option>
               <option v-for="unit in units" :key="unit.id" :value="unit.id">{{ unit.name }}</option>
             </select>
@@ -49,7 +48,7 @@
         <div class="p-6 bg-white border border-slate-200 rounded-xl space-y-4 shadow-sm">
           <label class="metadata-label">تصنيف الصنف</label>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <select v-model="form.category_id" class="form-input-v3 font-bold appearance-none bg-slate-50 border-transparent" :disabled="!branchId">
+            <select v-model="form.categoryId" class="form-input-v3 font-bold appearance-none bg-slate-50 border-transparent" :disabled="!branchId">
               <option :value="null">بدون تصنيف (عام)</option>
               <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
             </select>
@@ -70,7 +69,6 @@
         </div>
       </section>
 
-      <!-- Section 2: Pricing & Finance -->
       <section class="space-y-6">
         <header class="flex items-center gap-3 px-1">
           <span class="w-1 h-4 bg-emerald-500 rounded-full"></span>
@@ -89,7 +87,6 @@
         </div>
       </section>
 
-      <!-- Section 3: Inventory & Tracking Architecture -->
       <section class="space-y-6">
         <header class="flex items-center gap-3 px-1">
           <span class="w-1 h-4 bg-indigo-500 rounded-full"></span>
@@ -109,13 +106,12 @@
           <div class="space-y-1.5 group">
             <label class="metadata-label">حد إعادة الطلب (Min Stock)</label>
             <div class="relative">
-              <input type="number" v-model="form.min_quantity" class="form-input-v3 font-bold" style="padding-right: 2rem;" placeholder="مثال: 5" />
+              <input type="number" v-model="form.minQuantity" class="form-input-v3 font-bold" style="padding-right: 2rem;" placeholder="مثال: 5" />
               <i class="fas fa-bell absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors text-[10px] pointer-events-none"></i>
             </div>
           </div>
         </div>
 
-        <!-- Product Type & Tracking Strategy -->
         <div class="space-y-4">
           <h5 class="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1">استراتيجية التتبع</h5>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -123,8 +119,8 @@
               { id: 'stock', name: 'منتج مخزني', sub: 'يتطلب جرد ومراقبة كميات', icon: 'fa-boxes-stacked', color: 'text-emerald-500' },
               { id: 'service', name: 'خدمة / صنف رقمي', sub: 'بدون مخزون فيزيائي', icon: 'fa-concierge-bell', color: 'text-blue-500' }
             ]" :key="type.id" class="cursor-pointer group">
-              <input type="radio" v-model="form.product_type" :value="type.id" class="hidden" />
-              <div class="p-4 rounded-xl border border-slate-200 bg-white transition-all group-hover:border-blue-300" :class="{'border-blue-600 ring-4 ring-blue-500/5 bg-blue-50/30': form.product_type === type.id}">
+              <input type="radio" v-model="form.productType" :value="type.id" class="hidden" />
+              <div class="p-4 rounded-xl border border-slate-200 bg-white transition-all group-hover:border-blue-300" :class="{'border-blue-600 ring-4 ring-blue-500/5 bg-blue-50/30': form.productType === type.id}">
                 <div class="flex items-center gap-4">
                   <div :class="[type.color]" class="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm border border-slate-100"><i :class="['fas', type.icon]"></i></div>
                   <div>
@@ -137,8 +133,7 @@
           </div>
         </div>
 
-        <!-- Batch/Serial/Expiry Toggles (Only for stock products) -->
-        <div v-if="form.product_type === 'stock'" class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div v-if="form.productType === 'stock'" class="grid grid-cols-1 md:grid-cols-3 gap-3">
           <label v-for="opt in [
             { model: 'has_expiry_date', label: 'تتبع الصلاحية', icon: 'fa-calendar-alt' },
             { model: 'has_batch_number', label: 'رقم الدفعة', icon: 'fa-layer-group' },
@@ -152,30 +147,28 @@
           </label>
         </div>
 
-        <!-- Conditional Input Grid -->
         <transition name="slide-down">
-          <div v-if="form.has_expiry_date || form.has_batch_number || form.has_serial_number" class="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 bg-slate-50 border border-slate-100 rounded-xl">
-             <div v-if="form.has_expiry_date" class="space-y-1.5 animate-fadeIn group">
+          <div v-if="form.hasExpiryDate || form.hasBatchNumber || form.hasSerialNumber" class="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 bg-slate-50 border border-slate-100 rounded-xl">
+             <div v-if="form.hasExpiryDate" class="space-y-1.5 animate-fadeIn group">
                <label class="text-[10px] font-bold text-blue-600 uppercase">صلاحية افتراضية</label>
                <div class="relative">
-                 <input ref="expiryDateRef" type="date" v-model="form.expiry_date" class="form-input-v3 h-9 font-mono w-full" style="padding-left: 2rem;" />
+                 <input ref="expiryDateRef" type="date" v-model="form.expiryDate" class="form-input-v3 h-9 font-mono w-full" style="padding-left: 2rem;" />
                  <i @click="expiryDateRef?.showPicker?.()" class="fas fa-calendar absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 cursor-pointer hover:text-blue-500 transition-colors text-[10px]"></i>
                </div>
              </div>
-             <div v-if="form.has_batch_number" class="space-y-1.5 animate-fadeIn">
+             <div v-if="form.hasBatchNumber" class="space-y-1.5 animate-fadeIn">
                <label class="text-[10px] font-bold text-blue-600 uppercase">الدفعة (Batch)</label>
-               <input type="text" v-model="form.batch_number" class="form-input-v3 h-9 font-mono" placeholder="B-000" />
+               <input type="text" v-model="form.batchNumber" class="form-input-v3 h-9 font-mono" placeholder="B-000" />
              </div>
-             <div v-if="form.has_serial_number" class="space-y-1.5 animate-fadeIn">
+             <div v-if="form.hasSerialNumber" class="space-y-1.5 animate-fadeIn">
                <label class="text-[10px] font-bold text-blue-600 uppercase">السيريال (SN)</label>
-               <input type="text" v-model="form.serial_number" class="form-input-v3 h-9 font-mono" placeholder="SN-000" />
+               <input type="text" v-model="form.serialNumber" class="form-input-v3 h-9 font-mono" placeholder="SN-000" />
              </div>
           </div>
         </transition>
       </section>
 
-      <!-- Section 4: Distribution & Branch Management -->
-      <section v-if="!isEditMode && branches.length > 0 && form.product_type === 'stock'" class="space-y-6">
+      <section v-if="!isEditMode && branches.length > 0 && form.productType === 'stock'" class="space-y-6">
         <header class="flex items-center gap-3 px-1">
           <span class="w-1 h-4 bg-amber-500 rounded-full"></span>
           <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">4. تحديد النطاق وإدخال الرصيد الافتتاحي</h4>
@@ -204,7 +197,6 @@
           </label>
         </div>
 
-        <!-- Dynamic Branch Multi-Select -->
         <transition name="slide-down">
           <div v-if="branchAssignmentType === 'selected'" class="p-6 bg-slate-50 border border-slate-200 rounded-xl space-y-4 animate-fadeIn">
             <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">القائمة المستهدفة:</p>
@@ -218,7 +210,7 @@
         </transition>
 
         <!-- Initial Balance: Strategic Action Card -->
-        <div v-if="form.product_type === 'stock'" class="pt-4">
+        <div v-if="form.productType === 'stock'" class="pt-4">
           <div class="p-6 rounded-xl border-2 border-dashed border-slate-200 hover:border-amber-400 transition-all bg-white group/ob">
             <label class="flex items-start gap-4 cursor-pointer">
               <input type="checkbox" v-model="enableOpeningBalance" class="w-5 h-5 mt-1 rounded border-slate-300 text-amber-500 focus:ring-0" />
@@ -244,7 +236,6 @@
         </div>
       </section>
 
-      <!-- Description: Final Meta -->
       <section class="space-y-2">
         <label class="metadata-label uppercase tracking-widest">ملاحظات المنتج (اختياري)</label>
         <textarea v-model="form.description" class="w-full rounded-xl border border-slate-200 p-4 text-xs font-medium bg-slate-50 focus:bg-white transition-all outline-none focus:border-blue-500" rows="3" placeholder="تفاصيل إضافية للمرجعية..."></textarea>
@@ -260,6 +251,7 @@ import productsService from '@/services/products';
 import catalogService from '@/services/catalog';
 import { useToast } from '@/composables/useToast';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
+import logger from '@/utils/services/logger';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 const props = defineProps({
@@ -303,36 +295,36 @@ watch(() => props.productData, (newData) => {
     ? { 
         id: newData.id || null,
         name: newData.name || '',
-        product_code: newData.product_code || '',
+        productCode: newData.productCode || '',
         barcode: newData.barcode || '',
         description: newData.description || '',
-        category_id: newData.category_id || null,
-        category_name: newData.category_name || '',
-        purchase_price: newData.purchase_price || 0,
-        sale_price: newData.sale_price || 0,
-        min_sale_price: newData.min_sale_price || 0,
-        fixed_discount_percentage: newData.fixed_discount_percentage || 0,
-        quantity: newData.current_quantity || newData.quantity || 0,
-        current_quantity: newData.current_quantity || 0,
-        unit_id: newData.unit_id || null,
-        unit_name: newData.unit_name || '',
-        min_quantity: newData.min_quantity || 0,
-        max_quantity: newData.max_quantity || 0,
-        product_type: newData.product_type || 'stock',
+        categoryId: newData.categoryId || null,
+        categoryName: newData.categoryName || '',
+        purchasePrice: newData.purchasePrice || 0,
+        salePrice: newData.salePrice || 0,
+        minSalePrice: newData.minSalePrice || 0,
+        fixedDiscountPercentage: newData.fixedDiscountPercentage || 0,
+        quantity: newData.currentQuantity || newData.quantity || 0,
+        currentQuantity: newData.currentQuantity || 0,
+        unitId: newData.unitId || null,
+        unitName: newData.unitName || '',
+        minQuantity: newData.minQuantity || 0,
+        maxQuantity: newData.maxQuantity || 0,
+        productType: newData.productType || 'stock',
         active: newData.active ?? 1,
-        has_expiry_date: !!(newData.has_expiry_date ?? newData.configuration?.has_expiry_date),
-        has_batch_number: !!(newData.has_batch_number ?? newData.configuration?.has_batch_number),
-        has_serial_number: !!(newData.has_serial_number ?? newData.configuration?.has_serial_number),
-        expiry_date: newData.expiry_date || '',
-        batch_number: newData.batch_number || '',
-        serial_number: newData.serial_number || '',
+        hasExpiryDate: !!(newData.hasExpiryDate ?? newData.configuration?.hasExpiryDate),
+        hasBatchNumber: !!(newData.hasBatchNumber ?? newData.configuration?.hasBatchNumber),
+        hasSerialNumber: !!(newData.hasSerialNumber ?? newData.configuration?.hasSerialNumber),
+        expiryDate: newData.expiryDate || '',
+        batchNumber: newData.batchNumber || '',
+        serialNumber: newData.serialNumber || '',
       }
     : { 
-        id: null, name: '', product_code: '', barcode: '', description: '', category_id: null, category_name: '',
-        quantity: '', current_quantity: 0, purchase_price: '', sale_price: '', min_sale_price: '', min_quantity: '',
-        has_expiry_date: false, expiry_date: '', has_batch_number: false, batch_number: '',
-        has_serial_number: false, serial_number: '', unit_id: null, unit_name: '', product_type: 'stock',
-        active: 1, fixed_discount_percentage: 0, max_quantity: 0,
+        id: null, name: '', productCode: '', barcode: '', description: '', categoryId: null, categoryName: '',
+        quantity: '', currentQuantity: 0, purchasePrice: '', salePrice: '', minSalePrice: '', minQuantity: '',
+        hasExpiryDate: false, expiryDate: '', hasBatchNumber: false, batchNumber: '',
+        hasSerialNumber: false, serialNumber: '', unitId: null, unitName: '', productType: 'stock',
+        active: 1, fixedDiscountPercentage: 0, maxQuantity: 0,
       };
   errors.value = {};
 }, { immediate: true });
@@ -359,7 +351,7 @@ const addNewCategory = async () => {
   if (!targetBranchId) { showToast('الرجاء اختيار فرع أولاً قبل إضافة تصنيف.', 'warning'); return; }
   isAddingCategory.value = true;
   try {
-    await catalogService.createCategory({ name: newCategoryName.value, branch_id: targetBranchId });
+    await catalogService.createCategory({ name: newCategoryName.value, branchId: targetBranchId });
     showToast(`تم إضافة التصنيف بنجاح!`, 'success');
     newCategoryName.value = '';
     emit('category-added');
@@ -372,15 +364,15 @@ const addNewCategory = async () => {
 const validateForm = () => {
   errors.value = {};
   if (!form.value.name) errors.value.name = 'اسم المنتج مطلوب.';
-  if (!form.value.sale_price || isNaN(form.value.sale_price)) errors.value.sale_price = 'سعر البيع مطلوب.';
-  if (canViewPurchasePrice.value && (!form.value.purchase_price || isNaN(form.value.purchase_price))) errors.value.purchase_price = 'سعر الشراء مطلوب.';
-  if (!form.value.unit_id) errors.value.unit_id = 'الوحدة مطلوبة.';
+  if (!form.value.salePrice || isNaN(form.value.salePrice)) errors.value.salePrice = 'سعر البيع مطلوب.';
+  if (canViewPurchasePrice.value && (!form.value.purchasePrice || isNaN(form.value.purchasePrice))) errors.value.purchasePrice = 'سعر الشراء مطلوب.';
+  if (!form.value.unitId) errors.value.unitId = 'الوحدة مطلوبة.';
   return Object.keys(errors.value).length === 0;
 };
 
 const handleSubmit = async () => {
   if (!validateForm()) return;
-  const isStockProduct = form.value.product_type === 'stock';
+  const isStockProduct = form.value.productType === 'stock';
   if (!isEditMode.value && branchAssignmentType.value === 'selected' && selectedBranches.value.length === 0) {
     showToast('يرجى اختيار فرع واحد على الأقل', 'error'); return;
   }
@@ -391,10 +383,10 @@ const handleSubmit = async () => {
   isSaving.value = true;
   try {
     const payload = { ...form.value };
-    if (!canViewPurchasePrice.value) delete payload.purchase_price;
-    if (payload.expiry_date) { payload.default_expiry_date = payload.expiry_date; delete payload.expiry_date; }
-    if (payload.batch_number) { payload.default_batch_number = payload.batch_number; delete payload.batch_number; }
-    if (payload.serial_number) { payload.default_serial_number = payload.serial_number; delete payload.serial_number; }
+    if (!canViewPurchasePrice.value) delete payload.purchasePrice;
+    if (payload.expiryDate) { payload.defaultExpiryDate = payload.expiryDate; delete payload.expiryDate; }
+    if (payload.batchNumber) { payload.defaultBatchNumber = payload.batchNumber; delete payload.batchNumber; }
+    if (payload.serialNumber) { payload.defaultSerialNumber = payload.serialNumber; delete payload.serialNumber; }
 
     if (!isEditMode.value) {
       let targetBranchIds = [];
@@ -410,10 +402,10 @@ const handleSubmit = async () => {
         }
       }
 
-      payload.branch_assignments = {
-        branch_ids: targetBranchIds,
-        initial_quantity: isStockProduct && enableOpeningBalance.value ? initialQuantity.value : 0,
-        initial_unit_cost: isStockProduct && enableOpeningBalance.value ? initialUnitCost.value : 0
+      payload.branchAssignments = {
+        branchIds: targetBranchIds,
+        initialQuantity: isStockProduct && enableOpeningBalance.value ? initialQuantity.value : 0,
+        initialUnitCost: isStockProduct && enableOpeningBalance.value ? initialUnitCost.value : 0
       };
     }
 
@@ -422,10 +414,10 @@ const handleSubmit = async () => {
       showToast('تم التحديث بنجاح!', 'success');
     } else {
       const response = await productsService.create(payload);
-      const activation = response.data?.data?.branch_activation || [];
+      const activation = response.data?.data?.branchActivation || [];
       const setupRequired = activation.filter((branch) => branch.status === 'setup_required');
       if (setupRequired.length) {
-        const branchNames = setupRequired.map((branch) => branch.branch_name).join('، ');
+        const branchNames = setupRequired.map((branch) => branch.branchName).join('، ');
         showToast(`تم إنشاء المنتج، لكن تعذر ربط حساباته في: ${branchNames}. أكمل التفعيل المحاسبي قبل تسجيل الحركات.`, 'warning');
       } else if (activation.some((branch) => branch.status === 'active')) {
         showToast('تمت إضافة المنتج وربط حساباته بالفروع المختارة بنجاح.', 'success');
@@ -435,9 +427,12 @@ const handleSubmit = async () => {
     }
     emit('success');
   } catch (error) {
-    console.error('[ProductForm] Error saving product:', error);
+    logger.error('[ProductForm] Error saving product', {
+      message: error?.message,
+      status: error?.response?.status,
+    });
     if (error.response?.status === 409) {
-      errors.value.product_code = 'كود SKU مكرر.';
+      errors.value.productCode = 'كود SKU مكرر.';
       showToast('كود مكرر', 'error');
     } else {
       const errorMsg = error.response?.data?.message || 'فشل في الحفظ';

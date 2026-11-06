@@ -1,11 +1,8 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
-
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="التوزيع الجماعي"
@@ -29,7 +26,6 @@
         </template>
       </PageHeader>
 
-      <!-- Segmented Tab Navigation: High-Density SaaS Style -->
       <div class="flex items-center justify-center">
         <div class="flex bg-slate-100 p-1 rounded-lg border border-slate-200/50">
           <button v-for="tab in [
@@ -48,10 +44,8 @@
         </div>
       </div>
 
-      <!-- Tab Content: Form Distribution -->
       <div v-if="activeTab === 'form'" class="space-y-8 animate-fadeIn">
         
-        <!-- Product Selection Section -->
         <section class="bg-white border border-slate-200 rounded-xl p-8 shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between mb-8">
             <div class="space-y-1">
@@ -88,7 +82,6 @@
               </button>
             </div>
 
-            <!-- Search Dropdown: Professional Elevation -->
             <transition name="dropdown">
               <div v-if="showDropdown && (isSearchingProducts || productSearchError || products.length || productSearch.trim())" id="product-dropdown" role="listbox" :aria-busy="isSearchingProducts" class="absolute z-50 mt-2 w-full bg-white border border-slate-200 rounded-lg shadow-2xl max-h-72 overflow-auto py-2 animate-fadeIn">
                 <div v-if="isSearchingProducts" role="status" class="px-6 py-4 text-xs font-bold text-slate-500">جارٍ البحث عن المنتجات...</div>
@@ -108,7 +101,6 @@
             </transition>
           </div>
 
-          <!-- Selected Product Dark Panel: Anchoring Context -->
           <transition name="slide-down">
             <div v-if="selectedProduct" class="mt-8 bg-slate-900 rounded-xl p-6 text-white shadow-xl flex items-center justify-between border border-white/5 relative overflow-hidden">
               <div class="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-x-12 -translate-y-12"></div>
@@ -135,7 +127,6 @@
           </transition>
         </section>
 
-        <!-- Distribution Table Card -->
         <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div class="p-6 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
             <div class="space-y-1">
@@ -204,7 +195,6 @@
             </table>
           </div>
 
-          <!-- Bottom Action Tray -->
           <div class="p-8 bg-white border-t border-slate-100 flex items-center justify-between gap-6">
              <div class="flex items-center gap-4">
                 <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shadow-inner"><i class="fas fa-info-circle"></i></div>
@@ -223,7 +213,6 @@
         </section>
       </div>
 
-      <!-- Tab Content: CSV Import: Stripe-style File Upload -->
       <div v-else-if="activeTab === 'csv'" class="animate-fadeIn">
         <div class="bg-white border border-slate-200 rounded-xl p-8 lg:p-10 shadow-sm space-y-10">
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -237,7 +226,6 @@
           </div>
           
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
-            <!-- Drop Zone -->
             <div class="lg:col-span-2">
               <label class="flex flex-col items-center justify-center w-full h-64 border-2 border-slate-100 border-dashed rounded-xl cursor-pointer bg-slate-50/50 hover:bg-white hover:border-blue-300 hover:shadow-xl hover:shadow-blue-900/5 transition-all duration-500 group">
                 <div class="flex flex-col items-center justify-center pt-5 pb-6 text-center">
@@ -250,7 +238,6 @@
                 <input type="file" accept=".csv" @change="onFileChange" class="hidden" />
               </label>
 
-              <!-- Selected File UI -->
               <transition name="fade">
                 <div v-if="csvFile" class="mt-4 p-4 bg-emerald-50 border border-emerald-100 rounded-lg flex items-center justify-between animate-fadeIn">
                   <div class="flex items-center gap-4">
@@ -265,7 +252,6 @@
               </transition>
             </div>
 
-            <!-- Context Settings -->
             <div class="space-y-6 bg-slate-50/50 p-6 rounded-xl border border-slate-100">
                <div class="space-y-3">
                   <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 px-1">
@@ -296,7 +282,6 @@
         </div>
       </div>
 
-      <!-- Tab Content: History: Minimalist Empty State -->
       <div v-else-if="activeTab === 'history'" class="animate-fadeIn">
         <div class="bg-white border border-slate-200 rounded-xl p-8 lg:p-12 shadow-sm flex flex-col items-center justify-center text-center">
            <div class="w-16 h-16 bg-slate-50 text-slate-200 rounded-full flex items-center justify-center mb-6">
@@ -323,7 +308,6 @@ import LoadingButton from '@/components/ui/LoadingButton.vue';
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
 
-// --- Logic Initialization (STRICTLY PRESERVED) ---
 const route = useRoute();
 const { showToast } = useToast();
 const { breadcrumb } = useBreadcrumb();
@@ -353,7 +337,7 @@ watch(productSearch, (val) => {
 const selectProduct = (p) => {
   selectedProduct.value = {
     ...p,
-    stock: Number(p.stock ?? p.current_quantity ?? p.quantity ?? 0),
+    stock: Number(p.stock ?? p.currentQuantity ?? p.quantity ?? 0),
   };
   productSearch.value = p.name;
   showDropdown.value = false;
@@ -426,7 +410,7 @@ const loadBranches = async () => {
 const submitBulk = async () => {
   const items = rows.value
     .filter(r => r.quantity && r.quantity !== 0)
-    .map(r => ({ branch_id: String(r.id), quantity: Number(r.quantity), notes: r.notes || undefined }));
+    .map(r => ({ branchId: String(r.id), quantity: Number(r.quantity), notes: r.notes || undefined }));
   
   if (!selectedProduct.value) { await AlertService.warning('اختر منتجاً أولاً', 'بيانات ناقصة'); return; }
   if (items.length === 0) { await AlertService.warning('أدخل كميات لواحد على الأقل من الفروع', 'بيانات ناقصة'); return; }
@@ -456,7 +440,7 @@ const submitBulk = async () => {
 
 // CSV Logic
 const csvFile = ref(null);
-const defaultProductId = ref(route.query.product_id ? Number(route.query.product_id) : null);
+const defaultProductId = ref(route.query.productId ? Number(route.query.productId) : null);
 const onFileChange = (e) => { csvFile.value = e.target.files?.[0] || null; };
 const clearFile = () => { csvFile.value = null; };
 
@@ -558,7 +542,7 @@ const refreshHistory = () => AlertService.info('سجل التوزيعات سيت
 
 onMounted(async () => {
   await loadBranches();
-  const pid = route.query.product_id ? Number(route.query.product_id) : null;
+  const pid = route.query.productId ? Number(route.query.productId) : null;
   if (pid) {
     try {
       const branchId = Number(branchStore.selectedBranchId);
@@ -567,7 +551,7 @@ onMounted(async () => {
         force: true,
       });
       const found = res.status === 'success'
-        && res.data.find(product => String(product.id) === String(pid));
+        && res.data.data.find(product => String(product.id) === String(pid));
       if (found) selectProduct(found);
     } catch (error) {
       console.error('Failed to load the requested distribution product:', error);

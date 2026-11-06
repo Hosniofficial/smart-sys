@@ -534,10 +534,10 @@ const MANAGER_ROLES = ['manager']
  */
 export function hasMenuPermission(entry, role, permissions = [], userContext = {}) {
   const hasTenantContext = Object.prototype.hasOwnProperty.call(userContext, 'tenant_id')
-  const tenantUser = Number(userContext.tenant_id) > 0
+  const tenantUser = Number(userContext.tenantId) > 0
   const isPlatformSuperAdmin = hasTenantContext && !tenantUser && normalizeRole(role) === 'superAdmin'
   const effectiveRole = tenantUser && normalizeRole(role) === 'superAdmin'
-    ? (userContext.is_owner ? 'admin' : 'employee')
+    ? (userContext.isOwner ? 'admin' : 'employee')
     : role
   const normalizedRole = normalizeRole(effectiveRole)
   const permissionNames = normalizePermissionNames(permissions)

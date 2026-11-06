@@ -1,3 +1,4 @@
+import logger from '@/utils/services/logger'
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import apiClient from '@/config/axios';
@@ -15,8 +16,6 @@ import { useSubscriptionStore } from '@/stores/subscriptions/subscriptionStore';
 let _router = null;
 export const setStoreRouter = (r) => { _router = r; };
 export const getRouter = () => _router;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const base64UrlDecode = (value) => {
   if (!value) return null;
@@ -42,7 +41,7 @@ const safeJsonParse = (jsonString, defaultValue = null) => {
   }
 };
 
-// ─── Store ────────────────────────────────────────────────────────────────────
+// Store
 
 export const useAuthStore = defineStore('auth', () => {
   // access_token is kept in memory only (not persisted to browser storage)
@@ -57,22 +56,20 @@ export const useAuthStore = defineStore('auth', () => {
   const subscriptionMessage    = ref('');
   let   refreshPromise = null;
 
-  // ── Computed ────────────────────────────────────────────────────────────────
-
   const isOwner = computed(() => {
-    const isOwnerFlag = user.value?.is_owner;
+    const isOwnerFlag = user.value?.isOwner;
     return isOwnerFlag === 1 || isOwnerFlag === true;
   });
 
-  const hasTenant = computed(() => Number(user.value?.tenant_id) > 0);
+  const hasTenant = computed(() => Number(user.value?.tenantId) > 0);
 
   const isSuperAdmin = computed(() => {
-    if (!user.value || !Object.prototype.hasOwnProperty.call(user.value, 'tenant_id')) {
+    if (!user.value || !Object.prototype.hasOwnProperty.call(user.value, 'tenantId')) {
       return false;
     }
 
     const role   = user.value.role;
-    const roleId = Number(user.value.role_id);
+    const roleId = Number(user.value.roleId);
     return !hasTenant.value && (role === 'super_admin' || roleId === 1);
   });
 
@@ -87,7 +84,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isSubscriptionExpired  = computed(() => subscriptionExpired.value);
   const isCheckingAuth         = ref(false);
 
-  // ── JWT helpers ─────────────────────────────────────────────────────────────
+  // JWT helpers
 
   const getTokenPayload = () => {
     try {
@@ -104,14 +101,14 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
-  // ── Silent refresh ───────────────────────────────────────────────────────────
+  // Silent refresh
 
   const _doSilentRefresh = async () => {
     try {
       const response = await authService.refresh();
 
-      if (response.data?.status === 'success' && response.data?.data?.access_token) {
-        const newAccessToken = response.data.data.access_token;
+      if (response.data?.status === 'success' && response.data?.data?.accessToken) {
+        const newAccessToken = response.data.data.accessToken;
         const userData = response.data.data.user; // Get updated user data
         
         token.value = newAccessToken;
@@ -130,7 +127,7 @@ export const useAuthStore = defineStore('auth', () => {
       // 400 = refresh token missing (new email-verified user without refresh token)
       // This is OK — user has a valid access token, just no refresh token cookie yet
       if (err?.response?.status === 400) {
-        if (import.meta.env.DEV) console.log('[Auth] Refresh cookie missing (expected for new email-verified users)');
+        if (import.meta.env.DEV) logger.debug('[Auth] Refresh cookie missing (expected for new email-verified users)');
         return null;  // Not an error, just no refresh token yet
       }
 
@@ -160,13 +157,13 @@ export const useAuthStore = defineStore('auth', () => {
     return refreshPromise;
   };
 
-  // ── checkAndRefreshToken ────────────────────────────────────────────────────
+  // checkAndRefreshToken
 
   const checkAndRefreshToken = async () => {
     // If no token exists, try to refresh using stored user + refresh cookie.
     if (!token.value) {
       if (!user.value) return false;
-      if (import.meta.env.DEV) console.log('[Auth] No token — attempting refresh...');
+      if (import.meta.env.DEV) logger.debug('[Auth] No token — attempting refresh...');
       const refreshed = await refreshToken();
       return refreshed;
     }
@@ -174,7 +171,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const payload = getTokenPayload();
       if (!payload || typeof payload.exp !== 'number') {
-        if (import.meta.env.DEV) console.log('[Auth] Invalid token payload');
+        if (import.meta.env.DEV) logger.debug('[Auth] Invalid token payload');
         return false;
       }
 
@@ -190,7 +187,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
 
       if (timeUntilExpiry < 300) {
-        if (import.meta.env.DEV) console.log(`[Auth] Token expiring in ${timeUntilExpiry}s — attempting refresh...`);
+        if (import.meta.env.DEV) logger.debug(`[Auth] Token expiring in ${timeUntilExpiry}s — attempting refresh...`);
 
         const refreshed = await refreshToken();
         if (refreshed) {
@@ -203,17 +200,17 @@ export const useAuthStore = defineStore('auth', () => {
       }
 
       if (import.meta.env.DEV) {
-        console.log(`[Auth] Token valid for ${Math.round(timeUntilExpiry / 60)}m more`);
+        logger.debug(`[Auth] Token valid for ${Math.round(timeUntilExpiry / 60)}m more`);
       }
 
       return true;
     } catch (e) {
-      if (import.meta.env.DEV) console.log('[Auth] Error parsing token:', e);
+      if (import.meta.env.DEV) logger.debug('[Auth] Error parsing token:', e);
       return false;
     }
   };
 
-  // ── checkAuthStatus ─────────────────────────────────────────────────────────
+  // checkAuthStatus
 
   const checkAuthStatus = async () => {
     if (!token.value) {
@@ -253,7 +250,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
-  // ── setAuthData ─────────────────────────────────────────────────────────────
+  // setAuthData
 
   function setAuthData(userData, accessToken) {
     if (!userData || !accessToken) return;
@@ -266,7 +263,7 @@ export const useAuthStore = defineStore('auth', () => {
     apiClient.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
   }
 
-  // ── clearAuthData ───────────────────────────────────────────────────────────
+  // clearAuthData
 
   function clearAuthData() {
     user.value  = null;
@@ -286,7 +283,7 @@ export const useAuthStore = defineStore('auth', () => {
     } catch { /* store may not be ready */ }
   }
 
-  // ── login ───────────────────────────────────────────────────────────────────
+  // login
 
   async function login(username, password) {
     try {
@@ -296,13 +293,13 @@ export const useAuthStore = defineStore('auth', () => {
 
       const response = await authService.login(formData.toString());
 
-      if (response.data?.status === 'success' && response.data?.data) {
-        const { access_token, user: userData } = response.data.data;
+      if (response.data?.status === 'success' && response.data?.data?.accessToken && response.data?.data?.user) {
+        const { accessToken: access_token, user: userData } = response.data.data;
 
         const enhancedUserData = {
           ...userData,
           isAdmin:   userData.role === 'admin' || userData.isAdmin || false,
-          tenant_id: userData.tenant_id,
+          tenantId: userData.tenantId,
         };
 
         try {
@@ -329,7 +326,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // ── register ─────────────────────────────────────────────────────────────────
+  // register
 
   async function register(userData) {
     try {
@@ -367,7 +364,7 @@ export const useAuthStore = defineStore('auth', () => {
     return response?.data ?? {};
   }
 
-  // ── logout ───────────────────────────────────────────────────────────────────
+  // logout
 
   async function logout() {
     try {
@@ -382,7 +379,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // ── logoutAllDevices ─────────────────────────────────────────────────────────
+  // logoutAllDevices
 
   async function logoutAllDevices() {
     try {
@@ -397,24 +394,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // ── setSubscriptionExpired ───────────────────────────────────────────────────
+  // setSubscriptionExpired
 
   function setSubscriptionExpired(message = '') {
     subscriptionExpired.value = true;
     subscriptionMessage.value = message || 'يرجى الترقية لمتابعة استخدام النظام';
     if (import.meta.env.DEV) {
-      console.log('[Auth] Subscription expired:', subscriptionMessage.value);
+      logger.debug('[Auth] Subscription expired:', subscriptionMessage.value);
     }
   }
 
-  // ── clearSubscriptionExpired ─────────────────────────────────────────────────
+  // clearSubscriptionExpired
 
   function clearSubscriptionExpired() {
     subscriptionExpired.value = false;
     subscriptionMessage.value = '';
   }
-
-  // ── Public API ───────────────────────────────────────────────────────────────
 
   return {
     user,

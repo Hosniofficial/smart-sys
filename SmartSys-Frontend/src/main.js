@@ -46,7 +46,7 @@ logger.info('Vue application initializing', {
 try {
   validateMenuConfig()
   if (import.meta.env.DEV) {
-    console.log('✅ menuConfig validation passed')
+    logger.debug('✅ menuConfig validation passed')
   }
 } catch (error) {
   console.error('❌ menuConfig validation failed:', error.message)

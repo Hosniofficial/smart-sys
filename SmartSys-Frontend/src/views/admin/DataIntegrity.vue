@@ -1,7 +1,6 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar: High-precision indicator -->
     <PageLoadingBar :active="loading || loadingCustomers || loadingSuppliers" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
@@ -26,7 +25,6 @@
         </template>
       </PageHeader>
 
-      <!-- Integrity Status KPIs: Diagnostic Metric Grid -->
       <section class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
         <div class="bg-white border border-slate-200 p-6 rounded-xl flex items-center justify-between group hover:border-rose-200 transition-all shadow-sm border-r-4 border-r-rose-500">
           <div class="flex items-center gap-5">
@@ -61,10 +59,8 @@
         </div>
       </section>
 
-      <!-- Main Audit Workspace -->
       <div class="grid grid-cols-1 gap-12 max-w-6xl mx-auto">
         
-        <!-- Customers Audit Card -->
         <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div class="px-6 py-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
             <div class="flex items-center gap-3">
@@ -112,7 +108,6 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 font-medium text-xs">
-                <!-- Skeleton Loader -->
                 <template v-if="loadingCustomers">
                   <tr v-for="n in 4" :key="n" class="animate-pulse">
                     <td v-for="m in 5" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
@@ -147,7 +142,6 @@
           </div>
         </section>
 
-        <!-- Suppliers Audit Card -->
         <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div class="px-6 py-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
             <div class="flex items-center gap-3">
@@ -195,7 +189,6 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 font-medium text-xs">
-                <!-- Skeleton Loader -->
                 <template v-if="loadingSuppliers">
                   <tr v-for="n in 4" :key="n" class="animate-pulse">
                     <td v-for="m in 5" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
@@ -242,8 +235,10 @@ import { useAdminStore } from '@/stores/admin/adminStore';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
+import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 
 const adminStore = useAdminStore();
+const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const customers = ref([]);
 const suppliers = ref([]);
 const loadingCustomers = ref(false);
@@ -262,8 +257,7 @@ const bulkCustomersTotal = ref(0);
 const bulkSuppliersTotal = ref(0);
 
 function formatCurrency(val) {
-  const n = Number(val || 0);
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EGP' }).format(n);
+  return formatCurrencyLocale(val, 2);
 }
 
 async function fetchCustomers() {
@@ -299,8 +293,9 @@ async function refreshAll() {
   }
 }
 
-onMounted(() => {
-  refreshAll();
+onMounted(async () => {
+  await fetchSettings();
+  await refreshAll();
 });
 
 async function ensureCustomerAccount(c) {

@@ -25,4 +25,3 @@ return function (RouteCollectorProxy $group, Container $container): void {
             $group->delete('/plans/{code}', [$handler, 'deletePlan']);
         })->add($container->get(SuperAdminMiddleware::class));
 };
-

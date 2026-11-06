@@ -236,7 +236,7 @@ class BalanceCalculationService
                 'purchase' => [
                     'table' => 'purchases',
                     'totalCol' => 'total_amount',
-                    // ── AUDIT FIX (ownership review, CRITICAL) ──────────────────────
+                    // AUDIT FIX (ownership review, CRITICAL)
                     // كان taxCol='tax_amount' هنا يُضيف الضريبة مرة ثانية فوق
                     // total_amount — تحققتُ من كود الإنشاء الفعلي
                     // (PurchasesHandler::create, calculatePurchaseTotals):
@@ -356,7 +356,7 @@ class BalanceCalculationService
                 'purchase' => [
                     'table' => 'purchases',
                     'totalCol' => 'total_amount',
-                    // ── AUDIT FIX (ownership review): same double-tax-count bug as
+                    // AUDIT FIX (ownership review): same double-tax-count bug as
                     // getAmountDueBalance() above — see that fix's comment for the
                     // full evidence trail (purchases.total_amount is already
                     // tax-inclusive at creation time).
@@ -510,7 +510,7 @@ class BalanceCalculationService
                     'table' => 'purchases',
                     'idCol' => 'id',
                     'totalCol' => 'total_amount',
-                    // ── AUDIT FIX (ownership review): same double-tax-count bug as
+                    // AUDIT FIX (ownership review): same double-tax-count bug as
                     // getAmountDueBalance() — see that fix's comment for the
                     // full evidence trail.
                     'taxCol' => null,

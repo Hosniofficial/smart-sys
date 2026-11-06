@@ -15,11 +15,10 @@ return function (RouteCollectorProxy $group, Container $container): void {
 
     $group->group('/accounting-periods', function (RouteCollectorProxy $group) use ($handler, $db) {
 
-        // ── Read ──────────────────────────────────────────────────────────────
         $group->get('', [$handler, 'list'])
             ->add(PermissionMiddleware::require(Permissions::ACCOUNTING_VIEW, $db));
 
-        // ── Write / State changes (open/close/reopen/delete) ─────────────────
+        // Write / State changes (open/close/reopen/delete)
         // All state-changing operations require ACCOUNTING_PERIOD_MANAGE.
         $group->post('', [$handler, 'create'])
             ->add(PermissionMiddleware::require(Permissions::ACCOUNTING_PERIOD_MANAGE, $db));

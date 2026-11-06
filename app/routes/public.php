@@ -10,7 +10,7 @@ use App\Utils\ApiResponseEnvelope;
 
 return function (App $app, Container $container): void {
 
-    // ── Liveness probe (load balancer / uptime monitor) ───────────────────────
+    // Liveness probe (load balancer / uptime monitor)
     // Lightweight — no DB call. Returns 200 if the PHP process is alive.
     $app->get('/check', function (Request $request, Response $response) {
         $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
@@ -145,7 +145,7 @@ return function (App $app, Container $container): void {
             ->withStatus($healthy ? 200 : 503);
     });
 
-    // ── CORS preflight catch-all ──────────────────────────────────────────────
+    // CORS preflight catch-all
     $app->options('/{routes:.+}', function (Request $request, Response $response) {
         return $response;
     });

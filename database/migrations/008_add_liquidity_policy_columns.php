@@ -34,7 +34,7 @@ final class AddLiquidityPolicyColumns
         echo "📌 Migration: 008_add_liquidity_policy_columns\n\n";
 
         try {
-            // ── Verify payment_methods table exists ──
+            // Verify payment_methods table exists
             $tableExists = $this->pdo->prepare(
                 "SELECT 1 FROM information_schema.TABLES
                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?"
@@ -45,14 +45,14 @@ final class AddLiquidityPolicyColumns
                 throw new RuntimeException('payment_methods table does not exist; base schema migration required first.');
             }
 
-            // ── Capture pre-migration state for verification ──
+            // Capture pre-migration state for verification
             echo "   • Capturing pre-migration state...\n";
             $preMigrationCount = (int) $this->pdo->query(
                 'SELECT COUNT(*) FROM payment_methods'
             )->fetchColumn();
             echo "      Current payment_methods records: {$preMigrationCount}\n";
 
-            // ── Add columns if they don't exist ──
+            // Add columns if they don't exist
             echo "   • Adding liquidity policy columns...\n";
 
             $this->ensureColumn(
@@ -82,12 +82,12 @@ final class AddLiquidityPolicyColumns
 
             echo "      ✅ Columns added successfully\n";
 
-            // ── Conservative backfill (safe defaults only) ──
+            // Conservative backfill (safe defaults only)
             echo "   • Applying conservative backfill to existing records...\n";
             $this->backfillPaymentMethodPolicies();
             echo "      ✅ Backfill completed\n";
 
-            // ── Verify post-migration state ──
+            // Verify post-migration state
             echo "   • Verifying migration integrity...\n";
             $postMigrationCount = (int) $this->pdo->query(
                 'SELECT COUNT(*) FROM payment_methods'

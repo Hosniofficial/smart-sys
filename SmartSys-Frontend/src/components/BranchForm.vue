@@ -1,7 +1,6 @@
 <template>
   <form @submit.prevent="handleSubmit" class="space-y-6" dir="rtl">
       
-      <!-- Row 1: Branch Name -->
       <div class="space-y-1.5 group">
         <label for="branch-name" class="metadata-label">اسم الفرع<span class="text-rose-500">*</span></label>
         <div class="relative">
@@ -20,7 +19,6 @@
         <p v-if="serverErrors.name" class="text-[10px] text-rose-500 font-bold px-1">{{ serverErrors.name[0] }}</p>
       </div>
 
-      <!-- Row 2: Location -->
       <div class="space-y-1.5 group">
         <label for="branch-location" class="metadata-label">الموقع الجغرافي / العنوان</label>
         <div class="relative">
@@ -37,7 +35,6 @@
         <p v-if="serverErrors.location" class="text-[10px] text-rose-500 font-bold px-1">{{ serverErrors.location[0] }}</p>
       </div>
 
-      <!-- Row 3: Contacts (Two Columns) -->
       <div class="grid grid-cols-2 gap-4">
         <div class="space-y-1.5 group">
           <label for="branch-phone" class="metadata-label">هاتف التواصل</label>
@@ -70,7 +67,6 @@
         </div>
       </div>
 
-      <!-- Operational Status: Card Style Toggle -->
       <div class="pt-2">
         <label class="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer hover:bg-white hover:border-blue-200 transition-all group">
           <div class="space-y-1">
@@ -78,19 +74,18 @@
             <p class="text-[10px] text-slate-400 font-medium">تفعيل أو إيقاف استقبال العمليات لهذا الفرع</p>
           </div>
           <div
-            @click="form.is_active = !form.is_active"
-            :class="form.is_active ? 'bg-blue-600' : 'bg-slate-200'"
+            @click="form.isActive = !form.isActive"
+            :class="form.isActive ? 'bg-blue-600' : 'bg-slate-200'"
             class="w-10 h-5 rounded-full cursor-pointer transition-colors duration-200 relative overflow-hidden"
           >
             <span
-              :class="form.is_active ? 'left-0.5' : 'right-0.5'"
+              :class="form.isActive ? 'left-0.5' : 'right-0.5'"
               class="absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all duration-200"
             ></span>
           </div>
         </label>
       </div>
 
-      <!-- Footer: Minimal Actions -->
       <div class="flex justify-end gap-3 pt-6 border-t border-slate-100">
         <button type="button" @click="closeModal" class="px-5 h-10 text-[11px] font-bold text-slate-500 hover:text-slate-900 transition-colors">
           إلغاء
@@ -129,20 +124,20 @@ const form = ref({
   location: '',
   phone: '',
   email: '',
-  is_active: true
+  isActive: true
 });
 const isLoading = ref(false);
 const serverErrors = ref({});
 
 watch(() => props.branch, (newVal) => {
   if (newVal) {
-    const activeStatus = newVal.is_active ?? newVal.active;
+    const activeStatus = newVal.isActive ?? newVal.active;
     form.value = {
       ...newVal,
-      is_active: activeStatus === true || activeStatus === 1 || activeStatus === '1'
+      isActive: activeStatus === true || activeStatus === 1 || activeStatus === '1'
     };
   } else {
-    form.value = { id: null, name: '', location: '', phone: '', email: '', is_active: true };
+    form.value = { id: null, name: '', location: '', phone: '', email: '', isActive: true };
   }
   serverErrors.value = {};
 }, { immediate: true });
@@ -153,7 +148,7 @@ const handleSubmit = async () => {
   isLoading.value = true;
   serverErrors.value = {};
   try {
-    const payload = { ...form.value, is_active: form.value.is_active ? 1 : 0 };
+    const payload = { ...form.value, isActive: form.value.isActive ? 1 : 0 };
     let result;
     if (isEditing.value) result = await branchStore.updateBranch(form.value.id, payload);
     else result = await branchStore.createBranch(payload);

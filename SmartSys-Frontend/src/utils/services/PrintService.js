@@ -16,7 +16,7 @@ export const printDocument = async (html, preOpened = null) => {
   return _printBrowser(html, preOpened);
 };
 
-// ─── Browser mode ────────────────────────────────────────────────────────────
+// Browser mode
 
 const _printBrowser = (html, preOpened = null) => {
   const w = preOpened || window.open('', '_blank');

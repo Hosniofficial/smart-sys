@@ -5,8 +5,8 @@ const fetchStock = (params) => apiClient.get('/inventory/stock', { params });
 export const inventoryService = {
   getProductStock(productId, branchId) {
     return fetchStock({
-      product_id: String(productId),
-      branch_id: String(branchId),
+      productId: String(productId),
+      branchId: String(branchId),
     });
   },
 
@@ -24,12 +24,12 @@ export const inventoryService = {
 
   getProductBatches(productId, branchId) {
     return apiClient.get('/inventory/batches', {
-      params: { product_id: String(productId), branch_id: String(branchId) },
+      params: { productId: String(productId), branchId: String(branchId) },
     });
   },
 
   getStockSummary(branchId) {
-    return fetchStock({ branch_id: String(branchId) });
+    return fetchStock({ branchId: String(branchId) });
   },
 
   getInventorySummary(params) {

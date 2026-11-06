@@ -178,26 +178,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     exit;
 }
 
-// ── normalize URI: /smartsys/api/something or /api/something → /api/v1/something ────────────────────
+// normalize URI: /smartsys/api/something or /api/something → /api/v1/something
 $requestedPath = $_SERVER['REQUEST_URI'] ?? '/';
 $parsedRequest = parse_url($requestedPath);
 $currentPath = normalizeRequestPath($requestedPath, (string) ($_ENV['APP_BASE_PATH'] ?? getenv('APP_BASE_PATH') ?? '/smartsys/api/v1'));
 $queryString = isset($parsedRequest['query']) && $parsedRequest['query'] !== '' ? '?' . $parsedRequest['query'] : '';
 $_SERVER['REQUEST_URI'] = $currentPath . $queryString;
 
-// ── Container ─────────────────────────────────────────────────────────────
+// Container
 $container = (require __DIR__ . '/../config/container.php')();
 (require __DIR__ . '/../config/bootstrap.php')($container);
 
-// ── App ───────────────────────────────────────────────────────────────────
+// App
 AppFactory::setContainer($container);
 $app = AppFactory::create();
 
-// ── Middleware ────────────────────────────────────────────────────────────
+// Middleware
 (require __DIR__ . '/../config/middleware.php')($app, $container);
 
-// ── Routes ────────────────────────────────────────────────────────────────
 (require __DIR__ . '/../config/routes.php')($app, $container);
 
-// ── Run ───────────────────────────────────────────────────────────────────
+// Run
 $app->run();

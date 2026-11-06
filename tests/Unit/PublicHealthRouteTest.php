@@ -24,9 +24,10 @@ final class PublicHealthRouteTest extends TestCase
         $payload = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
 
         self::assertSame(200, $response->getStatusCode());
-        self::assertSame(['status', 'message', 'timestamp', 'data'], array_keys($payload));
+        self::assertSame(['status', 'message', 'data', 'errors', 'meta'], array_keys($payload));
         self::assertArrayNotHasKey('env', $payload);
-        self::assertArrayNotHasKey('checks', $payload);
+        self::assertArrayHasKey('timestamp', $payload['data']);
+        self::assertArrayNotHasKey('checks', $payload['data']);
     }
 
     public function testDetailedHealthRouteIsUnavailableWithoutValidDedicatedToken(): void
@@ -71,8 +72,8 @@ final class PublicHealthRouteTest extends TestCase
         $payload = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
 
         self::assertSame(200, $response->getStatusCode());
-        self::assertArrayHasKey('checks', $payload);
-        self::assertArrayHasKey('env', $payload);
+        self::assertArrayHasKey('checks', $payload['data']);
+        self::assertArrayHasKey('env', $payload['data']);
     }
 
     private function createApp()

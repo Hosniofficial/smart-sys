@@ -30,9 +30,7 @@ class ServiceFactory
         $this->db = $db;
     }
 
-    // -------------------------------------------------------------------------
     // Request-scoped services (new instance per call — carry tenantId + userId)
-    // -------------------------------------------------------------------------
 
     /**
      * Create a PurchaseService for the given request context.

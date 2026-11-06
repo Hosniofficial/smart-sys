@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar: High-precision indicator -->
     <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="{ parent: { label: 'التقارير', path: '/reports/sales-analytics' }, current: 'تحليل قيمة المخزون' }"
         title="تحليل قيمة المخزون"
@@ -18,7 +16,6 @@
       >
         <template #controls>
           <div class="flex items-center gap-2">
-            <!-- Valuation Switcher -->
             <div class="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-md border border-slate-200">
               <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">أساس التقييم:</span>
               <select v-model="valuation" class="bg-transparent border-none text-[11px] font-bold text-slate-900 focus:ring-0 cursor-pointer outline-none">
@@ -32,7 +29,6 @@
 
       <main class="space-y-8">
 
-      <!-- KPI Summary Section -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div v-for="card in summaryCards" :key="card.title" class="bg-white border border-slate-200 p-5 rounded-xl flex items-center justify-between group hover:border-slate-300 transition-all shadow-sm border-r-4" :class="card.color.replace('text', 'border-r')">
           <div>
@@ -47,10 +43,8 @@
         </div>
       </section>
 
-      <!-- Visual Analytics Row -->
       <section class="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        <!-- Category Distribution Chart (8/12) -->
         <div class="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden group">
           <div class="absolute top-0 left-0 w-40 h-40 bg-blue-500/5 rounded-full -translate-x-12 -translate-y-12 group-hover:scale-110 transition-transform duration-1000"></div>
           
@@ -77,7 +71,6 @@
           </div>
         </div>
 
-        <!-- System Intelligence (4/12) -->
         <div class="lg:col-span-4 bg-slate-900 rounded-xl p-8 text-white shadow-xl flex flex-col justify-center relative overflow-hidden border border-white/5">
           <div class="absolute bottom-0 right-0 w-32 h-32 bg-white/5 rounded-full translate-x-12 translate-y-12"></div>
           <div class="relative z-10 space-y-6">
@@ -101,9 +94,7 @@
         </div>
       </section>
       
-      <!-- Detailed Data Table Card -->
       <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative min-h-[500px]">
-        <!-- Table Filter Bar -->
         <div class="p-4 bg-slate-50/50 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div class="relative group w-full md:w-96">
               <input v-model="searchQuery" type="text" class="h-9 w-full bg-white border border-slate-200 rounded-md pl-4 text-[11px] font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 outline-none transition-all" style="padding-right: 2rem;" placeholder="بحث بالاسم أو الباركود..." />
@@ -179,7 +170,6 @@
           </table>
         </div>
 
-        <!-- Pagination Simulation / Footer Info -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             إجمالي الأصناف: <span class="text-slate-900 font-mono">{{ sortedItems.length }}</span>
@@ -214,7 +204,7 @@ const error = ref(null);
 
 const inventoryItems = ref([]);
 const categories = ref([]);
-const totals = ref({ total_value: 0, total_products: 0, low_stock_count: 0, out_of_stock_count: 0 });
+const totals = ref({ totalValue: 0, totalProducts: 0, lowStockCount: 0, outOfStockCount: 0 });
 const valuation = ref('sale');
 
 const searchQuery = ref('');
@@ -242,13 +232,13 @@ const sortedItems = computed(() => {
 });
 
 const summaryCards = computed(() => {
-    const tv = Number(totals.value.total_value ?? 0);
-    const tp = Number(totals.value.total_products ?? inventoryItems.value.length);
+    const tv = Number(totals.value.totalValue ?? 0);
+    const tp = Number(totals.value.totalProducts ?? inventoryItems.value.length);
     const fallbackTotal = inventoryItems.value.reduce((sum, item) => sum + (item.totalValue || 0), 0);
     const fallbackLow = inventoryItems.value.filter(item => item.quantity <= item.lowStockThreshold && item.quantity > 0).length;
     const fallbackOut = inventoryItems.value.filter(item => item.quantity === 0).length;
-    const ls = Number(totals.value.low_stock_count ?? fallbackLow);
-    const os = Number(totals.value.out_of_stock_count ?? fallbackOut);
+    const ls = Number(totals.value.lowStockCount ?? fallbackLow);
+    const os = Number(totals.value.outOfStockCount ?? fallbackOut);
     
     return [
         { title: 'قيمة المخزون الإجمالية', value: tv || fallbackTotal, format: 'currency', icon: 'fas fa-money-bill-trend-up', color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -305,12 +295,22 @@ const getRowClass = (item) => {
 const fetchInventoryValue = async () => {
     isLoading.value = true; error.value = null;
     try {
-        const resp = await reportsStore.fetchInventoryValue({ branchId: selectedBranch.value === 'all' ? null : selectedBranch.value, search: searchQuery.value || undefined, category_id: selectedCategory.value !== 'all' ? selectedCategory.value : undefined, valuation: valuation.value });
-        const apiData = resp?.data?.data ?? resp?.data ?? resp;
+        const resp = await reportsStore.fetchInventoryValue({ branchId: selectedBranch.value === 'all' ? null : selectedBranch.value, search: searchQuery.value || undefined, categoryId: selectedCategory.value !== 'all' ? selectedCategory.value : undefined, valuation: valuation.value });
+        if (resp?.status !== 'success' || !resp.data) {
+            throw new Error(resp?.message || 'تعذر تحميل تحليل قيمة المخزون');
+        }
+
+        const apiData = resp.data;
         totals.value = apiData?.totals || totals.value;
         if (Array.isArray(apiData)) inventoryItems.value = apiData;
-        else { inventoryItems.value = apiData.items || apiData.inventory || []; categories.value = apiData.categories || categories.value || []; }
-    } catch { error.value = "فشل التحميل"; } finally { isLoading.value = false; }
+        else {
+            inventoryItems.value = apiData.items || apiData.inventory || [];
+            categories.value = apiData.categories || categories.value || [];
+        }
+    } catch (fetchError) {
+        error.value = fetchError.message || 'فشل التحميل';
+        console.error('Failed to load inventory value report:', fetchError);
+    } finally { isLoading.value = false; }
 };
 
 const handleSort = (k) => { if (sortKey.value === k) sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'; else { sortKey.value = k; sortOrder.value = 'asc'; } };

@@ -2,7 +2,7 @@ import { getPrintConfig, clearPrintConfigCache } from './printConfig';
 import { esc, fmt, getCompanyData } from './printHelpers';
 
 const itemPurchaseTotal = (it) =>
-  parseFloat(it.net_total || it.total || ((it.quantity || it.qty || 0) * (it.price || it.unit_price || 0)) || 0);
+  parseFloat(it.netTotal || it.total || ((it.quantity || it.qty || 0) * (it.price || it.unitPrice || 0)) || 0);
 
 /**
  * Thermal template for purchase invoices (76mm roll)
@@ -10,22 +10,22 @@ const itemPurchaseTotal = (it) =>
 const buildPurchaseThermalHtml = (doc, options = {}) => {
   const cfg     = getPrintConfig(options.config);
   const company = getCompanyData(null);
-  const docDate = doc.invoice_date || doc.created_at || new Date().toISOString();
-  const remaining = (parseFloat(doc.total_amount) || 0) - (parseFloat(doc.paid_amount) || 0);
+  const docDate = doc.invoiceDate || doc.createdAt || new Date().toISOString();
+  const remaining = (parseFloat(doc.totalAmount) || 0) - (parseFloat(doc.paidAmount) || 0);
 
   const itemsHtml = (doc.items || []).map((it, idx) => `
     <div style="margin-bottom:8px;font-size:12px;">
       <div style="display:flex;justify-content:space-between;font-weight:bold;">
-        <span>${idx + 1}. ${esc(it.product_name || it.name)}</span>
+        <span>${idx + 1}. ${esc(it.productName || it.name)}</span>
         <span>${fmt(itemPurchaseTotal(it))}</span>
       </div>
       <div style="font-size:11px;color:#555;">
-        ${fmt(it.quantity || it.qty)} × ${fmt(it.price || it.unit_price || 0)}
+        ${fmt(it.quantity || it.qty)} × ${fmt(it.price || it.unitPrice || 0)}
       </div>
     </div>`).join('');
 
   return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"/>
-  <title>فاتورة شراء ${esc(doc.invoice_number || doc.id || '')}</title>
+  <title>فاتورة شراء ${esc(doc.invoiceNumber || doc.id || '')}</title>
   <style>
     *{box-sizing:border-box;}
     body{font-family:Tahoma,Arial,sans-serif;margin:0;padding:0;background:#fff;}
@@ -53,10 +53,10 @@ const buildPurchaseThermalHtml = (doc, options = {}) => {
     </div>
 
     <div class="meta-grid">
-      <div><strong>رقم:</strong> ${esc(doc.invoice_number || doc.id)}</div>
+      <div><strong>رقم:</strong> ${esc(doc.invoiceNumber || doc.id)}</div>
       <div style="text-align:left"><strong>التاريخ:</strong> ${new Date(docDate).toLocaleDateString('en-US')}</div>
-      <div><strong>المورد:</strong> ${esc(doc.supplier_name || doc.supplier?.name || '-')}</div>
-      <div style="text-align:left"><strong>الفرع:</strong> ${esc(doc.branch_name || '-')}</div>
+      <div><strong>المورد:</strong> ${esc(doc.supplierName || doc.supplier?.name || '-')}</div>
+      <div style="text-align:left"><strong>الفرع:</strong> ${esc(doc.branchName || '-')}</div>
     </div>
 
     ${cfg.headerEnabled && cfg.headerText
@@ -66,8 +66,8 @@ const buildPurchaseThermalHtml = (doc, options = {}) => {
     <div>${itemsHtml}</div>
 
     <div class="totals-area">
-      <div class="total-row"><span>الإجمالي:</span><span>${fmt(doc.total_amount)}</span></div>
-      <div class="total-row grand-total"><span>المدفوع:</span><span>${fmt(doc.paid_amount)}</span></div>
+      <div class="total-row"><span>الإجمالي:</span><span>${fmt(doc.totalAmount)}</span></div>
+      <div class="total-row grand-total"><span>المدفوع:</span><span>${fmt(doc.paidAmount)}</span></div>
       ${remaining > 0.01 ? `<div class="total-row" style="color:#dc2626"><span>المتبقي:</span><span>${fmt(remaining)}</span></div>` : ''}
     </div>
 
@@ -86,8 +86,8 @@ const buildPurchaseThermalHtml = (doc, options = {}) => {
 const buildPurchaseA4Html = (doc, options = {}) => {
   const cfg     = getPrintConfig(options.config);
   const company = getCompanyData(null);
-  const docDate = doc.invoice_date || doc.created_at || new Date().toISOString();
-  const remaining = (parseFloat(doc.total_amount) || 0) - (parseFloat(doc.paid_amount) || 0);
+  const docDate = doc.invoiceDate || doc.createdAt || new Date().toISOString();
+  const remaining = (parseFloat(doc.totalAmount) || 0) - (parseFloat(doc.paidAmount) || 0);
 
   const statusLabel = doc.status === 'paid' ? 'مدفوعة بالكامل'
     : doc.status === 'partial' ? 'مدفوعة جزئياً' : 'غير مدفوعة';
@@ -96,14 +96,14 @@ const buildPurchaseA4Html = (doc, options = {}) => {
   const itemsHtml = (doc.items || []).map((it, idx) => `
     <tr>
       <td>${idx + 1}</td>
-      <td>${esc(it.product_name || it.name)}</td>
+      <td>${esc(it.productName || it.name)}</td>
       <td style="text-align:center">${fmt(it.quantity || it.qty)}</td>
-      <td style="text-align:center">${fmt(it.price || it.unit_price || 0)}</td>
+      <td style="text-align:center">${fmt(it.price || it.unitPrice || 0)}</td>
       <td style="text-align:center">${fmt(itemPurchaseTotal(it))}</td>
     </tr>`).join('');
 
   return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"/>
-  <title>فاتورة شراء ${esc(doc.invoice_number || doc.id || '')}</title>
+  <title>فاتورة شراء ${esc(doc.invoiceNumber || doc.id || '')}</title>
   <style>
     *{box-sizing:border-box;}
     body{font-family:Tahoma,Arial,sans-serif;margin:0;padding:24px;color:#1e293b;direction:rtl;}
@@ -135,16 +135,16 @@ const buildPurchaseA4Html = (doc, options = {}) => {
       </div>
       <div>
         <div class="purchase-badge">🛒 فاتورة شراء</div>
-        <div class="invoice-no">${esc(doc.invoice_number || '#' + doc.id)}</div>
+        <div class="invoice-no">${esc(doc.invoiceNumber || '#' + doc.id)}</div>
       </div>
     </div>
 
     <div class="info-grid">
       <div class="info-box"><label>التاريخ</label>${new Date(docDate).toLocaleDateString('en-US')}</div>
-      <div class="info-box"><label>المورد</label>${esc(doc.supplier_name || doc.supplier?.name || '-')}</div>
-      <div class="info-box"><label>الفرع</label>${esc(doc.branch_name || '-')}</div>
+      <div class="info-box"><label>المورد</label>${esc(doc.supplierName || doc.supplier?.name || '-')}</div>
+      <div class="info-box"><label>الفرع</label>${esc(doc.branchName || '-')}</div>
       <div class="info-box"><label>الحالة</label><span style="color:${statusColor};font-weight:bold;">${statusLabel}</span></div>
-      <div class="info-box"><label>المدفوع</label>${fmt(doc.paid_amount)}</div>
+      <div class="info-box"><label>المدفوع</label>${fmt(doc.paidAmount)}</div>
       <div class="info-box"><label>المتبقي</label><span style="color:${remaining > 0.01 ? '#dc2626' : '#16a34a'}">${fmt(remaining)}</span></div>
     </div>
 
@@ -154,9 +154,9 @@ const buildPurchaseA4Html = (doc, options = {}) => {
     </table>
 
     <div class="totals">
-      <div class="totals-row"><span>إجمالي المبلغ:</span><span>${fmt(doc.total_amount)}</span></div>
-      <div class="totals-row"><span>المبلغ المدفوع:</span><span>${fmt(doc.paid_amount)}</span></div>
-      <div class="totals-final"><span>الإجمالي النهائي:</span><span>${fmt(doc.total_amount)}</span></div>
+      <div class="totals-row"><span>إجمالي المبلغ:</span><span>${fmt(doc.totalAmount)}</span></div>
+      <div class="totals-row"><span>المبلغ المدفوع:</span><span>${fmt(doc.paidAmount)}</span></div>
+      <div class="totals-final"><span>الإجمالي النهائي:</span><span>${fmt(doc.totalAmount)}</span></div>
     </div>
 
     ${cfg.footerEnabled && cfg.footerText

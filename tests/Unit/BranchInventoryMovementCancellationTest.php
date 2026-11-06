@@ -55,9 +55,9 @@ final class BranchInventoryMovementCancellationTest extends TestCase
         self::assertSame(1.0, (float) $items[1]['in']);
         self::assertSame(0.0, (float) $items[1]['out']);
         self::assertSame(10.0, (float) $items[1]['balance']);
-        self::assertSame(1.0, (float) $body['data']['total_in']);
-        self::assertSame(1.0, (float) $body['data']['total_out']);
-        self::assertSame(10.0, (float) $body['data']['final_balance']);
+        self::assertSame(1.0, (float) $body['data']['totalIn']);
+        self::assertSame(1.0, (float) $body['data']['totalOut']);
+        self::assertSame(10.0, (float) $body['data']['finalBalance']);
         self::assertSame(10000.0, (float) $body['data']['valuation']);
     }
 }

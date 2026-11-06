@@ -10,16 +10,16 @@ export const buildA4SimpleHtml = (sale, options = {}) => {
   const rows = (sale.items || []).map((it, idx) => `
     <tr>
       <td style='border:1px solid #ddd; padding:6px'>${idx + 1}</td>
-      <td style='border:1px solid #ddd; padding:6px'>${esc(it.product_name || it.name)}</td>
+      <td style='border:1px solid #ddd; padding:6px'>${esc(it.productName || it.name)}</td>
       <td style='border:1px solid #ddd; padding:6px; text-align:center'>${fmt(it.quantity)}</td>
-      <td style='border:1px solid #ddd; padding:6px; text-align:right'>${fmt(it.sale_price || it.net_price)}</td>
+      <td style='border:1px solid #ddd; padding:6px; text-align:right'>${fmt(it.salePrice || it.netPrice)}</td>
       <td style='border:1px solid #ddd; padding:6px; text-align:right'>${fmt(itemTotal(it))}</td>
     </tr>`).join('');
 
-  const saleDate = sale.sale_date || getLocalDateISO();
+  const saleDate = sale.saleDate || getLocalDateISO();
 
   return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"/>
-  <title>فاتورة ${esc(sale.invoice_number || '')}</title>
+  <title>فاتورة ${esc(sale.invoiceNumber || '')}</title>
   <style>
     body { font-family: Tahoma, Arial, sans-serif; padding: 20px; }
     .header { text-align: center; margin-bottom: 10px; }
@@ -36,17 +36,17 @@ export const buildA4SimpleHtml = (sale, options = {}) => {
   <div class="header">
     ${company.logo ? `<img src="${esc(company.logo)}" alt="logo" style="height:64px; margin-bottom:6px;"/>` : ''}
     <h2>${esc(company.name) || 'فاتورة مبيعات'}</h2>
-    ${company.branch_name ? `<div style="font-size:13px; color:#555; margin:2px 0;">${esc(company.branch_name)}</div>` : ''}
+    ${company.branchName ? `<div style="font-size:13px; color:#555; margin:2px 0;">${esc(company.branchName)}</div>` : ''}
     <div class="sub">
       ${company.phone   ? `هاتف: ${esc(company.phone)}` : ''}
       ${company.address ? ` | ${esc(company.address)}`  : ''}
       ${company.tax     ? `<br/>الرقم الضريبي: ${esc(company.tax)}` : ''}
     </div>
-    <div style="margin-top:6px;">رقم الفاتورة: <strong>#${esc(sale.invoice_number || sale.id)}</strong></div>
+    <div style="margin-top:6px;">رقم الفاتورة: <strong>#${esc(sale.invoiceNumber || sale.id)}</strong></div>
   </div>
   <div class="meta">
     <div>تاريخ: ${new Date(saleDate).toLocaleString('en-US')}</div>
-    <div>العميل: ${esc(sale.customer_name || 'عميل نقدي')}</div>
+    <div>العميل: ${esc(sale.customerName || 'عميل نقدي')}</div>
   </div>
   ${cfg.headerEnabled && cfg.headerText
     ? `<div class="section"><div style='text-align:center'>${esc(cfg.headerText)}</div></div>`
@@ -64,11 +64,11 @@ export const buildA4SimpleHtml = (sale, options = {}) => {
     <tbody>${rows}</tbody>
   </table>
   <div class="totals-row">
-    <div><strong>إجمالي الأصناف:</strong> ${fmt(sale.total_amount)}</div>
-    <div><strong>الخصم:</strong> ${fmt(sale.discount_value)}</div>
-    <div><strong>الضريبة${taxInclusive ? ' (ضمن الإجمالي)' : ''}:</strong> ${fmt(sale.tax_amount)}</div>
+    <div><strong>إجمالي الأصناف:</strong> ${fmt(sale.totalAmount)}</div>
+    <div><strong>الخصم:</strong> ${fmt(sale.discountValue)}</div>
+    <div><strong>الضريبة${taxInclusive ? ' (ضمن الإجمالي)' : ''}:</strong> ${fmt(sale.taxAmount)}</div>
     <div><strong>الإجمالي المستحق:</strong> ${fmt(saleGrandTotal(sale))}</div>
-    <div><strong>المدفوع:</strong> ${fmt(sale.paid_amount)}</div>
+    <div><strong>المدفوع:</strong> ${fmt(sale.paidAmount)}</div>
   </div>
   ${cfg.footerEnabled && cfg.footerText
     ? `<div class="section"><div style='text-align:center'>${esc(cfg.footerText)}</div></div>`

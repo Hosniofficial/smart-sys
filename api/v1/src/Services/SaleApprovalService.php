@@ -43,9 +43,7 @@ class SaleApprovalService
         $this->logger       = MonologHandler::getInstance('sales');
     }
 
-    // =========================================================================
     // Private Helpers (extracted from SalesService)
-    // =========================================================================
 
     private function logAudit(string $action, string $entity, int $entityId, array $details, int $tenantId): void
     {
@@ -125,11 +123,8 @@ class SaleApprovalService
         return $this->accounting->resolveAccountId($tenantId, $settingKey, $fallbackCode);
     }
 
-
-    // =========================================================================
     // applyStockForExistingSaleItems — extracted from SalesService
     // تطبيق المخزون لأصناف فاتورة موجودة مسبقاً (تُستخدم عند الموافقة)
-    // =========================================================================
 
     private function applyStockForExistingSaleItems(int $saleId, int $tenantId, int $branchId): void
     {
@@ -236,10 +231,8 @@ class SaleApprovalService
         }
     }
 
-    // =========================================================================
     // approveSale — real logic extracted from SalesService
     // اعتماد الفاتورة: مخزون + قيد محاسبي + تحويل الدفعات المسودة
-    // =========================================================================
 
     public function approveSale(
         int $tenantId,
@@ -491,7 +484,7 @@ class SaleApprovalService
             }
 
             // 8. تحديث paid_amount وحالة الفاتورة
-            // ── AUDIT SELF-REVIEW FIX 15-A (continued) ───────────────────────────
+            // AUDIT SELF-REVIEW FIX 15-A (continued)
             // كانت هذه الدالة تحسب SUM(payments) مباشرة دون طرح استرداد نقدي
             // (return_payment) ودون طرح return_credit_allocations — نفس الفجوة
             // المُصلَحة في SalePaymentService::addSalePayment. الآن تستخدم نفس
@@ -535,9 +528,7 @@ class SaleApprovalService
         }, 'approve_sale', ['tenant_id' => $tenantId, 'sale_id' => $saleId]);
     }
 
-    // =========================================================================
     // rejectSale — real logic extracted from SalesService
-    // =========================================================================
 
     public function rejectSale(int $tenantId, int $saleId, ?string $note = null): array
     {

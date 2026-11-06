@@ -12,11 +12,11 @@ export const searchBulkAdjustmentProducts = async (query = '') => {
 /**
  * Bulk adjustments (JSON): distribute a single product across multiple branches.
  * @param {number} productId
- * @param {Array<{branch_id:number, quantity:number, notes?:string}>} items
+ * @param {Array<{branchId:number, quantity:number, notes?:string}>} items
  * @returns {Promise<{status:string,message:string}>}
  */
 export const bulkAdjustProduct = async (productId, items) => {
-  const payload = { product_id: productId, items };
+  const payload = { productId: productId, items };
   const { data } = await apiClient.post('/branches/adjustments/bulk', payload);
   return data;
 };
@@ -32,7 +32,7 @@ export const bulkAdjustProduct = async (productId, items) => {
 export const bulkAdjustFromCsv = async (file, defaultProductId) => {
   const form = new FormData();
   form.append('file', file);
-  if (defaultProductId) form.append('product_id', String(defaultProductId));
+  if (defaultProductId) form.append('productId', String(defaultProductId));
   const { data } = await apiClient.post('/branches/adjustments/bulk/csv', form, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });

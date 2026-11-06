@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="أداء المبيعات والربحية"
@@ -32,7 +30,6 @@
         </template>
       </PageHeader>
 
-      <!-- Analytical Filters Panel: High-Density Utility Bar -->
       <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
         <div class="p-6 space-y-6">
           <div class="flex items-center justify-between px-1">
@@ -45,7 +42,6 @@
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 items-end">
-            <!-- Date Selector -->
             <div class="lg:col-span-2 space-y-1.5 group">
               <label class="metadata-label">تاريخ التقرير</label>
               <div class="relative">
@@ -54,7 +50,6 @@
               </div>
             </div>
 
-            <!-- POS Multi-selector -->
             <div class="lg:col-span-3 space-y-1.5 relative" v-click-outside="() => posDropdownOpen = false">
               <label class="metadata-label">نقاط البيع (POS)</label>
               <div 
@@ -87,7 +82,6 @@
               </transition>
             </div>
 
-            <!-- Payment Kind -->
             <div class="lg:col-span-2 space-y-1.5">
               <label class="metadata-label">نوع الدفع</label>
               <select v-model="paymentKind" class="filter-input-v2 appearance-none font-bold">
@@ -100,7 +94,6 @@
               </select>
             </div>
 
-            <!-- ID Filters -->
             <div class="lg:col-span-2 space-y-1.5">
               <label class="metadata-label">رقم التصنيف</label>
               <input v-model="categoryId" type="number" class="filter-input-v2 font-mono h-9" placeholder="—" />
@@ -142,7 +135,6 @@
         </p>
       </section>
 
-      <!-- KPI Grid: Metric Blocks -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <div v-for="card in summaryCards" :key="card.title" class="bg-white border border-slate-200 p-5 rounded-xl flex flex-col justify-between group hover:border-slate-300 transition-all shadow-sm border-r-4" :class="card.color.replace('text', 'border-r')">
           <div class="flex justify-between items-start mb-3">
@@ -157,10 +149,8 @@
         </div>
       </section>
 
-      <!-- Analytics Visualization Grid -->
       <section class="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        <!-- POS Sales (4/12) -->
         <div class="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden group">
           <div class="absolute top-0 left-0 w-32 h-32 bg-blue-500/5 rounded-full -translate-x-12 -translate-y-12 group-hover:scale-110 transition-transform duration-1000"></div>
           <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2 mb-8 relative z-10">
@@ -172,7 +162,6 @@
           </div>
         </div>
 
-        <!-- Payment Distribution (3/12) -->
         <div class="lg:col-span-3 bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col items-center group">
           <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest self-start mb-8">توزيع طرق الدفع</h3>
           <div class="flex-grow w-full relative h-64">
@@ -186,7 +175,6 @@
           </div>
         </div>
 
-        <!-- Recent Ledger (5/12) -->
         <div class="lg:col-span-5 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
           <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest">سجل آخر الفواتير</h3>
@@ -246,7 +234,6 @@
 </template>
 
 <script setup>
-// [SCRIPT SECTION REMAINS 100% IDENTICAL AS PER BUSINESS LOGIC RULE]
 import { ref, computed, onMounted, watch } from 'vue';
 import { Bar as BarChart, Doughnut as DoughnutChart } from 'vue-chartjs';
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement } from 'chart.js';
@@ -359,7 +346,7 @@ const loadPosOptions = async () => {
   try {
     const result = await reportsStore.fetchPosAnalytics(selectedDate.value, selectedDate.value, { branchId: selectedBranch.value === 'all' ? null : selectedBranch.value });
     const data = result.status === 'success' ? result.data : [];
-    posOptions.value = (Array.isArray(data) ? data : (data?.data || [])).map(r => ({ id: r.pos_id, label: r.pos_name || `POS #${r.pos_id}` }));
+    posOptions.value = (Array.isArray(data) ? data : (data?.data || [])).map(r => ({ id: r.posId, label: r.posName || `POS #${r.posId}` }));
   } catch { posOptions.value = []; }
 }
 
@@ -368,22 +355,22 @@ const fetchSalesSummary = async () => {
     try {
         const result = await reportsStore.fetchSalesSummary(selectedDate.value, {
           branchId: selectedBranch.value === 'all' ? null : selectedBranch.value,
-          payment_kind: paymentKind.value || undefined,
-          category_id: categoryId.value || undefined,
-          product_id: productId.value || undefined,
-          pos_ids: posIds.value.length ? posIds.value : undefined
+          paymentKind: paymentKind.value || undefined,
+          categoryId: categoryId.value || undefined,
+          productId: productId.value || undefined,
+          posIds: posIds.value.length ? posIds.value : undefined
         });
         if (result.status === 'success') {
             const apiData = result.data || {};
-            const totalSales = Number(apiData.total_sales_amount ?? 0);
-            const totalReturns = Number(apiData.total_returns_amount ?? 0);
+            const totalSales = Number(apiData.totalSalesAmount ?? 0);
+            const totalReturns = Number(apiData.totalReturnsAmount ?? 0);
             const cogsTotal = Number(
-                apiData.net_cogs
-                ?? (Number(apiData.cogs_total ?? 0) - Number(apiData.returns_cogs ?? 0))
+                apiData.netCogs
+                ?? (Number(apiData.cogsTotal ?? 0) - Number(apiData.returnsCogs ?? 0))
             );
-            const orderCount = Number(apiData.order_count ?? 0);
+            const orderCount = Number(apiData.orderCount ?? 0);
             const netSales = totalSales - totalReturns;
-            const grossProfit = Number(apiData.gross_profit ?? (netSales - cogsTotal));
+            const grossProfit = Number(apiData.grossProfit ?? (netSales - cogsTotal));
             salesSummary.value = {
                 kpis: {
                     totalSales,
@@ -392,12 +379,12 @@ const fetchSalesSummary = async () => {
                     orderCount,
                     cogsTotal,
                     grossProfit,
-                    returnsCostUnresolvedLineCount: Number(apiData.returns_cost_unresolved_line_count ?? 0),
-                    returnsCostUnresolvedQuantity: Number(apiData.returns_cost_unresolved_quantity ?? 0),
+                    returnsCostUnresolvedLineCount: Number(apiData.returnsCostUnresolvedLineCount ?? 0),
+                    returnsCostUnresolvedQuantity: Number(apiData.returnsCostUnresolvedQuantity ?? 0),
                 },
-                salesByPos: (apiData.salesByPos || []).map(p => ({ name: p.name || `POS #${p.pos_id}`, totalSales: Number(p.totalSales || 0) })),
+                salesByPos: (apiData.salesByPos || []).map(p => ({ name: p.name || `POS #${p.posId}`, totalSales: Number(p.totalSales || 0) })),
                 salesByPayment: (apiData.salesByPayment || []).map(p => ({ name: p.name || '-', totalSales: Number(p.totalSales || 0) })),
-                recentTransactions: (apiData.recentTransactions || []).map(t => ({ id: t.id, time: t.time || t.created_at, posName: t.posName || '-', amount: Number(t.amount || 0), cogs: Number(t.cogs || 0), profit: Number(t.profit || 0), paymentMethod: t.paymentMethod || '-' }))
+                recentTransactions: (apiData.recentTransactions || []).map(t => ({ id: t.id, time: t.time || t.createdAt, posName: t.posName || '-', amount: Number(t.amount || 0), cogs: Number(t.cogs || 0), profit: Number(t.profit || 0), paymentMethod: t.paymentMethod || '-' }))
             };
         } else { error.value = result.message || "فشل التحميل"; }
     } catch (e) { error.value = "فشل التحميل"; } finally { isLoading.value = false; }

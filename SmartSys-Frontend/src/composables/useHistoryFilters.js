@@ -13,11 +13,11 @@ export const useHistoryFilters = (
   storagePrefix = 'history_filters',
   options = {}
 ) => {
-  // ─── Get Base Filters from useTableFilters ────────────────────────────────
+  // Get Base Filters from useTableFilters
   const baseFilters = useTableFilters(storagePrefix);
   const branchStore = useBranchStore();
 
-  // ─── Extended States ──────────────────────────────────────────────────────
+  // Extended States
   const customerFilter = ref('');
   const customerSearch = ref('');
   const showCustomerDropdown = ref(false);
@@ -35,7 +35,7 @@ export const useHistoryFilters = (
   const kpiTax = ref(null);
   const kpiDiscount = ref(null);
 
-  // ─── Load Extended من localStorage ────────────────────────────────────────
+  // Load Extended من localStorage
   const loadFromLocalStorage = () => {
     baseFilters.loadFromLocalStorage();
     try {
@@ -62,7 +62,7 @@ export const useHistoryFilters = (
     }
   };
 
-  // ─── Save Extended إلى localStorage ───────────────────────────────────────
+  // Save Extended إلى localStorage
   const saveToLocalStorage = () => {
     baseFilters.saveToLocalStorage();
     try {
@@ -77,7 +77,7 @@ export const useHistoryFilters = (
     }
   };
 
-  // ─── Customer Dropdown Helpers ─────────────────────────────────────────────
+  // Customer Dropdown Helpers
   const setCustomerFilter = (customerId, customerName = '') => {
     customerFilter.value = String(customerId);
     customerSearch.value = customerName;
@@ -100,7 +100,7 @@ export const useHistoryFilters = (
     }, 150);
   };
 
-  // ─── Branch/Warehouse Helpers ─────────────────────────────────────────────
+  // Branch/Warehouse Helpers
   const setBranchFilter = (branchId) => {
     // ✅ SSOT: Now writes directly to branchStore via computed setter
     selectedBranch.value = branchId ? String(branchId) : null;
@@ -115,7 +115,7 @@ export const useHistoryFilters = (
     saveToLocalStorage();
   };
 
-  // ─── Quick Range Filters ──────────────────────────────────────────────────
+  // Quick Range Filters
   const setQuickRange = (rangeType) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -182,7 +182,7 @@ export const useHistoryFilters = (
     saveToLocalStorage();
   };
 
-  // ─── Get Active Filters (Extended) ────────────────────────────────────────
+  // Get Active Filters (Extended)
   const getActiveFiltersArray = () => {
     const filters = baseFilters.getActiveFiltersArray();
     if (customerFilter.value) {
@@ -210,7 +210,7 @@ export const useHistoryFilters = (
     );
   });
 
-  // ─── Clear All Filters ────────────────────────────────────────────────────
+  // Clear All Filters
   const clearAllFilters = () => {
     baseFilters.clearAllFilters();
     customerFilter.value = '';
@@ -219,7 +219,7 @@ export const useHistoryFilters = (
     saveToLocalStorage();
   };
 
-  // ─── Reset to Defaults ────────────────────────────────────────────────────
+  // Reset to Defaults
   const resetFilters = () => {
     baseFilters.resetFilters();
     customerFilter.value = '';
@@ -228,7 +228,7 @@ export const useHistoryFilters = (
     saveToLocalStorage();
   };
 
-  // ─── Remove Single Filter ─────────────────────────────────────────────────
+  // Remove Single Filter
   const removeFilter = (key) => {
     switch (key) {
       case 'search':
@@ -254,7 +254,7 @@ export const useHistoryFilters = (
     saveToLocalStorage();
   };
 
-  // ─── Export Filter Config for API ──────────────────────────────────────────
+  // Export Filter Config for API
   const getApiParams = (additionalParams = {}) => {
     return {
       page: baseFilters.page.value,
@@ -272,10 +272,10 @@ export const useHistoryFilters = (
   };
 
   return {
-    // ─── Base Filter States أولاً (القاعدة)
+    // Base Filter States أولاً (القاعدة)
     ...baseFilters,
 
-    // ─── Extended States (تكتب بعد ...baseFilters لتفوز عند التصادم)
+    // Extended States (تكتب بعد ...baseFilters لتفوز عند التصادم)
     customerFilter,
     customerSearch,
     showCustomerDropdown,
@@ -286,10 +286,10 @@ export const useHistoryFilters = (
     kpiTax,
     kpiDiscount,
 
-    // ─── Computed Extended (تفوز على نظيراتها في baseFilters)
+    // Computed Extended (تفوز على نظيراتها في baseFilters)
     hasActiveFilters,    // ✅ يدهس baseFilters.hasActiveFilters — هذا هو المقصود
 
-    // ─── Extended Methods (تفوز على نظيراتها في baseFilters)
+    // Extended Methods (تفوز على نظيراتها في baseFilters)
     loadFromLocalStorage,
     saveToLocalStorage,
     setCustomerFilter,

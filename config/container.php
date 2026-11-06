@@ -78,7 +78,7 @@ return function (): Container {
     $containerBuilder = new ContainerBuilder();
     
     $containerBuilder->addDefinitions([
-        // ── Configuration ─────────────────────────────────────────────────────
+        // Configuration
         'config.security' => fn() => require __DIR__ . '/security.php',
 
         PDO::class => function () {
@@ -89,17 +89,17 @@ return function (): Container {
             return $db->pdo;
         },
 
-        // ── Repositories ──────────────────────────────────────────────────────
+        // Repositories
         SettingsRepository::class => fn(PDO $pdo) => new SettingsRepository($pdo),
         SaleRepository::class     => fn(PDO $pdo) => new SaleRepository($pdo),
         PurchaseRepository::class => fn(PDO $pdo) => new PurchaseRepository($pdo),
         PaymentRepository::class  => fn(PDO $pdo) => new PaymentRepository($pdo),
 
-        // ── Core Services ─────────────────────────────────────────────────────
+        // Core Services
         AccountingService::class => fn(PDO $pdo) => new AccountingService($pdo),
         CurrencyService::class   => fn(PDO $pdo) => new CurrencyService($pdo),
 
-        // ── Domain Services ───────────────────────────────────────────────────
+        // Domain Services
         // Note: PurchaseService and ReturnService require tenantId + userId at
         // runtime (per-request context), so they are NOT registered as singletons.
         // Handlers create them inline with the correct context.
@@ -279,12 +279,10 @@ return function (): Container {
     SubscriptionCronHandler::class => fn(PDO $pdo) => new SubscriptionCronHandler($pdo),
     WarrantyHandler::class => fn(PDO $pdo) => new WarrantyHandler($pdo),
 
-    // ── PermissionMiddleware factory ──────────────────────────────────────────
+    // PermissionMiddleware factory
     // Returns a callable that creates a PermissionMiddleware instance.
     // Usage in routes:
     //   $perm = $container->get('permission.factory');
-    //   $group->delete('/{id}', ...)->add($perm(Permissions::SALE_VOID));
-    //   $group->get('', ...)->add($perm->anyOf([Permissions::SALE_VIEW, Permissions::REPORT_SALES]));
     'permission.factory' => function (PDO $pdo): \Closure {
         return function (string $permission) use ($pdo): PermissionMiddleware {
             return PermissionMiddleware::require($permission, $pdo);

@@ -14,16 +14,13 @@
         </div>
         <div>
           <h3 class="text-sm font-bold text-slate-900 uppercase tracking-tight">{{ editMode ? 'تعديل فاتورة مشتريات' : 'تسجيل فاتورة شراء جديدة' }}</h3>
-          <p class="text-[10px] text-slate-400 font-mono mt-1">{{ localForm.invoice_number || 'مسودة جديدة' }}</p>
+          <p class="text-[10px] text-slate-400 font-mono mt-1">{{ localForm.invoiceNumber || 'مسودة جديدة' }}</p>
         </div>
       </div>
       <button @click="$emit('close')" class="text-slate-400 hover:text-rose-500 transition-colors absolute top-5 left-6"><i class="fas fa-times text-lg"></i></button>
     </template>
     
-    <!-- Body -->
     <div class="space-y-10" dir="rtl">
-
-        <!-- Section 1: Meta -->
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-50/50 p-6 rounded-xl border border-slate-200">
 
@@ -31,7 +28,7 @@
 
             <label class="metadata-label">المورّد المستهدف <span class="text-rose-500">*</span></label>
 
-            <select v-model="localForm.supplier_id" class="form-input-v3 font-bold" required>
+            <select v-model="localForm.supplierId" class="form-input-v3 font-bold" required>
 
               <option value="">-- اختر المورد --</option>
 
@@ -45,7 +42,7 @@
 
             <label class="metadata-label">فرع الاستلام</label>
 
-            <select v-model="localForm.branch_id" class="form-input-v3">
+            <select v-model="localForm.branchId" class="form-input-v3">
 
               <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
 
@@ -59,7 +56,7 @@
 
             <div class="relative">
 
-              <input ref="purchaseDateRef" type="date" v-model="localForm.purchase_date" class="form-input-v3 font-mono" style="padding-left: 2rem;" />
+              <input ref="purchaseDateRef" type="date" v-model="localForm.purchaseDate" class="form-input-v3 font-mono" style="padding-left: 2rem;" />
 
               <i @click="purchaseDateRef?.showPicker?.()" class="fas fa-calendar absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] cursor-pointer hover:text-slate-500 transition-colors"></i>
 
@@ -68,8 +65,6 @@
           </div>
 
         </div>
-
-        <!-- Section 2: Items Table -->
 
         <div class="space-y-4">
 
@@ -95,7 +90,7 @@
 
                     <div class="flex gap-2">
 
-                      <select v-model="item.product_id" @change="onProductChange(item, index)" class="form-input-v3 h-8 text-[11px] font-bold flex-grow">
+                      <select v-model="item.productId" @change="onProductChange(item, index)" class="form-input-v3 h-8 text-[11px] font-bold flex-grow">
 
                         <option value="">اختر منتج</option>
 
@@ -103,7 +98,7 @@
 
                       </select>
 
-                      <button @click="$emit('open-product-modal', { index, branchId: localForm.branch_id })" class="w-8 h-8 border border-slate-200 bg-white rounded-md text-blue-600 hover:bg-blue-50 shrink-0"><i class="fas fa-plus text-[10px]"></i></button>
+                      <button @click="$emit('open-product-modal', { index, branchId: localForm.branchId })" class="w-8 h-8 border border-slate-200 bg-white rounded-md text-blue-600 hover:bg-blue-50 shrink-0"><i class="fas fa-plus text-[10px]"></i></button>
 
                     </div>
 
@@ -111,25 +106,25 @@
 
                   <td class="px-4 py-3 text-center"><input type="number" min="1" v-model.number="item.quantity" @input="updateTotals" class="h-8 w-16 border-2 border-slate-100 rounded text-center text-[11px] font-bold text-indigo-600 outline-none focus:border-indigo-500" /></td>
 
-                  <td class="px-4 py-3 text-center"><input type="number" step="0.01" v-model.number="item.purchase_price" @input="updateTotals" class="h-8 w-20 border-2 border-slate-100 rounded text-center text-[11px] font-bold text-emerald-600 outline-none focus:border-indigo-500" /></td>
+                  <td class="px-4 py-3 text-center"><input type="number" step="0.01" v-model.number="item.purchasePrice" @input="updateTotals" class="h-8 w-20 border-2 border-slate-100 rounded text-center text-[11px] font-bold text-emerald-600 outline-none focus:border-indigo-500" /></td>
 
                   <td class="px-4 py-3">
 
                     <div class="flex flex-col gap-1 min-w-[110px]">
 
-                      <input v-if="item.has_batch_number" type="text" v-model="item.batch_number" placeholder="رقم الدفعة" class="h-7 border border-slate-100 rounded text-[9px] px-2" />
+                      <input v-if="item.hasBatchNumber" type="text" v-model="item.batchNumber" placeholder="رقم الدفعة" class="h-7 border border-slate-100 rounded text-[9px] px-2" />
 
-                      <input v-if="item.has_expiry_date" type="date" v-model="item.expiry_date" class="h-7 border border-slate-100 rounded text-[9px] px-2" />
+                      <input v-if="item.hasExpiryDate" type="date" v-model="item.expiryDate" class="h-7 border border-slate-100 rounded text-[9px] px-2" />
 
-                      <input v-if="item.has_serial_number" type="text" v-model="item.serial" placeholder="السيريال" class="h-7 border border-slate-100 rounded text-[9px] px-2" />
+                      <input v-if="item.hasSerialNumber" type="text" v-model="item.serial" placeholder="السيريال" class="h-7 border border-slate-100 rounded text-[9px] px-2" />
 
-                      <span v-if="!item.has_batch_number && !item.has_expiry_date && !item.has_serial_number" class="text-slate-300 text-[9px] uppercase italic">لا يتطلب تتبع</span>
+                      <span v-if="!item.hasBatchNumber && !item.hasExpiryDate && !item.hasSerialNumber" class="text-slate-300 text-[9px] uppercase italic">لا يتطلب تتبع</span>
 
                     </div>
 
                   </td>
 
-                  <td class="px-4 py-3 text-left font-bold text-slate-900 font-mono">{{ formatCurrency(item.quantity * item.purchase_price) }}</td>
+                  <td class="px-4 py-3 text-left font-bold text-slate-900 font-mono">{{ formatCurrency(item.quantity * item.purchasePrice) }}</td>
 
                   <td class="px-4 py-3 text-center">
 
@@ -153,8 +148,6 @@
 
         </div>
 
-        <!-- Section 3: Summary -->
-
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
 
           <div class="space-y-4">
@@ -169,7 +162,7 @@
 
                 <label class="metadata-label">نوع الخصم</label>
 
-                <select v-model="localForm.discount_type" class="form-input-v3 font-bold">
+                <select v-model="localForm.discountType" class="form-input-v3 font-bold">
 
                   <option value="fixed">مبلغ ثابت</option>
 
@@ -219,7 +212,7 @@
 
                 <label class="text-[9px] font-bold text-slate-500 uppercase">طريقة الدفع</label>
 
-                <select v-model="localForm.payment_method_id" class="h-9 w-full bg-white/5 border border-white/10 rounded-md px-2 text-[11px] font-bold text-white">
+                <select v-model="localForm.paymentMethodId" class="h-9 w-full bg-white/5 border border-white/10 rounded-md px-2 text-[11px] font-bold text-white">
 
                   <option v-for="m in paymentMethods" :key="m.id" :value="m.id" class="text-slate-900">{{ m.name }}</option>
 
@@ -231,17 +224,17 @@
 
                 <label class="text-[9px] font-bold text-slate-500 uppercase">المبلغ المدفوع</label>
 
-                <input type="number" v-model.number="localForm.paid_amount" :class="localForm.paid_amount > grandTotal ? 'border-red-500' : 'border-white/10'" class="h-9 w-full bg-white/5 border rounded-md px-3 text-xs font-bold text-emerald-400 text-left" />
+                <input type="number" v-model.number="localForm.paidAmount" :class="localForm.paidAmount > grandTotal ? 'border-red-500' : 'border-white/10'" class="h-9 w-full bg-white/5 border rounded-md px-3 text-xs font-bold text-emerald-400 text-left" />
 
               </div>
 
             </div>
 
-            <p v-if="isCashPayment && Number(localForm.paid_amount) > 0" class="relative z-10 rounded-md border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[10px] leading-relaxed text-amber-200">
+            <p v-if="isCashPayment && Number(localForm.paidAmount) > 0" class="relative z-10 rounded-md border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[10px] leading-relaxed text-amber-200">
               سيتم تسجيل المبلغ المدفوع على نقدية فرع الاستلام. عند تفعيل جلسات الكاشير، يلزم وجود جلسة مفتوحة لهذا الفرع لإتمام الدفعة النقدية. الدفعة البنكية أو الإلكترونية تُسجل على حساب وسيلة الدفع ولا تخصم من درج النقدية.
             </p>
 
-            <p v-if="localForm.paid_amount > grandTotal" class="text-[9px] text-red-400 font-bold relative z-10">المبلغ المدفوع يتجاوز الإجمالي</p>
+            <p v-if="localForm.paidAmount > grandTotal" class="text-[9px] text-red-400 font-bold relative z-10">المبلغ المدفوع يتجاوز الإجمالي</p>
 
             <div v-if="remainingAmount > 0" class="flex justify-between items-center text-xs font-bold text-rose-400 pt-2 relative z-10">
 
@@ -257,7 +250,6 @@
 
     </div>
     
-    <!-- Footer -->
     <template #footer>
       <button @click="$emit('close')" class="px-6 h-10 text-xs font-bold text-slate-500 hover:text-slate-700 transition-colors">
         إلغاء
@@ -326,9 +318,9 @@ const purchaseDateRef = ref(null);
 const safeInitial = () => {
   const base = props.initialData ? JSON.parse(JSON.stringify(props.initialData)) : {};
   if (base.discount === undefined) base.discount = 0;
-  if (base.discount_type === undefined) base.discount_type = 'fixed';
+  if (base.discountType === undefined) base.discountType = 'fixed';
   if (!Array.isArray(base.items)) base.items = [];
-  if (base.paid_amount === undefined) base.paid_amount = 0;
+  if (base.paidAmount === undefined) base.paidAmount = 0;
   return base;
 };
 
@@ -342,11 +334,11 @@ watch(() => props.show, async (val) => {
   }
 });
 
-const subtotal = computed(() => localForm.value.items.reduce((sum, it) => sum + (it.quantity * it.purchase_price), 0));
+const subtotal = computed(() => localForm.value.items.reduce((sum, it) => sum + (it.quantity * it.purchasePrice), 0));
 
 const isCashPayment = computed(() => {
   const method = (props.paymentMethods || []).find(
-    (item) => Number(item.id) === Number(localForm.value.payment_method_id)
+    (item) => Number(item.id) === Number(localForm.value.paymentMethodId)
   );
   return String(method?.kind || '').toLowerCase() === 'cash';
 });
@@ -355,7 +347,7 @@ const discountAmount = computed(() => {
 
   const disc = Number(localForm.value.discount || 0);
 
-  if (localForm.value.discount_type === 'percentage') {
+  if (localForm.value.discountType === 'percentage') {
 
     return Math.min(Math.max(disc, 0), 100) / 100 * subtotal.value;
 
@@ -371,9 +363,9 @@ const taxAmount = computed(() => (parseFloat(props.taxSettings.value || 0) / 100
 
 const grandTotal = computed(() => baseAfterDiscount.value + taxAmount.value);
 
-const remainingAmount = computed(() => Math.max(0, grandTotal.value - (localForm.value.paid_amount || 0)));
+const remainingAmount = computed(() => Math.max(0, grandTotal.value - (localForm.value.paidAmount || 0)));
 
-const addItemRow = () => localForm.value.items.push({ product_id: '', quantity: 1, purchase_price: 0.01, unit_id: 1, batch_number: '', expiry_date: '', serial: '' });
+const addItemRow = () => localForm.value.items.push({ productId: '', quantity: 1, purchasePrice: 0.01, unitId: 1, batchNumber: '', expiryDate: '', serial: '' });
 
 const removeItemRow = (idx) => localForm.value.items.splice(idx, 1);
 
@@ -381,15 +373,15 @@ const updateTotals = () => { /* computed تعيد الحساب تلقائياً 
 
 const onProductChange = (item, idx) => {
 
-  const p = props.products.find(x => x.id === item.product_id);
+  const p = props.products.find(x => x.id === item.productId);
 
   if (p) {
 
-    item.purchase_price = p.purchase_price || 0.01; item.unit_id = p.unit_id || 1;
+    item.purchasePrice = p.purchasePrice || 0.01; item.unitId = p.unitId || 1;
 
-    item.has_batch_number = p.has_batch_number; item.has_expiry_date = p.has_expiry_date; item.has_serial_number = p.has_serial_number;
+    item.hasBatchNumber = p.hasBatchNumber; item.hasExpiryDate = p.hasExpiryDate; item.hasSerialNumber = p.hasSerialNumber;
 
-    item.batch_number = ''; item.expiry_date = ''; item.serial = '';
+    item.batchNumber = ''; item.expiryDate = ''; item.serial = '';
 
   }
 
@@ -401,17 +393,17 @@ watch(() => props.pendingProductAdd, (val) => {
 
     const item = localForm.value.items[val.index];
 
-    item.product_id = val.product.id;
+    item.productId = val.product.id;
 
-    item.purchase_price = val.product.purchase_price || 0.01;
+    item.purchasePrice = val.product.purchasePrice || 0.01;
 
-    item.unit_id = val.product.unit_id || 1;
+    item.unitId = val.product.unitId || 1;
 
-    item.has_batch_number = val.product.has_batch_number;
+    item.hasBatchNumber = val.product.hasBatchNumber;
 
-    item.has_expiry_date = val.product.has_expiry_date;
+    item.hasExpiryDate = val.product.hasExpiryDate;
 
-    item.has_serial_number = val.product.has_serial_number;
+    item.hasSerialNumber = val.product.hasSerialNumber;
 
   }
 
@@ -421,27 +413,27 @@ const validatePurchaseForm = () => {
 
   if (!localForm.value.items.length) { showToast('يجب إضافة منتج واحد على الأقل', 'error'); return false; }
 
-  if (!localForm.value.supplier_id) { showToast('يجب اختيار المورد', 'error'); return false; }
+  if (!localForm.value.supplierId) { showToast('يجب اختيار المورد', 'error'); return false; }
 
   for (let i = 0; i < localForm.value.items.length; i++) {
 
     const item = localForm.value.items[i];
 
-    if (!item.product_id) { showToast(`المنتج رقم ${i + 1} غير محدد`, 'error'); return false; }
+    if (!item.productId) { showToast(`المنتج رقم ${i + 1} غير محدد`, 'error'); return false; }
 
     if (!item.quantity || item.quantity <= 0) { showToast(`كمية المنتج رقم ${i + 1} غير صالحة`, 'error'); return false; }
 
-    if (!item.purchase_price || item.purchase_price <= 0) { showToast(`سعر المنتج رقم ${i + 1} غير صالح`, 'error'); return false; }
+    if (!item.purchasePrice || item.purchasePrice <= 0) { showToast(`سعر المنتج رقم ${i + 1} غير صالح`, 'error'); return false; }
 
-    if (item.has_batch_number && !item.batch_number) { showToast(`المنتج رقم ${i + 1} يتطلب رقم الدفعة`, 'error'); return false; }
+    if (item.hasBatchNumber && !item.batchNumber) { showToast(`المنتج رقم ${i + 1} يتطلب رقم الدفعة`, 'error'); return false; }
 
-    if (item.has_expiry_date && !item.expiry_date) { showToast(`المنتج رقم ${i + 1} يتطلب تاريخ الصلاحية`, 'error'); return false; }
+    if (item.hasExpiryDate && !item.expiryDate) { showToast(`المنتج رقم ${i + 1} يتطلب تاريخ الصلاحية`, 'error'); return false; }
 
-    if (item.has_serial_number && !item.serial) { showToast(`المنتج رقم ${i + 1} يتطلب الرقم التسلسلي`, 'error'); return false; }
+    if (item.hasSerialNumber && !item.serial) { showToast(`المنتج رقم ${i + 1} يتطلب الرقم التسلسلي`, 'error'); return false; }
 
   }
 
-  const paidAmt = parseFloat(localForm.value.paid_amount || 0);
+  const paidAmt = parseFloat(localForm.value.paidAmount || 0);
 
   if (paidAmt > grandTotal.value) {
 
@@ -451,7 +443,7 @@ const validatePurchaseForm = () => {
 
   }
 
-  const selectedMethod = props.paymentMethods.find(m => Number(m.id) === Number(localForm.value.payment_method_id));
+  const selectedMethod = props.paymentMethods.find(m => Number(m.id) === Number(localForm.value.paymentMethodId));
 
   if (selectedMethod?.kind === 'credit' && paidAmt > 0) {
 
@@ -469,61 +461,61 @@ const handleSave = () => {
 
   if (!validatePurchaseForm()) return;
 
-  const paidAmt = parseFloat(localForm.value.paid_amount || 0);
+  const paidAmt = parseFloat(localForm.value.paidAmount || 0);
 
   const payload = {
 
-    supplier_id: Number(localForm.value.supplier_id),
+    supplierId: Number(localForm.value.supplierId),
 
-    branch_id: String(localForm.value.branch_id),
+    branchId: String(localForm.value.branchId),
 
-    invoice_number: localForm.value.invoice_number,
+    invoiceNumber: localForm.value.invoiceNumber,
 
-    purchase_date: localForm.value.purchase_date,
+    purchaseDate: localForm.value.purchaseDate,
 
-    tax_rate: parseFloat(props.taxSettings.value || 0),
+    taxRate: parseFloat(props.taxSettings.value || 0),
 
-    discount_value: Number(localForm.value.discount || 0),
+    discountValue: Number(localForm.value.discount || 0),
 
-    discount_type: localForm.value.discount_type || 'fixed',
+    discountType: localForm.value.discountType || 'fixed',
 
-    paid_amount: paidAmt,
+    paidAmount: paidAmt,
 
-    payment_method_id: Number(localForm.value.payment_method_id),
+    paymentMethodId: Number(localForm.value.paymentMethodId),
 
-    remaining_amount: Math.max(0, grandTotal.value - paidAmt),
+    remainingAmount: Math.max(0, grandTotal.value - paidAmt),
 
     status: paidAmt >= grandTotal.value ? 'completed' : (paidAmt > 0 ? 'partial' : 'pending'),
 
     notes: localForm.value.notes || '',
 
-    total_amount: grandTotal.value,
+    totalAmount: grandTotal.value,
 
-    total_items: localForm.value.items.length,
+    totalItems: localForm.value.items.length,
 
     items: localForm.value.items.map(it => ({
 
       id: it.id || undefined,
 
-      product_id: Number(it.product_id),
+      productId: Number(it.productId),
 
       quantity: parseFloat(Number(it.quantity).toFixed(2)),
 
-      price: it.purchase_price,
+      price: it.purchasePrice,
 
-      cost: it.purchase_price,
+      cost: it.purchasePrice,
 
-      total: it.purchase_price * it.quantity,
+      total: it.purchasePrice * it.quantity,
 
-      unit_id: it.unit_id || 1,
+      unitId: it.unitId || 1,
 
-      batch_number: it.batch_number || null,
+      batchNumber: it.batchNumber || null,
 
-      expiry_date: it.expiry_date || null,
+      expiryDate: it.expiryDate || null,
 
       serial: it.serial || null,
 
-      warehouse_id: localForm.value.branch_id
+      warehouseId: localForm.value.branchId
 
     }))
 
@@ -539,7 +531,7 @@ watch(() => props.initialData, (newVal) => {
 
   if (localForm.value.discount === undefined) localForm.value.discount = 0;
 
-  if (localForm.value.discount_type === undefined) localForm.value.discount_type = 'fixed';
+  if (localForm.value.discountType === undefined) localForm.value.discountType = 'fixed';
 
 }, { deep: true });
 

@@ -32,7 +32,7 @@ final class CreateOwnerContributionsTable
         echo "📌 Migration: 009_create_owner_contributions_table\n\n";
 
         try {
-            // ── Check if table already exists ──
+            // Check if table already exists
             $tableExists = $this->pdo->prepare(
                 "SELECT 1 FROM information_schema.TABLES
                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?"
@@ -44,7 +44,7 @@ final class CreateOwnerContributionsTable
                 return;
             }
 
-            // ── Verify prerequisite tables exist ──
+            // Verify prerequisite tables exist
             echo "   • Verifying prerequisite tables...\n";
             $requiredTables = ['accounts', 'tenants', 'users', 'journal_entries'];
             foreach ($requiredTables as $table) {
@@ -59,7 +59,7 @@ final class CreateOwnerContributionsTable
             }
             echo "      ✅ All prerequisite tables exist\n";
 
-            // ── Create owner_contributions table ──
+            // Create owner_contributions table
             echo "   • Creating owner_contributions table...\n";
 
             $this->pdo->exec("
@@ -155,7 +155,7 @@ final class CreateOwnerContributionsTable
 
             echo "      ✅ Table created successfully\n";
 
-            // ── Verify table structure ──
+            // Verify table structure
             echo "   • Verifying table structure...\n";
             $columnCount = (int) $this->pdo->query(
                 "SELECT COUNT(*) FROM information_schema.columns
@@ -180,7 +180,7 @@ final class CreateOwnerContributionsTable
         echo "🔄 Rollback: 009_create_owner_contributions_table\n\n";
 
         try {
-            // ── Check for existing records ──
+            // Check for existing records
             $tableExists = $this->pdo->prepare(
                 "SELECT 1 FROM information_schema.TABLES
                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?"
@@ -203,7 +203,7 @@ final class CreateOwnerContributionsTable
                 );
             }
 
-            // ── Drop table ──
+            // Drop table
             echo "   • Dropping owner_contributions table...\n";
             $this->pdo->exec('DROP TABLE IF EXISTS `owner_contributions`');
             echo "      ✅ Table dropped\n";

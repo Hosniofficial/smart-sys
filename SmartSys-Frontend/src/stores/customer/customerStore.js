@@ -15,12 +15,11 @@ const nowMs = () => Date.now();
 
 export const useCustomerStore = defineStore('customer', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     customers: 5 * 60 * 1000, // 5 دقائق
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const customers          = ref([]);
   const customersFetchedAt = ref(0);
   const customersInFlight  = ref(null);
@@ -31,11 +30,10 @@ export const useCustomerStore = defineStore('customer', () => {
   const detailsCache          = ref({});
   const detailsCacheFetchedAt = ref({});
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
-  // ─── fetchCustomers ───────────────────────────────────────────────────────
+  // fetchCustomers
   /**
    * يجيب كل العملاء مع دعم جلب عميل معين بالـ id
    * الـ component يستخدمها هكذا:
@@ -91,7 +89,7 @@ export const useCustomerStore = defineStore('customer', () => {
             // جرب endpoint العميل المفرد أولاً
             try {
               const response = await getCustomer(id);
-              const customer = response?.data?.data || response?.data;
+              const customer = response?.data?.data;
               if (customer) {
                 const existingIndex = customers.value.findIndex(c => String(c.id) === String(id));
                 if (existingIndex >= 0) {
@@ -146,7 +144,7 @@ export const useCustomerStore = defineStore('customer', () => {
     }
   };
 
-  // ─── searchCustomers ──────────────────────────────────────────────────────
+  // searchCustomers
   /**
    * يبحث في العملاء عبر الـ API مع caching
    * الـ component يستخدمها هكذا:
@@ -202,7 +200,7 @@ export const useCustomerStore = defineStore('customer', () => {
     }
   };
 
-  // ─── getCustomerById ──────────────────────────────────────────────────────
+  // getCustomerById
   /**
    * يرجع العميل من الـ cache المحلي مباشرة (sync)
    * لو محتاج تجيبه من الـ API استخدم fetchCustomers({ id })
@@ -210,7 +208,7 @@ export const useCustomerStore = defineStore('customer', () => {
   const getCustomerById = (id) =>
     customers.value.find(c => String(c.id) === String(id));
 
-  // ─── createCustomer ───────────────────────────────────────────────────────
+  // createCustomer
   /**
    * ينشئ عميل جديد ويضيفه للـ cache المحلي
    * الـ component يستخدمها هكذا:
@@ -220,7 +218,7 @@ export const useCustomerStore = defineStore('customer', () => {
   const createCustomer = async (payload) => {
     try {
       const response = await createCustomerRequest(payload);
-      const created  = response?.data?.data || response?.data;
+      const created  = response?.data?.data;
 
       if (created) {
         customers.value.push(created);
@@ -242,7 +240,7 @@ export const useCustomerStore = defineStore('customer', () => {
     }
   };
 
-  // ─── updateCustomer ───────────────────────────────────────────────────────
+  // updateCustomer
   /**
    * يعدّل عميل ويحدّث الـ cache المحلي
    * الـ component يستخدمها هكذا:
@@ -252,7 +250,7 @@ export const useCustomerStore = defineStore('customer', () => {
   const updateCustomer = async (id, payload) => {
     try {
       const response = await updateCustomerRequest(id, payload);
-      const updated  = response?.data?.data || response?.data || {};
+      const updated  = response?.data?.data || {};
 
       const idx = customers.value.findIndex(c => String(c.id) === String(id));
       if (idx !== -1) customers.value[idx] = { ...customers.value[idx], ...updated };
@@ -275,7 +273,7 @@ export const useCustomerStore = defineStore('customer', () => {
     }
   };
 
-  // ─── deleteCustomer ───────────────────────────────────────────────────────
+  // deleteCustomer
   /**
    * يحذف عميل ويمسحه من الـ cache المحلي
    * الـ component يستخدمها هكذا:
@@ -327,7 +325,7 @@ export const useCustomerStore = defineStore('customer', () => {
  
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
-        data:   response?.data?.data || response?.data || {},
+        data:   response?.data?.data || {},
         message: response?.data?.message || null,
         outcomeUnknown: false,
         httpStatus: Number(response?.status || 0),
@@ -344,7 +342,7 @@ export const useCustomerStore = defineStore('customer', () => {
     }
   };
 
-  // ─── Cache Clearers ───────────────────────────────────────────────────────
+  // Cache Clearers
   const clear = () => {
     customers.value          = [];
     customersFetchedAt.value = 0;
@@ -360,7 +358,7 @@ export const useCustomerStore = defineStore('customer', () => {
     searchCacheFetchedAt.value = {};
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     customers,

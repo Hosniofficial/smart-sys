@@ -1,5 +1,4 @@
 <template>
-  <!-- Text paragraph with multiple lines -->
   <div v-if="type === 'text-paragraph'" class="skeleton-paragraph" role="status" aria-busy="true" aria-label="جاري التحميل...">
     <div 
       v-for="i in lines" 
@@ -11,7 +10,6 @@
     <span class="sr-only">جاري التحميل...</span>
   </div>
   
-  <!-- Single skeleton element -->
   <div 
     v-else
     class="skeleton"
@@ -106,12 +104,10 @@ const skeletonStyle = computed(() => {
   overflow: hidden;
 }
 
-/* Animation: Wave (default) */
 .skeleton--wave {
   animation: skeleton-wave 1.5s ease-in-out infinite;
 }
 
-/* Animation: Pulse */
 .skeleton--pulse {
   animation: skeleton-pulse 1.5s ease-in-out infinite;
 }

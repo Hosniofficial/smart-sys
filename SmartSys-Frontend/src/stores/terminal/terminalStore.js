@@ -6,13 +6,12 @@ const nowMs = () => Date.now();
 
 export const useTerminalStore = defineStore('terminal', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     terminals:      2  * 60 * 1000, // دقيقتان
     terminalStatus: 30 * 1000,      // 30 ثانية (real-time)
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const terminalsByBranch          = ref({});
   const terminalsFetchedAtByBranch = ref({});
   const terminalsInFlightByBranch  = ref({});
@@ -21,11 +20,10 @@ export const useTerminalStore = defineStore('terminal', () => {
   const terminalStatusFetchedAtByBranch = ref({});
   const terminalStatusInFlightByBranch  = ref({});
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
-  // ─── invalidateBranchStatus ───────────────────────────────────────────────
+  // invalidateBranchStatus
   /**
    * يمسح status cache لفرع معين عند أي تغيير على الأجهزة
    */
@@ -35,7 +33,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     delete terminalStatusFetchedAtByBranch.value[bid];
   };
 
-  // ─── fetchTerminals ───────────────────────────────────────────────────────
+  // fetchTerminals
   /**
    * يجيب أجهزة الكاشير لفرع معين
    * الـ component يستخدمها هكذا:
@@ -46,7 +44,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     if (!bid) return [];
 
     if (status === 'all') {
-      return await terminalsService.list({ branch_id: bid, status });
+      return await terminalsService.list({ branchId: bid, status });
     }
 
     const fetchedAt = terminalsFetchedAtByBranch.value[bid] || 0;
@@ -60,7 +58,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
     const promise = (async () => {
       try {
-        const list = await terminalsService.list({ branch_id: bid, status });
+        const list = await terminalsService.list({ branchId: bid, status });
 
         terminalsByBranch.value          = { ...terminalsByBranch.value,          [bid]: Array.isArray(list) ? list : [] };
         terminalsFetchedAtByBranch.value = { ...terminalsFetchedAtByBranch.value, [bid]: nowMs() };
@@ -77,7 +75,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     return await promise;
   };
 
-  // ─── fetchTerminalStatus ──────────────────────────────────────────────────
+  // fetchTerminalStatus
   /**
    * يجيب status map لكل أجهزة الفرع (real-time — TTL 30 ثانية)
    * الـ component يستخدمها هكذا:
@@ -98,7 +96,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
     const promise = (async () => {
       try {
-        const list      = await terminalsService.list({ branch_id: bid, status: 'all' });
+        const list      = await terminalsService.list({ branchId: bid, status: 'all' });
         const statusMap = {};
         if (Array.isArray(list)) {
           list.forEach(terminal => { statusMap[terminal.id] = terminal.status; });
@@ -119,7 +117,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     return await promise;
   };
 
-  // ─── createTerminal ───────────────────────────────────────────────────────
+  // createTerminal
   /**
    * ينشئ جهاز كاشير جديد ويضيفه للـ cache المحلي
    * الـ component يستخدمها هكذا:
@@ -129,10 +127,10 @@ export const useTerminalStore = defineStore('terminal', () => {
   const createTerminal = async (payload) => {
     try {
       const res      = await terminalsService.create(payload);
-      const terminal = res?.data?.data || res?.data;
+      const terminal = res?.data?.data;
 
       // أضف الجهاز للـ cache المحلي — branch_id من الـ response هو المرجع
-      const bid = terminal?.branch_id ? String(terminal.branch_id) : null;
+      const bid = terminal?.branchId ? String(terminal.branchId) : null;
       if (bid && terminal?.id) {
         if (!terminalsByBranch.value[bid]) terminalsByBranch.value[bid] = [];
         terminalsByBranch.value[bid].push(terminal);
@@ -154,7 +152,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   };
 
-  // ─── updateTerminal ───────────────────────────────────────────────────────
+  // updateTerminal
   /**
    * يعدّل جهاز كاشير ويحدّث الـ cache المحلي في كل الفروع
    * الـ component يستخدمها هكذا:
@@ -164,7 +162,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   const updateTerminal = async (id, payload) => {
     try {
       const res     = await terminalsService.update(id, payload);
-      const updated = res?.data?.data || res?.data;
+      const updated = res?.data?.data;
 
       // حدّث الجهاز في كل الفروع (في حالة تغيير الفرع)
       for (const bid of Object.keys(terminalsByBranch.value)) {
@@ -193,7 +191,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   };
 
-  // ─── Computed Getters ─────────────────────────────────────────────────────
+  // Computed Getters
   const getTerminalsForBranch = (branchId) => {
     const bid = branchId == null ? '' : String(branchId);
     return computed(() => terminalsByBranch.value[bid] || []);
@@ -218,7 +216,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   const isTerminalActive = (terminalId) =>
     computed(() => getTerminalById(terminalId).value?.status === 'active');
 
-  // ─── Cache Clearers ───────────────────────────────────────────────────────
+  // Cache Clearers
   const clear = () => {
     terminalsByBranch.value          = {};
     terminalsFetchedAtByBranch.value = {};
@@ -228,7 +226,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     terminalStatusInFlightByBranch.value  = {};
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     terminalsByBranch,

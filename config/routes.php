@@ -14,11 +14,11 @@ use Slim\Routing\RouteCollectorProxy;
 
 return function (App $app, Container $container): void {
 
-    // ── تحميل الملفات مرة واحدة ──────────────────────────────────────────
+    // تحميل الملفات مرة واحدة
     $authRoutes   = require __DIR__ . '/../app/routes/auth.php';
     $publicRoutes = require __DIR__ . '/../app/routes/public.php';
 
-    // ── 1. Public routes ──────────────────────────────────────────────────
+    // 1. Public routes
     $publicRoutes($app, $container);
 
     // The cron handler authenticates requests with X-Cron-Token itself.
@@ -27,12 +27,12 @@ return function (App $app, Container $container): void {
         [$container->get(SubscriptionCronHandler::class), 'processCron']
     );
 
-    // ── 2. Auth routes (بدون أي middleware) ──────────────────────────────
+    // 2. Auth routes (بدون أي middleware)
     $app->group('/api/v1/auth', function (RouteCollectorProxy $group) use ($container, $authRoutes) {
         $authRoutes($group, $container);
     });
 
-    // ── 3. JWT-only (بدون subscription) ──────────────────────────────────
+    // 3. JWT-only (بدون subscription)
     $app->group('/api/v1', function (RouteCollectorProxy $group) use ($container) {
 
         $group->get('/plans', \App\Handlers\SubscriptionHandler::class . ':listPublicPlans');
@@ -48,7 +48,7 @@ return function (App $app, Container $container): void {
 
     });
 
-    // ── 4. Protected routes (JWT + Tenant + Subscription) ────────────────
+    // 4. Protected routes (JWT + Tenant + Subscription)
     $app->group('/api/v1', function (RouteCollectorProxy $group) use ($container) {
 
         // Core

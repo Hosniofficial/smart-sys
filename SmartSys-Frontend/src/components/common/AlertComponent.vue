@@ -2,14 +2,12 @@
   <teleport to="body">
     <div v-if="isVisible" class="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       
-      <!-- Backdrop Layer -->
       <div 
         class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-200"
         :class="backdropOpacity"
         @click="handleBackdropClick"
       ></div>
       
-      <!-- Alert Modal Card -->
       <div 
         class="relative bg-white border border-slate-200 rounded-xl shadow-xl max-w-md w-full overflow-hidden transform transition-all duration-200 font-sans antialiased text-slate-900"
         :class="modalScale"
@@ -17,13 +15,10 @@
         role="dialog"
         aria-modal="true"
       >
-        <!-- Modal Content Area -->
         <div class="p-6">
           <div class="flex items-start gap-4">
             
-            <!-- Type Icon Container -->
             <div class="shrink-0">
-              <!-- Success Icon -->
               <div v-if="type === 'success'" class="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center text-sm shadow-sm">
                 <i class="fas fa-check"></i>
               </div>
@@ -33,23 +28,19 @@
                 <i class="fas fa-triangle-exclamation"></i>
               </div>
               
-              <!-- Error Icon -->
               <div v-else-if="type === 'error'" class="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center text-sm shadow-sm">
                 <i class="fas fa-xmark text-base"></i>
               </div>
               
-              <!-- Info Icon -->
               <div v-else-if="type === 'info'" class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center text-sm shadow-sm">
                 <i class="fas fa-circle-info"></i>
               </div>
               
-              <!-- Question / Confirm Icon -->
               <div v-else-if="type === 'confirm'" class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center text-sm shadow-sm">
                 <i class="fas fa-circle-question"></i>
               </div>
             </div>
             
-            <!-- Title & Message -->
             <div class="flex-1 space-y-1 pt-0.5">
               <div class="flex items-center gap-2">
                 <h3 class="text-sm font-bold text-slate-900 leading-snug" v-if="title">
@@ -67,9 +58,7 @@
           </div>
         </div>
         
-        <!-- Actions Footer -->
         <div class="px-6 py-3 bg-slate-50/70 border-t border-slate-100 flex items-center justify-end gap-2.5">
-          <!-- Cancel Button -->
           <button
             type="button"
             @click="handleCancel"
@@ -79,7 +68,6 @@
             {{ cancelText || (type === 'confirm' ? 'إلغاء' : 'إغلاق') }}
           </button>
 
-          <!-- Confirm Button -->
           <button
             v-if="type === 'confirm' || confirmText"
             type="button"

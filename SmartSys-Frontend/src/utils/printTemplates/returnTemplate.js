@@ -2,23 +2,23 @@ import { getPrintConfig, clearPrintConfigCache } from './printConfig';
 import { esc, fmt, getCompanyData } from './printHelpers';
 
 const itemReturnTotal = (it) =>
-  parseFloat(it.subtotal ?? it.net_total ?? it.total ?? (it.quantity * (it.unit_price || it.sale_price || 0)) ?? 0);
+  parseFloat(it.subtotal ?? it.netTotal ?? it.total ?? (it.quantity * (it.unitPrice || it.salePrice || 0)) ?? 0);
 
-const isPurchaseReturn = (doc) => String(doc.return_type || '').toLowerCase() === 'purchase';
-const returnTypeLabel = (doc) => doc.return_type_label || (isPurchaseReturn(doc) ? 'مرتجع مشتريات' : 'مرتجع مبيعات');
+const isPurchaseReturn = (doc) => String(doc.returnType || '').toLowerCase() === 'purchase';
+const returnTypeLabel = (doc) => doc.returnTypeLabel || (isPurchaseReturn(doc) ? 'مرتجع مشتريات' : 'مرتجع مبيعات');
 const returnPartyLabel = (doc) => isPurchaseReturn(doc) ? 'المورد' : 'العميل';
-const returnPartyName = (doc) => doc.party_name || (isPurchaseReturn(doc) ? doc.supplier_name : doc.customer_name) || (isPurchaseReturn(doc) ? 'غير محدد' : 'عميل نقدي');
+const returnPartyName = (doc) => doc.partyName || (isPurchaseReturn(doc) ? doc.supplierName : doc.customerName) || (isPurchaseReturn(doc) ? 'غير محدد' : 'عميل نقدي');
 const returnSettlementRows = (doc, rowClass) => {
-  const cashRefund = Math.max(0, Number(doc.cash_refund_amount ?? doc.paid_amount ?? 0));
-  const offset = Math.max(0, Number(doc.offset_amount ?? 0));
-  const net = Number(doc.net_settlement_amount ?? cashRefund + offset);
-  const cashLabel = Number(doc.is_cash) === 1 ? 'المبلغ المسترد نقدًا:' : 'المبلغ المسترد:';
+  const cashRefund = Math.max(0, Number(doc.cashRefundAmount ?? doc.paidAmount ?? 0));
+  const offset = Math.max(0, Number(doc.offsetAmount ?? 0));
+  const net = Number(doc.netSettlementAmount ?? cashRefund + offset);
+  const cashLabel = Number(doc.isCash) === 1 ? 'المبلغ المسترد نقدًا:' : 'المبلغ المسترد:';
   return `${offset > 0 ? `<div class="${rowClass}"><span>المبلغ المُقاصّ:</span><span>${fmt(offset)}</span></div>` : ''}
     ${cashRefund > 0 ? `<div class="${rowClass}"><span>${cashLabel}</span><span>${fmt(cashRefund)}</span></div>` : ''}
     <div class="${rowClass}"><span>صافي التسوية:</span><span>${fmt(net)}</span></div>`;
 };
-const returnTaxRow = (doc, rowClass) => Number(doc.tax_amount) > 0
-  ? `<div class="${rowClass}"><span>الضريبة (ضمن إجمالي المرتجع):</span><span>${fmt(doc.tax_amount)}</span></div>`
+const returnTaxRow = (doc, rowClass) => Number(doc.taxAmount) > 0
+  ? `<div class="${rowClass}"><span>الضريبة (ضمن إجمالي المرتجع):</span><span>${fmt(doc.taxAmount)}</span></div>`
   : '';
 
 /**
@@ -27,22 +27,22 @@ const returnTaxRow = (doc, rowClass) => Number(doc.tax_amount) > 0
 const buildReturnThermalHtml = (doc, options = {}) => {
   const cfg     = getPrintConfig(options.config);
   const company = getCompanyData(doc);
-  const returnDate = doc.return_date || doc.created_at || new Date().toISOString();
-  const createdAt = doc.created_at || returnDate;
+  const returnDate = doc.returnDate || doc.createdAt || new Date().toISOString();
+  const createdAt = doc.createdAt || returnDate;
 
   const itemsHtml = (doc.items || []).map((it, idx) => `
     <div style="margin-bottom:8px;font-size:12px;">
       <div style="display:flex;justify-content:space-between;font-weight:bold;">
-        <span>${idx + 1}. ${esc(it.product_name || it.name)}</span>
+        <span>${idx + 1}. ${esc(it.productName || it.name)}</span>
         <span>${fmt(itemReturnTotal(it))}</span>
       </div>
       <div style="font-size:11px;color:#555;">
-        ${fmt(it.quantity)} × ${fmt(it.unit_price || it.sale_price || 0)}
+        ${fmt(it.quantity)} × ${fmt(it.unitPrice || it.salePrice || 0)}
       </div>
     </div>`).join('');
 
   return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"/>
-  <title>إشعار ${esc(returnTypeLabel(doc))} ${esc(doc.return_number || doc.id || '')}</title>
+  <title>إشعار ${esc(returnTypeLabel(doc))} ${esc(doc.returnNumber || doc.id || '')}</title>
   <style>
     *{box-sizing:border-box;}
     body{font-family:Tahoma,Arial,sans-serif;margin:0;padding:0;background:#fff;}
@@ -61,7 +61,7 @@ const buildReturnThermalHtml = (doc, options = {}) => {
   <div class="receipt">
     <div class="text-center">
       <div class="header-title">${esc(company.name || 'وثيقة مرتجع')}</div>
-      ${company.branch_name ? `<div class="info-line">${esc(company.branch_name)}</div>` : ''}
+      ${company.branchName ? `<div class="info-line">${esc(company.branchName)}</div>` : ''}
       <div class="info-line">
         ${company.phone ? `هاتف: ${esc(company.phone)} | ` : ''}
         ${company.tax ? `ر.ضريبي: ${esc(company.tax)}` : ''}
@@ -71,11 +71,11 @@ const buildReturnThermalHtml = (doc, options = {}) => {
     </div>
 
     <div class="meta-grid">
-      <div><strong>رقم المرتجع:</strong> ${esc(doc.return_number || doc.id)}</div>
+      <div><strong>رقم المرتجع:</strong> ${esc(doc.returnNumber || doc.id)}</div>
       <div><strong>تاريخ المرتجع:</strong> ${new Date(returnDate).toLocaleDateString('en-US')}</div>
-      <div><strong>الفاتورة الأصلية:</strong> ${esc(doc.original_invoice_number || doc.invoice_number || 'غير محدد')}</div>
+      <div><strong>الفاتورة الأصلية:</strong> ${esc(doc.originalInvoiceNumber || doc.invoiceNumber || 'غير محدد')}</div>
       <div><strong>${returnPartyLabel(doc)}:</strong> ${esc(returnPartyName(doc))}</div>
-      <div><strong>أنشأه:</strong> ${esc(doc.created_by_name || 'النظام')}</div>
+      <div><strong>أنشأه:</strong> ${esc(doc.createdByName || 'النظام')}</div>
       <div><strong>تاريخ ووقت الإنشاء:</strong> ${new Date(createdAt).toLocaleString('en-US')}</div>
     </div>
 
@@ -87,10 +87,10 @@ const buildReturnThermalHtml = (doc, options = {}) => {
     <div>${itemsHtml}</div>
 
     <div class="totals-area">
-      <div class="total-row"><span>إجمالي المرتجع (شامل الضريبة):</span><span>${fmt(doc.grand_total || doc.total_amount)}</span></div>
+      <div class="total-row"><span>إجمالي المرتجع (شامل الضريبة):</span><span>${fmt(doc.grandTotal || doc.totalAmount)}</span></div>
       ${returnTaxRow(doc, 'total-row')}
       ${returnSettlementRows(doc, 'total-row')}
-      ${(doc.notes || doc.return_reason) ? `<div class="total-row" style="color:#666;font-size:11px;"><span>سبب الإرجاع:</span><span>${esc(doc.notes || doc.return_reason)}</span></div>` : ''}
+      ${(doc.notes || doc.returnReason) ? `<div class="total-row" style="color:#666;font-size:11px;"><span>سبب الإرجاع:</span><span>${esc(doc.notes || doc.returnReason)}</span></div>` : ''}
     </div>
 
     ${cfg.footerEnabled && cfg.footerText
@@ -108,20 +108,20 @@ const buildReturnThermalHtml = (doc, options = {}) => {
 const buildReturnA4Html = (doc, options = {}) => {
   const cfg     = getPrintConfig(options.config);
   const company = getCompanyData(doc);
-  const returnDate = doc.return_date || doc.created_at || new Date().toISOString();
-  const createdAt = doc.created_at || returnDate;
+  const returnDate = doc.returnDate || doc.createdAt || new Date().toISOString();
+  const createdAt = doc.createdAt || returnDate;
 
   const itemsHtml = (doc.items || []).map((it, idx) => `
     <tr>
       <td>${idx + 1}</td>
-      <td>${esc(it.product_name || it.name)}</td>
+      <td>${esc(it.productName || it.name)}</td>
       <td style="text-align:center">${fmt(it.quantity)}</td>
-      <td style="text-align:center">${fmt(it.unit_price || it.sale_price || 0)}</td>
+      <td style="text-align:center">${fmt(it.unitPrice || it.salePrice || 0)}</td>
       <td style="text-align:center">${fmt(itemReturnTotal(it))}</td>
     </tr>`).join('');
 
   return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"/>
-  <title>إشعار ${esc(returnTypeLabel(doc))} ${esc(doc.return_number || doc.id || '')}</title>
+  <title>إشعار ${esc(returnTypeLabel(doc))} ${esc(doc.returnNumber || doc.id || '')}</title>
   <style>
     *{box-sizing:border-box;}
     body{font-family:Tahoma,Arial,sans-serif;margin:0;padding:24px;color:#1e293b;direction:rtl;}
@@ -146,23 +146,23 @@ const buildReturnA4Html = (doc, options = {}) => {
       <div>
         <div class="company-name">${esc(company.name || '')}</div>
         <div class="company-sub">
-          ${company.branch_name ? esc(company.branch_name) + ' | ' : ''}
+          ${company.branchName ? esc(company.branchName) + ' | ' : ''}
           ${company.phone ? 'هاتف: ' + esc(company.phone) : ''}
           ${company.address ? ' | ' + esc(company.address) : ''}
         </div>
       </div>
       <div>
         <div class="return-badge">↩ إشعار ${esc(returnTypeLabel(doc))}</div>
-        <div class="return-no">${esc(doc.return_number || 'RET-' + doc.id)}</div>
+        <div class="return-no">${esc(doc.returnNumber || 'RET-' + doc.id)}</div>
       </div>
     </div>
 
     <div class="info-grid">
       <div class="info-box"><label>تاريخ المرتجع</label>${new Date(returnDate).toLocaleDateString('en-US')}</div>
-      <div class="info-box"><label>الفاتورة الأصلية</label>${esc(doc.original_invoice_number || doc.invoice_number || 'غير محدد')}</div>
+      <div class="info-box"><label>الفاتورة الأصلية</label>${esc(doc.originalInvoiceNumber || doc.invoiceNumber || 'غير محدد')}</div>
       <div class="info-box"><label>${returnPartyLabel(doc)}</label>${esc(returnPartyName(doc))}</div>
-      <div class="info-box"><label>الفرع</label>${esc(doc.branch_name || '-')}</div>
-      <div class="info-box"><label>أنشأه</label>${esc(doc.created_by_name || 'النظام')}</div>
+      <div class="info-box"><label>الفرع</label>${esc(doc.branchName || '-')}</div>
+      <div class="info-box"><label>أنشأه</label>${esc(doc.createdByName || 'النظام')}</div>
       <div class="info-box"><label>تاريخ ووقت الإنشاء</label>${new Date(createdAt).toLocaleString('en-US')}</div>
     </div>
 
@@ -173,10 +173,10 @@ const buildReturnA4Html = (doc, options = {}) => {
     </table>
 
     <div class="totals">
-      <div class="totals-row"><span>إجمالي المرتجع (شامل الضريبة):</span><span>${fmt(doc.grand_total || doc.total_amount)}</span></div>
+      <div class="totals-row"><span>إجمالي المرتجع (شامل الضريبة):</span><span>${fmt(doc.grandTotal || doc.totalAmount)}</span></div>
       ${returnTaxRow(doc, 'totals-row')}
       ${returnSettlementRows(doc, 'totals-row')}
-      ${(doc.notes || doc.return_reason) ? `<div class="totals-row" style="color:#666"><span>سبب الإرجاع:</span><span>${esc(doc.notes || doc.return_reason)}</span></div>` : ''}
+      ${(doc.notes || doc.returnReason) ? `<div class="totals-row" style="color:#666"><span>سبب الإرجاع:</span><span>${esc(doc.notes || doc.returnReason)}</span></div>` : ''}
     </div>
 
     ${cfg.footerEnabled && cfg.footerText

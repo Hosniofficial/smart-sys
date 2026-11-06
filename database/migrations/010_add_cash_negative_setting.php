@@ -32,9 +32,7 @@ class AddCashNegativeSetting
         echo "📌 Migration: 010_add_cash_negative_setting\n\n";
 
         try {
-            // ─────────────────────────────────────────────────────────────────────
             // 1. Verify settings table exists
-            // ─────────────────────────────────────────────────────────────────────
             echo "   • التحقق من وجود جدول settings...\n";
 
             $stmtTableCheck = $this->pdo->prepare(
@@ -48,9 +46,7 @@ class AddCashNegativeSetting
             }
             echo "      ✅ جدول settings موجود\n\n";
 
-            // ─────────────────────────────────────────────────────────────────────
             // 2. Verify tenants table exists (FK constraint)
-            // ─────────────────────────────────────────────────────────────────────
             echo "   • التحقق من وجود جدول tenants...\n";
 
             $stmtTenantsCheck = $this->pdo->prepare(
@@ -64,9 +60,7 @@ class AddCashNegativeSetting
             }
             echo "      ✅ جدول tenants موجود\n\n";
 
-            // ─────────────────────────────────────────────────────────────────────
             // 3. Get all active tenants
-            // ─────────────────────────────────────────────────────────────────────
             echo "   • جلب قائمة جميع المستأجرين...\n";
 
             $stmtTenants = $this->pdo->query(
@@ -83,9 +77,7 @@ class AddCashNegativeSetting
                 return;
             }
 
-            // ─────────────────────────────────────────────────────────────────────
             // 4. Insert setting for each tenant
-            // ─────────────────────────────────────────────────────────────────────
             echo "   • إضافة إعداد pos.cash_session.allow_negative_intraday لكل مستأجر...\n\n";
 
             $stmtInsert = $this->pdo->prepare("
@@ -138,9 +130,7 @@ class AddCashNegativeSetting
             echo "      • تم التخطي: {$skippedCount}\n";
             echo "      • الإجمالي: {$tenantCount}\n\n";
 
-            // ─────────────────────────────────────────────────────────────────────
             // 5. Verification
-            // ─────────────────────────────────────────────────────────────────────
             echo "   • التحقق من الإضافة...\n";
 
             $stmtVerify = $this->pdo->prepare(
@@ -158,9 +148,7 @@ class AddCashNegativeSetting
 
             echo "      ✅ التحقق ناجح: {$actualCount} إعداد موجود\n\n";
 
-            // ─────────────────────────────────────────────────────────────────────
             // 6. Display sample setting
-            // ─────────────────────────────────────────────────────────────────────
             $stmtSample = $this->pdo->prepare(
                 "SELECT s.tenant_id, t.company_name, s.value, s.type, s.updated_at
                  FROM settings s

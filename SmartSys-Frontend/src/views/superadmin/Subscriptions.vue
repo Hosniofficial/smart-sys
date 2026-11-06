@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8 animate-fadeIn">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="إدارة الاشتراكات"
@@ -37,7 +35,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPI Summary Section -->
       <section class="grid grid-cols-1 sm:grid-cols-3 gap-6">
         <div class="bg-white border border-slate-200 p-5 rounded-xl flex items-center justify-between group hover:border-slate-300 transition-all shadow-sm">
           <div>
@@ -70,7 +67,6 @@
         </div>
       </section>
 
-      <!-- Filters Section -->
       <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="space-y-1.5">
@@ -97,7 +93,7 @@
 
           <div class="space-y-1.5">
             <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">مستوى المخاطر</label>
-            <select v-model="filters.risk_level" class="filter-input appearance-none">
+            <select v-model="filters.riskLevel" class="filter-input appearance-none">
               <option value="">كل المستويات</option>
               <option value="low">منخفض (Low Risk)</option>
               <option value="medium">متوسط (Medium)</option>
@@ -108,7 +104,7 @@
           <div class="space-y-1.5">
             <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">رقم المستأجر (Tenant ID)</label>
             <div class="relative">
-              <input v-model.number="filters.tenant_id" type="number" min="1" class="filter-input pr-8 font-mono" placeholder="مثال: 101" />
+              <input v-model.number="filters.tenantId" type="number" min="1" class="filter-input pr-8 font-mono" placeholder="مثال: 101" />
               <i class="fas fa-hashtag absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] pointer-events-none"></i>
             </div>
           </div>
@@ -133,7 +129,6 @@
         </div>
       </div>
 
-      <!-- Subscriptions Data Table Card -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative min-h-[400px]">
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
@@ -152,7 +147,6 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-              <!-- Skeleton loading for table -->
               <template v-if="loading">
                 <tr v-for="row in 6" :key="row" class="animate-pulse">
                   <td class="px-6 py-4 text-center"><div class="h-3 bg-slate-100 rounded w-6 mx-auto"></div></td>
@@ -168,7 +162,6 @@
                 </tr>
               </template>
               
-              <!-- Empty State -->
               <tr v-else-if="pagedRows.length === 0">
                 <td colspan="9" class="py-24 text-center text-slate-300">
                   <i class="fas fa-id-card text-3xl mb-3 opacity-20"></i>
@@ -176,20 +169,19 @@
                 </td>
               </tr>
 
-              <!-- Data Rows -->
               <tr v-for="s in pagedRows" :key="s.id" class="hover:bg-blue-50/20 transition-all group">
                 <td class="px-6 py-4 text-center text-slate-400 font-mono text-xs font-bold">{{ s.id }}</td>
                 <td class="px-4 py-4">
                   <div class="flex flex-col">
-                    <span class="text-xs font-bold text-slate-900">{{ s.tenant_name || 'بدون اسم' }}</span>
-                    <span class="text-[9px] text-slate-400 uppercase font-bold font-mono tracking-wider mt-0.5">#{{ s.tenant_id }}</span>
-                    <span v-if="s.tenant_email" class="text-[8px] text-slate-500 font-mono mt-0.5 truncate max-w-[120px]">{{ s.tenant_email }}</span>
+                    <span class="text-xs font-bold text-slate-900">{{ s.tenantName || 'بدون اسم' }}</span>
+                    <span class="text-[9px] text-slate-400 uppercase font-bold font-mono tracking-wider mt-0.5">#{{ s.tenantId }}</span>
+                    <span v-if="s.tenantEmail" class="text-[8px] text-slate-500 font-mono mt-0.5 truncate max-w-[120px]">{{ s.tenantEmail }}</span>
                   </div>
                 </td>
                 <td class="px-4 py-4">
                   <div class="flex flex-col">
-                    <span class="text-xs font-bold text-slate-900">{{ s.plan_name }}</span>
-                    <span class="text-[9px] text-slate-400 uppercase font-bold font-mono tracking-wider mt-0.5">{{ s.plan_code }}</span>
+                    <span class="text-xs font-bold text-slate-900">{{ s.planName }}</span>
+                    <span class="text-[9px] text-slate-400 uppercase font-bold font-mono tracking-wider mt-0.5">{{ s.planCode }}</span>
                   </div>
                 </td>
                 <td class="px-4 py-4 text-center">
@@ -199,7 +191,7 @@
                   </span>
                 </td>
                 <td class="px-4 py-4 text-center">
-                  <span v-if="s.email_verified" class="px-2 py-0.5 rounded-full text-[9px] font-bold border bg-emerald-50 text-emerald-600 border-emerald-100 inline-flex items-center gap-1">
+                  <span v-if="s.emailVerified" class="px-2 py-0.5 rounded-full text-[9px] font-bold border bg-emerald-50 text-emerald-600 border-emerald-100 inline-flex items-center gap-1">
                     <i class="fas fa-check text-[8px]"></i>
                     <span>مُتحقّق</span>
                   </span>
@@ -208,14 +200,14 @@
                     <span>بانتظار</span>
                   </span>
                 </td>
-                <td class="px-4 py-4 text-[10px] font-bold text-slate-500 font-mono tracking-tighter">{{ formatDate(s.start_date) }}</td>
-                <td class="px-4 py-4 text-[10px] font-bold text-slate-500 font-mono tracking-tighter">{{ formatDate(s.end_date) }}</td>
+                <td class="px-4 py-4 text-[10px] font-bold text-slate-500 font-mono tracking-tighter">{{ formatDate(s.startDate) }}</td>
+                <td class="px-4 py-4 text-[10px] font-bold text-slate-500 font-mono tracking-tighter">{{ formatDate(s.endDate) }}</td>
                 <td class="px-4 py-4 text-center">
-                  <span class="text-[10px] font-bold uppercase text-slate-400 font-mono">{{ s.payment_status || '-' }}</span>
+                  <span class="text-[10px] font-bold uppercase text-slate-400 font-mono">{{ s.paymentStatus || '-' }}</span>
                 </td>
                 <td class="px-4 py-4 text-center">
-                  <span v-if="s.risk_score != null" :class="['px-2 py-0.5 rounded text-[9px] font-bold font-mono border', riskBadgeClass(s.risk_score)]">
-                     {{ s.risk_score }}/10
+                  <span v-if="s.riskScore != null" :class="['px-2 py-0.5 rounded text-[9px] font-bold font-mono border', riskBadgeClass(s.riskScore)]">
+                     {{ s.riskScore }}/10
                   </span>
                   <span v-else class="text-slate-300 font-mono text-xs">—</span>
                 </td>
@@ -243,7 +235,6 @@
           </table>
         </div>
 
-        <!-- Pagination Footer -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ page }}</span> من <span class="text-slate-900">{{ totalPages }}</span>
@@ -260,7 +251,6 @@
       </div>
     </div>
 
-    <!-- Activate Modal -->
     <BaseModal :show="dialogs.activate" @close="closeDialogs" maxWidth="md">
       <template #header>
         <div class="flex items-center gap-3">
@@ -296,7 +286,6 @@
       </template>
     </BaseModal>
 
-    <!-- Expire Modal -->
     <BaseModal :show="dialogs.expire" @close="closeDialogs" maxWidth="md">
       <template #header>
         <div class="flex items-center gap-3">
@@ -330,7 +319,6 @@
       </template>
     </BaseModal>
 
-    <!-- Extend Modal -->
     <BaseModal :show="dialogs.extend" @close="closeDialogs" maxWidth="md">
       <template #header>
         <div class="flex items-center gap-3">
@@ -382,21 +370,21 @@
         <div class="grid grid-cols-2 gap-4">
           <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center space-y-1">
             <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">مؤشر المخاطر</p>
-            <span :class="['px-3 py-1 rounded text-lg font-bold font-mono inline-block border', riskBadgeClass(current?.risk_score)]">
-              {{ current?.risk_score || 0 }}/10
+            <span :class="['px-3 py-1 rounded text-lg font-bold font-mono inline-block border', riskBadgeClass(current?.riskScore)]">
+              {{ current?.riskScore || 0 }}/10
             </span>
           </div>
           <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center space-y-1">
             <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">آخر فحص تلقائي</p>
-            <p class="text-xs font-bold text-slate-800 font-mono mt-2">{{ formatDate(current?.last_security_check) }}</p>
+            <p class="text-xs font-bold text-slate-800 font-mono mt-2">{{ formatDate(current?.lastSecurityCheck) }}</p>
           </div>
         </div>
 
-        <div v-if="current?.security_flags" class="bg-amber-50 border border-amber-200 p-4 rounded-xl space-y-1">
+        <div v-if="current?.securityFlags" class="bg-amber-50 border border-amber-200 p-4 rounded-xl space-y-1">
           <h4 class="text-xs font-bold text-amber-800 flex items-center gap-2">
             <i class="fas fa-triangle-exclamation text-[11px]"></i> تنبيهات رصدها النظام:
           </h4>
-          <p class="text-xs font-medium text-amber-700 leading-relaxed italic">{{ current.security_flags }}</p>
+          <p class="text-xs font-medium text-amber-700 leading-relaxed italic">{{ current.securityFlags }}</p>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
@@ -424,7 +412,6 @@
       </template>
     </BaseModal>
 
-    <!-- Change Plan Modal -->
     <BaseModal :show="dialogs.changePlan" @close="closeDialogs" maxWidth="md">
       <template #header>
         <div class="flex items-center gap-3">
@@ -441,7 +428,7 @@
       <div class="space-y-4">
         <div class="p-3.5 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-between">
           <p class="text-[10px] font-bold text-blue-500 uppercase tracking-widest">الباقة الحالية</p>
-          <span class="text-xs font-bold text-blue-900 font-mono">{{ current?.plan_code }} — {{ current?.plan_name }}</span>
+          <span class="text-xs font-bold text-blue-900 font-mono">{{ current?.planCode }} — {{ current?.planName }}</span>
         </div>
 
         <div class="space-y-1.5">
@@ -495,7 +482,6 @@ import { useBreadcrumb } from '@/composables/useBreadcrumb'
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue'
 import AlertService from '@/services/AlertService'
 
-// --- State & Stores (Strictly Preserved) ---
 const adminStore = useAdminStore()
 const { breadcrumb } = useBreadcrumb()
 const rows = ref([])
@@ -505,7 +491,7 @@ const securityLoading = ref(false)
 const page = ref(1)
 const pageSize = ref(10)
 
-const filters = ref({ plan: '', status: '', tenant_id: '', risk_level: '' })
+const filters = ref({ plan: '', status: '', tenantId: '', riskLevel: '' })
 const dialogs = ref({ activate: false, expire: false, extend: false, security: false, changePlan: false })
 const current = ref(null)
 const form = ref({ plan: '', days: 30, newPlan: '', prorate: false, extendPeriod: false })
@@ -549,7 +535,7 @@ function riskBadgeClass(score) {
 
 async function load() {
   const params = { ...filters.value }
-  if (!params.tenant_id) delete params.tenant_id
+  if (!params.tenantId) delete params.tenantId
   const result = await adminStore.fetchSubscriptions(params)
   if (result.status === 'success') {
     // تأكد من أن البيانات هي array
@@ -562,7 +548,7 @@ async function load() {
 }
 
 function applyFilters() { load() }
-function resetFilters() { filters.value = { plan: '', status: '', tenant_id: '', risk_level: '' }; load() }
+function resetFilters() { filters.value = { plan: '', status: '', tenantId: '', riskLevel: '' }; load() }
 
 function openActivate(s) { current.value = s; form.value = { plan: '', days: 30, newPlan: '', prorate: false, extendPeriod: false }; dialogs.value.activate = true }
 function openExpire(s) { current.value = s; dialogs.value.expire = true }
@@ -660,7 +646,7 @@ function exportCsv() {
   const csv = [headers.join(',')]
   rows.value.forEach(r => {
     csv.push([
-      r.id, r.tenant_id, r.plan_code, r.plan_name, r.status, r.start_date, r.end_date, r.payment_status || ''
+      r.id, r.tenantId, r.planCode, r.planName, r.status, r.startDate, r.endDate, r.paymentStatus || ''
     ].map(v => `"${(v ?? '').toString().replaceAll('"', '""')}"`).join(','))
   })
   const blob = new Blob([csv.join('\n')], { type: 'text/csv;charset=utf-8;' })

@@ -42,7 +42,7 @@ export default defineConfig({
          *  vendor-utils   — axios, pinia, dayjs, uuid, etc.
          */
         manualChunks(id) {
-          // ── Heavy libraries — split first ──────────────────────────────
+          // Heavy libraries — split first
           if (id.includes('node_modules/exceljs') ||
               id.includes('node_modules/jszip')   ||
               id.includes('node_modules/archiver')) {
@@ -54,7 +54,7 @@ export default defineConfig({
             return 'vendor-charts';
           }
 
-          // ── Vue core ────────────────────────────────────────────────────
+          // Vue core
           if (id.includes('node_modules/vue/') ||
               id.includes('node_modules/@vue/') ||
               id.includes('node_modules/vue-router') ||
@@ -62,13 +62,13 @@ export default defineConfig({
             return 'vendor-core';
           }
 
-          // ── UI libraries ────────────────────────────────────────────────
+          // UI libraries
           if (id.includes('node_modules/lucide-vue-next') ||
               id.includes('node_modules/@fortawesome')) {
             return 'vendor-ui';
           }
 
-          // ── Utilities ───────────────────────────────────────────────────
+          // Utilities
           if (id.includes('node_modules/axios')   ||
               id.includes('node_modules/dayjs')   ||
               id.includes('node_modules/uuid')    ||

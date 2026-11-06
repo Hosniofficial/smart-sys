@@ -20,19 +20,19 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $posH       = $container->get(PosAnalyticsHandler::class);
         $advanced   = $container->get(AdvancedReportsHandler::class);
 
-        // ── Sales reports ─────────────────────────────────────────────────────
+        // Sales reports
         // NOTE: Duplicate route GET /reports/sales/summary was removed.
         // analyzeSales() remains accessible via GET /analytics/sales (see analytics.php).
 
         $group->get('/sales/daily-summary', [$salesH, 'dailySalesSummary'])
             ->add(PermissionMiddleware::require(Permissions::REPORT_SALES, $db));
 
-        // ── Inventory reports ─────────────────────────────────────────────────
-        // ── POS ───────────────────────────────────────────────────────────────
+        // Inventory reports
+        // POS
         $group->get('/pos', [$posH, 'listPos'])
             ->add(PermissionMiddleware::require(Permissions::REPORT_SALES, $db));
 
-        // ── Contacts ──────────────────────────────────────────────────────────
+        // Contacts
         $group->get('/profit-loss', [$advanced, 'getProfitLossReport'])
             ->add(PermissionMiddleware::require(Permissions::REPORT_FINANCIAL, $db));
 

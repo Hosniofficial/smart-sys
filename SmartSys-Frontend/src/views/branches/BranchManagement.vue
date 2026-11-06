@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="الفروع والمستودعات"
@@ -22,7 +20,6 @@
         </template>
       </PageHeader>
 
-      <!-- Overview KPIs: Metric Blocks -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div v-for="kpi in [
           { label: 'إجمالي الفروع', val: branches.length, icon: 'fa-layer-group', color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -39,7 +36,6 @@
         </div>
       </section>
 
-      <!-- Toolbar: Utility Bar -->
       <section class="bg-white border border-slate-200 rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
         <div class="relative flex-grow group max-w-xl">
           <input 
@@ -57,10 +53,8 @@
         </button>
       </section>
         
-      <!-- Main Table Card -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         
-        <!-- 1. Loading State -->
         <div v-if="isLoading" class="p-8 space-y-4">
           <div v-for="i in 5" :key="i" class="flex gap-4 items-center py-4 border-b border-slate-50 animate-pulse">
             <div class="w-10 h-10 bg-slate-100 rounded-lg"></div>
@@ -73,7 +67,6 @@
           </div>
         </div>
 
-        <!-- 2. Error State -->
         <div v-else-if="error" class="py-24 text-center px-6">
           <div class="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
             <i class="fas fa-exclamation-triangle text-xl"></i>
@@ -84,7 +77,6 @@
           </button>
         </div>
 
-        <!-- 3. Data Table -->
         <template v-else>
           <div class="overflow-x-auto">
             <table class="w-full text-right border-collapse">
@@ -145,7 +137,6 @@
             </table>
           </div>
           
-          <!-- Pagination Footer (Unified Standard) -->
           <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
               صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ filters.totalPages.value }}</span>
@@ -173,7 +164,6 @@
       </div>
     </div>
 
-    <!-- Branch Form Modal -->
     <BaseModal :show="showFormModal" @close="showFormModal = false" maxWidth="lg">
       <template #header>
         <div class="flex items-center gap-3">
@@ -211,7 +201,7 @@ const branchStore = useBranchStore();
 
 const branches = computed(() => branchStore.branches);
 
-// ─── Pagination (using useTableFilters composable)
+// Pagination (using useTableFilters composable)
 const filters = useTableFilters('branches_filters');
 
 const showFormModal = ref(false);
@@ -250,7 +240,6 @@ const filteredBranches = computed(() => {
   }
   return result;
 });
-
 
 const paginatedBranches = computed(() => {
   filters.totalCount.value = filteredBranches.value.length;

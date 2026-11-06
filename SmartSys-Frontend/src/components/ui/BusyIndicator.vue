@@ -13,7 +13,6 @@
       aria-live="polite"
       aria-busy="true"
     >
-      <!-- SAP Fiori style busy indicator -->
       <div class="busy-indicator__animation" :class="`busy-indicator__animation--${type}`">
         <template v-if="type === 'dots'">
           <span v-for="i in 3" :key="i" class="busy-indicator__dot"></span>

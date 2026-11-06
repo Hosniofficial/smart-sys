@@ -57,7 +57,7 @@ export function getDeviceIdentity() {
   const name = baseName.slice(0, 64);
 
   return {
-    device_id: id,
-    device_name: name,
+    deviceId: id,
+    deviceName: name,
   };
 }

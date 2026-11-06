@@ -1,3 +1,4 @@
+import logger from '@/utils/services/logger'
 import { ref, computed } from 'vue';
 import { useStatementStore } from '@/stores/statement/statementStore';
 import { useCompanyCurrency } from './useCompanyCurrency';
@@ -15,18 +16,17 @@ export function useStatementData() {
   const statementStore = useStatementStore();
   const { currencySymbol, formatCurrencyLocale } = useCompanyCurrency();
 
-  // ─── State ───────────────────────────────────────────────────────────────
   const loading = ref(false);
   const error = ref(null);
   const data = ref(null);
 
-  // ─── Pagination State ────────────────────────────────────────────────────
+  // Pagination State
   const page = ref(1);
   const perPage = ref(50);
   const totalRecords = ref(0);
   const totalPages = computed(() => Math.ceil(totalRecords.value / perPage.value));
 
-  // ─── Error Handling Enhancements ──────────────────────────────────────────
+  // Error Handling Enhancements
   /**
    * تصنيف الأخطاء لتقديم تجربة مستخدم أفضل
    */
@@ -71,7 +71,7 @@ export function useStatementData() {
     };
   };
 
-  // ─── API: Fetch Statement Data (الموحد) ──────────────────────────────────
+  // API: Fetch Statement Data (الموحد)
   /**
    * يجلب بيانات كشف الحساب الموحدة من backend
    * يدعم Caching و Error Handling المحسّن و Server-Side Pagination
@@ -99,36 +99,35 @@ export function useStatementData() {
       const requestParams = {
         ...params,
         page: params.page || page.value,
-        per_page: params.per_page || perPage.value
+        perPage: params.perPage || perPage.value
       };
 
-      console.log('[useStatementData] Fetching statement:', { type, id, requestParams });
+      logger.debug('[useStatementData] Fetching statement:', { type, id, requestParams });
 
       const response = type === 'customers'
         ? await statementStore.fetchCustomerStatement(id, requestParams, options)
         : await statementStore.fetchSupplierStatement(id, requestParams, options);
 
-      console.log('[useStatementData] API Response:', response);
+      logger.debug('[useStatementData] API Response:', response);
 
       if (response?.status === 'success' && response?.data) {
         data.value = response.data;
         
-        // تحديث معلومات pagination من الاستجابة
-        // Try multiple field names for pagination data
-        if (response.data?.pagination) {
-          // First try: use transaction_count if available (total transaction count)
-          totalRecords.value = response.data.transaction_count || response.data.pagination.total || response.data.pagination.returned || 0;
-          page.value = response.data.pagination.page || response.data.pagination.current_page || 1;
-          perPage.value = response.data.pagination.per_page || 50;
+        const pagination = response.meta || {};
+        if (Object.keys(pagination).length) {
+          totalRecords.value = response.data.transactionCount || pagination.total || pagination.returned || 0;
+          page.value = pagination.page || pagination.currentPage || 1;
+          perPage.value = pagination.perPage || 50;
         } else if (response.data?.total) {
           totalRecords.value = response.data.total;
-        } else if (response.data?.transaction_count) {
-          totalRecords.value = response.data.transaction_count;
+        } else if (response.data?.transactionCount) {
+          totalRecords.value = response.data.transactionCount;
         }
         
         return { 
           status: 'success', 
           data: data.value, 
+          meta: response.meta || {},
           error: null,
           classification: null
         };
@@ -161,7 +160,7 @@ export function useStatementData() {
     }
   };
 
-  // ─── Data Mapping & Normalization ────────────────────────────────────────
+  // Data Mapping & Normalization
 
   /**
    * استخراج الفواتير من البيانات الموحدة
@@ -172,41 +171,41 @@ export function useStatementData() {
       return [];
     }
     
-    console.log('[useStatementData] API Response Structure:', {
+    logger.debug('[useStatementData] API Response Structure:', {
       keys: Object.keys(statementData),
-      hasSalesOnly: !!statementData.sales_only,
+      hasSalesOnly: !!statementData.salesOnly,
       hasReferences: !!statementData.references,
       hasTransactions: !!statementData.transactions,
-      salesOnlyItems: statementData.sales_only?.items?.length || 0,
+      salesOnlyItems: statementData.salesOnly?.items?.length || 0,
       fullResponse: statementData
     });
     
-    if (!statementData?.sales_only?.items) {
-      console.warn('[useStatementData] No sales_only.items found. Using empty array.');
+    if (!statementData?.salesOnly?.items) {
+      logger.debug('[useStatementData] Sales-only invoices are not present in this statement.');
       return [];
     }
     
-    return statementData.sales_only.items.map(inv => ({
+    return statementData.salesOnly.items.map(inv => ({
       id: inv.id,
-      date: inv.date || inv.sale_date || inv.created_at,
-      invoice_number: inv.invoice_number,
+      date: inv.date || inv.saleDate || inv.createdAt,
+      invoiceNumber: inv.invoiceNumber,
       reference: inv.reference,
-      total_amount: Number(inv.total_amount || inv.net_total_amount || 0),
-      paid_amount: Number(inv.paid_amount || 0),
+      totalAmount: Number(inv.totalAmount || inv.netTotalAmount || 0),
+      paidAmount: Number(inv.paidAmount || 0),
       outstanding: Number(inv.outstanding || 0),
-      due_date: inv.due_date,
-      days_overdue: inv.days_overdue !== undefined ? Number(inv.days_overdue) : null,
+      dueDate: inv.dueDate,
+      daysOverdue: inv.daysOverdue !== undefined ? Number(inv.daysOverdue) : null,
       status: inv.status,
-      dynamic_status: inv.dynamic_status,
+      dynamicStatus: inv.dynamicStatus,
       
       // ✅ CRITICAL: Include items_count and has_journal fields
-      items_count: Number(inv.items_count || 0),
-      has_journal: Boolean(inv.has_journal),
-      journal_entry_id: inv.journal_entry_id || null,
+      itemsCount: Number(inv.itemsCount || 0),
+      hasJournal: Boolean(inv.hasJournal),
+      journalEntryId: inv.journalEntryId || null,
       
       // Fields for backward compatibility
-      total: Number(inv.net_total_amount || inv.total_amount || 0),
-      paid: Number(inv.paid_amount || 0)
+      total: Number(inv.netTotalAmount || inv.totalAmount || 0),
+      paid: Number(inv.paidAmount || 0)
     }));
   };
 
@@ -220,19 +219,19 @@ export function useStatementData() {
       .map(p => ({
         id: p.id,
         date: p.date,
-        amount: Number(p.total_amount || p.amount || 0),
+        amount: Number(p.totalAmount || p.amount || 0),
         type: p.type === 'refund' ? 'return_payment' : 'receipt',
         reference: p.reference,
-        reference_label: p.reference_label,
+        referenceLabel: p.referenceLabel,
         description: p.description,
-        source_label: p.source_label,
-        source_payment_type: p.source_payment_type,
-        payment_reference_number: p.payment_reference_number,
-        invoice_number: p.invoice_number,
-        allocated_invoice_numbers: p.allocated_invoice_numbers,
-        payment_method_name: p.payment_method_name,
-        journal_entry_id: p.journal_entry_id,
-        has_journal: p.has_journal
+        sourceLabel: p.sourceLabel,
+        sourcePaymentType: p.sourcePaymentType,
+        paymentReferenceNumber: p.paymentReferenceNumber,
+        invoiceNumber: p.invoiceNumber,
+        allocatedInvoiceNumbers: p.allocatedInvoiceNumbers,
+        paymentMethodName: p.paymentMethodName,
+        journalEntryId: p.journalEntryId,
+        hasJournal: p.hasJournal
       }));
   };
 
@@ -244,35 +243,34 @@ export function useStatementData() {
     
     return statementData.transactions.map(t => ({
       // Core fields
-      id: t.id || t.source_id,
+      id: t.id || t.sourceId,
       date: t.date,
       reference: t.reference,
-      reference_id: t.reference_id,
-      reference_label: t.reference_label,
-      invoice_number: t.invoice_number,
-      payment_reference_number: t.payment_reference_number,
+      referenceId: t.referenceId,
+      referenceLabel: t.referenceLabel,
+      invoiceNumber: t.invoiceNumber,
+      paymentReferenceNumber: t.paymentReferenceNumber,
       description: t.description,
       
-      // ✅ CRITICAL: Ensure transaction_type is explicitly preserved
       // ⚠️ transaction_type is the source of truth for transaction type classification
-      transaction_type: t.transaction_type,
+      transactionType: t.transactionType,
       
       // Fallback for compatibility
-      type: t.transaction_type || t.type,
+      type: t.transactionType || t.type,
       
       // Amount fields - convert to number for calculation
       debit: Number(t.debit || 0),
       credit: Number(t.credit || 0),
       balance: Number(t.balance || 0),
-      balance_nature: t.balance_nature || 'zero',
+      balanceNature: t.balanceNature || 'zero',
       
       // Additional metadata from API
-      source_type: t.source_type,
-      source_id: t.source_id,
-      cost_center_id: t.cost_center_id,
-      actual_payment_type: t.actual_payment_type,
-      status_code: t.status_code,
-      status_label: t.status_label
+      sourceType: t.sourceType,
+      sourceId: t.sourceId,
+      costCenterId: t.costCenterId,
+      actualPaymentType: t.actualPaymentType,
+      statusCode: t.statusCode,
+      statusLabel: t.statusLabel
     }));
   };
 
@@ -286,7 +284,7 @@ export function useStatementData() {
     );
   };
 
-  // ─── Computed: Totals & Analysis ──────────────────────────────────────────
+  // Computed: Totals & Analysis
 
   const invoices = computed(() => extractInvoices(data.value) || []);
   const payments = computed(() => extractPayments(data.value) || []);
@@ -316,15 +314,15 @@ export function useStatementData() {
     const returnList = returns.value;
 
     return {
-      opening: Number(data.value.opening_balance || 0),
-      closing: Number(data.value.closing_balance || 0),
-      totalDebit: Number(data.value.total_debit || 0),
-      totalCredit: Number(data.value.total_credit || 0),
+      opening: Number(data.value.openingBalance || 0),
+      closing: Number(data.value.closingBalance || 0),
+      totalDebit: Number(data.value.totalDebit || 0),
+      totalCredit: Number(data.value.totalCredit || 0),
       invoicesCount: invoiceList.length,
-      invoicesTotal: invoiceList.reduce((s, i) => s + Number(i.total_amount || 0), 0),
+      invoicesTotal: invoiceList.reduce((s, i) => s + Number(i.totalAmount || 0), 0),
       paymentsTotal: paymentList.reduce((s, p) => s + Number(p.amount || 0), 0),
-      returnsTotal: returnList.reduce((s, r) => s + Number(r.total_amount || 0), 0),
-      remainingBalance: Math.abs(Number(data.value.closing_balance || 0))
+      returnsTotal: returnList.reduce((s, r) => s + Number(r.totalAmount || 0), 0),
+      remainingBalance: Math.abs(Number(data.value.closingBalance || 0))
     };
   });
 
@@ -335,7 +333,7 @@ export function useStatementData() {
    */
   const availableCredit = computed(() => {
     if (!data.value) return 0;
-    const balance = Number(data.value.closing_balance || 0);
+    const balance = Number(data.value.closingBalance || 0);
     return balance < 0 ? Math.abs(balance) : 0;
   });
 
@@ -353,30 +351,30 @@ export function useStatementData() {
       '_60plus': 0     // أكثر من 60 يوم متأخر
     };
 
-    console.log('[useStatementData] Aging Analysis - Processing invoices:', invoiceList.length);
+    logger.debug('[useStatementData] Aging Analysis - Processing invoices:', invoiceList.length);
 
     invoiceList.forEach((inv, idx) => {
       // تصفية: فقط الفواتير غير المسددة/المدفوعة
-      const status = String(inv.dynamic_status || inv.status || '').toLowerCase();
+      const status = String(inv.dynamicStatus || inv.status || '').toLowerCase();
       
       // تخطي الفواتير المسددة/المدفوعة بالكامل
       const paidStatuses = ['paid', 'settled', 'closed_by_return', 'cancelled', 'rejected'];
       if (paidStatuses.includes(status)) {
-        console.log(`  [${idx}] Skipped (status=${status}):`, inv);
+        logger.debug(`  [${idx}] Skipped (status=${status}):`, inv);
         return;
       }
 
       // يجب أن يكون هناك مبلغ مستحق
       const outstanding = Number(inv.outstanding || 0);
       if (outstanding <= 0) {
-        console.log(`  [${idx}] Skipped (outstanding=${outstanding}):`, inv);
+        logger.debug(`  [${idx}] Skipped (outstanding=${outstanding}):`, inv);
         return;
       }
 
-      console.log(`  [${idx}] Invoice before aging calc:`, {
+      logger.debug(`  [${idx}] Invoice before aging calc:`, {
         id: inv.id,
-        total_amount: inv.total_amount,
-        paid_amount: inv.paid_amount,
+        totalAmount: inv.totalAmount,
+        paidAmount: inv.paidAmount,
         outstanding: outstanding,
         status
       });
@@ -384,25 +382,25 @@ export function useStatementData() {
       // Use days_overdue from API if available, otherwise calculate
       let daysOverdue = null;
       
-      if (inv.days_overdue !== undefined && inv.days_overdue !== null) {
-        daysOverdue = Number(inv.days_overdue);
-        console.log(`  [${idx}] Using API days_overdue: ${daysOverdue}`);
+      if (inv.daysOverdue !== undefined && inv.daysOverdue !== null) {
+        daysOverdue = Number(inv.daysOverdue);
+        logger.debug(`  [${idx}] Using API days_overdue: ${daysOverdue}`);
       } else {
         // Fallback: calculate from due_date or invoice date
         const today = new Date();
         let dueDate = null;
         
-        if (inv.due_date && String(inv.due_date).trim()) {
+        if (inv.dueDate && String(inv.dueDate).trim()) {
           // Parse due_date explicitly if provided
-          const parts = String(inv.due_date).split('-');
+          const parts = String(inv.dueDate).split('-');
           if (parts.length === 3) {
             dueDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
           } else {
-            dueDate = new Date(inv.due_date);
+            dueDate = new Date(inv.dueDate);
           }
-        } else if (inv.date || inv.sale_date || inv.created_at) {
+        } else if (inv.date || inv.saleDate || inv.createdAt) {
           // Calculate from invoice date + 30 days
-          const invDateStr = String(inv.date || inv.sale_date || inv.created_at || '').trim();
+          const invDateStr = String(inv.date || inv.saleDate || inv.createdAt || '').trim();
           const parts = invDateStr.split('-');
           let invoiceDate = null;
           if (parts.length >= 3) {
@@ -417,10 +415,10 @@ export function useStatementData() {
           const todayAtMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
           const dueDateAtMidnight = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
           daysOverdue = Math.floor((todayAtMidnight - dueDateAtMidnight) / (1000 * 60 * 60 * 24));
-          console.log(`  [${idx}] Calculated days_overdue: ${daysOverdue}`);
+          logger.debug(`  [${idx}] Calculated days_overdue: ${daysOverdue}`);
         } else {
           daysOverdue = 0;
-          console.log(`  [${idx}] No valid date found, using 0`);
+          logger.debug(`  [${idx}] No valid date found, using 0`);
         }
       }
 
@@ -428,23 +426,23 @@ export function useStatementData() {
       if (daysOverdue <= 0) {
         // لم تستحق بعد
         breakdown.current += outstanding;
-        console.log(`    → current (+${outstanding}, total now: ${breakdown.current})`);
+        logger.debug(`    → current (+${outstanding}, total now: ${breakdown.current})`);
       } else if (daysOverdue <= 30) {
         // 1-30 يوم متأخر
         breakdown._1to30 += outstanding;
-        console.log(`    → _1to30 (+${outstanding}, total now: ${breakdown._1to30})`);
+        logger.debug(`    → _1to30 (+${outstanding}, total now: ${breakdown._1to30})`);
       } else if (daysOverdue <= 60) {
         // 31-60 يوم متأخر
         breakdown._31to60 += outstanding;
-        console.log(`    → _31to60 (+${outstanding}, total now: ${breakdown._31to60})`);
+        logger.debug(`    → _31to60 (+${outstanding}, total now: ${breakdown._31to60})`);
       } else {
         // أكثر من 60 يوم متأخر
         breakdown._60plus += outstanding;
-        console.log(`    → _60plus (+${outstanding}, total now: ${breakdown._60plus})`);
+        logger.debug(`    → _60plus (+${outstanding}, total now: ${breakdown._60plus})`);
       }
     });
 
-    console.log('[useStatementData] Aging Analysis Result:', breakdown);
+    logger.debug('[useStatementData] Aging Analysis Result:', breakdown);
     return breakdown;
   });
 
@@ -455,7 +453,7 @@ export function useStatementData() {
   const alertStatus = computed(() => {
     if (!data.value) return 'healthy';
 
-    const balance = Number(data.value.closing_balance || 0);
+    const balance = Number(data.value.closingBalance || 0);
     const overdueAmount = agingAnalysis.value._31to60 + agingAnalysis.value._60plus;
 
     if (overdueAmount > 0) return 'overdue_critical'; // متأخر أكثر من 30 يوم
@@ -464,7 +462,7 @@ export function useStatementData() {
     return 'healthy'; // حساب صحي
   });
 
-  // ─── Pagination Helper ───────────────────────────────────────────────────
+  // Pagination Helper
 
   /**
    * دعم pagination من الـ client-side (للبيانات الصغيرة)
@@ -484,7 +482,7 @@ export function useStatementData() {
     };
   };
 
-  // ─── Clear Cache ─────────────────────────────────────────────────────────
+  // Clear Cache
 
   const clearCache = () => {
     statementStore.clear();
@@ -492,7 +490,7 @@ export function useStatementData() {
     error.value = null;
   };
 
-  // ─── Exports ─────────────────────────────────────────────────────────────
+  // Exports
 
   return {
     // State

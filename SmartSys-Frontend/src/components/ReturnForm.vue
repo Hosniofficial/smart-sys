@@ -1,6 +1,5 @@
 <template>
   <div class="space-y-8">
-    <!-- Step 1: Invoice Search -->
     <div class="relative space-y-2">
       <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">1. البحث عن المستند الأصلي</label>
       <div class="relative group">
@@ -23,7 +22,6 @@
         <i class="fas fa-search absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 text-xs pointer-events-none"></i>
         <div v-if="isSearchingInvoice" class="absolute left-4 top-1/2 -translate-y-1/2"><BaseSpinner :size="16" color="#e11d48" /></div>
 
-        <!-- Search Dropdown Teleport Style -->
         <Teleport to="body">
           <transition name="dropdown">
             <div v-if="showInvoiceDropdown && invoiceSearchResults.length && !selectedInvoice" ref="invoiceDropdownRef" class="fixed bg-white border border-slate-200 rounded-lg shadow-2xl overflow-hidden z-[99999]" :style="invoiceDropdownPosition">
@@ -34,10 +32,10 @@
                 :class="['px-4 py-3 cursor-pointer border-b border-slate-50 flex items-center justify-between group transition-colors', idx === highlightedIdx ? 'bg-rose-50 border-l-4 border-l-rose-500' : 'hover:bg-rose-50/60']"
               >
                 <div class="flex-grow min-w-0">
-                  <p class="text-xs font-bold text-slate-900">#{{ inv.invoice_number || inv.id }} <span class="text-[10px] font-normal text-slate-500">(ID: {{ inv.id }})</span></p>
-                  <p class="text-[10px] text-slate-400 truncate">{{ inv.customer_name || inv.supplier_name }}</p>
+                  <p class="text-xs font-bold text-slate-900">#{{ inv.invoiceNumber || inv.id }} <span class="text-[10px] font-normal text-slate-500">(ID: {{ inv.id }})</span></p>
+                  <p class="text-[10px] text-slate-400 truncate">{{ inv.customerName || inv.supplierName }}</p>
                 </div>
-                <div class="text-left"><p class="text-xs font-bold text-rose-600">{{ formatPrice(inv.total_amount) }}</p></div>
+                <div class="text-left"><p class="text-xs font-bold text-rose-600">{{ formatPrice(inv.totalAmount) }}</p></div>
               </div>
 			  
               <div v-if="invoiceSearchResults.length > 20" class="px-4 py-2 text-center bg-slate-50 border-t border-slate-100">
@@ -63,22 +61,21 @@
         </label>
       </div>
 
-      <!-- Selected Invoice Card Header -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6 bg-slate-50 border border-slate-200 rounded-xl p-4 sm:p-6 text-slate-900 shadow-sm overflow-hidden relative">
         <div class="absolute right-0 top-0 w-32 h-32 bg-blue-100/40 rounded-full translate-x-10 -translate-y-10"></div>
         <div class="space-y-3 relative z-10">
           <div class="flex items-center gap-3">
              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">مستند المصدر</span>
-             <span class="px-2 py-0.5 bg-white rounded text-[9px] font-bold border border-slate-200 font-mono">#{{ selectedInvoice.invoice_number || selectedInvoice.id }}</span>
+             <span class="px-2 py-0.5 bg-white rounded text-[9px] font-bold border border-slate-200 font-mono">#{{ selectedInvoice.invoiceNumber || selectedInvoice.id }}</span>
           </div>
           <div class="flex flex-col sm:flex-row sm:flex-wrap sm:items-baseline gap-2 sm:gap-4">
-            <span class="text-[10px] font-medium text-slate-500">تاريخ الإصدار: {{ selectedInvoice.invoice_date || selectedInvoice.sale_date || selectedInvoice.purchase_date }}</span>
+            <span class="text-[10px] font-medium text-slate-500">تاريخ الإصدار: {{ selectedInvoice.invoiceDate || selectedInvoice.saleDate || selectedInvoice.purchaseDate }}</span>
             <span class="text-[10px] font-medium text-slate-500">الذمة المتبقية: {{ formatPrice(outstanding) }}</span>
           </div>
           <div class="flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-200 pt-3 text-[10px] text-slate-600">
-            <span><i class="fas fa-user ml-1 text-slate-400"></i>{{ selectedInvoice.customer_name || 'بدون عميل' }}</span>
-            <span v-if="selectedInvoice.branch_name"><i class="fas fa-code-branch ml-1 text-slate-400"></i>{{ selectedInvoice.branch_name }}</span>
-            <span v-if="selectedInvoice.payment_method_name"><i class="fas fa-credit-card ml-1 text-slate-400"></i>الدفع الأصلي: {{ selectedInvoice.payment_method_name }}</span>
+            <span><i class="fas fa-user ml-1 text-slate-400"></i>{{ selectedInvoice.customerName || 'بدون عميل' }}</span>
+            <span v-if="selectedInvoice.branchName"><i class="fas fa-code-branch ml-1 text-slate-400"></i>{{ selectedInvoice.branchName }}</span>
+            <span v-if="selectedInvoice.paymentMethodName"><i class="fas fa-credit-card ml-1 text-slate-400"></i>الدفع الأصلي: {{ selectedInvoice.paymentMethodName }}</span>
           </div>
         </div>
         <div class="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 relative z-10 border-t border-slate-200 pt-4 md:border-0 md:pt-0">
@@ -92,21 +89,21 @@
           <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">التفصيل المالي للفاتورة الأصلية</p>
           <div class="flex justify-between text-xs font-bold text-slate-500">
             <span>إجمالي الفاتورة</span>
-            <span class="font-mono text-slate-900">{{ formatPrice(selectedInvoice.grand_total ?? (Number(selectedInvoice.net_total_amount || selectedInvoice.total_amount || 0) + Number(selectedInvoice.tax_amount || 0))) }}</span>
+            <span class="font-mono text-slate-900">{{ formatPrice(selectedInvoice.grandTotal ?? (Number(selectedInvoice.netTotalAmount || selectedInvoice.totalAmount || 0) + Number(selectedInvoice.taxAmount || 0))) }}</span>
           </div>
-          <div v-if="selectedInvoice.has_discount || Number(selectedInvoice.discount_value) > 0" class="flex justify-between text-xs font-bold text-slate-500">
+          <div v-if="selectedInvoice.hasDiscount || Number(selectedInvoice.discountValue) > 0" class="flex justify-between text-xs font-bold text-slate-500">
             <span>الخصم</span>
-            <span class="font-mono text-rose-500">- {{ formatPrice(selectedInvoice.discount_value || 0) }}</span>
+            <span class="font-mono text-rose-500">- {{ formatPrice(selectedInvoice.discountValue || 0) }}</span>
           </div>
-          <div v-if="Number(selectedInvoice.tax_amount) > 0" class="flex justify-between text-xs font-bold text-slate-500">
+          <div v-if="Number(selectedInvoice.taxAmount) > 0" class="flex justify-between text-xs font-bold text-slate-500">
             <span>الضريبة{{ isTaxInclusiveSale ? ' (ضمن السعر)' : '' }}</span>
             <span class="font-mono text-indigo-600">
-              {{ isTaxInclusiveSale ? formatPrice(selectedInvoice.tax_amount || 0) : `+ ${formatPrice(selectedInvoice.tax_amount || 0)}` }}
+              {{ isTaxInclusiveSale ? formatPrice(selectedInvoice.taxAmount || 0) : `+ ${formatPrice(selectedInvoice.taxAmount || 0)}` }}
             </span>
           </div>
           <div class="flex justify-between text-xs font-bold text-slate-500">
             <span>صافي المدفوع فعلياً</span>
-            <span class="font-mono text-slate-900">{{ formatPrice(selectedInvoice.actual_paid_amount ?? selectedInvoice.paid_amount ?? 0) }}</span>
+            <span class="font-mono text-slate-900">{{ formatPrice(selectedInvoice.actualPaidAmount ?? selectedInvoice.paidAmount ?? 0) }}</span>
           </div>
           <div v-if="outstanding > 0" class="flex justify-between text-xs font-bold text-slate-500">
             <span>المتبقي غير المسدد</span>
@@ -153,7 +150,7 @@
                 {{ customerAccountBalance > 0 ? 'مدين' : customerAccountBalance < 0 ? 'دائن' : 'متزن' }}
               </span>
               <span v-else class="shrink-0 text-[10px] font-semibold">
-                {{ selectedInvoice.customer_account_balance === undefined ? 'غير متاح' : 'غير محدد' }}
+                {{ selectedInvoice.customerAccountBalance === undefined ? 'غير متاح' : 'غير محدد' }}
               </span>
             </div>
             <div class="flex items-center justify-between gap-3">
@@ -185,7 +182,6 @@
         <span>لا يمكن استلام نقدي لمرتجع على فاتورة مشتريات آجلة أو غير مسددة بالكامل. سيتم خصم قيمة المرتجع من ذمة المورد فقط.</span>
       </div>
 
-      <!-- Items Table: High Density -->
       <div class="hidden md:block border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <table class="w-full text-right text-xs">
           <thead>
@@ -200,10 +196,10 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            <tr v-for="item in selectedInvoice.items" :key="item.item_id" class="hover:bg-slate-50 transition-colors">
+            <tr v-for="item in selectedInvoice.items" :key="item.itemId" class="hover:bg-slate-50 transition-colors">
               <td class="px-4 py-3">
-                <p class="font-bold text-slate-800">{{ item.product_name }}</p>
-                <p v-if="hasDuplicateProduct(item.product_id)" class="text-[8px] text-amber-500 font-bold uppercase mt-0.5">بند مكرر #{{ item.item_id }}</p>
+                <p class="font-bold text-slate-800">{{ item.productName }}</p>
+                <p v-if="hasDuplicateProduct(item.productId)" class="text-[8px] text-amber-500 font-bold uppercase mt-0.5">بند مكرر #{{ item.itemId }}</p>
               </td>
               <td class="px-4 py-3 text-center text-slate-400 font-mono">{{ item[quantityKey] }}</td>
               <td class="px-4 py-3 text-center text-slate-400 font-mono">{{ item.prevReturned ?? 0 }}</td>
@@ -213,7 +209,7 @@
               </td>
               <td class="px-4 py-3 text-left font-bold text-slate-900 font-mono">{{ formatPrice(item[displayPriceKey] * (item.returnQuantity || 0)) }}</td>
               <td class="px-4 py-3 text-center">
-                <button v-if="!isFullReturn" @click="addToReturnList(item)" :aria-label="`إضافة ${item.product_name} إلى المرتجع`" title="إضافة الكمية المحددة إلى المرتجع" class="text-blue-600 hover:text-blue-700 transition-colors"><i class="fas fa-plus-circle text-base"></i></button>
+                <button v-if="!isFullReturn" @click="addToReturnList(item)" :aria-label="`إضافة ${item.productName} إلى المرتجع`" title="إضافة الكمية المحددة إلى المرتجع" class="text-blue-600 hover:text-blue-700 transition-colors"><i class="fas fa-plus-circle text-base"></i></button>
                 <span v-else class="text-slate-300">-</span>
               </td>
             </tr>
@@ -221,11 +217,11 @@
         </table>
       </div>
       <div class="space-y-3 md:hidden">
-        <article v-for="item in selectedInvoice.items" :key="item.item_id" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <article v-for="item in selectedInvoice.items" :key="item.itemId" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <p class="truncate text-xs font-bold text-slate-800">{{ item.product_name }}</p>
-              <p v-if="hasDuplicateProduct(item.product_id)" class="mt-1 text-[9px] font-bold text-amber-600">بند مكرر #{{ item.item_id }}</p>
+              <p class="truncate text-xs font-bold text-slate-800">{{ item.productName }}</p>
+              <p v-if="hasDuplicateProduct(item.productId)" class="mt-1 text-[9px] font-bold text-amber-600">بند مكرر #{{ item.itemId }}</p>
             </div>
             <span class="shrink-0 rounded-lg bg-rose-50 px-2 py-1 font-mono text-xs font-bold text-rose-700">
               {{ formatPrice(item[displayPriceKey] * (item.returnQuantity || 0)) }}
@@ -240,7 +236,7 @@
             <label class="text-[10px] font-bold text-slate-500">كمية المرتجع</label>
             <div class="flex items-center gap-3">
               <input type="number" v-model.number="item.returnQuantity" :disabled="isFullReturn" min="0" :max="item.remainingQty ?? item[quantityKey]" class="h-9 w-20 rounded-lg border border-slate-200 bg-white text-center font-mono text-xs font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10" @change="() => { const max = item.remainingQty ?? item[quantityKey]; if(item.returnQuantity > max) item.returnQuantity = max; }" />
-              <button v-if="!isFullReturn" @click="addToReturnList(item)" :aria-label="`إضافة ${item.product_name} إلى المرتجع`" class="text-blue-600 hover:text-blue-700"><i class="fas fa-plus-circle text-lg"></i></button>
+              <button v-if="!isFullReturn" @click="addToReturnList(item)" :aria-label="`إضافة ${item.productName} إلى المرتجع`" class="text-blue-600 hover:text-blue-700"><i class="fas fa-plus-circle text-lg"></i></button>
               <span v-else class="w-5 text-center text-slate-300">-</span>
             </div>
           </div>
@@ -251,7 +247,6 @@
       </p>
     </div>
 
-    <!-- Step 3: Refund Config -->
     <div v-if="selectedInvoice" class="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fadeIn">
       <div class="space-y-4">
         <label class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">3. إعدادات التسوية والسبب</label>
@@ -452,32 +447,32 @@ onBeforeUnmount(() => {
 const normalizedType = computed(() => props.type === 'sales' ? 'sale' : (props.type === 'purchases' ? 'purchase' : props.type));
 const isSale = computed(() => normalizedType.value === 'sale');
 const isTaxInclusiveSale = computed(() => {
-  const value = selectedInvoice.value?.tax_inclusive;
+  const value = selectedInvoice.value?.taxInclusive;
   return isSale.value && (value === true || value === 1 || ['1', 'true', 'yes', 'on'].includes(String(value ?? '').trim().toLowerCase()));
 });
 const outstanding = computed(() => {
   if (!selectedInvoice.value) return 0;
-  if (selectedInvoice.value.net_outstanding !== undefined && selectedInvoice.value.net_outstanding !== null) {
-    return Math.max(0, Number(selectedInvoice.value.net_outstanding) || 0);
+  if (selectedInvoice.value.netOutstanding !== undefined && selectedInvoice.value.netOutstanding !== null) {
+    return Math.max(0, Number(selectedInvoice.value.netOutstanding) || 0);
   }
   const net = Number(
-    selectedInvoice.value.grand_total
-    ?? (Number(selectedInvoice.value.net_total_amount || selectedInvoice.value.total_amount || 0)
-      + Number(selectedInvoice.value.tax_amount || 0))
+    selectedInvoice.value.grandTotal
+    ?? (Number(selectedInvoice.value.netTotalAmount || selectedInvoice.value.totalAmount || 0)
+      + Number(selectedInvoice.value.taxAmount || 0))
   );
-  const paid = Number(selectedInvoice.value.paid_amount || 0);
-  const credits = Number(selectedInvoice.value.return_credits_applied || 0);
+  const paid = Number(selectedInvoice.value.paidAmount || 0);
+  const credits = Number(selectedInvoice.value.returnCreditsApplied || 0);
   return Math.max(0, net - paid - credits);
 });
 const hasOutstanding = computed(() => outstanding.value > 0);
 const customerAccountBalance = computed(() => {
-  const balance = selectedInvoice.value?.customer_account_balance;
+  const balance = selectedInvoice.value?.customerAccountBalance;
   return balance === undefined || balance === null || !Number.isFinite(Number(balance))
     ? null
     : Number(balance);
 });
 const customerTotalOutstanding = computed(() => {
-  const outstandingAmount = selectedInvoice.value?.customer_total_outstanding;
+  const outstandingAmount = selectedInvoice.value?.customerTotalOutstanding;
   return outstandingAmount === undefined || outstandingAmount === null || !Number.isFinite(Number(outstandingAmount))
     ? null
     : Math.max(0, Number(outstandingAmount));
@@ -490,7 +485,7 @@ const canRefundUnlinkedCash = computed(() =>
   && !!selectedInvoice.value
   && !partyId.value
   && !hasOutstanding.value
-  && Number(selectedInvoice.value.actual_paid_amount ?? selectedInvoice.value.paid_amount ?? 0) > 0
+  && Number(selectedInvoice.value.actualPaidAmount ?? selectedInvoice.value.paidAmount ?? 0) > 0
   && refundPaymentMethods.value.length > 0
 );
 const customerBalanceOffset = computed(() =>
@@ -557,7 +552,7 @@ watch([returnItems, isFullReturn, refundMode, selectedInvoice], () => {
 
 // مفاتيح حسب النوع
 const quantityKey = computed(() => 'quantity');
-const priceKey = computed(() => 'return_unit_price');
+const priceKey = computed(() => 'returnUnitPrice');
 const displayPriceKey = priceKey;
 const placeholderText = computed(() => props.type === 'sales' ? 'أدخل رقم فاتورة المبيعات أو ID...' : 'أدخل رقم فاتورة المشتريات أو ID...');
 
@@ -570,7 +565,7 @@ function formatPrice(amount) {
 function hasDuplicateProduct(productId) {
   if (!selectedInvoice.value?.items) return false;
   return selectedInvoice.value.items.filter(
-    item => item.product_id === productId
+    item => item.productId === productId
   ).length > 1;
 }
 
@@ -579,11 +574,11 @@ const totalReturnNet = computed(() =>
 );
 const totalReturnTax = computed(() => {
   if (isSale.value) {
-    const taxRate = Number(selectedInvoice.value?.tax_rate || 0);
+    const taxRate = Number(selectedInvoice.value?.taxRate || 0);
     return returnItems.value.reduce((total, item) => {
       const quantity = Number(item.returnQuantity || 0);
-      if (item.return_tax_unit_amount !== null && item.return_tax_unit_amount !== undefined) {
-        return total + Number(item.return_tax_unit_amount || 0) * quantity;
+      if (item.returnTaxUnitAmount !== null && item.returnTaxUnitAmount !== undefined) {
+        return total + Number(item.returnTaxUnitAmount || 0) * quantity;
       }
       const amount = Number(item[displayPriceKey.value] || 0) * quantity;
       return total + (isTaxInclusiveSale.value
@@ -592,7 +587,7 @@ const totalReturnTax = computed(() => {
     }, 0);
   }
   return returnItems.value.reduce((total, item) =>
-    total + Number(item.return_tax_unit_amount || 0) * Number(item.returnQuantity || 0), 0);
+    total + Number(item.returnTaxUnitAmount || 0) * Number(item.returnQuantity || 0), 0);
 });
 const totalReturnAmount = computed(() =>
   isTaxInclusiveSale.value ? totalReturnNet.value : totalReturnNet.value + totalReturnTax.value
@@ -634,7 +629,7 @@ function debouncedSearchInvoice() {
       const res = await returnsService.searchInvoices({
         type: normalizedType.value,
         q: query,
-        ...(searchBranchId ? { branch_id: searchBranchId } : {})
+        ...(searchBranchId ? { branchId: searchBranchId } : {})
       }, invoiceSearchAbortController.signal);
 
       if (searchBranchId !== (props.branchId ? String(props.branchId) : null)) return;
@@ -660,7 +655,7 @@ watch(() => props.branchId, (newBranchId, oldBranchId) => {
 
   if (selectedInvoice.value
       && newBranchId
-      && String(selectedInvoice.value.branch_id) !== String(newBranchId)) {
+      && String(selectedInvoice.value.branchId) !== String(newBranchId)) {
     selectedInvoice.value = null;
     returnItems.value = [];
     partyId.value = null;
@@ -719,8 +714,8 @@ async function selectInvoice(invoice) {
   }
 
   // تعيين طريقة الدفع الافتراضية من الفاتورة أو أول خيار
-  if (invoice.payment_method_id) {
-    paymentMethodId.value = invoice.payment_method_id;
+  if (invoice.paymentMethodId) {
+    paymentMethodId.value = invoice.paymentMethodId;
   } else {
     paymentMethodId.value = paymentMethods.value.length ? paymentMethods.value[0].id : null;
   }
@@ -738,8 +733,8 @@ async function selectInvoice(invoice) {
         invoiceDetails = itemsRes.data?.data || {};
         items = invoiceDetails.items || [];
       }
-      if (invoiceDetails.payment_method_id) {
-        paymentMethodId.value = invoiceDetails.payment_method_id;
+      if (invoiceDetails.paymentMethodId) {
+        paymentMethodId.value = invoiceDetails.paymentMethodId;
       }
     }
     items = [...items].sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
@@ -752,12 +747,12 @@ async function selectInvoice(invoice) {
       // Aggregate historical quantities by product and unit, then allocate them
       // across duplicate invoice lines in display order.
       availableItemsMap = rows.reduce((acc, r) => {
-        acc[`${r.product_id}:${r.unit_id || 0}`] = {
-          product_id: Number(r.product_id),
-          unit_id: Number(r.unit_id || 0),
-          original_qty: Number(r.original_qty || 0),
-          returned_qty: Number(r.returned_qty || 0),
-          remaining_qty: Number(r.remaining_qty || 0)
+        acc[`${r.productId}:${r.unitId || 0}`] = {
+          productId: Number(r.productId),
+          unitId: Number(r.unitId || 0),
+          originalQty: Number(r.originalQty || 0),
+          returnedQty: Number(r.returnedQty || 0),
+          remainingQty: Number(r.remainingQty || 0)
         };
         return acc;
       }, {});
@@ -767,7 +762,7 @@ async function selectInvoice(invoice) {
     }
 
     const returnedRemainingByGroup = Object.fromEntries(
-      Object.entries(availableItemsMap).map(([key, value]) => [key, value.returned_qty])
+      Object.entries(availableItemsMap).map(([key, value]) => [key, value.returnedQty])
     );
     selectedInvoice.value = {
       ...invoice,
@@ -775,7 +770,7 @@ async function selectInvoice(invoice) {
       items: items.map(item => {
         // استخدام item.id (sale_item_id أو purchase_item_id)
         const itemId = item.id;
-        const groupKey = `${item.product_id}:${item.unit_id || 0}`;
+        const groupKey = `${item.productId}:${item.unitId || 0}`;
         const s = availableItemsMap[groupKey] || null;
         const quantity = Number(item[quantityKey.value] || 0);
         const prev = s
@@ -784,17 +779,17 @@ async function selectInvoice(invoice) {
         if (s) returnedRemainingByGroup[groupKey] = Math.max(0, Number(returnedRemainingByGroup[groupKey] || 0) - prev);
         const remaining = Math.max(0, quantity - prev);
         const sourceAmount = props.type === 'sales'
-          ? Number(item.net_total || 0)
-          : Math.max(0, Number(item.subtotal || 0) - Number(item.tax_amount || 0));
-        const sourceTax = item.tax_amount !== null && item.tax_amount !== undefined
-          ? Number(item.tax_amount)
+          ? Number(item.netTotal || 0)
+          : Math.max(0, Number(item.subtotal || 0) - Number(item.taxAmount || 0));
+        const sourceTax = item.taxAmount !== null && item.taxAmount !== undefined
+          ? Number(item.taxAmount)
           : null;
 
         return {
           ...item,
-          item_id: itemId,           // حفظ item_id
-          return_unit_price: quantity > 0 ? sourceAmount / quantity : 0,
-          return_tax_unit_amount: sourceTax !== null && quantity > 0 ? sourceTax / quantity : null,
+          itemId: itemId,           // حفظ item_id
+          returnUnitPrice: quantity > 0 ? sourceAmount / quantity : 0,
+          returnTaxUnitAmount: sourceTax !== null && quantity > 0 ? sourceTax / quantity : null,
           prevReturned: prev,
           remainingQty: remaining,
           returnQuantity: 0
@@ -802,7 +797,7 @@ async function selectInvoice(invoice) {
       })
     };
     returnItems.value = [];
-    invoiceNumber.value = invoice.invoice_number;
+    invoiceNumber.value = invoice.invoiceNumber;
     invoiceSearchResults.value = [];
     isFullReturn.value = true;
     paidAmount.value = 0;
@@ -811,8 +806,8 @@ async function selectInvoice(invoice) {
     // تعيين رقم الفاتورة للطباعة
     invoiceId.value = invoice.id;
     // تعيين الطرف (عميل أو مورد) بناءً على نوع الفاتورة
-    if (invoice.customer_id) partyId.value = invoice.customer_id;
-    else if (invoice.supplier_id) partyId.value = invoice.supplier_id;
+    if (invoice.customerId) partyId.value = invoice.customerId;
+    else if (invoice.supplierId) partyId.value = invoice.supplierId;
     else partyId.value = null;
     if (isSale.value && !partyId.value && canRefundUnlinkedCash.value) {
       refundMode.value = 'cash';
@@ -856,7 +851,7 @@ function addToReturnList(item) {
   if (maxQty <= 0) return showToast('لا يوجد رصيد متبقٍ للإرجاع لهذا المنتج', 'warning');
 
   // استخدام item_id بدلاً من id للبحث
-  const existingItem = returnItems.value.find(i => i.item_id === item.item_id);
+  const existingItem = returnItems.value.find(i => i.itemId === item.itemId);
   if (existingItem) {
     existingItem.returnQuantity = item.returnQuantity;
     existingItem[priceKey.value] = Number(item[priceKey.value]);
@@ -882,7 +877,7 @@ async function submitReturn() {
 
   // تحقق من الحقول داخل كل عنصر
   for (const [index, item] of returnItems.value.entries()) {
-    const requiredFields = ['product_id', 'unit_id', 'returnQuantity', priceKey.value];
+    const requiredFields = ['productId', 'unitId', 'returnQuantity', priceKey.value];
     for (const field of requiredFields) {
       if (!item[field] && item[field] !== 0) {
         return showToast(`العنصر رقم ${index + 1} ناقص فيه الحقل: ${field}`, 'error');
@@ -896,27 +891,27 @@ async function submitReturn() {
     const today = new Date();
     const formattedDate = getLocalDateISO(today); // YYYY-MM-DD (local)
     const returnData = {
-      return_type: normalizedType.value,
-      return_date: formattedDate,
-      invoice_id: invoiceId.value,
-      party_id: partyId.value,
+      returnType: normalizedType.value,
+      returnDate: formattedDate,
+      invoiceId: invoiceId.value,
+      partyId: partyId.value,
       items: returnItems.value.map(item => ({
         // إضافة sale_item_id أو purchase_item_id
-        sale_item_id: normalizedType.value === 'sale' ? item.item_id : undefined,
-        purchase_item_id: normalizedType.value === 'purchase' ? item.item_id : undefined,
-        product_id: item.product_id,
-        unit_id: item.unit_id,
+        saleItemId: normalizedType.value === 'sale' ? item.itemId : undefined,
+        purchaseItemId: normalizedType.value === 'purchase' ? item.itemId : undefined,
+        productId: item.productId,
+        unitId: item.unitId,
         quantity: item.returnQuantity,
-        unit_price: item[priceKey.value],
+        unitPrice: item[priceKey.value],
         subtotal: item[priceKey.value] * item.returnQuantity
       })),
-      paid_amount: paidAmount.value,
-      payment_method_id: paymentMethodId.value,
-      refund_mode: refundMode.value,
+      paidAmount: paidAmount.value,
+      paymentMethodId: paymentMethodId.value,
+      refundMode: refundMode.value,
 
       notes: returnReason.value,
-      cashier_id: user.id,
-      branch_id: selectedInvoice.value?.branch_id ?? user.branch_id
+      cashierId: user.id,
+      branchId: selectedInvoice.value?.branchId ?? user.branchId
     };
     const res = await returnStore.createReturn(returnData);
     if (res.status !== 'success') throw new Error(res.message || 'فشل تسجيل المرتجع');
@@ -925,13 +920,13 @@ async function submitReturn() {
     // أبلغ الواجهة عن تسجيل مرتجع بنجاح لتحديث درج النقدية (إن كان نقديًا)
     try {
       const detail = {
-        returnId: result.return_id || Date.now(),
-        return_type: returnData.return_type,
+        returnId: result.returnId || Date.now(),
+        returnType: returnData.returnType,
         saleId: invoiceId.value,
         customerId: partyId.value,
-        totalRefunded: Number(returnData.paid_amount || 0),
-        payment_method_id: Number(returnData.payment_method_id),
-        paid_amount: Number(returnData.paid_amount || 0)
+        totalRefunded: Number(returnData.paidAmount || 0),
+        paymentMethodId: Number(returnData.paymentMethodId),
+        paidAmount: Number(returnData.paidAmount || 0)
       };
       window.dispatchEvent(new CustomEvent('pos:return-recorded', { detail }));
     } catch (_) { /* ignore */ }
@@ -939,10 +934,10 @@ async function submitReturn() {
 
     // إرسال البيانات الحقيقية إلى الـ parent
     emit('returnSuccess', {
-      returnId: result.return_id || Date.now(),
+      returnId: result.returnId || Date.now(),
       saleId: invoiceId.value,
       customerId: partyId.value,
-      totalRefunded: Number(returnData.paid_amount || 0),
+      totalRefunded: Number(returnData.paidAmount || 0),
       paymentMethodId: paymentMethodId.value
     });
     // إعادة تعيين النموذج

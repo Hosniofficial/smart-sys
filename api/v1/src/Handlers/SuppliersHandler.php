@@ -567,5 +567,4 @@ class SuppliersHandler extends BaseContactHandler
         }
     }
 
-
 }

@@ -8,14 +8,13 @@ const nowMs = () => Date.now();
 
 export const useReturnStore = defineStore('return', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     returnsList:   3 * 60 * 1000, // 3 دقائق (يتغير كثيراً)
     returnDetails: 5 * 60 * 1000, // 5 دقائق
     searchReturns: 2 * 60 * 1000, // دقيقتان
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const returnsList          = ref({});
   const returnsListFetchedAt = ref({});
   const returnsListInFlight  = ref(null);
@@ -26,11 +25,10 @@ export const useReturnStore = defineStore('return', () => {
   const searchCache          = ref({});
   const searchCacheFetchedAt = ref({});
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
-  // ─── fetchReturnsList ─────────────────────────────────────────────────────
+  // fetchReturnsList
   /**
    * يجيب قائمة المرتجعات مع فلاتر وpagination
    * الـ component يستخدمها هكذا:
@@ -87,27 +85,29 @@ export const useReturnStore = defineStore('return', () => {
 
       const promise = (async () => {
         try {
-          const params   = { page: String(page), per_page: String(perPage) };
+          const params   = { page: String(page), perPage: String(perPage) };
           params.type = type === 'sales' ? 'sale' : 'purchase';
 
-          if (branchId) params.branch_id = String(branchId);
+          if (branchId) params.branchId = String(branchId);
           if (status)   params.status    = status;
           if (partyId) {
-            params[type === 'sales' ? 'customer_id' : 'supplier_id'] = String(partyId);
+            params[type === 'sales' ? 'customerId' : 'supplierId'] = String(partyId);
           }
-          if (dateFrom) params.start_date = dateFrom;
-          if (dateTo)   params.end_date   = dateTo;
+          if (dateFrom) params.startDate = dateFrom;
+          if (dateTo)   params.endDate   = dateTo;
           if (search)   params.search     = search;
 
           const response = await returnsService.list(type, params, signal);
-          const raw      = response?.data?.data ?? response?.data ?? {};
+          const raw      = response?.data?.data ?? {};
+          const meta     = response?.data?.meta || {};
           const list     = Array.isArray(raw) ? raw : (raw.items || []);
 
           const structuredResponse = {
             items:   list,
-            total:   parseInt(raw.total ?? raw.count ?? list.length) || 0,
-            page:    parseInt(page)    || 1,
-            perPage: parseInt(perPage) || 50,
+            total:   parseInt(meta.total ?? list.length) || 0,
+            page:    parseInt(meta.page ?? page) || 1,
+            perPage: parseInt(meta.perPage ?? perPage) || 50,
+            meta,
           };
 
           returnsList.value[cacheKey]          = structuredResponse;
@@ -138,7 +138,7 @@ export const useReturnStore = defineStore('return', () => {
     }
   };
 
-  // ─── fetchReturnDetails ───────────────────────────────────────────────────
+  // fetchReturnDetails
   /**
    * يجيب تفاصيل مرتجع معين
    * الـ component يستخدمها هكذا:
@@ -168,7 +168,7 @@ export const useReturnStore = defineStore('return', () => {
       }
 
       const response = await returnsService.get(type, returnId, signal);
-      const data     = response?.data?.data || response?.data;
+      const data     = response?.data?.data;
 
       detailsCache.value[cacheKey]          = data;
       detailsCacheFetchedAt.value[cacheKey] = nowMs();
@@ -188,7 +188,7 @@ export const useReturnStore = defineStore('return', () => {
     }
   };
 
-  // ─── searchReturns ────────────────────────────────────────────────────────
+  // searchReturns
   /**
    * يبحث في المرتجعات
    * الـ component يستخدمها هكذا:
@@ -226,10 +226,10 @@ export const useReturnStore = defineStore('return', () => {
       }
 
       const params   = { search: q, limit: String(limit) };
-      if (branchId) params.branch_id = String(branchId);
+      if (branchId) params.branchId = String(branchId);
 
       const response = await returnsService.search(type, params, signal);
-      const data     = response?.data?.data || response?.data || [];
+      const data     = response?.data?.data || [];
       const list     = Array.isArray(data) ? data : (data?.items || []);
 
       searchCache.value[cacheKey]          = list;
@@ -250,7 +250,7 @@ export const useReturnStore = defineStore('return', () => {
     }
   };
 
-  // ─── createReturn ──────────────────────────────────────────────────────────
+  // createReturn
   /**
    * يسجل مرتجع جديد ويمسح الـ cache المرتبط
    * @param {Object} payload
@@ -262,19 +262,19 @@ export const useReturnStore = defineStore('return', () => {
 
       // ✅ تحديث تلقائي للكميات — امسح cache المنتجات في المستودع المتأثر
       const productStore = useProductStore();
-      if (payload?.branch_id) {
-        productStore.invalidateCacheForBranch(payload.branch_id);
+      if (payload?.branchId) {
+        productStore.invalidateCacheForBranch(payload.branchId);
       }
 
       clearReturnsListCache();
       clearSearchCache();
       const statementStore = useStatementStore();
-      if (payload?.return_type === 'sale') statementStore.clearCustomerCache();
-      else if (payload?.return_type === 'purchase') statementStore.clearSupplierCache();
+      if (payload?.returnType === 'sale') statementStore.clearCustomerCache();
+      else if (payload?.returnType === 'purchase') statementStore.clearSupplierCache();
 
       return {
         status: 'success',
-        data:   response?.data?.data || response?.data || {},
+        data:   response?.data?.data || {},
         message: null
       };
     } catch (err) {
@@ -287,11 +287,11 @@ export const useReturnStore = defineStore('return', () => {
     }
   };
 
-  // ─── Computed Getters ─────────────────────────────────────────────────────
+  // Computed Getters
   const getReturnById = (returnId, type) =>
     computed(() => detailsCache.value[`${type}_${returnId}`]);
 
-  // ─── Cache Clearers ───────────────────────────────────────────────────────
+  // Cache Clearers
   const clear = () => {
     returnsList.value          = {};
     returnsListFetchedAt.value = {};
@@ -318,7 +318,7 @@ export const useReturnStore = defineStore('return', () => {
     searchCacheFetchedAt.value = {};
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     returnsList,

@@ -49,8 +49,8 @@ final class AccountingReportsDateRangeTest extends TestCase
         self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
         self::assertSame('success', $body['status'] ?? null);
         self::assertEquals(750, $body['data']['revenues']);
-        self::assertSame('2026-10-01', $body['data']['filters']['start_date']);
-        self::assertSame('2026-10-01', $body['data']['filters']['end_date']);
+        self::assertSame('2026-10-01', $body['data']['filters']['startDate']);
+        self::assertSame('2026-10-01', $body['data']['filters']['endDate']);
     }
 
     public function testIncomeStatementReturnsBadRequestForInvalidDate(): void

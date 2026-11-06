@@ -15,17 +15,17 @@ final class SalesAnalyticsReturnScopeTest extends TestCase
     {
         $data = $this->analyze($this->databaseWithPurchaseReturnAndSale());
 
-        self::assertEquals(1500, $data['total_sales_amount']);
-        self::assertEquals(0, $data['total_returns_amount']);
-        self::assertEquals(1500, $data['net_grand_total']);
-        self::assertEquals(1500, $data['cash_in_drawer']);
-        self::assertEquals(1000, $data['cogs_total']);
-        self::assertEquals(0, $data['returns_cogs']);
-        self::assertEquals(500, $data['gross_profit']);
-        self::assertEquals(1500, $data['total_sales']);
-        self::assertSame(1, $data['invoices_count']);
-        self::assertEquals(1500, $data['avg_invoice']);
-        self::assertSame(1, (int) $data['daily_sales'][0]['total_orders']);
+        self::assertEquals(1500, $data['totalSalesAmount']);
+        self::assertEquals(0, $data['totalReturnsAmount']);
+        self::assertEquals(1500, $data['netGrandTotal']);
+        self::assertEquals(1500, $data['cashInDrawer']);
+        self::assertEquals(1000, $data['cogsTotal']);
+        self::assertEquals(0, $data['returnsCogs']);
+        self::assertEquals(500, $data['grossProfit']);
+        self::assertEquals(1500, $data['totalSales']);
+        self::assertSame(1, $data['invoicesCount']);
+        self::assertEquals(1500, $data['avgInvoice']);
+        self::assertSame(1, (int) $data['dailySales'][0]['totalOrders']);
     }
 
     public function testSaleReturnStillReducesNetSalesAndCostOfGoods(): void
@@ -39,11 +39,11 @@ final class SalesAnalyticsReturnScopeTest extends TestCase
 
         $data = $this->analyze($db);
 
-        self::assertEquals(300, $data['total_returns_amount']);
-        self::assertEquals(1200, $data['net_grand_total']);
-        self::assertEquals(300, $data['returns_cogs']);
-        self::assertEquals(700, $data['net_cogs']);
-        self::assertEquals(500, $data['gross_profit']);
+        self::assertEquals(300, $data['totalReturnsAmount']);
+        self::assertEquals(1200, $data['netGrandTotal']);
+        self::assertEquals(300, $data['returnsCogs']);
+        self::assertEquals(700, $data['netCogs']);
+        self::assertEquals(500, $data['grossProfit']);
     }
 
     public function testReturnOfBelowCostSaleReversesOriginalCostAndRemovesTheLoss(): void
@@ -62,11 +62,11 @@ final class SalesAnalyticsReturnScopeTest extends TestCase
 
         $data = $this->analyze($db);
 
-        self::assertEquals(900, $data['total_returns_amount']);
-        self::assertEquals(1000, $data['cogs_total']);
-        self::assertEquals(1000, $data['returns_cogs']);
-        self::assertEquals(0, $data['net_cogs']);
-        self::assertEquals(0, $data['gross_profit']);
+        self::assertEquals(900, $data['totalReturnsAmount']);
+        self::assertEquals(1000, $data['cogsTotal']);
+        self::assertEquals(1000, $data['returnsCogs']);
+        self::assertEquals(0, $data['netCogs']);
+        self::assertEquals(0, $data['grossProfit']);
     }
 
     public function testSalesAnalyticsFlagsUnresolvedReturnCostDespiteCurrentProductPrice(): void
@@ -81,10 +81,10 @@ final class SalesAnalyticsReturnScopeTest extends TestCase
 
         $data = $this->analyze($db);
 
-        self::assertEquals(0, $data['returns_cogs']);
-        self::assertSame(1, $data['returns_cost_unresolved_line_count']);
-        self::assertEquals(1, $data['returns_cost_unresolved_quantity']);
-        self::assertFalse($data['returns_cost_complete']);
+        self::assertEquals(0, $data['returnsCogs']);
+        self::assertSame(1, $data['returnsCostUnresolvedLineCount']);
+        self::assertEquals(1, $data['returnsCostUnresolvedQuantity']);
+        self::assertFalse($data['returnsCostComplete']);
     }
 
     public function testDailySummaryAddsReturnedInventoryCostBackToProfit(): void
@@ -108,14 +108,14 @@ final class SalesAnalyticsReturnScopeTest extends TestCase
         $decoded = json_decode((string) $response->getBody(), true);
         self::assertIsArray($decoded, (string) $response->getBody());
         self::assertSame('success', $decoded['status'] ?? null);
-        self::assertEquals(1500, $decoded['data']['total_sales_amount']);
-        self::assertEquals(900, $decoded['data']['total_returns_amount']);
-        self::assertEquals(1000, $decoded['data']['cogs_total']);
-        self::assertEquals(1000, $decoded['data']['returns_cogs']);
-        self::assertSame(0, $decoded['data']['returns_cost_unresolved_line_count']);
-        self::assertTrue($decoded['data']['returns_cost_complete']);
-        self::assertEquals(0, $decoded['data']['net_cogs']);
-        self::assertEquals(600, $decoded['data']['gross_profit']);
+        self::assertEquals(1500, $decoded['data']['totalSalesAmount']);
+        self::assertEquals(900, $decoded['data']['totalReturnsAmount']);
+        self::assertEquals(1000, $decoded['data']['cogsTotal']);
+        self::assertEquals(1000, $decoded['data']['returnsCogs']);
+        self::assertSame(0, $decoded['data']['returnsCostUnresolvedLineCount']);
+        self::assertTrue($decoded['data']['returnsCostComplete']);
+        self::assertEquals(0, $decoded['data']['netCogs']);
+        self::assertEquals(600, $decoded['data']['grossProfit']);
     }
 
     public function testSalesAnalyticsConvertsIsoUtcDateBoundsToTenantCalendarDays(): void
@@ -140,9 +140,9 @@ final class SalesAnalyticsReturnScopeTest extends TestCase
 
         self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
         self::assertSame('success', $decoded['status'] ?? null);
-        self::assertEquals(1500, $decoded['data']['total_sales_amount']);
-        self::assertSame(1, (int) $decoded['data']['invoices_count']);
-        self::assertEquals(500, $decoded['data']['gross_profit']);
+        self::assertEquals(1500, $decoded['data']['totalSalesAmount']);
+        self::assertSame(1, (int) $decoded['data']['invoicesCount']);
+        self::assertEquals(500, $decoded['data']['grossProfit']);
     }
 
     public function testPendingApprovalSaleIsExcludedFromAnalyticsAndDailySummary(): void
@@ -158,10 +158,10 @@ final class SalesAnalyticsReturnScopeTest extends TestCase
         ) VALUES (3, 9, 3, 6, 7, 1, 1300, 1000, 1)');
 
         $analytics = $this->analyze($db);
-        self::assertEquals(1500, $analytics['total_sales_amount']);
-        self::assertSame(1, (int) $analytics['invoices_count']);
-        self::assertEquals(1000, $analytics['cogs_total']);
-        self::assertSame(7, (int) $analytics['latest'][0]['sale_id']);
+        self::assertEquals(1500, $analytics['totalSalesAmount']);
+        self::assertSame(1, (int) $analytics['invoicesCount']);
+        self::assertEquals(1000, $analytics['cogsTotal']);
+        self::assertSame(7, (int) $analytics['latest'][0]['saleId']);
 
         $request = (new ServerRequestFactory())
             ->createServerRequest('GET', '/api/v1/reports/sales/daily-summary')
@@ -172,8 +172,8 @@ final class SalesAnalyticsReturnScopeTest extends TestCase
 
         self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
         self::assertSame('success', $decoded['status'] ?? null);
-        self::assertEquals(1500, $decoded['data']['total_sales_amount']);
-        self::assertSame(1, (int) $decoded['data']['order_count']);
+        self::assertEquals(1500, $decoded['data']['totalSalesAmount']);
+        self::assertSame(1, (int) $decoded['data']['orderCount']);
         self::assertSame(7, (int) $decoded['data']['recentTransactions'][0]['id']);
     }
 
@@ -211,9 +211,9 @@ final class SalesAnalyticsReturnScopeTest extends TestCase
 
         self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
         self::assertSame('success', $decoded['status'] ?? null);
-        self::assertEquals(1500, $decoded['data']['revenue']['total_revenue']);
+        self::assertEquals(1500, $decoded['data']['revenue']['totalRevenue']);
         self::assertEquals(1000, $decoded['data']['revenue']['cogs']);
-        self::assertEquals(500, $decoded['data']['summary']['net_profit']);
+        self::assertEquals(500, $decoded['data']['summary']['netProfit']);
     }
 
     public function testApprovedSaleIsReportedOnApprovalDateInsteadOfCreationDate(): void
@@ -239,8 +239,8 @@ final class SalesAnalyticsReturnScopeTest extends TestCase
         $creationDateData = json_decode((string) $creationDateResponse->getBody(), true)['data'] ?? [];
 
         self::assertSame(200, $creationDateResponse->getStatusCode());
-        self::assertEquals(0, $creationDateData['total_sales_amount']);
-        self::assertSame(0, $creationDateData['order_count']);
+        self::assertEquals(0, $creationDateData['totalSalesAmount']);
+        self::assertSame(0, $creationDateData['orderCount']);
 
         $approvalDateRequest = $requestFactory
             ->createServerRequest('GET', '/api/v1/reports/sales/daily-summary')
@@ -250,8 +250,8 @@ final class SalesAnalyticsReturnScopeTest extends TestCase
         $approvalDateData = json_decode((string) $approvalDateResponse->getBody(), true)['data'] ?? [];
 
         self::assertSame(200, $approvalDateResponse->getStatusCode());
-        self::assertEquals(2800, $approvalDateData['total_sales_amount']);
-        self::assertSame(2, $approvalDateData['order_count']);
+        self::assertEquals(2800, $approvalDateData['totalSalesAmount']);
+        self::assertSame(2, $approvalDateData['orderCount']);
         $approvedSale = array_values(array_filter(
             $approvalDateData['recentTransactions'],
             static fn (array $transaction): bool => (int) $transaction['id'] === 9

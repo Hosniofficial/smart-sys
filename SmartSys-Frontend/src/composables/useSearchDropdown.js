@@ -31,7 +31,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 
 export const useSearchDropdown = (options = {}) => {
-  // ─── States ────────────────────────────────────────────────────────────────
+  // States
   const search = ref('');
   const searchResults = ref([]);
   const isLoadingSearch = ref(false);
@@ -41,19 +41,19 @@ export const useSearchDropdown = (options = {}) => {
   const searchInputRef = ref(null);
   const searchDropdownRef = ref(null);
 
-  // ─── Dropdown Positioning (for Teleport) ──────────────────────────────────
+  // Dropdown Positioning (for Teleport)
   const searchDropdownPosition = ref({});
   const searchDropdownPositionUpdate = ref(0); // Trigger for position recalculation
   
-  // ─── Keyboard Navigation (Optional) ────────────────────────────────────────
+  // Keyboard Navigation (Optional)
   const highlightedIdx = ref(-1);
 
-  // ─── Timers for Debounce/Scroll/Resize ────────────────────────────────────
+  // Timers for Debounce/Scroll/Resize
   let searchDebounceTimer = null;
   let scrollThrottleTimer = null;
   let resizeDebounceTimer = null;
 
-  // ─── Calculate Dropdown Position ───────────────────────────────────────────
+  // Calculate Dropdown Position
   /**
    * حساب موضع القائمة المنسدلة بناءً على موضع input
    * يُستخدم عند: focus, scroll, resize
@@ -79,7 +79,7 @@ export const useSearchDropdown = (options = {}) => {
     };
   };
 
-  // ─── Handle Scroll & Resize ────────────────────────────────────────────────
+  // Handle Scroll & Resize
   /**
    * مستمع scroll بـ throttle (60fps)
    * يحدّث موضع القائمة عندما يتمرر المستخدم
@@ -107,7 +107,7 @@ export const useSearchDropdown = (options = {}) => {
     }, 100);
   };
 
-  // ─── Search Input Blur Handler ─────────────────────────────────────────────
+  // Search Input Blur Handler
   /**
    * إخفاء القائمة عند تركيز خارج الـ input
    * تأخير صغير للسماح بـ click على النتائج
@@ -122,7 +122,7 @@ export const useSearchDropdown = (options = {}) => {
     }, 150);
   };
 
-  // ─── Select Search Result ──────────────────────────────────────────────────
+  // Select Search Result
   /**
    * تحديد نتيجة بحث معينة
    * يُطلق حدث 'onSelectResult' للمكون الأب
@@ -135,7 +135,7 @@ export const useSearchDropdown = (options = {}) => {
     highlightedIdx.value = -1;
   };
 
-  // ─── Keyboard Navigation (Optional) ────────────────────────────────────────
+  // Keyboard Navigation (Optional)
   /**
    * التنقل لأسفل في النتائج (Arrow Down)
    * يزيد highlighted index وينقل focus
@@ -168,7 +168,7 @@ export const useSearchDropdown = (options = {}) => {
     }
   };
 
-  // ─── Watch Search Query (مع Debounce + onClear) ────────────────────────────
+  // Watch Search Query (مع Debounce + onClear)
   /**
    * ✨ FIX: مراقبة query البحث مع debounce حقيقي (300ms):
    * - لو فيه نص: انتظر 300ms من توقف الكتابة ثم نادِ onSearch
@@ -193,7 +193,7 @@ export const useSearchDropdown = (options = {}) => {
     }
   });
 
-  // ─── Watch showSearchDropdown ──────────────────────────────────────────────
+  // Watch showSearchDropdown
   /**
    * عند فتح القائمة: حدّث الموضع
    */
@@ -206,7 +206,7 @@ export const useSearchDropdown = (options = {}) => {
     }
   });
 
-  // ─── Watch Position Update Trigger ────────────────────────────────────────
+  // Watch Position Update Trigger
   /**
    * عند استدعاء updateDropdownPosition خارجياً
    */
@@ -216,13 +216,13 @@ export const useSearchDropdown = (options = {}) => {
     }
   });
 
-  // ─── Lifecycle: Setup Listeners ────────────────────────────────────────────
+  // Lifecycle: Setup Listeners
   onMounted(() => {
     window.addEventListener('scroll', handleScroll, true); // Capture phase
     window.addEventListener('resize', handleResize);
   });
 
-  // ─── Lifecycle: Cleanup Listeners ─────────────────────────────────────────
+  // Lifecycle: Cleanup Listeners
   onBeforeUnmount(() => {
     window.removeEventListener('scroll', handleScroll, true);
     window.removeEventListener('resize', handleResize);
@@ -231,7 +231,6 @@ export const useSearchDropdown = (options = {}) => {
     clearTimeout(searchDebounceTimer);
   });
 
-  // ─── Public API ────────────────────────────────────────────────────────────
   return {
     // States
     search,

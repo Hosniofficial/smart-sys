@@ -28,7 +28,7 @@ class AccountingService
         $this->costCenterService = new CostCenterService($db, 'sales');
     }
 
-    // ─── isCashMethod ─────────────────────────────────────────────────────────
+    // isCashMethod
     /**
      * Single Source of Truth لتحديد هل طريقة الدفع نقدية (تحتاج cashier session).
     * النوع النقدي الفعلي فقط: cash. التحويل والبطاقة والمحفظة لا تمثل نقد الدرج.
@@ -47,7 +47,7 @@ class AccountingService
         }
     }
 
-    // ─── resolveCostCenterForService ──────────────────────────────────────────
+    // resolveCostCenterForService
     /**
      * Resolve a cost center using the shared policy; log resolution failures and return null.
      */
@@ -73,7 +73,7 @@ class AccountingService
         return null;
     }
 
-    // ─── getAccountIdFallbackPublic ───────────────────────────────────────────
+    // getAccountIdFallbackPublic
     /**
      * Public wrapper around getAccountIdFallback — للاستخدام من الـ handlers.
      */
@@ -82,7 +82,7 @@ class AccountingService
         return $this->getAccountIdFallback($tenantId, $codes);
     }
 
-    // ─── resolveAccountId (public) ────────────────────────────────────────────
+    // resolveAccountId (public)
     /**
      * Resolve an account ID for a tenant.
      *
@@ -122,7 +122,7 @@ class AccountingService
         }
     }
 
-    // ─── getAccountByCode (public) ────────────────────────────────────────────
+    // getAccountByCode (public)
     /**
      * Get an account ID by its code for a given tenant.
      *
@@ -190,7 +190,7 @@ class AccountingService
         return $this->getAccountByCode($tenantId, '1301');
     }
 
-    // ─── getAccountIdByCode ───────────────────────────────────────────────────
+    // getAccountIdByCode
     private function getAccountIdByCode(int $tenantId, string $code): ?int
     {
         $stmt = $this->db->prepare("SELECT id FROM accounts WHERE code = ? AND tenant_id = ? LIMIT 1");
@@ -199,7 +199,7 @@ class AccountingService
         return $id ? (int) $id : null;
     }
 
-    // ─── getAccountIdFallback ─────────────────────────────────────────────────
+    // getAccountIdFallback
     private function getAccountIdFallback(int $tenantId, array $codes): ?int
     {
         foreach ($codes as $c) {
@@ -211,7 +211,7 @@ class AccountingService
         return null;
     }
 
-    // ─── postCOGSForSale ──────────────────────────────────────────────────────
+    // postCOGSForSale
     public function postCOGSForSale(int $tenantId, int $saleId, ?int $userId = null): ?int
     {
         $costing  = new CostingService($this->db);
@@ -267,7 +267,7 @@ class AccountingService
         return $jeId;
     }
 
-    // ─── postOpeningBalance ───────────────────────────────────────────────────
+    // postOpeningBalance
     public function postOpeningBalance(int $tenantId, int $purchaseId, float $totalCost, ?int $userId = null): ?int
     {
         $totalCost = round($totalCost, 2);
@@ -366,7 +366,7 @@ class AccountingService
         return $jeId;
     }
 
-    // ─── postPayment ──────────────────────────────────────────────────────────
+    // postPayment
     public function postPayment(
         int     $tenantId,
         int     $paymentId,
@@ -612,7 +612,7 @@ class AccountingService
         }
     }
 
-    // ─── postJournalEntry ─────────────────────────────────────────────────────
+    // postJournalEntry
     /**
      * Validate and persist a balanced journal entry, reusing an existing entry when its idempotency key matches.
      */
@@ -628,7 +628,7 @@ class AccountingService
         ?string $idempotencyKey = null
     ): ?int {
         try {
-            // ── validation قبل فتح الـ transaction (لا تحتاج DB) ─────────────
+            // validation قبل فتح الـ transaction (لا تحتاج DB)
             // ✅ N-1: throw بدل null صامت
             if (empty($lines) || !is_array($lines)) {
                 throw new \Exception('postJournalEntry: لا توجد سطور قيد — لا يمكن إنشاء قيد فارغ.');
@@ -675,7 +675,7 @@ class AccountingService
                 $this->db->beginTransaction();
             }
 
-            // ── [FIX] WARN-4: Duplicate check داخل الـ transaction ──────────
+            // [FIX] WARN-4: Duplicate check داخل الـ transaction
             if ($idempotencyKey) {
                 $stmtCheck = $this->db->prepare(
                     "SELECT id FROM journal_entries
@@ -757,7 +757,7 @@ class AccountingService
                 }
             }
 
-            // ── [FIX] Idempotency recovery for concurrent duplicates ────────────
+            // [FIX] Idempotency recovery for concurrent duplicates
             // If an exception occurred during INSERT and we have an idempotencyKey,
             // try to retrieve the existing journal entry that caused the UNIQUE violation.
             // This handles the race condition where two concurrent requests both pass
@@ -802,7 +802,7 @@ class AccountingService
         }
     }
 
-    // ─── resolveLiquidityAccount ──────────────────────────────────────────────
+    // resolveLiquidityAccount
     /**
      * تحديد حساب السيولة (صندوق/بنك) لطريقة دفع معينة.
      * Single Source of Truth — تُستدعى من المبيعات والمشتريات والمرتجعات.
@@ -858,7 +858,7 @@ class AccountingService
         );
     }
 
-    // ─── deleteJournalEntry ───────────────────────────────────────────────────
+    // deleteJournalEntry
     public function deleteJournalEntry(int $tenantId, int $journalEntryId): bool
     {
         $ownTransaction = !$this->db->inTransaction();
@@ -898,7 +898,7 @@ class AccountingService
         }
     }
 
-    // ─── assertDateNotInClosedPeriod ──────────────────────────────────────────
+    // assertDateNotInClosedPeriod
     /**
      * يرفع Exception إذا كان تاريخ القيد يقع ضمن دورة محاسبية مغلقة.
      */
@@ -917,7 +917,7 @@ class AccountingService
         }
     }
 
-    // ─── reverseJournalEntry ──────────────────────────────────────────────────
+    // reverseJournalEntry
     /**
      * يعكس قيداً محاسبياً بإنشاء قيد مرآة (Dr↔Cr مقلوبة).
      * يُحدِّث القيد الأصلي إلى status='reversed'.
@@ -1029,7 +1029,7 @@ class AccountingService
         return $reversalJeId;
     }
 
-    // ─── postNrvWriteDown (IAS 2) ─────────────────────────────────────────────
+    // postNrvWriteDown (IAS 2)
     /**
      * يُسجِّل قيود تخفيض قيمة المخزون تلقائياً وفق IAS 2.
      * قيد لكل فرع:
@@ -1143,7 +1143,7 @@ class AccountingService
         ];
     }
 
-    // ─── postReturnJournalEntry ───────────────────────────────────────────────
+    // postReturnJournalEntry
     /**
      * Single Source of Truth لقيد المرتجعات (مبيعات أو مشتريات).
      *
@@ -1192,7 +1192,7 @@ class AccountingService
         $taxAmount   = round($taxAmount, 2);
         $paidAmount  = round($paidAmount, 2);
 
-        // ── حل الحسابات ───────────────────────────────────────────────────────
+        // حل الحسابات
         $accountsStmt = $this->db->prepare(
             "SELECT code, id FROM accounts
              WHERE code IN ('1101','2101','4002','5002','2201','2202')
@@ -1247,7 +1247,7 @@ class AccountingService
             }
         }
 
-        // ── validation ────────────────────────────────────────────────────────
+        // validation
         // المرتجع النقدي الكامل بدون عميل لا يمثل ذمة مدينة؛ لذلك لا يحتاج
         // حساب العملاء، بينما المرتجع الآجل/الجزئي يحتاجه لتسجيل الرصيد الفعلي.
         $grandTotalAmount = round($totalAmount + $taxAmount, 2);
@@ -1275,7 +1275,7 @@ class AccountingService
         $description = 'قيد مرتجع ' . ($returnType === 'sale' ? 'مبيعات' : 'مشتريات') . ' رقم ' . $returnNumber;
         $lines       = [];
 
-        // ── حساب المبلغ المتبقي (AR/AP) ───────────────────────────────────────
+        // حساب المبلغ المتبقي (AR/AP)
         if ($originalInvoiceOutstanding !== null) {
             $originalOutstanding = (float) $originalInvoiceOutstanding;
             if ($originalOutstanding > 0) {
@@ -1300,13 +1300,13 @@ class AccountingService
             $remainingAmount = round($grandTotalAmount - $paidAmount, 2);
         }
 
-        // ── حساب السيولة ──────────────────────────────────────────────────────
+        // حساب السيولة
         $liquidityAccountId = null;
         if ($paidAmount > 0) {
             $liquidityAccountId = $this->resolveLiquidityAccount($paymentMethodId, $tenantId);
         }
 
-        // ── بناء سطور القيد ───────────────────────────────────────────────────
+        // بناء سطور القيد
         if ($returnType === 'sale') {
             // Dr. مردودات المبيعات
             $lines[] = [
@@ -1362,7 +1362,7 @@ class AccountingService
             try {
                 $costing   = new CostingService($this->db);
 
-                // ── AUDIT FIX #7 (HIGH) ──────────────────────────────────────────
+                // AUDIT FIX #7 (HIGH)
                 // Previously: getWeightedAverageCost() was called with $returnDate
                 // (today, or whenever the return is processed), while the ORIGINAL
                 // COGS line for the sale (postSaleJournalEntry → computeCOGSForSale)
@@ -1450,7 +1450,7 @@ class AccountingService
                 throw new \RuntimeException('تعذر عكس تكلفة البضاعة المباعة للمرتجع.', 0, $e);
             }
         } else {
-            // ── مرتجع مشتريات ─────────────────────────────────────────────────
+            // مرتجع مشتريات
             $finalInventoryAccountId = $branchInventoryAccountId ?? $inventoryAccountId;
             if (!$finalInventoryAccountId) {
                 throw new \Exception('لم يتم تحديد حساب المخزون المناسب للفرع أو المستأجر.');
@@ -1499,7 +1499,7 @@ class AccountingService
             }
         }
 
-        // ── إنشاء القيد ───────────────────────────────────────────────────────
+        // إنشاء القيد
         $journalEntryId = $this->postJournalEntry(
             $tenantId,
             $returnType === 'sale' ? 'sale_return' : 'purchase_return',
@@ -1547,7 +1547,7 @@ class AccountingService
         return $journalEntryId;
     }
 
-    // ─── postSalePaymentJournalEntry ─────────────────────────────────────────
+    // postSalePaymentJournalEntry
     /**
      * Single Source of Truth لقيد دفعة مبيعات إضافية (بعد إنشاء الفاتورة).
      *
@@ -1664,7 +1664,7 @@ class AccountingService
         return $journalEntryId;
     }
 
-    // ─── recalculateSaleStatus ────────────────────────────────────────────────
+    // recalculateSaleStatus
     /**
      * Recompute a sale's stored paid amount and status from completed payments,
      * payment allocations, return credits, and sale returns.
@@ -1782,7 +1782,7 @@ class AccountingService
         );
     }
 
-    // ─── postDebtPaymentJournalEntry ──────────────────────────────────────────
+    // postDebtPaymentJournalEntry
     /**
      * Single Source of Truth لقيد تحصيل دفعة عميل مرتبطة بسجل payment.
      *
@@ -1853,7 +1853,7 @@ class AccountingService
         return $journalEntryId;
     }
 
-    // ─── postPurchaseJournalEntry ─────────────────────────────────────────────
+    // postPurchaseJournalEntry
     /**
      * Single Source of Truth لقيد فاتورة المشتريات.
      *
@@ -1902,7 +1902,7 @@ class AccountingService
             throw new \Exception('بيانات القيد المحاسبي غير صالحة: purchase id مفقود.');
         }
 
-        // ── idempotency: تجنب تكرار القيد ────────────────────────────────────
+        // idempotency: تجنب تكرار القيد
         $existing = $this->db->prepare(
             "SELECT id FROM journal_entries
              WHERE tenant_id = ? AND reference_type = 'purchase' AND reference_id = ? LIMIT 1"
@@ -1916,7 +1916,7 @@ class AccountingService
         $netBeforeTax = round($totalAmount - $taxAmount, 2);
         $balanceDue   = round($totalAmount - $paidAmount, 2);
 
-        // ── بناء سطور القيد ───────────────────────────────────────────────────
+        // بناء سطور القيد
         $lines = [];
 
         // Dr. مخزون
@@ -1968,7 +1968,7 @@ class AccountingService
             ];
         }
 
-        // ── إنشاء القيد ───────────────────────────────────────────────────────
+        // إنشاء القيد
         $entryDate = substr($invoiceDate, 0, 10) ?: date('Y-m-d');
 
         $journalEntryId = (int) $this->postJournalEntry(
@@ -2005,7 +2005,7 @@ class AccountingService
         return $journalEntryId;
     }
 
-    // ─── postSaleJournalEntry ─────────────────────────────────────────────────
+    // postSaleJournalEntry
     /**
      * Single Source of Truth لقيد فاتورة المبيعات.
      * يُستخدم من SaleCreationService و SaleApprovalService.
@@ -2030,7 +2030,7 @@ class AccountingService
         $paidAmount     = round($paidAmount, 2);
         $grossAmount    = round($netTotalAmount + $taxAmount, 2);
 
-        // ── GUARD: منع الترحيل المزدوج ────────────────────────────────────────────
+        // GUARD: منع الترحيل المزدوج
         // يتحقق أولاً من وجود قيد لهذه الفاتورة. إذا وُجد، يُخزَّن ID القيد في
         // $journalEntryId ويُتجاوز بناء $lines وإنشاء القيد. التنفيذ يستمر دائماً
         // إلى كود ربط inventory_transactions لضمان اكتمال الربط حتى عند إعادة المحاولة.
@@ -2140,7 +2140,7 @@ class AccountingService
             }
         }
 
-        // ── ربط حركات المخزون بالقيد (يُنفَّذ دائماً — سواء كان القيد جديداً أو موجوداً) ──
+        // ربط حركات المخزون بالقيد (يُنفَّذ دائماً — سواء كان القيد جديداً أو موجوداً)
         // Link all stock movements for this sale to the posted journal entry.
         // Any database failure propagates to SaleCreationService's transaction,
         // so the sale cannot commit in a partially linked state.

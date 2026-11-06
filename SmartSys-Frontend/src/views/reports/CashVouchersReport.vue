@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar: High-precision indicator -->
     <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="{ parent: { label: 'التقارير', path: '/reports/sales-analytics' }, current: 'تقرير الصرف والقبض' }"
         title="تقرير الصرف والقبض"
@@ -38,7 +36,6 @@
 
       <main class="space-y-8">
 
-      <!-- Analytical Filters Panel: Utility Grid -->
       <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
         <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div class="space-y-1.5">
@@ -76,7 +73,6 @@
         </div>
       </section>
 
-      <!-- Financial Summary Grid -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div v-for="stat in [
           { label: 'إجمالي المقبوضات', val: summary.totalIn, icon: 'fa-arrow-down', color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -93,7 +89,6 @@
         </div>
       </section>
 
-      <!-- Movements Detailed Table: Professional Audit Grid -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative min-h-[400px]">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
            <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
@@ -119,14 +114,12 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 font-medium text-xs">
-              <!-- Skeleton loading state -->
               <template v-if="isLoading">
                 <tr v-for="n in 6" :key="n" class="animate-pulse">
                   <td v-for="m in 6" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                 </tr>
               </template>
               
-              <!-- Empty state -->
               <tr v-else-if="!vouchers.length" class="text-center">
                 <td colspan="6" class="py-24 text-slate-300">
                   <i class="fas fa-receipt text-3xl mb-4 opacity-20"></i>
@@ -134,7 +127,6 @@
                 </td>
               </tr>
 
-              <!-- Data Rows -->
               <tr v-for="voucher in vouchers" :key="voucher.id" 
                   class="hover:bg-slate-50 transition-all group border-r-4 border-r-transparent" 
                   :class="voucher.type === 'receipt' ? 'hover:border-r-emerald-500' : 'hover:border-r-rose-500'">
@@ -153,7 +145,7 @@
                 <td class="px-4 py-4">
                    <div class="flex items-center gap-3">
                       <div class="w-7 h-7 rounded bg-slate-50 flex items-center justify-center text-slate-300 border border-slate-100 group-hover:border-blue-200 transition-all shadow-inner"><i class="fas fa-university text-[10px]"></i></div>
-                      <span class="text-xs font-bold text-slate-700 truncate max-w-[180px]">{{ voucher.account_name }}</span>
+                      <span class="text-xs font-bold text-slate-700 truncate max-w-[180px]">{{ voucher.accountName }}</span>
                    </div>
                 </td>
                 <td class="px-4 py-4 text-left font-mono">
@@ -192,7 +184,6 @@ import { useAuthStore } from '@/stores/auth/authStore';
 import PageHeader from '@/components/PageHeader.vue';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 
-// --- Logic Initialization (STRICTLY PRESERVED) ---
 ChartJS.register(Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement);
 
 const reportsStore = useReportsStore();
@@ -205,7 +196,7 @@ const branches = computed(() => branchStore.branches);
 const selectedBranch = computed({
   get: () => {
     if (!canSelectBranch.value) {
-      return authStore.user?.branch_id ? String(authStore.user.branch_id) : null;
+      return authStore.user?.branchId ? String(authStore.user.branchId) : null;
     }
     return branchStore.selectedBranchId ?? null;
   },
@@ -247,7 +238,7 @@ const summary = computed(() => {
 const fetchReport = async () => {
   isLoading.value = true; error.value = null;
 
-  const userBranchId = authStore.user?.branch_id ? String(authStore.user.branch_id) : null;
+  const userBranchId = authStore.user?.branchId ? String(authStore.user.branchId) : null;
   const selectedBranchId = canSelectBranch.value
     ? (selectedBranch.value && selectedBranch.value !== 'all' ? String(selectedBranch.value) : null)
     : userBranchId;
@@ -262,7 +253,7 @@ const fetchReport = async () => {
       dateTo: endDate.value,
       search: search.value || undefined
     });
-    vouchers.value = Array.isArray(list) ? list : [];
+    vouchers.value = list?.items || [];
   } catch (e) {
     error.value = e?.response?.data?.message || e?.message || 'حدث خطأ أثناء تحميل البيانات';
   } finally {

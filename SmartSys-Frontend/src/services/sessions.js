@@ -25,7 +25,7 @@ export const SessionsService = {
 
   getSessionSummaries(sessionIds) {
     return apiClient.post('/sessions/batch-summaries', {
-      session_ids: sessionIds,
+      sessionIds: sessionIds,
     });
   },
 
@@ -35,21 +35,21 @@ export const SessionsService = {
 
   async getCurrent(branchId, cashierId, deviceId) {
     const params = {};
-    if (branchId !== undefined && branchId !== null) params.branch_id = branchId;
-    if (cashierId !== undefined && cashierId !== null) params.cashier_id = cashierId;
-    if (deviceId !== undefined && deviceId !== null && `${deviceId}` !== '') params.device_id = deviceId;
+    if (branchId !== undefined && branchId !== null) params.branchId = branchId;
+    if (cashierId !== undefined && cashierId !== null) params.cashierId = cashierId;
+    if (deviceId !== undefined && deviceId !== null && `${deviceId}` !== '') params.deviceId = deviceId;
     const res = await this.getCurrentSession(params, { skipLoader: true });
     return res.data?.data || null;
   },
 
-  async openSession({ branch_id, opening_cash_amount = 0, session_type = 'manual', notes = null, cashier_id = undefined, device_id = undefined, device_name = undefined, terminal_id = undefined }) {
-    const body = { branch_id, opening_cash_amount, session_type };
+  async openSession({ branchId: branch_id, openingCashAmount: opening_cash_amount = 0, sessionType: session_type = 'manual', notes = null, cashierId: cashier_id = undefined, deviceId: device_id = undefined, deviceName: device_name = undefined, terminalId: terminal_id = undefined }) {
+    const body = { branchId: branch_id, openingCashAmount: opening_cash_amount, sessionType: session_type };
     if (notes) body.notes = notes;
     // Do not send cashier_id normally; backend infers from JWT. Allow override for admin tools.
-    if (cashier_id) body.cashier_id = cashier_id;
-    if (device_id) body.device_id = device_id;
-    if (device_name) body.device_name = device_name;
-    if (terminal_id !== undefined && terminal_id !== null) body.terminal_id = terminal_id;
+    if (cashier_id) body.cashierId = cashier_id;
+    if (device_id) body.deviceId = device_id;
+    if (device_name) body.deviceName = device_name;
+    if (terminal_id !== undefined && terminal_id !== null) body.terminalId = terminal_id;
     const res = await this.openSessionRequest(body);
     return res.data?.data || null;
   }

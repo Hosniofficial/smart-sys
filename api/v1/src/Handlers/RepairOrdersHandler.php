@@ -53,10 +53,10 @@ final class RepairOrdersHandler extends BaseHandler
             $branchId = $this->resolveBranchId($request, $tenantId);
             $query = $request->getQueryParams();
 
-            // ── Pagination ──────────────────────────────────────────────
+            // Pagination
             [$page, $limit, $offset] = PaginationHelper::fromArray($query, 20, 200);
 
-            // ── Filters ──────────────────────────────────────────────────
+            // Filters
             $status = trim((string) ($query['status'] ?? ''));
             if ($status !== '' && !in_array($status, self::STATUSES, true)) {
                 return $this->errorResponse($response, 'حالة أمر الصيانة غير صالحة.', 400);
@@ -65,7 +65,7 @@ final class RepairOrdersHandler extends BaseHandler
             $fromDate  = trim((string) ($query['from_date'] ?? ''));
             $toDate    = trim((string) ($query['to_date']   ?? ''));
 
-            // ── Build WHERE clause (shared between count + data queries) ─
+            // Build WHERE clause (shared between count + data queries) ─
             $where  = ' WHERE ro.tenant_id = ?';
             $params = [$tenantId];
 
@@ -96,12 +96,12 @@ final class RepairOrdersHandler extends BaseHandler
                       JOIN customers c ON c.id = ro.customer_id AND c.tenant_id = ro.tenant_id
                       LEFT JOIN sales s ON s.id = ro.invoice_id AND s.tenant_id = ro.tenant_id";
 
-            // ── Total count ───────────────────────────────────────────────
+            // Total count
             $countStmt = $this->db->prepare("SELECT COUNT(*) {$joins}{$where}");
             $countStmt->execute($params);
             $total = (int) $countStmt->fetchColumn();
 
-            // ── Data query ────────────────────────────────────────────────
+            // Data query
             $dataParams   = $params;
             $dataParams[] = $limit;
             $dataParams[] = $offset;

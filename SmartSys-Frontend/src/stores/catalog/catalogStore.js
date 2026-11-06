@@ -67,14 +67,14 @@ export const useCatalogStore = defineStore('catalog', () => {
 
   const createCategory = async (payload) => {
     const response = await catalogService.createCategory(payload);
-    if (payload?.branch_id) invalidateCategoriesForBranch(payload.branch_id);
+    if (payload?.branchId) invalidateCategoriesForBranch(payload.branchId);
     return response;
   };
 
   const updateCategory = async (categoryId, payload) => {
     if (!categoryId) throw new Error('Category ID is required');
     const response = await catalogService.updateCategory(categoryId, payload);
-    if (payload?.branch_id) invalidateCategoriesForBranch(payload.branch_id);
+    if (payload?.branchId) invalidateCategoriesForBranch(payload.branchId);
     return response;
   };
 
@@ -113,7 +113,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     try {
       const productStore = useProductStore();
       const res = await productStore.fetchProducts(branchId ? { branchId } : {});
-      const list = Array.isArray(res?.data) ? res.data : (res?.data?.items || []);
+      const list = Array.isArray(res?.data) ? res.data : (res?.data?.data?.items || []);
       return { status: 'success', data: list, message: null };
     } catch (e) {
       return { status: 'error', data: [], message: e?.message || 'فشل تحميل المنتجات' };

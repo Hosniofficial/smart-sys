@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100 text-right" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="loadingPlans" />
 
     <div class="max-w-[1200px] mx-auto p-6 lg:p-10 space-y-8 animate-fadeIn">
       
-      <!-- Hero Header Section -->
       <header class="text-center space-y-3 max-w-2xl mx-auto pt-4">
         <div class="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center mx-auto shadow-sm">
           <i class="fas fa-rocket text-sm"></i>
@@ -19,7 +17,6 @@
         </p>
       </header>
 
-      <!-- Reason Alert (Conditional) -->
       <transition name="slide-down">
         <div v-if="reason" class="bg-amber-50 border border-amber-200 rounded-xl p-4 shadow-sm flex items-center gap-3 max-w-3xl mx-auto">
           <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center text-xs shrink-0">
@@ -32,14 +29,12 @@
         </div>
       </transition>
 
-      <!-- Pricing Plans Grid -->
       <section class="grid grid-cols-1 md:grid-cols-3 gap-6 py-2">
         <div 
           v-for="p in plans" 
           :key="p.code" 
           class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm hover:border-blue-300 hover:shadow-md transition-all flex flex-col justify-between group"
         >
-          <!-- Plan Content -->
           <div class="space-y-6">
             <div class="flex items-center justify-between">
               <span class="px-2.5 py-0.5 rounded text-[9px] font-bold border border-blue-100 bg-blue-50 text-blue-600 uppercase tracking-wider">
@@ -53,17 +48,15 @@
             <div>
               <h3 class="text-lg font-bold text-slate-900 capitalize">{{ p.name }}</h3>
               <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                دورة الفوترة: كل {{ p.billing_cycle_days }} يوم
+                دورة الفوترة: كل {{ p.billingCycleDays }} يوم
               </p>
             </div>
 
-            <!-- Price -->
             <div class="flex items-baseline gap-1.5 pt-2 border-t border-slate-50">
               <span class="text-3xl font-bold font-mono tracking-tight text-slate-900">{{ p.price }}</span>
               <span class="text-xs font-bold text-slate-400 uppercase">{{ p.currency }}</span>
             </div>
 
-            <!-- Feature List -->
             <ul class="space-y-3 pt-2 border-t border-slate-50">
               <li v-for="feature in ['كافة ميزات النظام الأساسية', 'دعم فني متكامل 24/7', 'تحديثات دورية مجانية']" :key="feature" class="flex items-center gap-2.5 text-xs font-medium text-slate-600">
                 <div class="w-4 h-4 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-[9px] shrink-0">
@@ -74,7 +67,6 @@
             </ul>
           </div>
 
-          <!-- Select Action -->
           <div class="pt-8">
             <button 
               @click="selectPlan(p)" 
@@ -87,7 +79,6 @@
         </div>
       </section>
 
-      <!-- Footer Info -->
       <footer class="text-center py-6 border-t border-slate-200">
         <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed max-w-lg mx-auto">
           الأسعار الموضحة قد تخضع للتغيير. جميع بوابات التحويل المباشر مؤمنة بالكامل وسيتم تفعيل بوابات الدفع الإلكتروني قريباً.
@@ -95,7 +86,6 @@
       </footer>
     </div>
 
-    <!-- Payment Selection Modal -->
     <BaseModal :show="showPaymentModal" @close="closePaymentModal" maxWidth="md">
       <template #header>
         <div class="flex items-center gap-3">
@@ -110,7 +100,6 @@
       </template>
 
       <div class="space-y-5">
-        <!-- Selected Plan Summary -->
         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between">
           <div class="space-y-0.5">
             <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">الخطة المختارة</p>
@@ -124,9 +113,7 @@
           </div>
         </div>
 
-        <!-- Payment Methods -->
         <div class="space-y-2.5">
-          <!-- Instapay -->
           <button 
             @click="selectPaymentMethod('instapay')" 
             class="w-full p-4 bg-white border border-slate-200 rounded-xl hover:border-emerald-300 hover:bg-emerald-50/20 transition-all flex items-center justify-between group active:scale-[0.99] shadow-sm"
@@ -143,7 +130,6 @@
             <i class="fas fa-chevron-left text-[10px] text-slate-300 group-hover:text-emerald-600 transition-colors"></i>
           </button>
 
-          <!-- Vodafone Cash -->
           <button 
             @click="selectPaymentMethod('vodafonecash')" 
             class="w-full p-4 bg-white border border-slate-200 rounded-xl hover:border-rose-300 hover:bg-rose-50/20 transition-all flex items-center justify-between group active:scale-[0.99] shadow-sm"
@@ -161,7 +147,6 @@
           </button>
         </div>
 
-        <!-- WhatsApp Support Notice -->
         <div class="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-center gap-3">
           <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
             <i class="fab fa-whatsapp text-sm"></i>
@@ -186,12 +171,12 @@
 </template>
 
 <script setup>
+import logger from '@/utils/services/logger'
 import { ref, onMounted } from 'vue'
 import BaseModal from '@/components/BaseModal.vue'
 import { useRoute } from 'vue-router'
 import { useSubscriptionStore } from '@/stores/subscriptions/subscriptionStore'
 
-// --- State ---
 const route = useRoute()
 const subscriptionStore = useSubscriptionStore()
 const plans = ref([])
@@ -208,8 +193,8 @@ const fallbackPlans = [
     name: 'Basic',
     price: '99',
     currency: 'EGP',
-    billing_cycle_days: 30,
-    is_active: true
+    billingCycleDays: 30,
+    isActive: true
   },
   {
     id: 2,
@@ -217,8 +202,8 @@ const fallbackPlans = [
     name: 'Professional',
     price: '299',
     currency: 'EGP',
-    billing_cycle_days: 30,
-    is_active: true
+    billingCycleDays: 30,
+    isActive: true
   },
   {
     id: 3,
@@ -226,8 +211,8 @@ const fallbackPlans = [
     name: 'Enterprise',
     price: '599',
     currency: 'EGP',
-    billing_cycle_days: 30,
-    is_active: true
+    billingCycleDays: 30,
+    isActive: true
   }
 ]
 
@@ -242,7 +227,7 @@ async function loadPlans() {
   
   try {
     if (import.meta.env.DEV) {
-      console.log('[Upgrade Page] Loading plans from API...')
+      logger.debug('[Upgrade Page] Loading plans from API...')
     }
     
     // Try to fetch from /plans endpoint
@@ -250,20 +235,20 @@ async function loadPlans() {
     
     if (response.status === 'success' && Array.isArray(response.data)) {
       // Filter out trial and promotional plans (only paid plans)
-      const filteredPlans = response.data.filter(p =>
+      const filteredPlans = response.data.data.filter(p =>
         !p.code.toLowerCase().includes('trial') && 
         !p.code.toLowerCase().includes('promo') &&
         parseFloat(p.price) > 0
       )
       plans.value = filteredPlans.length > 0 ? filteredPlans : response.data
       if (import.meta.env.DEV) {
-        console.log('[Upgrade Page] Loaded plans from API:', plans.value.length)
+        logger.debug('[Upgrade Page] Loaded plans from API:', plans.value.length)
       }
       return
     }
   } catch (error) {
     if (import.meta.env.DEV) {
-      console.log('[Upgrade Page] API call failed, using fallback plans:', error.message)
+      logger.debug('[Upgrade Page] API call failed, using fallback plans:', error.message)
     }
   } finally {
     loadingPlans.value = false
@@ -272,7 +257,7 @@ async function loadPlans() {
   // Fallback: use hardcoded plans
   plans.value = fallbackPlans
   if (import.meta.env.DEV) {
-    console.log('[Upgrade Page] Using fallback plans')
+    logger.debug('[Upgrade Page] Using fallback plans')
   }
 }
 
@@ -286,7 +271,6 @@ function closePaymentModal() {
   selectedPlan.value = null
 }
 
-// Logic: Payment Redirect (STRICTLY PRESERVED)
 function selectPaymentMethod(method) {
   const whatsappNumber = '+201062024249'
   const planName = selectedPlan.value?.name || ''

@@ -47,9 +47,7 @@ class CashierSessionService
         $this->logger   = MonologHandler::getInstance('sessions');
     }
 
-    // =========================================================================
     // Public API
-    // =========================================================================
 
     /**
      * Open a new cashier session.
@@ -493,9 +491,7 @@ class CashierSessionService
         ]);
     }
 
-    // =========================================================================
     // Shared Read Helpers (used by Handler for current, summary, listSessions)
-    // =========================================================================
 
     /** Build a session summary from its cash transactions and stored session details. */
     public function buildSessionSummary(int $tenantId, int $sessionId): array
@@ -544,7 +540,6 @@ class CashierSessionService
         $closingBalance = ($session && isset($session['closing_cash_amount']))
             ? (float)$session['closing_cash_amount'] : null;
 
-        // ─────────────────────────────────────────────────────────────────────
         // NOTE: cash_out is ALWAYS derived strictly from cash_transactions above.
         // We intentionally do NOT back-derive cash_out from closing_cash_amount
         // when a variance_reason is present — doing so silently masked the real
@@ -553,7 +548,6 @@ class CashierSessionService
         // compute variance directly from opening + cash_in - cash_out.
         // variance_reason is purely descriptive metadata and must never affect
         // the calculation itself.
-        // ─────────────────────────────────────────────────────────────────────
 
         $expectedCash   = $openingBalance + $cashIn - $cashOut;
         $varianceAmount = $closingBalance !== null ? $closingBalance - $expectedCash : null;
@@ -624,7 +618,7 @@ class CashierSessionService
         $sessionIdCount = count($sessionIds);
         $placeholders = implode(',', array_fill(0, $sessionIdCount, '?'));
 
-        // ─── Query 1: Fetch all sessions data ────────────────────────────────
+        // Query 1: Fetch all sessions data
         $sessionsStmt = $this->db->prepare("
             SELECT id, opening_cash_amount, closing_cash_amount, variance_reason,
                    branch_id, cashier_id, status, start_time, end_time,
@@ -669,7 +663,7 @@ class CashierSessionService
         }
         unset($session);
 
-        // ─── Query 2: Fetch all cash transactions ────────────────────────────
+        // Query 2: Fetch all cash transactions
         $transactionsStmt = $this->db->prepare("
             SELECT id, session_id, type, amount, reference_type, reference_id, notes, created_at, created_by, status
             FROM cash_transactions
@@ -715,7 +709,7 @@ class CashierSessionService
         }
         unset($transactions);
 
-        // ─── Query 3: Fetch total sales per session ──────────────────────────
+        // Query 3: Fetch total sales per session
         $salesStmt = $this->db->prepare("
             SELECT s.session_id, COALESCE(SUM(s.net_total_amount + COALESCE(s.tax_amount, 0)), 0) AS total_sales
             FROM sales s
@@ -726,7 +720,7 @@ class CashierSessionService
         $salesStmt->execute($salesParams);
         $salesBySession = array_column($salesStmt->fetchAll(PDO::FETCH_ASSOC), 'total_sales', 'session_id');
 
-        // ─── Build summaries ───────────────────────────────────────────────────
+        // Build summaries
         $summaries = [];
         foreach ($sessionIds as $sessionId) {
             $session = $sessions[$sessionId] ?? null;
@@ -819,9 +813,7 @@ class CashierSessionService
         }
     }
 
-    // =========================================================================
     // Private Helpers
-    // =========================================================================
 
     private function resolveSessionType(int $tenantId, ?string $requestedType = null): string
     {

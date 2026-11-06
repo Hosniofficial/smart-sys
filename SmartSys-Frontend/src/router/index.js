@@ -1,3 +1,4 @@
+import logger from '@/utils/services/logger'
 import { createRouter, createWebHistory } from 'vue-router'
 import Login from '../views/auth/Login.vue'
 
@@ -509,7 +510,7 @@ const router = createRouter({
 // cache that would leak across users/sessions.
 router.beforeEach(async (to, from, next) => {
   if (import.meta.env.DEV) {
-    console.log(`[Router Guard] Navigation: ${from.path} → ${to.path}`);
+    logger.debug(`[Router Guard] Navigation: ${from.path} → ${to.path}`);
   }
   
   const authStore = useAuthStore();
@@ -546,7 +547,7 @@ router.beforeEach(async (to, from, next) => {
   if (requiresAuth) {
     const isValid = await authStore.checkAuthStatus();
     if (!isValid) {
-      if (import.meta.env.DEV) console.log('Redirecting to login: Authentication required');
+      if (import.meta.env.DEV) logger.debug('Redirecting to login: Authentication required');
       authStore.returnUrl = to.fullPath;
       next('/');
       return;
@@ -558,7 +559,7 @@ router.beforeEach(async (to, from, next) => {
     // Check if subscription expired flag was set by axios interceptor
     if (authStore.isSubscriptionExpired && to.path !== '/upgrade') {
       if (import.meta.env.DEV) {
-        console.log(`[Router Guard] Redirecting to upgrade: subscriptionExpired flag set`, authStore.subscriptionMessage);
+        logger.debug(`[Router Guard] Redirecting to upgrade: subscriptionExpired flag set`, authStore.subscriptionMessage);
       }
       next({
         path: '/upgrade',
@@ -580,13 +581,13 @@ router.beforeEach(async (to, from, next) => {
         // so the first post-login navigation always fetches fresh data.
         if (import.meta.env.DEV) {
           const usingCache = subscriptionStore.isCacheValid && subscriptionStore.loaded;
-          console.log('Checking subscription status...', usingCache ? '(cached)' : '(refreshing)');
+          logger.debug('Checking subscription status...', usingCache ? '(cached)' : '(refreshing)');
         }
         await subscriptionStore.fetchSubscription(false);
 
         // Redirect to upgrade if subscription is expired/inactive
         if (!subscriptionStore.canAccess) {
-          if (import.meta.env.DEV) console.log('Redirecting to upgrade: Subscription expired or inactive');
+          if (import.meta.env.DEV) logger.debug('Redirecting to upgrade: Subscription expired or inactive');
           next('/upgrade');
           return;
         }
@@ -596,7 +597,7 @@ router.beforeEach(async (to, from, next) => {
         // This prevents accidental lockout
       }
     } else {
-      if (import.meta.env.DEV) console.log(`✅ Skipping subscription check on ${to.path} (skipSubscriptionCheck meta)`);
+      if (import.meta.env.DEV) logger.debug(`✅ Skipping subscription check on ${to.path} (skipSubscriptionCheck meta)`);
     }
   }
 
@@ -629,10 +630,10 @@ router.beforeEach(async (to, from, next) => {
         const setupData = setupResponse.data?.data || {};
         
         // is_setup_complete might be in tenant object
-        const isSetupComplete = setupData.is_setup_complete ?? setupData.tenant?.is_setup_complete ?? false;
+        const isSetupComplete = setupData.isSetupComplete ?? setupData.tenant?.isSetupComplete ?? false;
         
         if (import.meta.env.DEV) {
-          console.log('[Router Guard] Setup status response:', {
+          logger.debug('[Router Guard] Setup status response:', {
             isComplete: isSetupComplete,
             setupData,
           });
@@ -640,14 +641,14 @@ router.beforeEach(async (to, from, next) => {
         
         // Update user data with fresh setup status
         if (authStore.user) {
-          authStore.user.is_setup_complete = isSetupComplete ? 1 : 0;
+          authStore.user.isSetupComplete = isSetupComplete ? 1 : 0;
           localStorage.setItem('user', JSON.stringify(authStore.user));
         }
         
         // Redirect to setup if not complete
         if (!isSetupComplete) {
           if (import.meta.env.DEV) {
-            console.log('[Router Guard] Setup incomplete, redirecting to /setup');
+            logger.debug('[Router Guard] Setup incomplete, redirecting to /setup');
           }
           next('/setup');
           return;
@@ -665,8 +666,8 @@ router.beforeEach(async (to, from, next) => {
       const user = {
         role: authStore.user?.role || 'employee',
         permissions: authStore.user?.permissions || [],
-        tenant_id: authStore.user?.tenant_id,
-        is_owner: authStore.user?.is_owner
+        tenantId: authStore.user?.tenantId,
+        isOwner: authStore.user?.isOwner
       }
       const hasAccess = checkAccessForPath(to.path, user)
       if (!hasAccess) {

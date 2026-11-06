@@ -9,13 +9,12 @@ import {
 const nowMs = () => Date.now();
 
 export const useBulkAdjustmentStore = defineStore('bulkAdjustment', () => {
-  // ─── State ────────────────────────────────────────────────────────
   const products = ref([]);
   const productsCache = ref({});
   const productsCacheTTL = 5 * 60 * 1000; // 5 minutes
   const inFlightRequests = ref({});
 
-  // ─── Search Products ──────────────────────────────────────────────
+  // Search Products
   const searchProducts = async (query = '') => {
     const normalizedQuery = query.trim();
     const cacheKey = `search_${normalizedQuery || 'all'}`;
@@ -36,7 +35,7 @@ export const useBulkAdjustmentStore = defineStore('bulkAdjustment', () => {
         const items = (Array.isArray(results) ? results : (results?.items || []))
           .map(product => ({
             ...product,
-            stock: Number(product.stock ?? product.current_quantity ?? product.quantity ?? 0),
+            stock: Number(product.stock ?? product.currentQuantity ?? product.quantity ?? 0),
           }));
         const result = {
           status: 'success',
@@ -66,7 +65,7 @@ export const useBulkAdjustmentStore = defineStore('bulkAdjustment', () => {
     return promise;
   };
 
-  // ─── Bulk Adjust Product ──────────────────────────────────────────
+  // Bulk Adjust Product
   const adjustProduct = async (productId, adjustments) => {
     try {
       const data = await bulkAdjustProduct(productId, adjustments);
@@ -90,7 +89,7 @@ export const useBulkAdjustmentStore = defineStore('bulkAdjustment', () => {
     }
   };
 
-  // ─── Bulk Adjust from CSV ─────────────────────────────────────────
+  // Bulk Adjust from CSV
   const adjustFromCsv = async (csvFile, defaultProductId) => {
     try {
       const data = await bulkAdjustFromCsv(csvFile, defaultProductId);
@@ -116,7 +115,7 @@ export const useBulkAdjustmentStore = defineStore('bulkAdjustment', () => {
     }
   };
 
-  // ─── Clear Cache ──────────────────────────────────────────────────
+  // Clear Cache
   const clearCache = () => {
     productsCache.value = {};
     inFlightRequests.value = {};

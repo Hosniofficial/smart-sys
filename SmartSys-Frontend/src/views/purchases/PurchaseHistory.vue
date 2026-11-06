@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-indigo-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoadingPurchases || isLoadingDetails" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="سجل المشتريات"
@@ -28,7 +26,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPI Summary -->
       <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
         <div v-for="kpi in [
           { label: 'عدد الفواتير', val: kpiCount, icon: 'fa-file-invoice', color: 'text-indigo-600', bg: 'bg-indigo-50' },
@@ -46,7 +43,6 @@
         </div>
       </section>
 
-      <!-- Filters Panel -->
       <transition name="slide-down">
         <div v-if="filters.showFilters.value" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden animate-fadeIn">
           <div class="p-6 space-y-6">
@@ -101,7 +97,7 @@
                   <i class="fas fa-truck absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] pointer-events-none"></i>
                   <div v-if="filters.showCustomerDropdown.value" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-auto">
                     <button @mousedown.prevent="filters.clearCustomerFilter()" class="w-full text-right px-4 py-2 text-[11px] hover:bg-slate-50 border-b border-slate-50 text-indigo-600 font-bold">جميع الموردين</button>
-                    <button v-for="s in filteredSuppliers" :key="s.id" @mousedown.prevent="selectSupplier(s)" class="w-full text-right px-4 py-2 text-[11px] hover:bg-slate-50 border-b border-slate-50 last:border-0 font-medium">{{ s.name || s.supplier_name }}</button>
+                    <button v-for="s in filteredSuppliers" :key="s.id" @mousedown.prevent="selectSupplier(s)" class="w-full text-right px-4 py-2 text-[11px] hover:bg-slate-50 border-b border-slate-50 last:border-0 font-medium">{{ s.name || s.supplierName }}</button>
                   </div>
                 </div>
               </div>
@@ -112,7 +108,6 @@
         </div>
       </transition>
 
-      <!-- Active Filter Chips -->
       <div v-if="filters.hasActiveFilters.value || filters.customerFilter.value || (isExempt.value && hasExplicitBranchSelection)" class="flex flex-wrap gap-2">
         <div v-for="chip in [
           { show: filters.searchQuery.value, label: filters.searchQuery.value, clear: () => filters.searchQuery.value = '' },
@@ -126,7 +121,6 @@
         </div>
       </div>
 
-      <!-- Main Data Table -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
@@ -147,23 +141,23 @@
               </template>
               <tr v-else-if="rows.length === 0"><td colspan="7" class="py-20 text-center text-slate-300"><i class="fas fa-box-open text-3xl mb-4 opacity-20"></i><p class="text-xs font-bold uppercase tracking-widest">لا توجد فواتير مشتريات حتى الآن</p></td></tr>
               <tr v-else v-for="purchase in rows" :key="purchase?.id" class="hover:bg-indigo-50/10 transition-all group">
-                <td class="px-6 py-4 text-xs font-bold text-slate-900 font-mono tracking-wider">{{ purchase.invoice_number || ('#' + purchase.id) }}</td>
-                <td class="px-4 py-4 text-[10px] font-mono text-slate-400">{{ formatDateTime(purchase.invoice_date) }}</td>
-                <td class="px-4 py-4 text-xs font-bold text-slate-700 truncate max-w-[180px]">{{ purchase.supplier_name }}</td>
+                <td class="px-6 py-4 text-xs font-bold text-slate-900 font-mono tracking-wider">{{ purchase.invoiceNumber || ('#' + purchase.id) }}</td>
+                <td class="px-4 py-4 text-[10px] font-mono text-slate-400">{{ formatDateTime(purchase.invoiceDate) }}</td>
+                <td class="px-4 py-4 text-xs font-bold text-slate-700 truncate max-w-[180px]">{{ purchase.supplierName }}</td>
                 <td class="px-4 py-4 text-center">
                   <span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-500">
-                    {{ purchase.total_items ?? purchase.items_count ?? (Array.isArray(purchase.items) ? purchase.items.length : '-') }}
+                    {{ purchase.totalItems ?? purchase.itemsCount ?? (Array.isArray(purchase.items) ? purchase.items.length : '-') }}
                   </span>
                 </td>
-                <td class="px-4 py-4 text-xs font-bold text-emerald-600">{{ formatPrice(purchase.total_amount) }}</td>
+                <td class="px-4 py-4 text-xs font-bold text-emerald-600">{{ formatPrice(purchase.totalAmount) }}</td>
                 <td class="px-4 py-4 text-center">
-                  <span :class="[getDynamicStatusClass(purchase.dynamic_status || purchase.status)]" class="px-2 py-0.5 rounded text-[9px] font-bold border">
-                    {{ getStatusLabel(purchase.dynamic_status || purchase.status) }}
+                  <span :class="[getDynamicStatusClass(purchase.dynamicStatus || purchase.status)]" class="px-2 py-0.5 rounded text-[9px] font-bold border">
+                    {{ getStatusLabel(purchase.dynamicStatus || purchase.status) }}
                   </span>
                 </td>
                 <td class="px-4 py-4 text-center">
                   <div class="flex items-center justify-center gap-2">
-                    <button @click="openPurchaseDetails(purchase.id)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center justify-center" :aria-label="`فتح تفاصيل فاتورة الشراء ${purchase.invoice_number || purchase.id} في تبويب`"><i class="fas fa-eye text-[10px]"></i></button>
+                    <button @click="openPurchaseDetails(purchase.id)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center justify-center" :aria-label="`فتح تفاصيل فاتورة الشراء ${purchase.invoiceNumber || purchase.id} في تبويب`"><i class="fas fa-eye text-[10px]"></i></button>
                   </div>
                 </td>
               </tr>
@@ -171,7 +165,6 @@
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ totalPages }}</span>
@@ -190,22 +183,21 @@
       </div>
     </div>
 
-    <!-- Purchase Details Modal -->
     <HistoryDetailsModal
       :show="showDetailsModal && !!selectedPurchase"
       @close="closePurchaseDetails"
-      :title="`تفاصيل فاتورة الشراء #${selectedPurchase?.invoice_number || selectedPurchase?.id}`"
+      :title="`تفاصيل فاتورة الشراء #${selectedPurchase?.invoiceNumber || selectedPurchase?.id}`"
       icon="fas fa-file-invoice"
     >
 
       <div class="space-y-6">
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
           <div v-for="info in [
-            { l: 'المورد', v: selectedPurchase?.supplier_name || selectedPurchase?.supplier?.name || '-' },
-            { l: 'الفرع', v: selectedPurchase?.branch_name || branches.find(branch => String(branch.id) === String(selectedPurchase?.branch_id))?.name || '-' },
-            { l: 'الوقت والتاريخ', v: formatDateTime(selectedPurchase?.invoice_date || selectedPurchase?.created_at) },
-            { l: 'الكاشير', v: selectedPurchase?.created_by_name || 'النظام' },
-            { l: 'الحالة', v: getStatusLabel(selectedPurchase?.dynamic_status || selectedPurchase?.status) }
+            { l: 'المورد', v: selectedPurchase?.supplierName || selectedPurchase?.supplier?.name || '-' },
+            { l: 'الفرع', v: selectedPurchase?.branchName || branches.find(branch => String(branch.id) === String(selectedPurchase?.branchId))?.name || '-' },
+            { l: 'الوقت والتاريخ', v: formatDateTime(selectedPurchase?.invoiceDate || selectedPurchase?.createdAt) },
+            { l: 'الكاشير', v: selectedPurchase?.createdByName || 'النظام' },
+            { l: 'الحالة', v: getStatusLabel(selectedPurchase?.dynamicStatus || selectedPurchase?.status) }
           ]" :key="info.l" class="min-w-0 space-y-1 rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-2">
             <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">{{ info.l }}</p>
             <p class="break-words text-[11px] font-bold leading-4 text-slate-800">{{ info.v }}</p>
@@ -217,7 +209,7 @@
             <thead><tr class="bg-slate-50 border-b border-slate-100"><th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">المنتج</th><th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase text-center">الكمية</th><th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase text-center">سعر الوحدة</th><th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase text-center">الإجمالي</th></tr></thead>
             <tbody class="divide-y divide-slate-50">
               <tr v-for="(it, idx) in (selectedPurchase?.items || selectedPurchase?.purchase?.items || [])" :key="idx">
-                <td class="px-4 py-3 font-bold text-slate-800">{{ it.product_name || it.name || '-' }}</td>
+                <td class="px-4 py-3 font-bold text-slate-800">{{ it.productName || it.name || '-' }}</td>
                 <td class="px-4 py-3 text-center font-bold text-slate-500">{{ it.quantity || it.qty || 0 }}</td>
                 <td class="px-4 py-3 text-center font-bold text-slate-700">{{ formatPrice(itemUnitPrice(it)) }}</td>
                 <td class="px-4 py-3 text-center font-bold text-slate-900">{{ formatPrice(itemTotal(it)) }}</td>
@@ -232,21 +224,20 @@
             <p class="text-xs text-slate-600 italic">{{ selectedPurchase?.notes || 'لا توجد ملاحظات.' }}</p>
           </div>
           <div class="w-full md:w-72 space-y-2.5 bg-slate-50 border border-slate-200 p-5 rounded-xl">
-            <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المجموع</span><span class="font-mono font-bold text-slate-700">{{ formatPrice(selectedPurchase?.total_amount || 0) }}</span></div>
-            <div class="flex justify-between text-[11px] font-medium text-slate-500 pb-2.5 border-b border-slate-200"><span>المدفوع</span><span class="font-mono font-bold text-emerald-600">{{ formatPrice(selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0) }}</span></div>
-            <!-- صافي الفاتورة مميز -->
+            <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المجموع</span><span class="font-mono font-bold text-slate-700">{{ formatPrice(selectedPurchase?.totalAmount || 0) }}</span></div>
+            <div class="flex justify-between text-[11px] font-medium text-slate-500 pb-2.5 border-b border-slate-200"><span>المدفوع</span><span class="font-mono font-bold text-emerald-600">{{ formatPrice(selectedPurchase?.actualPaidAmount ?? selectedPurchase?.paidAmount ?? 0) }}</span></div>
             <div class="flex justify-between items-center bg-indigo-600 text-white px-4 py-3 rounded-lg">
               <span class="text-[11px] font-bold uppercase tracking-widest opacity-80">صافي الفاتورة</span>
-              <span class="text-xl font-bold font-mono tracking-tighter">{{ formatPrice(selectedPurchase?.total_amount || 0) }}</span>
+              <span class="text-xl font-bold font-mono tracking-tighter">{{ formatPrice(selectedPurchase?.totalAmount || 0) }}</span>
             </div>
             <div class="pt-1 space-y-2">
-              <div v-if="Number(selectedPurchase?.return_amount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
+              <div v-if="Number(selectedPurchase?.returnAmount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
                 <span>قيمة المرتجعات</span>
-                <span class="font-mono font-bold text-amber-500">{{ formatPrice(selectedPurchase.return_amount) }}</span>
+                <span class="font-mono font-bold text-amber-500">{{ formatPrice(selectedPurchase.returnAmount) }}</span>
               </div>
-              <div v-if="(selectedPurchase?.remaining_balance ?? ((selectedPurchase?.total_amount || 0) - (selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0))) > 0" class="flex justify-between text-[11px] font-bold pt-1 border-t border-slate-200">
+              <div v-if="(selectedPurchase?.remainingBalance ?? ((selectedPurchase?.totalAmount || 0) - (selectedPurchase?.actualPaidAmount ?? selectedPurchase?.paidAmount ?? 0))) > 0" class="flex justify-between text-[11px] font-bold pt-1 border-t border-slate-200">
                 <span class="text-slate-500">المتبقي</span>
-                <span class="font-mono text-rose-600">{{ formatPrice(selectedPurchase?.remaining_balance ?? ((selectedPurchase?.total_amount || 0) - (selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0))) }}</span>
+                <span class="font-mono text-rose-600">{{ formatPrice(selectedPurchase?.remainingBalance ?? ((selectedPurchase?.totalAmount || 0) - (selectedPurchase?.actualPaidAmount ?? selectedPurchase?.paidAmount ?? 0))) }}</span>
               </div>
             </div>
           </div>
@@ -255,7 +246,6 @@
 
       <template #footer>
         <div class="mr-auto flex flex-row flex-wrap items-center gap-3">
-          <!-- 1. تسجيل دفعة -->
           <button
             v-if="canPaySelectedPurchase"
             @click="openPaymentModal(selectedPurchase)"
@@ -263,14 +253,12 @@
           >
             <i class="fas fa-money-bill-wave text-[10px]"></i> تسجيل دفعة
           </button>
-          <!-- 2. طباعة الفاتورة -->
           <button
             @click="printPurchaseDetails"
             class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-indigo-200 px-4 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
           >
             <i class="fas fa-print"></i> طباعة الفاتورة
           </button>
-          <!-- 3. إغلاق -->
           <button
             @click="closePurchaseDetails"
             class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap px-4 text-xs font-bold text-slate-500"
@@ -281,15 +269,14 @@
       </template>
     </HistoryDetailsModal>
 
-    <!-- Payment Modal -->
     <BaseModal :show="showPaymentModal" @close="showPaymentModal = false" maxWidth="md" align="center" :z-index="130">
       <template #header>
         <div class="text-center w-full">
           <h3 class="text-sm font-bold text-slate-900 uppercase">تسجيل دفعة مورد</h3>
           <p class="text-[10px] text-slate-400 mt-1 font-medium italic">
-            فاتورة {{ currentPayingPurchase?.invoice_number || `#${currentPayingPurchase?.id}` }}
-            <span v-if="currentPayingPurchase?.remaining_balance > 0" class="text-rose-500 mr-2">
-              · متبقي {{ formatPrice(currentPayingPurchase.remaining_balance) }}
+            فاتورة {{ currentPayingPurchase?.invoiceNumber || `#${currentPayingPurchase?.id}` }}
+            <span v-if="currentPayingPurchase?.remainingBalance > 0" class="text-rose-500 mr-2">
+              · متبقي {{ formatPrice(currentPayingPurchase.remainingBalance) }}
             </span>
           </p>
         </div>
@@ -298,13 +285,13 @@
       <div class="space-y-6">
         <div class="text-center">
           <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">المبلغ المراد دفعه</label>
-          <input type="number" min="0.01" step="0.01" :max="currentPayingPurchase?.remaining_balance" v-model.number="paymentData.amount" class="w-full h-14 text-3xl font-bold text-center text-emerald-600 border-b-2 border-slate-100 focus:border-emerald-500 outline-none transition-all" />
+          <input type="number" min="0.01" step="0.01" :max="currentPayingPurchase?.remainingBalance" v-model.number="paymentData.amount" class="w-full h-14 text-3xl font-bold text-center text-emerald-600 border-b-2 border-slate-100 focus:border-emerald-500 outline-none transition-all" />
         </div>
         <div class="grid grid-cols-2 gap-4">
-          <div class="space-y-1.5"><label class="text-[10px] font-bold text-slate-400 uppercase">التاريخ</label><div class="relative"><input ref="paymentDateRef" type="date" v-model="paymentData.payment_date" class="filter-input" style="padding-left: 2rem;" /><i @click="paymentDateRef?.showPicker?.()" class="fas fa-calendar-days absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] cursor-pointer hover:text-slate-500"></i></div></div>
-          <div class="space-y-1.5"><label class="text-[10px] font-bold text-slate-400 uppercase">طريقة الدفع</label><select v-model.number="paymentData.payment_method_id" class="filter-input"><option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option></select></div>
+          <div class="space-y-1.5"><label class="text-[10px] font-bold text-slate-400 uppercase">التاريخ</label><div class="relative"><input ref="paymentDateRef" type="date" v-model="paymentData.paymentDate" class="filter-input" style="padding-left: 2rem;" /><i @click="paymentDateRef?.showPicker?.()" class="fas fa-calendar-days absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] cursor-pointer hover:text-slate-500"></i></div></div>
+          <div class="space-y-1.5"><label class="text-[10px] font-bold text-slate-400 uppercase">طريقة الدفع</label><select v-model.number="paymentData.paymentMethodId" class="filter-input"><option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option></select></div>
         </div>
-        <div class="space-y-1.5"><label class="text-[10px] font-bold text-slate-400 uppercase">رقم المرجع</label><input type="text" v-model="paymentData.reference_number" class="filter-input" placeholder="شيك، رقم تحويل..." /></div>
+        <div class="space-y-1.5"><label class="text-[10px] font-bold text-slate-400 uppercase">رقم المرجع</label><input type="text" v-model="paymentData.referenceNumber" class="filter-input" placeholder="شيك، رقم تحويل..." /></div>
       </div>
 
       <template #footer>
@@ -325,6 +312,7 @@
 </template>
 
 <script setup>
+import logger from '@/utils/services/logger'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -362,9 +350,9 @@ const canPayPurchases = computed(() =>
 const canPaySelectedPurchase = computed(() => {
   const purchase = selectedPurchase.value;
   if (!canPayPurchases.value || !purchase) return false;
-  const status = String(purchase.dynamic_status || purchase.status || '').toLowerCase();
+  const status = String(purchase.dynamicStatus || purchase.status || '').toLowerCase();
   if (['paid', 'completed', 'cancelled', 'canceled', 'rejected', 'returned'].includes(status)) return false;
-  return Number(purchase.remaining_balance ?? 0) > 0.01;
+  return Number(purchase.remainingBalance ?? 0) > 0.01;
 });
 const branchStore = useBranchStore();
 const branchIsolation = useBranchIsolation();
@@ -416,24 +404,24 @@ const filteredSuppliers = computed(() => {
   const q = (filters.customerSearch.value || '').toLowerCase();
   const list = suppliers.value || [];
   if (!q) return list.slice(0, 50);
-  return list.filter(s => String(s.name || s.supplier_name || '').toLowerCase().includes(q)).slice(0, 50);
+  return list.filter(s => String(s.name || s.supplierName || '').toLowerCase().includes(q)).slice(0, 50);
 });
 
-const selectSupplier = (s) => { filters.setCustomerFilter(s.id, s.name || s.supplier_name || ''); };
+const selectSupplier = (s) => { filters.setCustomerFilter(s.id, s.name || s.supplierName || ''); };
 const hideSupplierDropdown = () => filters.hideCustomerDropdown();
 
 const kpiCount = computed(() => filters.total.value || rows.value.length);
 const kpiSum = computed(() => rows.value.reduce((s, p) =>
-  s + (['cancelled', 'canceled', 'rejected'].includes(p.dynamic_status || p.status) ? 0 : parseFloat(p.total_amount || p.total || 0)), 0));
+  s + (['cancelled', 'canceled', 'rejected'].includes(p.dynamicStatus || p.status) ? 0 : parseFloat(p.totalAmount || p.total || 0)), 0));
 const kpiTax = computed(() => {
-  const activeRows = rows.value.filter(p => !['cancelled', 'canceled', 'rejected'].includes(p.dynamic_status || p.status));
-  const any = activeRows.some(p => p.tax_amount != null);
-  return any ? activeRows.reduce((s, p) => s + parseFloat(p.tax_amount || 0), 0) : null;
+  const activeRows = rows.value.filter(p => !['cancelled', 'canceled', 'rejected'].includes(p.dynamicStatus || p.status));
+  const any = activeRows.some(p => p.taxAmount != null);
+  return any ? activeRows.reduce((s, p) => s + parseFloat(p.taxAmount || 0), 0) : null;
 });
 const kpiDiscount = computed(() => {
-  const activeRows = rows.value.filter(p => !['cancelled', 'canceled', 'rejected'].includes(p.dynamic_status || p.status));
-  const any = activeRows.some(p => p.discount_amount != null || p.discount_value != null);
-  return any ? activeRows.reduce((s, p) => s + parseFloat((p.discount_amount ?? p.discount_value) || 0), 0) : null;
+  const activeRows = rows.value.filter(p => !['cancelled', 'canceled', 'rejected'].includes(p.dynamicStatus || p.status));
+  const any = activeRows.some(p => p.discountAmount != null || p.discountValue != null);
+  return any ? activeRows.reduce((s, p) => s + parseFloat((p.discountAmount ?? p.discountValue) || 0), 0) : null;
 });
 const totalPages = computed(() => Math.max(1, Math.ceil((filters.total.value || 0) / filters.perPage.value)));
 
@@ -446,7 +434,7 @@ const formatDateTime = (value) => {
     : parsed.toLocaleString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
 };
 
-const itemUnitPrice = (item) => Number(item?.price ?? item?.unit_price ?? item?.purchase_price ?? 0) || 0;
+const itemUnitPrice = (item) => Number(item?.price ?? item?.unitPrice ?? item?.purchasePrice ?? 0) || 0;
 const itemTotal = (item) => Number(item?.total ?? item?.subtotal ?? (itemUnitPrice(item) * Number(item?.quantity ?? item?.qty ?? 0))) || 0;
 
 const paymentMethods = computed(() => paymentStore.paymentMethods);
@@ -573,20 +561,20 @@ const closePurchaseDetails = async () => {
 
 const showPaymentModal = ref(false);
 const isSubmittingPayment = ref(false);
-const paymentData = ref({ purchase_id: null, supplier_id: null, amount: 0, payment_method_id: null, payment_date: getLocalDateISO(), reference_number: '' });
+const paymentData = ref({ purchaseId: null, supplierId: null, amount: 0, paymentMethodId: null, paymentDate: getLocalDateISO(), referenceNumber: '' });
 const currentPayingPurchase = ref(null);
 const paymentIdempotencyKey = ref('');
 const paymentDateRef = ref(null);
 
 const openPaymentModal = (p) => {
   if (!canPayPurchases.value || !p) return;
-  const remaining = Number(p.remaining_balance ?? (
-    Number(p.total_amount || 0)
-    - Number(p.actual_paid_amount ?? p.paid_amount ?? 0)
-    - Number(p.return_amount || 0)
+  const remaining = Number(p.remainingBalance ?? (
+    Number(p.totalAmount || 0)
+    - Number(p.actualPaidAmount ?? p.paidAmount ?? 0)
+    - Number(p.returnAmount || 0)
   ));
   if (remaining <= 0.01) return;
-  paymentData.value = { purchase_id: p.id, supplier_id: p.supplier_id, amount: remaining, payment_method_id: cashMethodId.value ?? paymentMethods.value[0]?.id ?? null, payment_date: getLocalDateISO(), reference_number: '' };
+  paymentData.value = { purchaseId: p.id, supplierId: p.supplierId, amount: remaining, paymentMethodId: cashMethodId.value ?? paymentMethods.value[0]?.id ?? null, paymentDate: getLocalDateISO(), referenceNumber: '' };
   paymentIdempotencyKey.value = globalThis.crypto?.randomUUID?.()
     || `purchase-payment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   showPaymentModal.value = true; currentPayingPurchase.value = p;
@@ -596,27 +584,27 @@ const submitPayment = async () => {
   if (!canPayPurchases.value || isSubmittingPayment.value) return;
   const amount = Number(paymentData.value.amount || 0);
   if (amount <= 0) return showToast('الرجاء إدخال مبلغ صحيح', 'error');
-  const remaining = Number(currentPayingPurchase.value?.remaining_balance ?? 0);
+  const remaining = Number(currentPayingPurchase.value?.remainingBalance ?? 0);
   if (amount > remaining + 0.01) return showToast('مبلغ الدفعة يتجاوز الرصيد المتبقي على الفاتورة.', 'error');
   isSubmittingPayment.value = true;
   try {
     try { await ensureExemptionLoaded(); } catch {}
     const settings = await fetchSettings(true);
     const sessionsEnabled = isSettingEnabled(settings?.['pos.sessions.enabled']);
-    if (sessionsEnabled && !isExempt.value && isCashById(paymentData.value.payment_method_id) && amount > 0) {
-      let wid; try { wid = branchIsolation.getRequiredBranchId(); } catch { wid = currentPayingPurchase.value?.branch_id; }
+    if (sessionsEnabled && !isExempt.value && isCashById(paymentData.value.paymentMethodId) && amount > 0) {
+      let wid; try { wid = branchIsolation.getRequiredBranchId(); } catch { wid = currentPayingPurchase.value?.branchId; }
       if (!wid) return showToast('يجب تحديد الفرع', 'error');
       try { const sessionStore = useSessionStore(); const result = await sessionStore.getCurrentSession(wid, authStore?.user?.id || null); if (!result.data?.id) return showToast('لا توجد جلسة كاشير مفتوحة', 'error'); }
       catch { return showToast('خطأ في التحقق من الجلسة', 'error'); }
     }
-    let branchId; try { branchId = branchIsolation.getRequiredBranchId(); } catch { branchId = currentPayingPurchase.value?.branch_id; }
-    const res = await purchaseStore.addPayment(paymentData.value.purchase_id, { amount, payment_date: paymentData.value.payment_date, payment_method_id: paymentData.value.payment_method_id, reference_number: paymentData.value.reference_number || undefined, branch_id: String(branchId) }, paymentIdempotencyKey.value);
+    let branchId; try { branchId = branchIsolation.getRequiredBranchId(); } catch { branchId = currentPayingPurchase.value?.branchId; }
+    const res = await purchaseStore.addPayment(paymentData.value.purchaseId, { amount, paymentDate: paymentData.value.paymentDate, paymentMethodId: paymentData.value.paymentMethodId, referenceNumber: paymentData.value.referenceNumber || undefined, branchId: String(branchId) }, paymentIdempotencyKey.value);
     if (res?.status === 'success') {
       showToast('تمت العملية', 'success');
       showPaymentModal.value = false;
       paymentIdempotencyKey.value = '';
       await fetchPurchases();
-      const refreshedPurchase = await purchaseStore.getPurchaseById(paymentData.value.purchase_id, { force: true });
+      const refreshedPurchase = await purchaseStore.getPurchaseById(paymentData.value.purchaseId, { force: true });
       if (refreshedPurchase?.status === 'success' && refreshedPurchase.data) {
         selectedPurchase.value = refreshedPurchase.data;
       } else {
@@ -663,7 +651,7 @@ watch([filters.customerFilter, filters.dateFrom, filters.dateTo, filters.statusF
 watch(filters.page, () => { if (isMounting) return; fetchPurchases(); });
 watch([filters.customerFilter, suppliers], () => {
   const found = suppliers.value.find(x => String(x.id) === String(filters.customerFilter.value));
-  filters.customerSearch.value = found ? (found.name || found.supplier_name || '') : '';
+  filters.customerSearch.value = found ? (found.name || found.supplierName || '') : '';
 });
 
 onMounted(async () => {
@@ -705,7 +693,7 @@ onMounted(async () => {
     }
   }
   
-  console.log('[PurchaseHistory] Before first API call:', {
+  logger.debug('[PurchaseHistory] Before first API call:', {
     selectedBranchId: branchStore.selectedBranchId,
     selectedBranch: branchStore.selectedBranch?.name || null,
     isExempt: isExempt.value,
@@ -724,7 +712,6 @@ onUnmounted(() => { if (purchasesAbortCtrl) purchasesAbortCtrl.abort(); if (sear
 </script>
 
 <style scoped>
-/* Animations */
 @keyframes loading {
   0% { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
@@ -772,7 +759,6 @@ onUnmounted(() => { if (purchasesAbortCtrl) purchasesAbortCtrl.abort(); if (sear
   transform: translateY(-10px);
 }
 
-/* Animation Classes */
 .animate-modalIn {
   animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }

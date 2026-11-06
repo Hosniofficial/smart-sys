@@ -58,7 +58,7 @@ try {
 
 $totalDeleted = 0;
 
-// ── 1. Expired refresh tokens ─────────────────────────────────────────────
+// 1. Expired refresh tokens
 try {
     $stmt = $pdo->prepare("
         DELETE FROM refresh_tokens
@@ -73,7 +73,7 @@ try {
     clog('WARN: refresh_tokens cleanup failed — ' . $e->getMessage());
 }
 
-// ── 2. Expired JWT blacklist entries ─────────────────────────────────────
+// 2. Expired JWT blacklist entries
 // The blacklist table stores tokens until their natural expiry.
 // Once expired, they can be safely removed (JWT validation will reject them anyway).
 try {
@@ -90,7 +90,7 @@ try {
     clog('SKIP: jwt_blacklist — ' . $e->getMessage());
 }
 
-// ── 3. Expired idempotency keys ───────────────────────────────────────────
+// 3. Expired idempotency keys
 try {
     $idem = new \App\Services\IdempotencyService($pdo);
     $n    = $idem->purgeExpired();
@@ -100,7 +100,7 @@ try {
     clog('WARN: idempotency cleanup failed — ' . $e->getMessage());
 }
 
-// ── 4. Old login_attempts (keep 30 days) ─────────────────────────────────
+// 4. Old login_attempts (keep 30 days)
 try {
     $stmt = $pdo->prepare("
         DELETE FROM login_attempts
@@ -114,7 +114,7 @@ try {
     clog('WARN: login_attempts cleanup failed — ' . $e->getMessage());
 }
 
-// ── 5. Old security_events (respect retention_days from config) ───────────
+// 5. Old security_events (respect retention_days from config)
 try {
     $retentionDays = (int) ($_ENV['SECURITY_LOG_RETENTION_DAYS'] ?? 365);
     $stmt = $pdo->prepare("

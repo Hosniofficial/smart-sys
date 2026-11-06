@@ -2,11 +2,9 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-indigo-100" dir="rtl">
 
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading || isLoadingSearch" />
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
 
-      <!-- Page Header Area -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="إدارة المشتريات"
@@ -23,7 +21,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPI Summary Overview -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
         <div v-for="kpi in [
           { label: 'إجمالي الفواتير', val: stats.totalPurchases, icon: 'fa-file-invoice', color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -42,11 +39,9 @@
       </div>
       </section>
 
-      <!-- Filters & Search Toolbar -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="p-6 bg-slate-50/30 border-b border-slate-100 space-y-6">
           <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
-            <!-- Search -->
             <div class="lg:col-span-4 space-y-1.5 relative group">
               <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">بحث سريع</label>
               <div class="relative">
@@ -65,10 +60,10 @@
                       <template v-else>
                         <div v-for="result in searchResults.slice(0, 10)" :key="result.id" @click="selectSearchResult(result)" class="px-4 py-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 flex items-center justify-between group">
                           <div>
-                            <p class="text-xs font-bold text-slate-900">{{ result.invoice_number }}</p>
-                            <p class="text-[10px] text-slate-400">{{ formatDateTime(result.invoice_date || result.purchase_date || result.created_at) }}</p>
+                            <p class="text-xs font-bold text-slate-900">{{ result.invoiceNumber }}</p>
+                            <p class="text-[10px] text-slate-400">{{ formatDateTime(result.invoiceDate || result.purchaseDate || result.createdAt) }}</p>
                           </div>
-                          <p class="text-xs font-bold text-indigo-600">{{ formatCurrency(result.total_amount || 0) }}</p>
+                          <p class="text-xs font-bold text-indigo-600">{{ formatCurrency(result.totalAmount || 0) }}</p>
                         </div>
                       </template>
                     </div>
@@ -77,7 +72,6 @@
               </div>
             </div>
 
-            <!-- Supplier -->
             <div class="lg:col-span-3 space-y-1.5">
               <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">المورد</label>
               <select v-model="selectedSupplier" @change="() => { currentPage = 1; loadPurchases(); }" class="filter-input-v2 h-9 appearance-none font-bold">
@@ -116,7 +110,6 @@
           </div>
         </div>
 
-        <!-- Purchases Table -->
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
             <thead>
@@ -143,23 +136,23 @@
                 </td>
               </tr>
               <tr v-for="p in purchases" :key="p.id" class="hover:bg-indigo-50/10 transition-all group">
-                <td class="px-6 py-4 text-xs font-bold text-slate-900 font-mono tracking-wider">{{ p.invoice_number }}</td>
+                <td class="px-6 py-4 text-xs font-bold text-slate-900 font-mono tracking-wider">{{ p.invoiceNumber }}</td>
                 <td class="px-4 py-4">
-                  <span class="text-xs font-bold text-slate-700 truncate max-w-[180px]">{{ p.supplier_name || suppliers.find(s => String(s.id) === String(p.supplier_id))?.name || '-' }}</span>
+                  <span class="text-xs font-bold text-slate-700 truncate max-w-[180px]">{{ p.supplierName || suppliers.find(s => String(s.id) === String(p.supplierId))?.name || '-' }}</span>
                 </td>
-                <td class="px-4 py-4 text-[10px] font-bold text-slate-500 uppercase">{{ p.branch_name || branches.find(b => String(b.id) === String(p.branch_id))?.name || '-' }}</td>
-                <td class="px-4 py-4 text-center text-[10px] font-mono text-slate-500">{{ formatDateTime(p.invoice_date || p.purchase_date || p.created_at) || '-' }}</td>
-                <td class="px-4 py-4 text-xs font-bold text-emerald-600 font-mono">{{ formatCurrency(p.total_amount) }}</td>
+                <td class="px-4 py-4 text-[10px] font-bold text-slate-500 uppercase">{{ p.branchName || branches.find(b => String(b.id) === String(p.branchId))?.name || '-' }}</td>
+                <td class="px-4 py-4 text-center text-[10px] font-mono text-slate-500">{{ formatDateTime(p.invoiceDate || p.purchaseDate || p.createdAt) || '-' }}</td>
+                <td class="px-4 py-4 text-xs font-bold text-emerald-600 font-mono">{{ formatCurrency(p.totalAmount) }}</td>
                 <td class="px-4 py-4 text-center">
-                  <span :class="[getPurchaseStatus(p.dynamic_status || p.status).class]" class="px-2 py-0.5 rounded text-[9px] font-bold border">
-                    {{ getPurchaseStatus(p.dynamic_status || p.status).text }}
+                  <span :class="[getPurchaseStatus(p.dynamicStatus || p.status).class]" class="px-2 py-0.5 rounded text-[9px] font-bold border">
+                    {{ getPurchaseStatus(p.dynamicStatus || p.status).text }}
                   </span>
                 </td>
                 <td class="px-6 py-4 text-center">
                   <div class="flex items-center justify-center gap-2">
                     <button @click="openPurchaseDetails(p)" title="تفاصيل الفاتورة في تبويب" aria-label="تفاصيل الفاتورة في تبويب" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center justify-center"><i class="fas fa-eye text-[10px]"></i></button>
-                    <button v-if="canEditPurchase && !['cancelled', 'canceled', 'rejected'].includes(p.dynamic_status || p.status) && !['posted', 'reversed'].includes(p.journal_status)" @click="openEditModal(p)" title="تعديل الفاتورة" aria-label="تعديل الفاتورة" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center"><i class="fas fa-pen text-[10px]"></i></button>
-                    <button v-if="canDeletePurchase && !['cancelled', 'canceled', 'rejected'].includes(p.dynamic_status || p.status)" :title="Number(p.linked_payment_count || 0) > 0 ? 'الفاتورة مرتبطة بمدفوعات ولا يمكن إلغاؤها.' : (Number(p.linked_return_count || 0) > 0 ? 'الفاتورة مرتبطة بمرتجعات ولا يمكن إلغاؤها.' : 'إلغاء الفاتورة')" @click="confirmDelete(p)" class="w-8 h-8 rounded-lg border border-slate-200 transition-all flex items-center justify-center" :class="Number(p.linked_payment_count || 0) > 0 || Number(p.linked_return_count || 0) > 0 ? 'text-amber-600 border-amber-200 hover:bg-amber-50' : 'text-slate-400 hover:text-rose-600 hover:border-rose-200'"><i :class="Number(p.linked_payment_count || 0) > 0 || Number(p.linked_return_count || 0) > 0 ? 'fas fa-lock text-[10px]' : 'fas fa-trash-alt text-[10px]'"></i></button>
+                    <button v-if="canEditPurchase && !['cancelled', 'canceled', 'rejected'].includes(p.dynamicStatus || p.status) && !['posted', 'reversed'].includes(p.journalStatus)" @click="openEditModal(p)" title="تعديل الفاتورة" aria-label="تعديل الفاتورة" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center"><i class="fas fa-pen text-[10px]"></i></button>
+                    <button v-if="canDeletePurchase && !['cancelled', 'canceled', 'rejected'].includes(p.dynamicStatus || p.status)" :title="Number(p.linkedPaymentCount || 0) > 0 ? 'الفاتورة مرتبطة بمدفوعات ولا يمكن إلغاؤها.' : (Number(p.linkedReturnCount || 0) > 0 ? 'الفاتورة مرتبطة بمرتجعات ولا يمكن إلغاؤها.' : 'إلغاء الفاتورة')" @click="confirmDelete(p)" class="w-8 h-8 rounded-lg border border-slate-200 transition-all flex items-center justify-center" :class="Number(p.linkedPaymentCount || 0) > 0 || Number(p.linkedReturnCount || 0) > 0 ? 'text-amber-600 border-amber-200 hover:bg-amber-50' : 'text-slate-400 hover:text-rose-600 hover:border-rose-200'"><i :class="Number(p.linkedPaymentCount || 0) > 0 || Number(p.linkedReturnCount || 0) > 0 ? 'fas fa-lock text-[10px]' : 'fas fa-trash-alt text-[10px]'"></i></button>
                   </div>
                 </td>
               </tr>
@@ -167,7 +160,6 @@
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ currentPage }}</span> من <span class="text-slate-900">{{ totalPages }}</span>
@@ -198,7 +190,7 @@
     <HistoryDetailsModal
       :show="showDetailsModal && !!selectedPurchase"
       @close="closePurchaseDetails"
-      :title="`تفاصيل فاتورة الشراء #${selectedPurchase?.invoice_number || selectedPurchase?.id || ''}`"
+      :title="`تفاصيل فاتورة الشراء #${selectedPurchase?.invoiceNumber || selectedPurchase?.id || ''}`"
       icon="fas fa-file-invoice"
     >
       <div v-if="isLoadingDetails" class="space-y-4" aria-live="polite">
@@ -229,8 +221,8 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
-              <tr v-for="(item, index) in purchaseDetailItems" :key="item.id || item.product_id || index">
-                <td class="px-4 py-3 font-bold text-slate-800">{{ item.product_name || item.name || '-' }}</td>
+              <tr v-for="(item, index) in purchaseDetailItems" :key="item.id || item.productId || index">
+                <td class="px-4 py-3 font-bold text-slate-800">{{ item.productName || item.name || '-' }}</td>
                 <td class="px-4 py-3 text-center font-bold text-slate-500">{{ item.quantity ?? item.qty ?? 0 }}</td>
                 <td class="px-4 py-3 text-center font-bold text-slate-700">{{ formatCurrency(purchaseItemUnitPrice(item)) }}</td>
                 <td class="px-4 py-3 text-left font-bold text-slate-900">{{ formatCurrency(purchaseItemTotal(item)) }}</td>
@@ -248,21 +240,20 @@
             <p class="text-xs text-slate-600 italic">{{ selectedPurchase?.notes || 'لا توجد ملاحظات.' }}</p>
           </div>
           <div class="w-full md:w-72 space-y-2.5 bg-slate-50 border border-slate-200 p-5 rounded-xl">
-            <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المجموع</span><span class="font-mono font-bold text-slate-700">{{ formatCurrency(selectedPurchase?.total_amount || 0) }}</span></div>
-            <div class="flex justify-between text-[11px] font-medium text-slate-500 pb-2.5 border-b border-slate-200"><span>المدفوع</span><span class="font-mono font-bold text-emerald-600">{{ formatCurrency(selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0) }}</span></div>
-            <!-- صافي الفاتورة مميز -->
+            <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المجموع</span><span class="font-mono font-bold text-slate-700">{{ formatCurrency(selectedPurchase?.totalAmount || 0) }}</span></div>
+            <div class="flex justify-between text-[11px] font-medium text-slate-500 pb-2.5 border-b border-slate-200"><span>المدفوع</span><span class="font-mono font-bold text-emerald-600">{{ formatCurrency(selectedPurchase?.actualPaidAmount ?? selectedPurchase?.paidAmount ?? 0) }}</span></div>
             <div class="flex justify-between items-center bg-indigo-600 text-white px-4 py-3 rounded-lg">
               <span class="text-[11px] font-bold uppercase tracking-widest opacity-80">صافي الفاتورة</span>
-              <span class="text-xl font-bold font-mono tracking-tighter">{{ formatCurrency(selectedPurchase?.total_amount || 0) }}</span>
+              <span class="text-xl font-bold font-mono tracking-tighter">{{ formatCurrency(selectedPurchase?.totalAmount || 0) }}</span>
             </div>
             <div class="pt-1 space-y-2">
-              <div v-if="Number(selectedPurchase?.return_amount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
+              <div v-if="Number(selectedPurchase?.returnAmount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
                 <span>قيمة المرتجعات</span>
-                <span class="font-mono font-bold text-amber-500">{{ formatCurrency(selectedPurchase.return_amount) }}</span>
+                <span class="font-mono font-bold text-amber-500">{{ formatCurrency(selectedPurchase.returnAmount) }}</span>
               </div>
-              <div v-if="(selectedPurchase?.remaining_balance ?? ((selectedPurchase?.total_amount || 0) - (selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0))) > 0" class="flex justify-between text-[11px] font-bold pt-1 border-t border-slate-200">
+              <div v-if="(selectedPurchase?.remainingBalance ?? ((selectedPurchase?.totalAmount || 0) - (selectedPurchase?.actualPaidAmount ?? selectedPurchase?.paidAmount ?? 0))) > 0" class="flex justify-between text-[11px] font-bold pt-1 border-t border-slate-200">
                 <span class="text-slate-500">المتبقي</span>
-                <span class="font-mono text-rose-600">{{ formatCurrency(selectedPurchase?.remaining_balance ?? ((selectedPurchase?.total_amount || 0) - (selectedPurchase?.actual_paid_amount ?? selectedPurchase?.paid_amount ?? 0))) }}</span>
+                <span class="font-mono text-rose-600">{{ formatCurrency(selectedPurchase?.remainingBalance ?? ((selectedPurchase?.totalAmount || 0) - (selectedPurchase?.actualPaidAmount ?? selectedPurchase?.paidAmount ?? 0))) }}</span>
               </div>
             </div>
           </div>
@@ -270,20 +261,16 @@
       </div>
       <template #footer>
         <div class="mr-auto flex flex-row flex-wrap items-center gap-3">
-          <!-- طباعة الفاتورة -->
           <button
             @click="printPurchaseDetails"
             class="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-indigo-200 px-4 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
           >
             <i class="fas fa-print"></i> طباعة الفاتورة
           </button>
-          <!-- إغلاق -->
           <button @click="closePurchaseDetails" class="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md px-4 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-100">إغلاق</button>
         </div>
       </template>
     </HistoryDetailsModal>
-
-    <!-- The Refactored Purchase Form Modal -->
 
     <PurchaseForm
 
@@ -317,7 +304,6 @@
 
     />
 
-    <!-- Add Product Modal -->
     <BaseModal :show="showProductModal" @close="showProductModal = false" maxWidth="lg" variant="modern" :zIndex="130">
       <template #header>
         <h3 class="text-xl font-bold text-slate-900 flex items-center gap-2">
@@ -333,11 +319,11 @@
         </div>
         <div class="space-y-1.5">
           <label class="modal-label">سعر الشراء</label>
-          <input v-model.number="newProduct.purchase_price" type="number" class="form-input-modern font-bold text-emerald-600" />
+          <input v-model.number="newProduct.purchasePrice" type="number" class="form-input-modern font-bold text-emerald-600" />
         </div>
         <div class="space-y-1.5">
           <label class="modal-label">سعر البيع</label>
-          <input v-model.number="newProduct.sale_price" type="number" class="form-input-modern font-bold text-blue-600" />
+          <input v-model.number="newProduct.salePrice" type="number" class="form-input-modern font-bold text-blue-600" />
         </div>
       </div>
       
@@ -437,7 +423,7 @@ const branches = computed(() => branchStore.branches);
 const stats = ref({ totalPurchases: 0, totalAmount: 0, taxAmount: 0, pendingInvoices: 0, activeSuppliers: 0 });
 const isLoading = ref(true); const selectedSupplier = ref('');
 const isSaving = ref(false); const isEditMode = ref(false);
-const pendingPurchaseStorageKey = `pending_purchase_create_request:${authStore.user?.tenant_id || 'no-tenant'}:${authStore.user?.id || 'no-user'}`;
+const pendingPurchaseStorageKey = `pending_purchase_create_request:${authStore.user?.tenantId || 'no-tenant'}:${authStore.user?.id || 'no-user'}`;
 const readPendingPurchaseRequest = () => {
   try {
     const saved = JSON.parse(sessionStorage.getItem(pendingPurchaseStorageKey) || 'null');
@@ -454,13 +440,13 @@ const restorePendingPurchaseForm = () => {
 
   form.value = {
     ...payload,
-    discount: payload.discount_value ?? payload.discount ?? 0,
+    discount: payload.discountValue ?? payload.discount ?? 0,
     items: Array.isArray(payload.items) ? payload.items.map((item) => ({
       ...item,
-      purchase_price: item.purchase_price ?? item.cost ?? item.price ?? 0,
-      has_batch_number: Boolean(item.batch_number),
-      has_expiry_date: Boolean(item.expiry_date),
-      has_serial_number: Boolean(item.serial),
+      purchasePrice: item.purchasePrice ?? item.cost ?? item.price ?? 0,
+      hasBatchNumber: Boolean(item.batchNumber),
+      hasExpiryDate: Boolean(item.expiryDate),
+      hasSerialNumber: Boolean(item.serial),
     })) : [],
   };
   isEditMode.value = false;
@@ -479,7 +465,7 @@ const purchaseDetailItems = computed(() => {
   return Array.isArray(purchase?.items) ? purchase.items
     : (Array.isArray(purchase?.purchase?.items) ? purchase.purchase.items : []);
 });
-const purchaseItemUnitPrice = (item) => Number(item?.price ?? item?.unit_price ?? item?.purchase_price ?? item?.cost ?? 0) || 0;
+const purchaseItemUnitPrice = (item) => Number(item?.price ?? item?.unitPrice ?? item?.purchasePrice ?? item?.cost ?? 0) || 0;
 const purchaseItemTotal = (item) => Number(
   item?.total ?? item?.subtotal ?? (purchaseItemUnitPrice(item) * Number(item?.quantity ?? item?.qty ?? 0))
 ) || 0;
@@ -487,23 +473,23 @@ const purchaseDetailFacts = computed(() => {
   const purchase = selectedPurchase.value;
   if (!purchase) return [];
   return [
-    { label: 'المورد', value: purchase.supplier_name || purchase.supplier?.name || '-' },
-    { label: 'الفرع', value: purchase.branch_name || branches.value.find(branch => String(branch.id) === String(purchase.branch_id))?.name || '-' },
-    { label: 'الوقت والتاريخ', value: formatDateTime(purchase.invoice_date || purchase.purchase_date || purchase.created_at) || '-' },
-    { label: 'الكاشير', value: purchase.created_by_name || 'النظام' },
-    { label: 'الحالة', value: getPurchaseStatus(purchase.dynamic_status || purchase.status).text },
+    { label: 'المورد', value: purchase.supplierName || purchase.supplier?.name || '-' },
+    { label: 'الفرع', value: purchase.branchName || branches.value.find(branch => String(branch.id) === String(purchase.branchId))?.name || '-' },
+    { label: 'الوقت والتاريخ', value: formatDateTime(purchase.invoiceDate || purchase.purchaseDate || purchase.createdAt) || '-' },
+    { label: 'الكاشير', value: purchase.createdByName || 'النظام' },
+    { label: 'الحالة', value: getPurchaseStatus(purchase.dynamicStatus || purchase.status).text },
   ];
 });
 
 const paymentMethods = ref([]);
 
-const form = ref({ supplier_id: '', branch_id: '', invoice_number: '', purchase_date: getLocalDateISO(), status: 'draft', discount: 0, discount_type: 'fixed', items: [], paid_amount: 0 });
+const form = ref({ supplierId: '', branchId: '', invoiceNumber: '', purchaseDate: getLocalDateISO(), status: 'draft', discount: 0, discountType: 'fixed', items: [], paidAmount: 0 });
 
 const taxEnabled = ref(false); const taxRate = ref(0); const taxValue = ref(0);
 
 const showProductModal = ref(false); const isAddingProduct = ref(false);
 
-const newProduct = ref({ name: '', barcode: '', category_id: '', purchase_price: 0, sale_price: 0, min_quantity: 0, description: '' });
+const newProduct = ref({ name: '', barcode: '', categoryId: '', purchasePrice: 0, salePrice: 0, minQuantity: 0, description: '' });
 
 const productRowIndex = ref(null);
 const productBranchId = ref(null);
@@ -528,7 +514,7 @@ const loadPurchases = async () => {
       branchId: branchId.value || undefined,
       page: currentPage.value, perPage: pageSize.value,
       search: search.value || undefined,
-      supplier_id: selectedSupplier.value || undefined,
+      supplierId: selectedSupplier.value || undefined,
       dateFrom: dateFrom.value || undefined, dateTo: dateTo.value || undefined
     });
     if (response?.status === 'success') {
@@ -538,11 +524,11 @@ const loadPurchases = async () => {
       stats.value = {
         totalPurchases: totalCount.value,
         totalAmount: purchases.value.reduce((s, p) =>
-          s + (['cancelled', 'canceled', 'rejected'].includes(p.dynamic_status || p.status) ? 0 : parseFloat(p.total_amount || 0)), 0),
+          s + (['cancelled', 'canceled', 'rejected'].includes(p.dynamicStatus || p.status) ? 0 : parseFloat(p.totalAmount || 0)), 0),
         taxAmount: purchases.value.reduce((s, p) =>
-          s + (['cancelled', 'canceled', 'rejected'].includes(p.dynamic_status || p.status) ? 0 : parseFloat(p.tax_amount || 0)), 0),
+          s + (['cancelled', 'canceled', 'rejected'].includes(p.dynamicStatus || p.status) ? 0 : parseFloat(p.taxAmount || 0)), 0),
         pendingInvoices: purchases.value.filter(p => p.status === 'pending').length,
-        activeSuppliers: new Set(purchases.value.map(p => p.supplier_id)).size
+        activeSuppliers: new Set(purchases.value.map(p => p.supplierId)).size
       };
     }
   } catch (error) { purchases.value = []; totalCount.value = 0; }
@@ -566,13 +552,13 @@ const performSearch = async (query) => {
   try {
     const response = await purchaseStore.fetchPurchases({ branchId: branchId.value || undefined, search: query.trim(), perPage: 50 });
     if (response?.status === 'success') {
-      searchResults.value = Array.isArray(response.data) ? response.data : (response.data?.items || []);
+      searchResults.value = Array.isArray(response.data) ? response.data : (response.data?.data?.items || []);
     }
   } catch { searchResults.value = []; } finally { isLoadingSearch.value = false; }
 };
 
 const handleSearchSelect = (result) => {
-  search.value = result.invoice_number || 'INV-' + result.id;
+  search.value = result.invoiceNumber || 'INV-' + result.id;
   showSearchDropdown.value = false;
   purchases.value = [result];
   totalCount.value = 1;
@@ -594,7 +580,7 @@ const openAddModal = async () => {
 
   isEditMode.value = false;
 
-  let nextInv = ''; try { const res = await purchaseStore.getNextInvoiceNumber(); if (res.status === 'success') nextInv = res.data?.invoice_number || ''; } catch {}
+  let nextInv = ''; try { const res = await purchaseStore.getNextInvoiceNumber(); if (res.status === 'success') nextInv = res.data?.data?.invoiceNumber || ''; } catch {}
 
   // #4: إعادة تحميل إعدادات الضريبة في كل مرة يُفتح فيها Modal الإضافة
   try {
@@ -607,7 +593,7 @@ const openAddModal = async () => {
   } catch (_) {}
 
   let cashSupplier = suppliers.value.find(supplier =>
-    supplier.name === 'مورد نقدي' && (supplier.branch_id == null || String(supplier.branch_id) === String(branchStore.selectedBranchId))
+    supplier.name === 'مورد نقدي' && (supplier.branchId == null || String(supplier.branchId) === String(branchStore.selectedBranchId))
   );
   if (!cashSupplier) {
     try {
@@ -621,7 +607,7 @@ const openAddModal = async () => {
     }
   }
 
-  form.value = { supplier_id: cashSupplier.id, branch_id: branchStore.selectedBranchId || branches.value[0]?.id || '', invoice_number: nextInv, purchase_date: getLocalDateISO(), status: 'received', discount: 0, discount_type: 'fixed', items: [], paid_amount: 0, payment_method_id: cashMethodId.value };
+  form.value = { supplierId: cashSupplier.id, branchId: branchStore.selectedBranchId || branches.value[0]?.id || '', invoiceNumber: nextInv, purchaseDate: getLocalDateISO(), status: 'received', discount: 0, discountType: 'fixed', items: [], paidAmount: 0, paymentMethodId: cashMethodId.value };
 
   showFormModal.value = true;
 
@@ -629,7 +615,7 @@ const openAddModal = async () => {
 
 const openEditModal = (p) => {
   if (!canEditPurchase.value) return;
-  if (['posted', 'reversed'].includes(p.journal_status)) {
+  if (['posted', 'reversed'].includes(p.journalStatus)) {
     showToast('لا يمكن تعديل فاتورة شراء مرحّلة؛ ألغِها بالطريقة الآمنة وأنشئ فاتورة بديلة.', 'warning');
     return;
   }
@@ -639,7 +625,7 @@ const openEditModal = (p) => {
     return;
   }
   isEditMode.value = true;
-  form.value = { discount: p.discount_value || 0, discount_type: p.discount_type || 'fixed', ...p, items: Array.isArray(p.items) ? p.items : [], payment_method_id: p.payment_method_id ?? null };
+  form.value = { discount: p.discountValue || 0, discountType: p.discountType || 'fixed', ...p, items: Array.isArray(p.items) ? p.items : [], paymentMethodId: p.paymentMethodId ?? null };
   showFormModal.value = true;
 };
 
@@ -734,18 +720,18 @@ const handlePurchaseModalClose = async () => {
 const getDeviceIdentity = () => {
   let id = localStorage.getItem('pos_device_id');
   if (!id) { id = 'dev-' + Math.random().toString(36).slice(2, 8); try { localStorage.setItem('pos_device_id', id); } catch {} }
-  return { device_id: id };
+  return { deviceId: id };
 };
 
 const handleModalSave = async (payload) => {
-  const isCash = paymentMethods.value.find(m => Number(m.id) === Number(payload.payment_method_id))?.kind === 'cash';
-  const paidAmt = parseFloat(payload.paid_amount || 0);
+  const isCash = paymentMethods.value.find(m => Number(m.id) === Number(payload.paymentMethodId))?.kind === 'cash';
+  const paidAmt = parseFloat(payload.paidAmount || 0);
   try { await ensureExemptionLoaded(); } catch (_) {}
   const settings = await fetchSettings(true);
   const sessionsEnabled = isSettingEnabled(settings?.['pos.sessions.enabled']);
   if (sessionsEnabled && !isExempt.value && isCash && paidAmt > 0) {
     try {
-      const result = await sessionStore.getCurrentSession(String(payload.branch_id), authStore?.user?.id || null, getDeviceIdentity().device_id);
+      const result = await sessionStore.getCurrentSession(String(payload.branchId), authStore?.user?.id || null, getDeviceIdentity().deviceId);
       if (result?.status !== 'success' || !result.data?.id) {
         showToast('لا توجد جلسة كاشير مفتوحة. لا يمكن إتمام المدفوعات النقدية بدون جلسة.', 'error');
         return;
@@ -801,7 +787,7 @@ const savePurchase = async (payload) => {
       showToast('تم الحفظ بنجاح');
       showFormModal.value = false;
       await loadPurchases();
-      productStore.invalidateCacheForBranch(payload.branch_id);
+      productStore.invalidateCacheForBranch(payload.branchId);
     } else if (!isEditMode.value && response.outcomeUnknown) {
       pendingPurchaseRequest.value = { ...pendingPurchaseRequest.value, outcomeUnknown: true };
       try { sessionStorage.setItem(pendingPurchaseStorageKey, JSON.stringify(pendingPurchaseRequest.value)); } catch (_) {}
@@ -831,11 +817,11 @@ const savePurchase = async (payload) => {
 
 const confirmDelete = async (purchase) => {
   if (!canDeletePurchase.value || !purchase?.id) return;
-  if (Number(purchase.linked_payment_count || 0) > 0) {
+  if (Number(purchase.linkedPaymentCount || 0) > 0) {
     showToast('لا يمكن إلغاء فاتورة مرتبطة بمدفوعات؛ استخدم مسار مرتجع المشتريات للحفاظ على الأثر المحاسبي.', 'warning');
     return;
   }
-  if (Number(purchase.linked_return_count || 0) > 0) {
+  if (Number(purchase.linkedReturnCount || 0) > 0) {
     showToast('لا يمكن إلغاء فاتورة مرتبطة بمرتجعات؛ يجب الاحتفاظ بسجل الفاتورة والمرتجعات.', 'warning');
     return;
   }
@@ -868,10 +854,10 @@ const saveNewProduct = async () => {
   try {
     const response = await productStore.createProduct({
       ...newProduct.value,
-      branch_assignments: {
-        branch_ids: [Number(productBranchId.value)],
-        initial_quantity: 0,
-        initial_unit_cost: 0,
+      branchAssignments: {
+        branchIds: [Number(productBranchId.value)],
+        initialQuantity: 0,
+        initialUnitCost: 0,
       },
     });
     if (response.status === 'success') {
@@ -881,7 +867,7 @@ const saveNewProduct = async () => {
         pendingProductAdd.value = { index: productRowIndex.value, product: data };
       }
       showProductModal.value = false;
-      newProduct.value = { name: '', barcode: '', category_id: '', purchase_price: 0, sale_price: 0, min_quantity: 0, description: '' };
+      newProduct.value = { name: '', barcode: '', categoryId: '', purchasePrice: 0, salePrice: 0, minQuantity: 0, description: '' };
       productRowIndex.value = null;
       productBranchId.value = null;
       showToast('تمت إضافة المنتج بنجاح', 'success');
@@ -935,7 +921,7 @@ onMounted(async () => {
     taxRate.value = parseFloat(settings['company.tax_rate']) || 0;
     taxValue.value = taxEnabled.value ? taxRate.value : 0;
   }
-  if (!isExempt.value && authStore.user?.branch_id) branchStore.setSelectedBranch(authStore.user.branch_id);
+  if (!isExempt.value && authStore.user?.branchId) branchStore.setSelectedBranch(authStore.user.branchId);
   loadPurchases();
   if (pendingPurchaseRequest.value?.outcomeUnknown) {
     restorePendingPurchaseForm();
@@ -945,7 +931,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* Animations */
 @keyframes loading {
   0% { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
@@ -979,7 +964,6 @@ onMounted(async () => {
   @apply bg-slate-200 rounded-full;
 }
 
-/* Animation Classes */
 .animate-fadeIn {
   animation: fadeIn 0.4s ease-out;
 }

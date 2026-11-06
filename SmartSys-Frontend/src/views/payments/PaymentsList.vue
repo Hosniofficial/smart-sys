@@ -1,7 +1,6 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
@@ -34,7 +33,6 @@
         </template>
       </PageHeader>
 
-      <!-- Advanced Filters Panel: Utility Grid -->
       <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible relative z-10">
         <div class="p-6 space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -143,7 +141,6 @@
         </div>
       </section>
 
-      <!-- Main Data Table -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
@@ -172,16 +169,16 @@
                 </td>
               </tr>
               <tr v-for="p in items" :key="p.id" class="hover:bg-blue-50/20 transition-all group">
-                <td class="px-6 py-4 text-[10px] font-mono font-bold text-slate-400 group-hover:text-slate-900">{{ p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-GB') : '-' }}</td>
+                <td class="px-6 py-4 text-[10px] font-mono font-bold text-slate-400 group-hover:text-slate-900">{{ p.paymentDate ? new Date(p.paymentDate).toLocaleDateString('en-GB') : '-' }}</td>
                 <td class="px-4 py-4">
                   <div class="flex flex-col">
-                    <router-link v-if="p.return_id" :to="{ name: 'ReturnsHistory', query: { id: p.return_id } }" class="text-rose-600 font-bold hover:underline underline-offset-4">
+                    <router-link v-if="p.returnId" :to="{ name: 'ReturnsHistory', query: { id: p.returnId } }" class="text-rose-600 font-bold hover:underline underline-offset-4">
                       {{ p.reference || '#' + p.id }}
                     </router-link>
-                    <router-link v-else-if="p.sale_id" :to="{ name: 'SalesHistory', query: { id: p.sale_id } }" class="text-blue-600 font-bold hover:underline underline-offset-4">
+                    <router-link v-else-if="p.saleId" :to="{ name: 'SalesHistory', query: { id: p.saleId } }" class="text-blue-600 font-bold hover:underline underline-offset-4">
                       {{ p.reference || '#' + p.id }}
                     </router-link>
-                    <router-link v-else-if="p.purchase_id" :to="{ name: 'PurchaseHistory', query: { id: p.purchase_id } }" class="text-indigo-600 font-bold hover:underline underline-offset-4">
+                    <router-link v-else-if="p.purchaseId" :to="{ name: 'PurchaseHistory', query: { id: p.purchaseId } }" class="text-indigo-600 font-bold hover:underline underline-offset-4">
                       {{ p.reference || '#' + p.id }}
                     </router-link>
                     <span v-else class="text-slate-800 font-bold">{{ p.reference || '-' }}</span>
@@ -190,20 +187,20 @@
                 </td>
                 <td class="px-4 py-4 text-center">
                   <span class="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-[9px] font-bold text-slate-500 uppercase tracking-tighter">
-                    {{ p.reference_label || 'سند' }}
+                    {{ p.referenceLabel || 'سند' }}
                   </span>
                 </td>
                 <td class="px-4 py-4 text-center">
-                  <span :class="[badgeClass(p.status || p.status_code)]" class="px-2 py-0.5 rounded text-[9px] font-bold border">
-                    {{ p.status_label || (p.status || '-') }}
+                  <span :class="[badgeClass(p.status || p.statusCode)]" class="px-2 py-0.5 rounded text-[9px] font-bold border">
+                    {{ p.statusLabel || (p.status || '-') }}
                   </span>
                 </td>
                 <td class="px-4 py-4">
                   <span :class="[
-                    (p.payment_method_name||'').toLowerCase().includes('cash') ? 'text-emerald-600' : 
-                    (p.payment_method_name||'').toLowerCase().includes('card') ? 'text-blue-600' : 'text-slate-500'
+                    (p.paymentMethodName||'').toLowerCase().includes('cash') ? 'text-emerald-600' :
+                    (p.paymentMethodName||'').toLowerCase().includes('card') ? 'text-blue-600' : 'text-slate-500'
                   ]" class="text-[10px] font-bold">
-                    {{ p.payment_method_name || '-' }}
+                    {{ p.paymentMethodName || '-' }}
                   </span>
                 </td>
                 <td class="px-4 py-4 text-sm font-bold font-mono tracking-tighter text-slate-900">
@@ -211,15 +208,15 @@
                 </td>
                 <td class="px-4 py-4">
                   <div class="flex flex-col">
-                    <router-link v-if="p.customer_id" :to="{ name: 'AccountStatement', params: { type: 'customers', id: p.customer_id } }" class="text-blue-600 font-bold hover:underline">{{ customerDisplayName(p) }}</router-link>
-                    <router-link v-else-if="p.supplier_id" :to="{ name: 'AccountStatement', params: { type: 'suppliers', id: p.supplier_id } }" class="text-indigo-600 font-bold hover:underline">{{ p.supplier_name }}</router-link>
+                    <router-link v-if="p.customerId" :to="{ name: 'AccountStatement', params: { type: 'customers', id: p.customerId } }" class="text-blue-600 font-bold hover:underline">{{ customerDisplayName(p) }}</router-link>
+                    <router-link v-else-if="p.supplierId" :to="{ name: 'AccountStatement', params: { type: 'suppliers', id: p.supplierId } }" class="text-indigo-600 font-bold hover:underline">{{ p.supplierName }}</router-link>
                     <span v-else class="text-slate-500">{{ customerDisplayName(p) }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4 text-center">
                   <div class="flex flex-col items-center">
-                    <span class="text-[10px] font-bold text-slate-700">{{ p.created_by_name || '-' }}</span>
-                    <span class="text-[9px] font-mono text-slate-400 mt-1 uppercase">{{ p.created_at ? new Date(p.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '' }}</span>
+                    <span class="text-[10px] font-bold text-slate-700">{{ p.createdByName || '-' }}</span>
+                    <span class="text-[9px] font-mono text-slate-400 mt-1 uppercase">{{ p.createdAt ? new Date(p.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '' }}</span>
                   </div>
                 </td>
               </tr>
@@ -227,7 +224,6 @@
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ page }}</span> من <span class="text-slate-900">{{ Math.max(1, Math.ceil(meta.total / perPage)) }}</span>
@@ -257,6 +253,7 @@
 </template>
 
 <script setup>
+import logger from '@/utils/services/logger'
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { getLocalDateISO } from '@/utils';
 import { useAuthStore } from '@/stores/auth/authStore';
@@ -275,12 +272,11 @@ import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 
-// --- State ---
 const { breadcrumb } = useBreadcrumb();
 const isLoading = ref(false);
 const loadError = ref('');
 const items = ref([]);
-const meta = ref({ total: 0, page: 1, per_page: 50 });
+const meta = ref({ total: 0, page: 1, perPage: 50 });
 
 // Filters
 const dateFrom = ref('');
@@ -344,7 +340,7 @@ const customerWrap = ref(null);
 const supplierWrap = ref(null);
 const userWrap = ref(null);
 
-// --- Badge helper ---
+// Badge helper
 const badgeClass = (s) => {
   const v = String(s || '').toLowerCase();
   if (['paid', 'posted', 'completed'].includes(v)) return 'bg-emerald-100 text-emerald-700';
@@ -355,9 +351,9 @@ const badgeClass = (s) => {
 };
 
 const customerDisplayName = (payment) =>
-  payment?.customer_name || payment?.customer_id || (payment?.sale_id ? 'عميل نقدي' : '—');
+  payment?.customerName || payment?.customerId || (payment?.saleId ? 'عميل نقدي' : '—');
 
-// --- Filtered dropdown lists ---
+// Filtered dropdown lists
 const filteredUsers = computed(() => {
   const q = (userQuery.value || '').toLowerCase().trim();
   const arr = users.value || [];
@@ -377,26 +373,26 @@ const filteredSuppliers = computed(() => {
   return arr.filter(s => String(s.name || '').toLowerCase().includes(q) || String(s.id).includes(q)).slice(0, 50);
 });
 
-// --- Query params ---
+// Query params
 const queryParams = computed(() => {
-  const p = { per_page: perPage.value, page: page.value };
+  const p = { perPage: perPage.value, page: page.value };
   if (branchIsolation.isExempt.value) {
-    if (selectedBranch.value) p.branch_id = String(selectedBranch.value);
-  } else if (authStore.user?.branch_id) {
-    p.branch_id = String(authStore.user.branch_id);
+    if (selectedBranch.value) p.branchId = String(selectedBranch.value);
+  } else if (authStore.user?.branchId) {
+    p.branchId = String(authStore.user.branchId);
   }
-  if (dateFrom.value) p.date_from = dateFrom.value;
-  if (dateTo.value) p.date_to = dateTo.value;
+  if (dateFrom.value) p.dateFrom = dateFrom.value;
+  if (dateTo.value) p.dateTo = dateTo.value;
   if (type.value) p.type = type.value;
   if (status.value) p.status = status.value;
-  if (paymentMethodId.value) p.payment_method_id = Number(paymentMethodId.value);
-  if (customerId.value) p.customer_id = Number(customerId.value);
-  if (supplierId.value) p.supplier_id = Number(supplierId.value);
-  if (createdBy.value) p.created_by = Number(createdBy.value);
+  if (paymentMethodId.value) p.paymentMethodId = Number(paymentMethodId.value);
+  if (customerId.value) p.customerId = Number(customerId.value);
+  if (supplierId.value) p.supplierId = Number(supplierId.value);
+  if (createdBy.value) p.createdBy = Number(createdBy.value);
   return p;
 });
 
-// --- Load data ---
+// Load data
 async function load() {
   isLoading.value = true;
   loadError.value = '';
@@ -405,23 +401,23 @@ async function load() {
     if (result.status === 'success') {
       const { items: rows, meta: m } = result.data || { items: [], meta: {} };
       items.value = rows || [];
-      meta.value = m || { total: (rows || []).length, page: 1, per_page: (rows || []).length };
+      meta.value = m || { total: (rows || []).length, page: 1, perPage: (rows || []).length };
     } else {
       items.value = [];
-      meta.value = { total: 0, page: 1, per_page: perPage.value };
+      meta.value = { total: 0, page: 1, perPage: perPage.value };
       loadError.value = result.message || 'تعذر تحميل العمليات المالية';
     }
   } catch (e) {
     console.error('Failed to load payments', e);
     items.value = [];
-    meta.value = { total: 0, page: 1, per_page: perPage.value };
+    meta.value = { total: 0, page: 1, perPage: perPage.value };
     loadError.value = e?.response?.data?.message || e?.message || 'تعذر تحميل العمليات المالية';
   } finally {
     isLoading.value = false;
   }
 }
 
-// --- Reset filters ---
+// Reset filters
 function resetFilters() {
   dateFrom.value = '';
   dateTo.value = '';
@@ -438,29 +434,29 @@ function resetFilters() {
   load();
 }
 
-// --- Export CSV ---
+// Export CSV
 function exportCsv() {
   const rows = (items.value || []).map(r => ({
     id: r.id,
-    date: r.payment_date,
+    date: r.paymentDate,
     reference: r.reference,
-    reference_label: r.reference_label,
-    status: r.status_code || r.status,
-    status_label: r.status_label,
+    referenceLabel: r.referenceLabel,
+    status: r.statusCode || r.status,
+    statusLabel: r.statusLabel,
     amount: r.amount,
-    payment_method_id: r.payment_method_id,
-    payment_method_name: r.payment_method_name,
-    created_by: r.created_by_name,
+    paymentMethodId: r.paymentMethodId,
+    paymentMethodName: r.paymentMethodName,
+    createdBy: r.createdByName,
     customer: customerDisplayName(r),
-    supplier: r.supplier_name || r.supplier_id,
-    sale_id: r.sale_id,
-    purchase_id: r.purchase_id,
-    created_at: r.created_at,
+    supplier: r.supplierName || r.supplierId,
+    saleId: r.saleId,
+    purchaseId: r.purchaseId,
+    createdAt: r.createdAt,
   }));
   paymentStore.exportToCsv(`payments_${getLocalDateISO()}.csv`, rows);
 }
 
-// --- Export PDF (full columns like original) ---
+// Export PDF (full columns like original)
 function exportPdf() {
   const rows = items.value || [];
   const win = window.open('', '_blank');
@@ -492,16 +488,16 @@ function exportPdf() {
   `;
   const body = rows.map(r => `
     <tr>
-      <td>${r.payment_date ? new Date(r.payment_date).toLocaleDateString('en-GB') : '-'}</td>
+      <td>${r.paymentDate ? new Date(r.paymentDate).toLocaleDateString('en-GB') : '-'}</td>
       <td>#${r.id}</td>
       <td>${r.reference || '-'}</td>
-      <td>${r.reference_label || (String(r.reference || '').split('#')[0] || '')}</td>
-      <td>${r.status_label || r.status || r.status_code || '-'}</td>
-      <td>${r.payment_method_name || '-'}</td>
-      <td>${r.created_by_name || '-'}</td>
+      <td>${r.referenceLabel || (String(r.reference || '').split('#')[0] || '')}</td>
+      <td>${r.statusLabel || r.status || r.statusCode || '-'}</td>
+      <td>${r.paymentMethodName || '-'}</td>
+      <td>${r.createdByName || '-'}</td>
       <td>${Number(r.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
       <td>${customerDisplayName(r)}</td>
-      <td>${r.supplier_name || r.supplier_id || '-'}</td>
+      <td>${r.supplierName || r.supplierId || '-'}</td>
     </tr>
   `).join('');
   const summary = `
@@ -520,11 +516,11 @@ function exportPdf() {
   win.print();
 }
 
-// --- Pagination ---
+// Pagination
 function nextPage() { if (page.value * perPage.value < meta.value.total) { page.value += 1; load(); } }
 function prevPage() { if (page.value > 1) { page.value -= 1; load(); } }
 
-// --- Lifecycle ---
+// Lifecycle
 const cleanup = ref(() => {});
 
 onMounted(async () => {
@@ -545,12 +541,12 @@ onMounted(async () => {
     if (data.users) userStore.users = data.users;
     if (data.settings) {
       // Apply settings to currency composable if needed
-      if (data.settings.currency || data.settings.currency_symbol) {
+      if (data.settings.currency || data.settings.currencySymbol) {
         // Settings are already handled by fetchSettings, but we can use cached values
       }
     }
     
-    console.log('[PaymentsList] Bootstrap data loaded successfully');
+    logger.debug('[PaymentsList] Bootstrap data loaded successfully');
   } catch (e) {
     console.warn('[PaymentsList] Bootstrap API failed, falling back to individual requests', e);
     
@@ -570,7 +566,6 @@ onMounted(async () => {
     if (!supplierWrap.value?.contains(e.target)) showSupplierList.value = false;
     if (!userWrap.value?.contains(e.target)) showUserList.value = false;
   };
-  // Close dropdowns on scroll (preserved from original)
   const onScroll = () => {
     showCustomerList.value = false;
     showSupplierList.value = false;

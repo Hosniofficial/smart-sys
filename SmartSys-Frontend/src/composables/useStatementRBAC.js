@@ -1,3 +1,4 @@
+import logger from '@/utils/services/logger'
 import { computed } from 'vue';
 import { useAuthStore } from '@/stores/auth/authStore';
 
@@ -18,7 +19,7 @@ import { useAuthStore } from '@/stores/auth/authStore';
 export function useStatementRBAC(type = 'customers') {
   const authStore = useAuthStore();
 
-  // ─── Role Checks ──────────────────────────────────────────────────────────
+  // Role Checks
 
   const isSuperAdmin = computed(() => authStore.isSuperAdmin);
   const isAdmin = computed(() => authStore.isAdmin);
@@ -26,9 +27,9 @@ export function useStatementRBAC(type = 'customers') {
 
   const userRole = computed(() => authStore.user?.role || '');
   const userId = computed(() => authStore.user?.id);
-  const userTenantId = computed(() => authStore.user?.tenant_id);
+  const userTenantId = computed(() => authStore.user?.tenantId);
 
-  // ─── Permission: View Statement ────────────────────────────────────────────
+  // Permission: View Statement
 
   /**
    * هل يمكن للمستخدم عرض كشف الحساب؟
@@ -53,7 +54,7 @@ export function useStatementRBAC(type = 'customers') {
     return allowedRoles.includes(userRole.value?.toLowerCase());
   });
 
-  // ─── Permission: Export Statement ──────────────────────────────────────────
+  // Permission: Export Statement
 
   /**
    * هل يمكن للمستخدم تصدير كشف الحساب (PDF/CSV)؟
@@ -75,7 +76,7 @@ export function useStatementRBAC(type = 'customers') {
     return false;
   });
 
-  // ─── Permission: Edit Statement ────────────────────────────────────────────
+  // Permission: Edit Statement
 
   /**
    * هل يمكن للمستخدم تعديل الحسابات؟
@@ -91,7 +92,7 @@ export function useStatementRBAC(type = 'customers') {
     return isSuperAdmin.value || (isAdmin.value && userRole.value !== 'cashier');
   });
 
-  // ─── Permission: Delete Statement ──────────────────────────────────────────
+  // Permission: Delete Statement
 
   /**
    * هل يمكن للمستخدم حذف بيانات الحسابات؟
@@ -103,7 +104,7 @@ export function useStatementRBAC(type = 'customers') {
     return isSuperAdmin.value;
   });
 
-  // ─── Permission: View Sensitive Data ──────────────────────────────────────
+  // Permission: View Sensitive Data
 
   /**
    * هل يمكن للمستخدم رؤية بيانات حساسة؟
@@ -124,7 +125,7 @@ export function useStatementRBAC(type = 'customers') {
     return userRole.value?.toLowerCase() === 'cashier';
   });
 
-  // ─── Permission: View Aging Analysis ──────────────────────────────────
+  // Permission: View Aging Analysis
 
   /**
    * هل يمكن للمستخدم رؤية تحليل الأعمار (Aging Analysis)؟
@@ -142,7 +143,7 @@ export function useStatementRBAC(type = 'customers') {
     return userRole.value?.toLowerCase() === 'accountant';
   });
 
-  // ─── Permission: View Account Analysis ─────────────────────────────────────
+  // Permission: View Account Analysis
 
   /**
    * هل يمكن للمستخدم رؤية التحليل المالي المفصل؟
@@ -160,7 +161,7 @@ export function useStatementRBAC(type = 'customers') {
     return userRole.value?.toLowerCase() === 'accountant';
   });
 
-  // ─── Permission: Print/Generate Reports ────────────────────────────────────
+  // Permission: Print/Generate Reports
 
   /**
    * هل يمكن للمستخدم طباعة/توليد التقارير؟
@@ -177,7 +178,7 @@ export function useStatementRBAC(type = 'customers') {
     return false;
   });
 
-  // ─── Helper: Check if can view specific statement ────────────────────────
+  // Helper: Check if can view specific statement
 
   /**
    * هل يمكن للمستخدم عرض حساب معين؟
@@ -203,7 +204,7 @@ export function useStatementRBAC(type = 'customers') {
     return userRole.value?.toLowerCase() === 'cashier';
   };
 
-  // ─── Audit Logging ────────────────────────────────────────────────────────
+  // Audit Logging
 
   /**
    * تسجيل عملية وصول لأغراض المراجعة
@@ -222,9 +223,8 @@ export function useStatementRBAC(type = 'customers') {
 
     // يمكن إرسال هذا للخادم لاحقاً
     if (import.meta.env.DEV) {
-      console.log('[RBAC Audit]', auditLog);
+      logger.debug('[RBAC Audit]', auditLog);
     }
-
 
   };
 
@@ -247,10 +247,9 @@ export function useStatementRBAC(type = 'customers') {
       console.warn('[RBAC Denial]', auditLog);
     }
 
-
   };
 
-  // ─── Return Public API ─────────────────────────────────────────────────────
+  // Return Public API
 
   return {
     // State

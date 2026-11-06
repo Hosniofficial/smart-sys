@@ -2,11 +2,8 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-amber-100" dir="rtl">
     <PageLoadingBar :active="isLoading" />
     
-    <!-- Top Progress Bar -->
-
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header Area -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="اعتماد الفواتير المعلقة"
@@ -17,7 +14,6 @@
         @branch-changed="onBranchChange"
       >
         <template #controls>
-          <!-- New Invoice Alert -->
           <transition name="fade-scale">
             <div v-if="newInvoicesAlert" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 text-white text-xs font-bold shadow-lg shadow-amber-900/20 animate-bounce">
               <i class="fas fa-bell"></i>
@@ -25,9 +21,7 @@
             </div>
           </transition>
 
-          <!-- Polling + Pending unified card -->
           <div class="flex items-center gap-0 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden divide-x divide-x-reverse divide-slate-100">
-            <!-- مزامنة مستمرة -->
             <div class="flex items-center gap-2 px-3 py-2">
               <div :class="isPolling ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'" class="w-1.5 h-1.5 rounded-full shrink-0"></div>
               <div class="leading-none">
@@ -37,12 +31,10 @@
                 <p v-if="lastUpdatedLabel" class="text-[9px] text-slate-400 mt-0.5">{{ lastUpdatedLabel }}</p>
               </div>
             </div>
-            <!-- عدد المعلق -->
             <div class="px-3 py-2 text-center leading-none">
               <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">المعلق</p>
               <p class="text-base font-bold text-slate-900 font-mono leading-none">{{ total }}</p>
             </div>
-            <!-- زر تحديث -->
             <button
               type="button"
               :disabled="isLoading"
@@ -58,14 +50,13 @@
         </template>
       </PageHeader>
 
-      <!-- Main Content Card -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         
         <!-- Summary Cards (Total/Paid/Balance) -->
         <div v-if="rows.length > 0" class="grid grid-cols-3 gap-4 p-4 bg-white border-b border-slate-100">
           <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 text-center">
             <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">إجمالي المعلق</p>
-            <p class="text-base font-bold font-mono text-slate-900">{{ formatPrice(rows.reduce((sum, r) => sum + Number(r.net_total_amount ?? r.total_amount ?? 0), 0)) }}</p>
+            <p class="text-base font-bold font-mono text-slate-900">{{ formatPrice(rows.reduce((sum, r) => sum + Number(r.netTotalAmount ?? r.totalAmount ?? 0), 0)) }}</p>
           </div>
           <div class="p-3 rounded-lg bg-blue-50 border border-blue-200 text-center">
             <p class="text-[9px] font-bold text-blue-600 uppercase tracking-widest mb-1">عدد الطلبات</p>
@@ -73,13 +64,11 @@
           </div>
           <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-center">
             <p class="text-[9px] font-bold text-emerald-600 uppercase tracking-widest mb-1">متوسط الفاتورة</p>
-            <p class="text-base font-bold font-mono text-emerald-900">{{ formatPrice(rows.length > 0 ? rows.reduce((sum, r) => sum + Number(r.net_total_amount ?? r.total_amount ?? 0), 0) / rows.length : 0) }}</p>
+            <p class="text-base font-bold font-mono text-emerald-900">{{ formatPrice(rows.length > 0 ? rows.reduce((sum, r) => sum + Number(r.netTotalAmount ?? r.totalAmount ?? 0), 0) / rows.length : 0) }}</p>
           </div>
         </div>
 
-        <!-- High-Density Approvals Table Wrapper -->
         <div>
-          <!-- High-Density Approvals Table -->
           <div class="overflow-x-auto">
             <table class="w-full text-right border-collapse">
               <thead>
@@ -94,14 +83,12 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 font-medium">
-                <!-- Loading Skeleton -->
                 <template v-if="isLoading">
                   <tr v-for="n in 5" :key="n" class="animate-pulse">
                     <td v-for="m in 7" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                   </tr>
                 </template>
                 
-                <!-- Empty State -->
                 <tr v-else-if="!rows.length">
                   <td colspan="7" class="py-24 text-center text-slate-300">
                      <i class="fas fa-check-double text-3xl mb-4 opacity-20"></i>
@@ -109,22 +96,21 @@
                   </td>
                 </tr>
 
-                <!-- Data Rows -->
                 <tr v-for="s in rows" :key="s.id" class="hover:bg-blue-50/20 transition-all group">
                   <td class="px-6 py-4 text-xs font-bold text-slate-900 font-mono">#{{ s.id }}</td>
-                  <td class="px-4 py-4 text-[10px] font-mono text-slate-400">{{ formatDateTime(s.created_at || s.sale?.created_at) }}</td>
-                  <td class="px-4 py-4 text-xs font-bold text-slate-700">{{ s.customer_name || s.sale?.customer_name || 'عميل نقدي' }}</td>
+                  <td class="px-4 py-4 text-[10px] font-mono text-slate-400">{{ formatDateTime(s.createdAt || s.sale?.createdAt) }}</td>
+                  <td class="px-4 py-4 text-xs font-bold text-slate-700">{{ s.customerName || s.sale?.customerName || 'عميل نقدي' }}</td>
                   <td class="px-4 py-4 text-center">
                     <span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-500">
-                      {{ s.total_items ?? s.items_count ?? s.sale?.items?.length ?? '-' }}
+                      {{ s.totalItems ?? s.itemsCount ?? s.sale?.items?.length ?? '-' }}
                     </span>
                   </td>
                   <td class="px-4 py-4 text-xs font-bold text-blue-600 font-mono tracking-tighter">
-                    {{ formatPrice(s.net_total_amount ?? s.total_amount ?? s.sale?.net_total_amount) }}
+                    {{ formatPrice(s.netTotalAmount ?? s.totalAmount ?? s.sale?.netTotalAmount) }}
                   </td>
                   <td class="px-4 py-4 text-center">
-                    <span :class="[kindClass(s.payment_method_kind ?? s.sale?.payment_method_kind ?? s.payment_method?.kind)]" class="px-2 py-0.5 rounded text-[9px] font-bold border">
-                      {{ kindLabel(s.payment_method_kind ?? s.sale?.payment_method_kind ?? s.payment_method?.kind) }}
+                    <span :class="[kindClass(s.paymentMethodKind ?? s.sale?.paymentMethodKind ?? s.paymentMethod?.kind)]" class="px-2 py-0.5 rounded text-[9px] font-bold border">
+                      {{ kindLabel(s.paymentMethodKind ?? s.sale?.paymentMethodKind ?? s.paymentMethod?.kind) }}
                     </span>
                   </td>
                   <td class="px-8 py-4 text-center">
@@ -139,7 +125,6 @@
             </table>
           </div>
 
-          <!-- Pagination -->
           <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
               صفحة <span class="text-slate-900">{{ page }}</span> من <span class="text-slate-900">{{ totalPages }}</span>
@@ -167,7 +152,6 @@
       </div>
     </div>
 
-    <!-- Action Modal: Restructured for SaaS Standards -->
     <Teleport to="body">
       <transition name="fade">
         <div v-if="actionModal.open" class="fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto p-4 pt-20 md:pt-24 bg-slate-900/40 backdrop-blur-sm" dir="rtl" @click.self="closeAction">
@@ -184,7 +168,6 @@
           </div>
 
           <div class="p-6 md:p-8 space-y-6 overflow-y-auto">
-            <!-- Source Context -->
             <div class="p-4 rounded-xl border border-blue-100 bg-blue-50/70 flex justify-between items-center">
                <div><p class="text-[9px] font-bold text-blue-500 uppercase mb-1">إجمالي الفاتورة شامل الضريبة</p><p class="text-xl font-bold font-mono tracking-tighter text-blue-700">{{ formatPrice(actionModal.invoiceTotal) }}</p></div>
                <div class="text-left"><p class="text-[9px] font-bold text-slate-400 uppercase mb-1">رقم الطلب</p><p class="text-xs font-bold font-mono text-slate-700">#{{ actionModal.id }}</p></div>
@@ -194,7 +177,6 @@
               <p class="text-xs leading-relaxed text-rose-700">سيتم إرجاع الفاتورة إلى حالة مرفوضة ولن يتم ترحيلها للبيع. اكتب ملاحظة مختصرة توضح سبب القرار.</p>
             </div>
             <div v-if="actionModal.mode === 'approve'" class="space-y-6 animate-fadeIn">
-               <!-- Alert Box: Payment Type Info -->
                <div v-if="approvalPaymentMethodIsCredit" class="p-4 rounded-xl border border-amber-200 bg-amber-50 text-right space-y-2">
                   <p class="text-[10px] font-bold text-amber-600 uppercase tracking-widest">⚠️ فاتورة آجلة</p>
                   <p class="text-xs text-amber-700 leading-relaxed">هذه فاتورة بنظام الآجل (الاقتراض)، لا تتطلب تحصيل نقدي الآن. يمكن تحديث التاريخ المستحق لاحقاً.</p>
@@ -273,7 +255,6 @@
       </transition>
     </Teleport>
 
-    <!-- Post-Approval Print: Restructured -->
     <Teleport to="body">
       <transition name="fade">
         <div v-if="printModal.open" class="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
@@ -300,16 +281,16 @@
     <HistoryDetailsModal
       :show="showDetails && !!details"
       @close="showDetails = false"
-      :title="`مراجعة أصناف الفاتورة ${details?.sale?.invoice_number || details?.invoice_number || '#' + (details?.sale?.id || details?.id || '')}`"
+      :title="`مراجعة أصناف الفاتورة ${details?.sale?.invoiceNumber || details?.invoiceNumber || '#' + (details?.sale?.id || details?.id || '')}`"
       icon="fas fa-clipboard-check"
     >
           <div class="space-y-6">
             <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
               <div v-for="info in [
-                { l: 'العميل', v: details?.sale?.customer_name ?? details?.customer_name ?? 'عميل نقدي' },
-                { l: 'الوقت والتاريخ', v: formatDateTime(details?.sale?.created_at ?? details?.created_at) },
-                { l: 'الكاشير', v: details?.sale?.created_by_name ?? details?.created_by_name ?? details?.sale?.user_name ?? details?.user_name ?? '-' },
-                { l: 'طريقة الدفع', v: details?.sale?.payment_method_name ?? details?.payment_method_name ?? '-' },
+                { l: 'العميل', v: details?.sale?.customerName ?? details?.customerName ?? 'عميل نقدي' },
+                { l: 'الوقت والتاريخ', v: formatDateTime(details?.sale?.createdAt ?? details?.createdAt) },
+                { l: 'الكاشير', v: details?.sale?.createdByName ?? details?.createdByName ?? details?.sale?.userName ?? details?.userName ?? '-' },
+                { l: 'طريقة الدفع', v: details?.sale?.paymentMethodName ?? details?.paymentMethodName ?? '-' },
                 { l: 'إجمالي الفاتورة شامل الضريبة', v: formatPrice(getSaleGrossTotal(previewSale)), c: 'text-blue-600 font-bold' }
               ]" :key="info.l" class="min-w-0 space-y-1 rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-2">
                 <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">{{ info.l }}</p>
@@ -322,7 +303,7 @@
                 <thead><tr class="bg-slate-50 border-b border-slate-100 font-bold text-slate-400 uppercase tracking-tighter"><th class="px-4 py-3">الصنف</th><th class="px-4 py-3 text-center">الكمية</th><th class="px-4 py-3 text-center">قبل الخصم</th><th class="px-4 py-3 text-center">الخصم</th><th class="px-4 py-3 text-center">الضريبة</th><th class="px-4 py-3 text-left">الصافي</th></tr></thead>
                 <tbody class="divide-y divide-slate-100 font-medium">
                   <tr v-for="it in (details?.items || details?.sale?.items || [])" :key="it.id">
-                    <td class="px-4 py-3 text-slate-800 font-bold">{{ it.name || it.product_name }}</td>
+                    <td class="px-4 py-3 text-slate-800 font-bold">{{ it.name || it.productName }}</td>
                     <td class="px-4 py-3 text-center font-bold text-slate-500">{{ it.quantity ?? it.qty }}</td>
                     <td class="px-4 py-3 text-center font-mono text-slate-700">{{ formatPrice(itemPrice(it) * itemQty(it)) }}</td>
                     <td class="px-4 py-3 text-center font-mono text-rose-500">{{ formatPrice(itemDiscount(it)) }}</td>
@@ -338,12 +319,12 @@
 
             <div class="flex justify-end">
               <div class="w-full rounded-xl border border-slate-200 bg-slate-50 p-5 text-slate-800 flex flex-col justify-center space-y-2.5 md:w-80">
-                <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المجموع قبل الخصم</span><span class="font-mono font-bold">{{ formatPrice(previewSale.total_amount ?? 0) }}</span></div>
-                <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>الخصم</span><span class="font-mono font-bold text-rose-500">- {{ formatPrice(previewSale.discount_value ?? 0) }}</span></div>
-                <div class="flex justify-between text-[11px] font-medium text-slate-500 pb-2 border-b border-slate-200"><span>الضريبة ({{ Number(previewSale.tax_rate || 0).toFixed(2).replace(/\.?0+$/, '') }}%)</span><span class="font-mono font-bold">{{ formatPrice(previewSale.tax_amount ?? 0) }}</span></div>
+                <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المجموع قبل الخصم</span><span class="font-mono font-bold">{{ formatPrice(previewSale.totalAmount ?? 0) }}</span></div>
+                <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>الخصم</span><span class="font-mono font-bold text-rose-500">- {{ formatPrice(previewSale.discountValue ?? 0) }}</span></div>
+                <div class="flex justify-between text-[11px] font-medium text-slate-500 pb-2 border-b border-slate-200"><span>الضريبة ({{ Number(previewSale.taxRate || 0).toFixed(2).replace(/\.?0+$/, '') }}%)</span><span class="font-mono font-bold">{{ formatPrice(previewSale.taxAmount ?? 0) }}</span></div>
                 <div class="flex justify-between items-center rounded-lg bg-blue-100 border border-blue-200 px-3 py-2.5 text-blue-800"><span class="text-[11px] font-bold">الإجمالي النهائي شامل الضريبة</span><span class="font-mono font-bold">{{ formatPrice(getSaleGrossTotal(previewSale)) }}</span></div>
-                <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المدفوع</span><span class="font-mono font-bold text-emerald-600">{{ formatPrice(previewSale.actual_paid_amount ?? previewSale.paid_amount ?? 0) }}</span></div>
-                <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المتبقي</span><span class="font-mono font-bold text-amber-600">{{ formatPrice(previewSale.remaining_balance ?? Math.max(0, getSaleGrossTotal(previewSale) - Number(previewSale.paid_amount || 0))) }}</span></div>
+                <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المدفوع</span><span class="font-mono font-bold text-emerald-600">{{ formatPrice(previewSale.actualPaidAmount ?? previewSale.paidAmount ?? 0) }}</span></div>
+                <div class="flex justify-between text-[11px] font-medium text-slate-500"><span>المتبقي</span><span class="font-mono font-bold text-amber-600">{{ formatPrice(previewSale.remainingBalance ?? Math.max(0, getSaleGrossTotal(previewSale) - Number(previewSale.paidAmount || 0))) }}</span></div>
               </div>
             </div>
           </div>
@@ -377,7 +358,6 @@ import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import PaginationControls from '@/components/ui/PaginationControls.vue';
 
-// --- Logic Initialization (STRICTLY PRESERVED) ---
 const { showToast } = useToast()
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency()
 const { breadcrumb } = useBreadcrumb()
@@ -412,7 +392,7 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.valu
 const isLoading = ref(false)
 let listAbortCtrl = null
 
-// ─── Real-time polling ─────────────────────────────────────────────
+// Real-time polling
 const POLL_INTERVAL = 15000
 let pollTimer = null
 let pollingBusy = false
@@ -459,11 +439,11 @@ const approvalPaymentError = computed(() => {
 })
 
 const getSaleGrossTotal = (sale) => {
-  if (sale?.grand_total !== undefined && sale?.grand_total !== null) {
-    return Math.max(0, Number(sale.grand_total) || 0)
+  if (sale?.grandTotal !== undefined && sale?.grandTotal !== null) {
+    return Math.max(0, Number(sale.grandTotal) || 0)
   }
-  const net = Number(sale?.net_total_amount ?? sale?.total_amount ?? 0) || 0
-  const tax = Number(sale?.tax_amount ?? 0) || 0
+  const net = Number(sale?.netTotalAmount ?? sale?.totalAmount ?? 0) || 0
+  const tax = Number(sale?.taxAmount ?? 0) || 0
   return Math.max(0, Math.round((net + tax + Number.EPSILON) * 100) / 100)
 }
 
@@ -475,12 +455,12 @@ const formatDateTime = (val) => {
   } catch { return String(val) }
 }
 
-const itemPrice = (it) => { const v = it?.price ?? it?.sale_price ?? it?.unit_price; return Number(v ?? 0); }
+const itemPrice = (it) => { const v = it?.price ?? it?.salePrice ?? it?.unitPrice; return Number(v ?? 0); }
 const itemQty = (it) => Number((it?.quantity ?? it?.qty ?? 1))
-const itemDiscount = (it) => Number(it?.discount_value ?? 0)
-const itemTax = (it) => Number(it?.tax_amount ?? 0)
+const itemDiscount = (it) => Number(it?.discountValue ?? 0)
+const itemTax = (it) => Number(it?.taxAmount ?? 0)
 const itemTotal = (it) => {
-  const v = it?.total ?? it?.net_total
+  const v = it?.total ?? it?.netTotal
   if (v != null) return Number(v)
   return itemPrice(it) * itemQty(it)
 }
@@ -512,13 +492,13 @@ const fetchPending = async ({ silent = false } = {}) => {
     approvalsStore.clearCache()
     const params = { page: page.value, limit: limit.value };
     if (branchIsolation.isExempt.value) {
-      if (selectedBranch.value) params.branch_id = String(selectedBranch.value);
+      if (selectedBranch.value) params.branchId = String(selectedBranch.value);
     } else {
-      params.branch_id = branchIsolation.getRequiredBranchId();
+      params.branchId = branchIsolation.getRequiredBranchId();
     }
     const res = await approvalsStore.listPending(params, { skipLoader: silent })
     const newRows = res.data || []
-    const newTotal = Number(res.pagination?.total || newRows.length)
+    const newTotal = Number(res.meta?.total || newRows.length)
 
     // Detect new invoices by ID comparison (more accurate than count)
     const newIds = newRows.map(r => r.id)
@@ -603,9 +583,9 @@ const handleVisibilityChange = () => {
 const openAction = (mode, id) => {
   const row = rows.value.find(r => r.id === id)
   const invoiceTotal = getSaleGrossTotal(row)
-  const kind = String(row?.payment_method_kind ?? row?.sale?.payment_method_kind ?? row?.payment_method?.kind ?? '').toLowerCase()
+  const kind = String(row?.paymentMethodKind ?? row?.sale?.paymentMethodKind ?? row?.paymentMethod?.kind ?? '').toLowerCase()
   const isCredit = kind === 'credit'
-  const defaultMethodId = isCredit ? '' : (row?.payment_method_id || (paymentMethods.value[0]?.id ?? ''))
+  const defaultMethodId = isCredit ? '' : (row?.paymentMethodId || (paymentMethods.value[0]?.id ?? ''))
   const defaultPaid    = isCredit ? 0 : invoiceTotal
   actionModal.value = { open: true, mode, id, note: '', paymentMethodId: defaultMethodId, paidAmount: defaultPaid, invoiceTotal, isCredit }
 }
@@ -618,8 +598,8 @@ const submitAction = async () => {
     const approvalsStore = useApprovalsStore();
     if (actionModal.value.mode === 'approve') {
       const override = {
-        payment_method_id: actionModal.value.paymentMethodId || undefined,
-        paid_amount: actionModal.value.paidAmount ?? undefined
+        paymentMethodId: actionModal.value.paymentMethodId || undefined,
+        paidAmount: actionModal.value.paidAmount ?? undefined
       }
       const res = await approvalsStore.approve(actionModal.value.id, actionModal.value.note, override)
       if (res.status === 'error') { showToast(res.message || 'فشل التنفيذ', 'error'); return }

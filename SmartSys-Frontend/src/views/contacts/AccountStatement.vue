@@ -1,7 +1,6 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
 
-    <!-- Global Loading Progress -->
     <PageLoadingBar :active="statementLoading" />
 
     <main class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
@@ -35,11 +34,9 @@
         </template>
       </PageHeader>
 
-      <!-- Filters Panel -->
       <transition name="slide-down">
         <div v-if="showFilters" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden animate-fadeIn">
           <div class="p-6 space-y-6">
-          <!-- Filter Grid -->
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div class="space-y-1.5">
               <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">من تاريخ</label>
@@ -107,13 +104,11 @@
         </div>
       </transition>
 
-      <!-- Loading State: Refined Overlay -->
       <div v-if="statementLoading" class="py-32 text-center bg-white border border-slate-200 rounded-xl shadow-sm">
         <BaseSpinner :size="40" color="#2563eb" />
         <p class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-4 animate-pulse">جاري جلب وتحليل الحركات المالية...</p>
       </div>
 
-      <!-- Empty State -->
       <div v-else-if="!data" class="py-32 text-center bg-white border border-slate-200 rounded-xl shadow-sm">
         <div class="w-16 h-16 bg-slate-50 text-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
           <i class="fas fa-search-dollar text-2xl"></i>
@@ -122,10 +117,8 @@
         <p class="text-xs text-slate-400 mt-1">يرجى تعديل الفلاتر أو تحديد نطاق زمني مختلف للبحث.</p>
       </div>
 
-      <!-- Main Report View -->
       <div v-else class="space-y-8 animate-fadeIn">
 
-        <!-- Official Report Identity -->
         <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div class="flex flex-col md:flex-row">
             <div class="p-8 flex-grow space-y-6">
@@ -160,20 +153,18 @@
           </div>
         </div>
 
-        <!-- KPI Performance Row -->
         <section class="grid grid-cols-2 lg:grid-cols-4 gap-6">
           <div v-for="stat in [
-            { l: 'الرصيد الافتتاحي', v: data.opening_balance, c: 'text-slate-600', bg: 'bg-white' },
-            { l: 'إجمالي مدين (+)', v: data.total_debit, c: 'text-rose-600', bg: 'bg-white' },
-            { l: 'إجمالي دائن (-)', v: data.total_credit, c: 'text-emerald-600', bg: 'bg-white' },
-            { l: 'الرصيد الختامي', v: data.closing_balance, c: 'text-blue-700', bg: 'bg-blue-50/50 border-blue-100' }
+            { l: 'الرصيد الافتتاحي', v: data.openingBalance, c: 'text-slate-600', bg: 'bg-white' },
+            { l: 'إجمالي مدين (+)', v: data.totalDebit, c: 'text-rose-600', bg: 'bg-white' },
+            { l: 'إجمالي دائن (-)', v: data.totalCredit, c: 'text-emerald-600', bg: 'bg-white' },
+            { l: 'الرصيد الختامي', v: data.closingBalance, c: 'text-blue-700', bg: 'bg-blue-50/50 border-blue-100' }
           ]" :key="stat.l" :class="[stat.bg]" class="border border-slate-200 p-5 rounded-xl shadow-sm space-y-1 group hover:border-slate-300 transition-all">
             <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{{ stat.l }}</p>
             <p :class="[stat.c, 'text-xl font-bold font-mono tracking-tighter']">{{ formatPriceEn(stat.v) }} <span class="text-[10px] opacity-40 font-sans mr-1">{{ currencySymbol }}</span></p>
           </div>
         </section>
 
-        <!-- View Mode Navigation: Professional Segmented Grid -->
         <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button v-for="tab in [
             { id: 'accounting', label: 'تفاصيل الحركات', sub: 'سجل القيود اليومية والأرصدة المتراكمة', icon: 'fa-list-ul', active: 'border-blue-500 bg-white ring-4 ring-blue-500/5' },
@@ -194,7 +185,6 @@
           </button>
         </section>
 
-        <!-- Dynamic Alert: Overdue Banner -->
         <transition name="fade">
           <div v-if="hasOverdueAlert" class="bg-rose-50 border border-rose-200 rounded-xl p-5 flex items-center justify-between shadow-sm">
             <div class="flex items-center gap-4">
@@ -203,19 +193,16 @@
               </div>
               <div>
                 <p class="text-xs font-bold text-rose-900 uppercase tracking-wide">تنبيه: مديونية متأخرة</p>
-                <p class="text-sm font-medium text-rose-700 mt-1">يوجد <strong>{{ overdueInvoices.length }}</strong> فاتورة متجاوزة لفترة الائتمان (30+ يوم) بإجمالي <strong>{{ formatPriceEn(overdueInvoices.reduce((s, it) => s + Number(it.outstanding || it.net_total_amount - (it.paid_amount || 0)), 0)) }}</strong></p>
+                <p class="text-sm font-medium text-rose-700 mt-1">يوجد <strong>{{ overdueInvoices.length }}</strong> فاتورة متجاوزة لفترة الائتمان (30+ يوم) بإجمالي <strong>{{ formatPriceEn(overdueInvoices.reduce((s, it) => s + Number(it.outstanding || it.netTotalAmount - (it.paidAmount || 0)), 0)) }}</strong></p>
               </div>
             </div>
             <button @click="activeTab = 'references'; referencesSubTab = 'invoices'" class="h-9 px-5 bg-rose-600 text-white rounded-md text-[10px] font-bold uppercase tracking-widest hover:bg-rose-700 transition-all">فحص الفواتير</button>
           </div>
         </transition>
 
-        <!-- View Content Container -->
         <div class="space-y-8">
           
-          <!-- 1. Accounting Ledger Tab -->
           <div v-if="activeTab === 'accounting'" class="space-y-6 animate-fadeIn">
-            <!-- View Mode Switcher -->
             <div class="flex bg-slate-100 p-1 rounded-lg border border-slate-200/50 w-fit">
                <button v-for="mode in [
                  {id: 'detailed', label: 'تفصيلي', icon: 'fa-list-ul'},
@@ -228,7 +215,6 @@
                </button>
             </div>
 
-            <!-- Detailed Table -->
             <div v-if="viewMode === 'detailed'" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
               <div class="overflow-x-auto">
                 <table class="w-full text-right border-collapse">
@@ -254,8 +240,8 @@
                             {{ transactionDocumentLabel(t) }}
                           </RouterLink>
                           <span v-else class="text-slate-900 font-bold">{{ transactionDocumentLabel(t) }}</span>
-                          <span :class="['px-2 py-0.5 rounded text-[9px] font-bold border whitespace-nowrap', badgeClass(t.type || t.transaction_type || t.reference_type || (t.reference || '').split('#')[0])]">
-                            {{ getTransactionTypeLabel(t.type || t.transaction_type || t.reference_type || (t.reference || '').split('#')[0]) || 'حركة' }}
+                          <span :class="['px-2 py-0.5 rounded text-[9px] font-bold border whitespace-nowrap', badgeClass(t.type || t.transactionType || t.referenceType || (t.reference || '').split('#')[0])]">
+                            {{ getTransactionTypeLabel(t.type || t.transactionType || t.referenceType || (t.reference || '').split('#')[0]) || 'حركة' }}
                           </span>
                         </div>
                         <div v-if="transactionRelatedReference(t) !== '—'" class="text-[9px] text-slate-400 mt-1 truncate max-w-[220px]" :title="transactionRelatedReference(t)">
@@ -271,8 +257,8 @@
                       <td class="px-4 py-3 font-bold font-mono tracking-tighter text-left whitespace-nowrap" :class="getBalanceColorClass(t)">
                         <!-- ✅ RESTORED: أيقونات اتجاه الرصيد -->
                         <span class="inline-flex items-center gap-1">
-                          <i v-if="String(t.balance_nature || 'zero').toLowerCase() === 'debit'" class="fas fa-arrow-up text-[9px]"></i>
-                          <i v-else-if="String(t.balance_nature || 'zero').toLowerCase() === 'credit'" class="fas fa-arrow-down text-[9px]"></i>
+                          <i v-if="String(t.balanceNature || 'zero').toLowerCase() === 'debit'" class="fas fa-arrow-up text-[9px]"></i>
+                          <i v-else-if="String(t.balanceNature || 'zero').toLowerCase() === 'credit'" class="fas fa-arrow-down text-[9px]"></i>
                           {{ getBalanceWithNature(t) }}
                         </span>
                       </td>
@@ -289,7 +275,6 @@
                 </table>
               </div>
 
-              <!-- Compact Pagination Footer -->
               <div class="px-6 py-4 bg-slate-50/30 border-t border-slate-100 flex items-center justify-between">
                 <div class="flex items-center gap-4">
                   <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">الصفحة: <span class="text-slate-900 font-mono">{{ txPage }} / {{ txPages }}</span></span>
@@ -306,7 +291,6 @@
               </div>
             </div>
 
-            <!-- ✅ RESTORED: وضع العرض "يومي مجمع" (كان مفقوداً بالكامل — الزر موجود لكن بدون محتوى) -->
             <div v-else-if="viewMode === 'daily'" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
               <div class="overflow-x-auto">
                 <table class="w-full text-right border-collapse">
@@ -326,12 +310,12 @@
                     </tr>
                     <tr v-for="d in dailyBalances" :key="d.date" class="hover:bg-slate-50 transition-all font-bold">
                       <td class="px-8 py-4 text-slate-900 font-mono tracking-tighter">{{ formatDateEn(d.date) }}</td>
-                      <td class="px-4 py-4 text-slate-400 font-mono">{{ formatPriceEn(d.opening_balance) }}</td>
-                      <td class="px-4 py-4 text-rose-600 font-mono tracking-tighter">{{ formatPriceEn(d.day_debit) }}</td>
-                      <td class="px-4 py-4 text-emerald-600 font-mono tracking-tighter">{{ formatPriceEn(d.day_credit) }}</td>
-                      <td class="px-4 py-4 font-mono text-sm" :class="d.closing_balance === 0 ? 'text-slate-500' : (d.closing_balance < 0 ? 'text-emerald-700' : 'text-rose-700')">{{ formatPriceEn(d.closing_balance) }}</td>
+                      <td class="px-4 py-4 text-slate-400 font-mono">{{ formatPriceEn(d.openingBalance) }}</td>
+                      <td class="px-4 py-4 text-rose-600 font-mono tracking-tighter">{{ formatPriceEn(d.dayDebit) }}</td>
+                      <td class="px-4 py-4 text-emerald-600 font-mono tracking-tighter">{{ formatPriceEn(d.dayCredit) }}</td>
+                      <td class="px-4 py-4 font-mono text-sm" :class="d.closingBalance === 0 ? 'text-slate-500' : (d.closingBalance < 0 ? 'text-emerald-700' : 'text-rose-700')">{{ formatPriceEn(d.closingBalance) }}</td>
                       <td class="px-8 py-4 text-center">
-                        <span class="bg-slate-100 text-slate-500 px-3 py-1 rounded text-[10px] font-bold">{{ new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(d.transaction_count || 0)) }}</span>
+                        <span class="bg-slate-100 text-slate-500 px-3 py-1 rounded text-[10px] font-bold">{{ new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(d.transactionCount || 0)) }}</span>
                       </td>
                     </tr>
                   </tbody>
@@ -370,15 +354,14 @@
               </div>
             </div>
 
-            <!-- Aging Summary: SAP Architecture (RBAC Protected) -->
-            <div v-if="canViewAgingAnalysis && isCustomer && data.aging_summary" class="bg-white border border-slate-200 rounded-xl p-8 shadow-sm space-y-6">
+            <div v-if="canViewAgingAnalysis && isCustomer && data.agingSummary" class="bg-white border border-slate-200 rounded-xl p-8 shadow-sm space-y-6">
               <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest px-1">تحليل أعمار المديونية (Aging Report)</h3>
               <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
                 <div v-for="age in [
-                  { l: 'حالي (غير مستحق)', v: data.aging_summary.current, s: agingCounts.current, c: 'text-emerald-600', bg: 'bg-emerald-500' },
-                  { l: '1 - 30 يوم', v: data.aging_summary['1_30_days'], s: agingCounts['1_30_days'], c: 'text-amber-500', bg: 'bg-amber-400' },
-                  { l: '31 - 60 يوم', v: data.aging_summary['31_60_days'], s: agingCounts['31_60_days'], c: 'text-orange-500', bg: 'bg-orange-500' },
-                  { l: '+60 يوم', v: data.aging_summary['60_plus_days'], s: agingCounts['60_plus_days'], c: 'text-rose-600', bg: 'bg-rose-600' }
+                  { l: 'حالي (غير مستحق)', v: data.agingSummary.current, s: agingCounts.current, c: 'text-emerald-600', bg: 'bg-emerald-500' },
+                  { l: '1 - 30 يوم', v: data.agingSummary['1_30_days'], s: agingCounts['1_30_days'], c: 'text-amber-500', bg: 'bg-amber-400' },
+                  { l: '31 - 60 يوم', v: data.agingSummary['31_60_days'], s: agingCounts['31_60_days'], c: 'text-orange-500', bg: 'bg-orange-500' },
+                  { l: '+60 يوم', v: data.agingSummary['60_plus_days'], s: agingCounts['60_plus_days'], c: 'text-rose-600', bg: 'bg-rose-600' }
                 ]" :key="age.l" class="space-y-3">
                   <div class="flex justify-between items-end">
                     <p class="text-[10px] font-bold text-slate-400 uppercase leading-none">{{ age.l }}</p>
@@ -393,7 +376,6 @@
             </div>
           </div>
 
-          <!-- 2. Daily Summary Tab -->
           <div v-else-if="activeTab === 'daily'" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm animate-fadeIn">
             <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
               <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest">تجميع الأرصدة اليومية</h3>
@@ -413,12 +395,12 @@
                 <tbody class="divide-y divide-slate-50 font-medium text-xs">
                   <tr v-for="d in dailyBalances" :key="d.date" class="hover:bg-slate-50/50 transition-colors">
                     <td class="px-8 py-4 font-mono font-bold">{{ formatDateEn(d.date) }}</td>
-                    <td class="px-4 py-4 font-mono text-slate-300">{{ formatPriceEn(d.opening_balance) }}</td>
-                    <td class="px-4 py-4 font-mono text-rose-600">{{ formatPriceEn(d.day_debit) }}</td>
-                    <td class="px-4 py-4 font-mono text-emerald-600">{{ formatPriceEn(d.day_credit) }}</td>
-                    <td class="px-4 py-4 font-mono text-slate-600">{{ formatPriceEn(d.day_debit - d.day_credit) }}</td>
-                    <td class="px-8 py-4 font-bold font-mono text-left text-sm" :class="d.closing_balance === 0 ? 'text-slate-400' : (d.closing_balance < 0 ? 'text-emerald-700' : 'text-rose-700')">
-                      {{ formatPriceEn(d.closing_balance) }}
+                    <td class="px-4 py-4 font-mono text-slate-300">{{ formatPriceEn(d.openingBalance) }}</td>
+                    <td class="px-4 py-4 font-mono text-rose-600">{{ formatPriceEn(d.dayDebit) }}</td>
+                    <td class="px-4 py-4 font-mono text-emerald-600">{{ formatPriceEn(d.dayCredit) }}</td>
+                    <td class="px-4 py-4 font-mono text-slate-600">{{ formatPriceEn(d.dayDebit - d.dayCredit) }}</td>
+                    <td class="px-8 py-4 font-bold font-mono text-left text-sm" :class="d.closingBalance === 0 ? 'text-slate-400' : (d.closingBalance < 0 ? 'text-emerald-700' : 'text-rose-700')">
+                      {{ formatPriceEn(d.closingBalance) }}
                     </td>
                   </tr>
                 </tbody>
@@ -426,9 +408,7 @@
             </div>
           </div>
 
-          <!-- 3. References & Documents Tab -->
           <div v-else-if="activeTab === 'references'" class="space-y-6 animate-fadeIn">
-            <!-- Reference Sub-tab Switcher -->
             <div class="flex bg-slate-100 p-1 rounded-lg border border-slate-200/50 w-fit">
                <button v-for="sub in [
                  {id: 'invoices', label: isCustomer ? 'فواتير المبيعات' : 'فواتير الشراء', icon: 'fa-file-invoice-dollar'},
@@ -441,7 +421,6 @@
                </button>
             </div>
 
-            <!-- Invoices Utility View -->
             <div v-if="referencesSubTab === 'invoices'" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
               <!-- ✅ RESTORED: عداد الفواتير المتأخرة -->
               <div class="px-6 py-4 bg-slate-50/30 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-wrap">
@@ -477,31 +456,31 @@
                       <td class="px-6 py-4 text-slate-400 font-mono">{{ formatDateEn(s.date) }}</td>
                       <td class="px-4 py-4">
                         <RouterLink v-if="invoiceLink(s)" :to="invoiceLink(s)" class="text-blue-600 hover:underline font-bold">
-                          {{ s.invoice_number || ('#' + s.id) }}
+                          {{ s.invoiceNumber || ('#' + s.id) }}
                         </RouterLink>
-                        <span v-else class="font-bold text-slate-900">{{ s.invoice_number || ('#' + s.id) }}</span>
+                        <span v-else class="font-bold text-slate-900">{{ s.invoiceNumber || ('#' + s.id) }}</span>
                       </td>
                       <td class="px-4 py-4">
                         <div class="font-semibold text-slate-700">{{ s.reference || '-' }}</div>
-                        <div class="text-[9px] text-slate-400 mt-0.5">{{ s.reference_label || refTypeLabel(s.reference) }}</div>
+                        <div class="text-[9px] text-slate-400 mt-0.5">{{ s.referenceLabel || refTypeLabel(s.reference) }}</div>
                       </td>
                       <td class="px-4 py-4 text-center">
                         <span :class="['px-2 py-0.5 rounded text-[9px] font-bold border', badgeClass(displayStatusCode(s, s.status))]">
-                          {{ displayStatusLabel(s, s.status, s.status_label) }}
+                          {{ displayStatusLabel(s, s.status, s.statusLabel) }}
                         </span>
                       </td>
-                      <td class="px-4 py-4 text-right font-mono text-slate-400">{{ new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(s.items_count ?? 0)) }}</td>
-                      <td class="px-4 py-4 text-right font-mono text-slate-500">{{ formatPriceEn(s.net_total_amount) }}</td>
-                      <td class="px-4 py-4 text-right font-mono text-slate-500">{{ formatPriceEn(s.tax_amount) }}</td>
+                      <td class="px-4 py-4 text-right font-mono text-slate-400">{{ new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(s.itemsCount ?? 0)) }}</td>
+                      <td class="px-4 py-4 text-right font-mono text-slate-500">{{ formatPriceEn(s.netTotalAmount) }}</td>
+                      <td class="px-4 py-4 text-right font-mono text-slate-500">{{ formatPriceEn(s.taxAmount) }}</td>
                       <td class="px-4 py-4 text-right">
-                        <span v-if="(s.discount_value || 0) > 0">
-                          <template v-if="s.discount_type === 'percentage'">{{ Number(s.discount_value).toFixed(2) }}%</template>
-                          <template v-else>{{ formatPriceEn(s.discount_value) }}</template>
+                        <span v-if="(s.discountValue || 0) > 0">
+                          <template v-if="s.discountType === 'percentage'">{{ Number(s.discountValue).toFixed(2) }}%</template>
+                          <template v-else>{{ formatPriceEn(s.discountValue) }}</template>
                         </span>
                         <span v-else class="text-slate-300">-</span>
                       </td>
-                      <td class="px-4 py-4 text-right font-mono text-slate-900 font-bold">{{ formatPriceEn(s.total_amount) }}</td>
-                      <td class="px-4 py-4 text-right font-mono text-emerald-600">{{ formatPriceEn(s.paid_amount) }}</td>
+                      <td class="px-4 py-4 text-right font-mono text-slate-900 font-bold">{{ formatPriceEn(s.totalAmount) }}</td>
+                      <td class="px-4 py-4 text-right font-mono text-emerald-600">{{ formatPriceEn(s.paidAmount) }}</td>
                       <td class="px-6 py-4 text-left font-mono font-bold" :class="getItemOutstanding(s) > 0 ? 'text-rose-600' : 'text-slate-200'">{{ formatPriceEn(getItemOutstanding(s)) }}</td>
                       <td class="px-4 py-4 text-center">
                         <span v-if="getItemOutstanding(s) > 0 && daysBetween(s.date) > 0" class="text-rose-500 font-black">
@@ -510,14 +489,13 @@
                         <span v-else class="text-slate-200">—</span>
                       </td>
                       <td class="px-4 py-4">
-                        <span v-if="s.has_journal" class="text-emerald-600 font-semibold text-[10px] flex items-center gap-1">
-                          <i class="fas fa-check-circle"></i> قيد #{{ s.journal_entry_id || '-' }}
+                        <span v-if="s.hasJournal" class="text-emerald-600 font-semibold text-[10px] flex items-center gap-1">
+                          <i class="fas fa-check-circle"></i> قيد #{{ s.journalEntryId || '-' }}
                         </span>
                         <span v-else class="text-slate-300 text-[10px]">لا</span>
                       </td>
                     </tr>
                   </tbody>
-                  <!-- ✅ RESTORED: صف الإجماليات -->
                   <tfoot class="bg-slate-50/80 font-bold border-t-2 border-slate-100">
                     <tr>
                       <td class="px-6 py-4 text-[10px] text-slate-400 uppercase tracking-widest" colspan="8">
@@ -583,7 +561,7 @@
                       <td class="px-4 py-4">
                         <div class="flex flex-col gap-1">
                           <span class="px-2 py-1 rounded bg-slate-100 text-slate-600 text-[9px] font-bold uppercase tracking-widest w-fit">{{ resolvedRefType(r) }}</span>
-                          <span v-if="r.source_label" class="text-[9px] text-slate-500 px-1">{{ r.source_label }}</span>
+                          <span v-if="r.sourceLabel" class="text-[9px] text-slate-500 px-1">{{ r.sourceLabel }}</span>
                           <span v-if="getTransactionSubtypeLabel(r)" class="text-[8px] text-slate-400 font-semibold px-1">{{ getTransactionSubtypeLabel(r) }}</span>
                         </div>
                       </td>
@@ -592,10 +570,10 @@
                         <div class="text-[9px]" :class="isReturnLinkedReceipt(r) ? 'text-rose-400 font-bold' : 'text-slate-400'">{{ resolvedRefLabel(r) }}</div>
                         <div v-if="allocatedInvoiceLabel(r)" class="text-[9px] mt-1.5 px-2 py-0.5 bg-cyan-50 text-cyan-700 rounded font-bold tracking-tight w-fit">{{ allocatedInvoiceLabel(r) }}</div>
                       </td>
-                      <td class="px-4 py-4 text-right font-mono text-slate-900 font-bold">{{ formatPriceEn(r.total_amount || r.paid_amount || 0) }}</td>
+                      <td class="px-4 py-4 text-right font-mono text-slate-900 font-bold">{{ formatPriceEn(r.totalAmount || r.paidAmount || 0) }}</td>
                       <td class="px-6 py-4">
-                        <span v-if="r.has_journal" class="text-emerald-600 flex items-center gap-1.5 text-[10px] font-bold">
-                          <i class="fas fa-check-circle"></i> مرحل - قيد #{{ r.journal_entry_id || '-' }}
+                        <span v-if="r.hasJournal" class="text-emerald-600 flex items-center gap-1.5 text-[10px] font-bold">
+                          <i class="fas fa-check-circle"></i> مرحل - قيد #{{ r.journalEntryId || '-' }}
                         </span>
                         <span v-else class="text-slate-300 text-[10px]">غير مرحل</span>
                       </td>
@@ -635,7 +613,7 @@
                   <p class="mt-1 text-[10px] text-slate-500">السندات المعروضة هنا قد تظهر أيضًا ضمن تبويب السندات والمراجع.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  <span v-if="referencesItems.length">إجمالي السجلات: <span class="text-slate-900 font-mono">{{ formatPriceEn(referencesItems.reduce((s, p) => s + Number(p.total_amount || p.paid_amount || 0), 0)) }}</span></span>
+                  <span v-if="referencesItems.length">إجمالي السجلات: <span class="text-slate-900 font-mono">{{ formatPriceEn(referencesItems.reduce((s, p) => s + Number(p.totalAmount || p.paidAmount || 0), 0)) }}</span></span>
                   <PaginationControls
                     v-if="referencesItems.length"
                     :page="refsPage"
@@ -664,15 +642,15 @@
                       <td class="px-6 py-4 text-slate-400 font-mono">{{ formatDateEn(p.date) }}</td>
                       <td class="px-4 py-4 font-bold text-slate-900">#{{ p.id }}</td>
                       <td class="px-4 py-4">
-                        <span :class="['px-2 py-1 rounded text-[9px] font-bold', p.type === 'receipt' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700']">{{ p.source_label || p.type_label || (p.type === 'receipt' ? 'قبض' : 'صرف') }}</span>
+                        <span :class="['px-2 py-1 rounded text-[9px] font-bold', p.type === 'receipt' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700']">{{ p.sourceLabel || p.typeLabel || (p.type === 'receipt' ? 'قبض' : 'صرف') }}</span>
                       </td>
                       <td class="px-4 py-4">
                         <span v-if="paymentInvoiceLabel(p)" class="text-blue-600">{{ paymentInvoiceLabel(p) }}</span>
                         <span v-else class="text-slate-300">—</span>
                       </td>
-                      <td class="px-4 py-4 text-right font-mono font-bold text-purple-600">{{ formatPriceEn(p.total_amount || p.paid_amount) }}</td>
+                      <td class="px-4 py-4 text-right font-mono font-bold text-purple-600">{{ formatPriceEn(p.totalAmount || p.paidAmount) }}</td>
                       <td class="px-4 py-4">
-                        <span v-if="p.has_journal" class="text-emerald-600 flex items-center gap-1.5 text-[10px] font-bold"><i class="fas fa-check-circle"></i> قيد #{{ p.journal_entry_id || '-' }}</span>
+                        <span v-if="p.hasJournal" class="text-emerald-600 flex items-center gap-1.5 text-[10px] font-bold"><i class="fas fa-check-circle"></i> قيد #{{ p.journalEntryId || '-' }}</span>
                         <span v-else class="text-slate-300 text-[10px]">غير مرحل</span>
                       </td>
                     </tr>
@@ -684,7 +662,7 @@
                         <div class="flex items-center justify-end gap-6 text-sm font-mono">
                           <div class="text-center">
                             <span class="text-[10px] text-purple-600 font-bold block mb-0.5">المجموع</span>
-                            <span class="text-base font-bold text-purple-700">{{ formatPriceEn(pagedReferences.reduce((s, p) => s + Number(p.total_amount || p.paid_amount || 0), 0)) }}</span>
+                            <span class="text-base font-bold text-purple-700">{{ formatPriceEn(pagedReferences.reduce((s, p) => s + Number(p.totalAmount || p.paidAmount || 0), 0)) }}</span>
                           </div>
                         </div>
                       </td>
@@ -701,7 +679,6 @@
       </div>
     </main>
 
-    <!-- Payment Collection Modal — Teleported to body to escape Layout stacking context -->
     <Teleport to="body">
       <Transition name="fade">
         <div
@@ -730,20 +707,20 @@
               </div>
               <div class="space-y-1.5">
                 <label class="metadata-label">تاريخ الدفع <span class="text-rose-500">*</span></label>
-                <input v-model="paymentData.payment_date" :disabled="hasPendingCustomerPayment" type="date" class="filter-input-v3 font-mono" required />
+                <input v-model="paymentData.paymentDate" :disabled="hasPendingCustomerPayment" type="date" class="filter-input-v3 font-mono" required />
               </div>
               <div class="space-y-1.5">
                 <label class="metadata-label">طريقة الدفع <span class="text-rose-500">*</span></label>
-                <select v-model="paymentData.payment_method_id" :disabled="hasPendingCustomerPayment" class="filter-input-v3 appearance-none" required>
+                <select v-model="paymentData.paymentMethodId" :disabled="hasPendingCustomerPayment" class="filter-input-v3 appearance-none" required>
                   <option value="">اختر طريقة الدفع</option>
                   <option v-for="m in collectiblePaymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option>
                 </select>
               </div>
               <div class="space-y-1.5">
                 <label class="metadata-label">الفرع <span class="text-rose-500">*</span></label>
-                <select v-model="paymentData.branch_id" :disabled="hasPendingCustomerPayment" class="filter-input-v3 appearance-none" required>
+                <select v-model="paymentData.branchId" :disabled="hasPendingCustomerPayment" class="filter-input-v3 appearance-none" required>
                   <option value="">اختر الفرع</option>
-                  <option v-for="w in branches" :key="w.id" :value="w.id">{{ w.name || w.branch_name }}</option>
+                  <option v-for="w in branches" :key="w.id" :value="w.id">{{ w.name || w.branchName }}</option>
                 </select>
               </div>
               <div class="space-y-1.5">
@@ -795,15 +772,16 @@ import BaseSpinner from '@/components/ui/BaseSpinner.vue';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 import { getLocalDateISO } from '@/utils';
 import { getImageUrl } from '@/utils';
+import { formatDateForLocale } from '@/utils/formatters/date';
 
-// --- Core Composables ---
+// Core Composables
 const route = useRoute();
 const router = useRouter();
 const { showToast } = useToast();
 const { currencySymbol, formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const { validateDateRange } = useDateValidation();
 
-// --- Unified Statement Data Composable ---
+// Unified Statement Data Composable
 const {
   fetchStatementData,
   loading: statementLoading,
@@ -823,7 +801,7 @@ const {
   totalPages
 } = useStatementData();
 
-// --- Stores ---
+// Stores
 const authStore = useAuthStore();
 const branchStore = useBranchStore();
 const paymentStore = usePaymentStore();
@@ -833,22 +811,22 @@ const customerStore = useCustomerStore();
 const supplierStore = useSupplierStore();
 const showFilters = ref(false);
 
-// --- Component State ---
+// Component State
 const loading = ref(false);
 const activeTab = ref('accounting');
 const viewMode = ref(route.query.view || 'detailed');
 const companyInfo = ref({ name: '', address: '', phone: '', email: '', logo: '' });
 const partyInfo = ref({ name: '', address: '', phone: '', email: '' });
 const showPaymentModal = ref(false);
-const paymentData = ref({ amount: null, payment_date: null, payment_method_id: null, branch_id: null, notes: '' });
+const paymentData = ref({ amount: null, paymentDate: null, paymentMethodId: null, branchId: null, notes: '' });
 const pendingCustomerPayment = usePendingIdempotentRequest('customer-payment');
 const hasPendingCustomerPayment = computed(() => !!pendingCustomerPayment.pending.value);
 
-// --- Route Params & Defaults ---
+// Route Params & Defaults
 const type = computed(() => route.params.type);
 const id = computed(() => Number(route.params.id));
 
-// --- RBAC Composable ---
+// RBAC Composable
 const {
   canViewStatement,
   canExport,
@@ -868,17 +846,17 @@ const startOfMonth = `${yyyy}-${mm}-01`;
 const startOfYear = `${yyyy}-01-01`;
 const todayString = `${yyyy}-${mm}-${dd}`;
 
-const startDate = ref(route.query.start_date || startOfYear);
-const endDate = ref(route.query.end_date || todayString);
+const startDate = ref(route.query.startDate || startOfYear);
+const endDate = ref(route.query.endDate || todayString);
 const searchText = ref('');
 
 const startDateRef = ref(null);
 const endDateRef = ref(null);
 const typeFilter = ref(route.query.type || '');
-const fillGaps = ref(typeof route.query.fill_gaps !== 'undefined' ? route.query.fill_gaps !== '0' : false);
-const onlyNonZero = ref(route.query.only_nonzero === '1');
+const fillGaps = ref(typeof route.query.fillGaps !== 'undefined' ? route.query.fillGaps !== '0' : false);
+const onlyNonZero = ref(route.query.onlyNonzero === '1');
 const statusFilter = ref(route.query.status || 'any');
-const paymentMethodId = ref(route.query.payment_method_id || '');
+const paymentMethodId = ref(route.query.paymentMethodId || '');
 const typeOptions = [
     { value: '', label: 'كل العمليات' },
     { value: 'sale', label: 'فواتير المبيعات' },
@@ -902,8 +880,8 @@ const collectiblePaymentMethods = computed(() =>
 );
 const branches = computed(() => branchStore.branches);
 
-const txPerPage = ref(Number(route.query.tx_per_page) || 20);
-const txPage = ref(Number(route.query.tx_page || 1));
+const txPerPage = ref(Number(route.query.txPerPage) || 20);
+const txPage = ref(Number(route.query.txPage || 1));
 const refsPerPage = ref(20);
 const refsPage = ref(1);
 
@@ -915,12 +893,12 @@ const visibleTransactions = computed(() => {
     const sf = (statusFilter?.value || '').toString();
     const filtered = sf && sf !== 'any' ? all : all.filter(t => {
         const HIDE = new Set(['rejected', 'canceled', 'cancelled']);
-        return !HIDE.has(String(t.status || t.invoice_status || '').toLowerCase());
+        return !HIDE.has(String(t.status || t.invoiceStatus || '').toLowerCase());
     });
     if (!searchText.value) return filtered;
     const search = String(searchText.value || '').toLowerCase();
     return filtered.filter(t => {
-        const refNo = String(t.reference || t.invoice_number || '').toLowerCase();
+        const refNo = String(t.reference || t.invoiceNumber || '').toLowerCase();
         const desc = String(t.description || '').toLowerCase();
         const debit = String(t.debit || '').toLowerCase();
         const credit = String(t.credit || '').toLowerCase();
@@ -948,25 +926,25 @@ const pageTotals = computed(() => {
 });
 
 const dailyBalances = computed(() => {
-    const backend = data.value?.daily_balances;
+    const backend = data.value?.dailyBalances;
     if (Array.isArray(backend) && backend.length) return backend;
     const txs = (transactions.value || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
     if (!txs.length) return [];
     const byDate = {};
     for (const t of txs) {
         const key = getLocalDateISO(new Date(t.date));
-        if (!byDate[key]) byDate[key] = { date: key, opening_balance: 0, day_debit: 0, day_credit: 0, closing_balance: 0, transaction_count: 0 };
-        byDate[key].day_debit += Number(t.debit || 0);
-        byDate[key].day_credit += Number(t.credit || 0);
-        byDate[key].transaction_count += 1;
+        if (!byDate[key]) byDate[key] = { date: key, openingBalance: 0, dayDebit: 0, dayCredit: 0, closingBalance: 0, transactionCount: 0 };
+        byDate[key].dayDebit += Number(t.debit || 0);
+        byDate[key].dayCredit += Number(t.credit || 0);
+        byDate[key].transactionCount += 1;
     }
     const keys = Object.keys(byDate).sort();
-    let running = Number(data.value?.opening_balance || 0);
+    let running = Number(data.value?.openingBalance || 0);
     for (const k of keys) {
         const rec = byDate[k];
-        rec.opening_balance = running;
-        rec.closing_balance = running + rec.day_debit - rec.day_credit;
-        running = rec.closing_balance;
+        rec.openingBalance = running;
+        rec.closingBalance = running + rec.dayDebit - rec.dayCredit;
+        running = rec.closingBalance;
     }
     return keys.map(k => byDate[k]);
 });
@@ -985,21 +963,21 @@ const invoicesTotals = computed(() => {
     const arr = salesOnlySorted.value || [];
     let net = 0, tax = 0, disc = 0, total = 0, paid = 0, due = 0;
     for (const s of arr) {
-        net += Number(s.net_total_amount || 0);
-        tax += Number(s.tax_amount || 0);
-        const dAmt = (s.discount_amount != null)
-            ? Number(s.discount_amount)
-            : (String(s.discount_type || '').toLowerCase() === 'percentage'
-                ? (Number(s.discount_value || 0) / 100) * Number(s.net_total_amount || 0)
-                : Number(s.discount_value || 0));
+        net += Number(s.netTotalAmount || 0);
+        tax += Number(s.taxAmount || 0);
+        const dAmt = (s.discountAmount != null)
+            ? Number(s.discountAmount)
+            : (String(s.discountType || '').toLowerCase() === 'percentage'
+                ? (Number(s.discountValue || 0) / 100) * Number(s.netTotalAmount || 0)
+                : Number(s.discountValue || 0));
         disc += Number(dAmt || 0);
-        total += Number(s.total_amount || 0);
-        paid += Number(s.paid_amount || 0);
-        const status = String(s.status || s.status_code || '').toLowerCase();
+        total += Number(s.totalAmount || 0);
+        paid += Number(s.paidAmount || 0);
+        const status = String(s.status || s.statusCode || '').toLowerCase();
         if (status === 'closed_by_return') {
             continue;
         }
-        const rawDue = (s.outstanding != null) ? Number(s.outstanding) : (s.due_amount != null ? Number(s.due_amount) : (Number(s.net_total_amount || 0) - Number(s.paid_amount || 0)));
+        const rawDue = (s.outstanding != null) ? Number(s.outstanding) : (s.dueAmount != null ? Number(s.dueAmount) : (Number(s.netTotalAmount || 0) - Number(s.paidAmount || 0)));
         due += Math.max(0, Number(rawDue || 0));
     }
     return { net, tax, disc, total, paid, due };
@@ -1009,9 +987,9 @@ const referenceItemsTotals = computed(() => {
     const arr = pagedReferences.value || [];
     let total = 0, paid = 0, net = 0;
     for (const r of arr) {
-        net += Number(r.net_total_amount || 0);
-        total += Number(r.total_amount || grossTotal(r) || 0);
-        paid += Number(r.paid_amount || r.amount || 0);
+        net += Number(r.netTotalAmount || 0);
+        total += Number(r.totalAmount || grossTotal(r) || 0);
+        paid += Number(r.paidAmount || r.amount || 0);
     }
     return { total, paid, net };
 });
@@ -1028,15 +1006,15 @@ const returnJournalIds = computed(() => {
     return new Set(
         items
             .filter(r => r.type === 'sales_return' || r.type === 'purchase_return')
-            .map(r => r.journal_entry_id)
+            .map(r => r.journalEntryId)
             .filter(Boolean)
     );
 });
 
 const isReturnLinkedReceipt = (r) =>
     (r.type === 'receipt' || r.type === 'payment') &&
-    r.journal_entry_id &&
-    returnJournalIds.value.has(r.journal_entry_id);
+    r.journalEntryId &&
+    returnJournalIds.value.has(r.journalEntryId);
 
 const isPaymentItem = (it) => {
     const t = String(it?.type || '').toLowerCase();
@@ -1080,8 +1058,8 @@ const groupedByType = computed(() => {
     if (!transactions.value || !Array.isArray(transactions.value)) return [];
     const map = {};
     for (const t of transactions.value) {
-        const key = String(t.transaction_type || t.reference || '').split('#')[0] || 'other';
-        const label = getTransactionTypeLabel(t.transaction_type || t.reference_type || (t.reference || '').split('#')[0]) || 'حركة';
+        const key = String(t.transactionType || t.reference || '').split('#')[0] || 'other';
+        const label = getTransactionTypeLabel(t.transactionType || t.referenceType || (t.reference || '').split('#')[0]) || 'حركة';
         if (!map[key]) map[key] = { type: key, label: label, debit: 0, credit: 0, count: 0 };
         map[key].debit += Number(t.debit || 0);
         map[key].credit += Number(t.credit || 0);
@@ -1091,14 +1069,14 @@ const groupedByType = computed(() => {
 });
 
 const agingCounts = computed(() => {
-    const counts = data.value?.aging_counts || null;
+    const counts = data.value?.agingCounts || null;
     if (counts) return counts;
     const c = { current: 0, '1_30_days': 0, '31_60_days': 0, '60_plus_days': 0 };
     const items = referencesData.value?.items || salesOnly.value?.items || [];
     const now = new Date();
     for (const it of items) {
         const itType = it.type || String(it.reference || '').split('#')[0];
-        const outstanding = Number((it.outstanding ?? (it.net_total_amount - (it.paid_amount || 0))) || 0);
+        const outstanding = Number((it.outstanding ?? (it.netTotalAmount - (it.paidAmount || 0))) || 0);
         if (itType !== 'sale' || !(outstanding > 0)) continue;
         const diff = Math.floor((now - new Date(it.date)) / (1000 * 60 * 60 * 24));
         if (diff <= 0) c.current++;
@@ -1114,7 +1092,7 @@ const overdueInvoices = computed(() => {
     const now = new Date();
     return items.filter(it => {
         const itType = it.type || String(it.reference || '').split('#')[0];
-        const outstanding = Number((it.outstanding ?? (it.net_total_amount - (it.paid_amount || 0))) || 0);
+        const outstanding = Number((it.outstanding ?? (it.netTotalAmount - (it.paidAmount || 0))) || 0);
         if (itType !== 'sale' || !(outstanding > 0)) return false;
         const diff = Math.floor((now - new Date(it.date)) / (1000 * 60 * 60 * 24));
         return diff > 30;
@@ -1130,7 +1108,7 @@ const invoiceStatusMap = computed(() => {
         for (const it of items) {
             const itType = it.type || String(it.reference || '').split('#')[0];
             if (itType !== 'sale' && itType !== 'purchase') continue;
-            const itId = it.id || it.sale_id || it.purchase_id || Number(String(it.reference || '').split('#')[1] || 0) || null;
+            const itId = it.id || it.saleId || it.purchaseId || Number(String(it.reference || '').split('#')[1] || 0) || null;
             const refNo = String(it.reference || '').includes('#') ? String(it.reference).split('#')[1] : '';
             const code = paymentStatusFromAmounts(it);
             if (!code) continue;
@@ -1145,8 +1123,8 @@ const invoiceStatusMap = computed(() => {
 const taxAmount = (r) => {
     try {
         const direct = Number(
-            r.tax_amount ?? r.vat_amount ?? r.total_tax ?? r.tax ?? r.vat ??
-            r.tax_value ?? r.vat_value ?? r.total_vat ?? r.total_tax_amount ??
+            r.taxAmount ?? r.vatAmount ?? r.totalTax ?? r.tax ?? r.vat ??
+            r.taxValue ?? r.vatValue ?? r.totalVat ?? r.totalTaxAmount ??
             r.taxAmount ?? r.vatAmount ?? 0
         );
         if (!Number.isNaN(direct) && direct > 0) return direct;
@@ -1154,17 +1132,17 @@ const taxAmount = (r) => {
             const sum = r.taxes.reduce((s, t) => s + Number(t.amount || t.value || 0), 0);
             if (sum > 0) return sum;
         }
-        const net = Number(r.net_total_amount || 0);
-        const rate = Number(r.tax_rate || r.vat_rate || 0);
+        const net = Number(r.netTotalAmount || 0);
+        const rate = Number(r.taxRate || r.vatRate || 0);
         if (!Number.isNaN(rate) && rate > 0) {
             const calc = +(net * rate / 100).toFixed(2);
             if (calc > 0) return calc;
         }
-        const total = Number(r.total_amount || 0);
+        const total = Number(r.totalAmount || 0);
         let diff = total - net;
         if (diff <= 0) {
-            const paid = Number(r.paid_amount || 0);
-            const status = String(r.status || r.status_code || '').toLowerCase();
+            const paid = Number(r.paidAmount || 0);
+            const status = String(r.status || r.statusCode || '').toLowerCase();
             if (paid > net || ['paid', 'completed', 'posted'].includes(status)) {
                 const paidDiff = paid - net;
                 if (paidDiff > 0 && paidDiff < net * 2) return paidDiff;
@@ -1175,9 +1153,9 @@ const taxAmount = (r) => {
 };
 
 const grossTotal = (r) => {
-    const net = Number(r.net_total_amount || r.net || 0);
+    const net = Number(r.netTotalAmount || r.net || 0);
     const tax = taxAmount(r);
-    const total = Number(r.total_amount || r.total || 0);
+    const total = Number(r.totalAmount || r.total || 0);
     return Math.max(net + tax, total);
 };
 
@@ -1201,8 +1179,8 @@ const statusTextLocal = (s) => {
 
 const paymentStatusFromAmounts = (item) => {
     try {
-        const total = Number(item?.net_total_amount ?? item?.total_amount ?? item?.grand_total ?? 0);
-        const paid = Number(item?.paid_amount ?? 0);
+        const total = Number(item?.netTotalAmount ?? item?.totalAmount ?? item?.grandTotal ?? 0);
+        const paid = Number(item?.paidAmount ?? 0);
         const outstanding = item?.outstanding != null ? Number(item.outstanding) : (total - paid);
         if (total > 0) {
             if (outstanding <= 0) return 'paid';
@@ -1218,8 +1196,8 @@ const getItemOutstanding = (item) => {
         if (item?.outstanding != null && String(item.outstanding).trim() !== '') {
             return Number(item.outstanding) || 0;
         }
-        const total = Number(item?.net_total_amount ?? item?.total_amount ?? item?.grand_total ?? 0);
-        const paid = Number(item?.paid_amount ?? 0);
+        const total = Number(item?.netTotalAmount ?? item?.totalAmount ?? item?.grandTotal ?? 0);
+        const paid = Number(item?.paidAmount ?? 0);
         return Math.max(0, total - paid);
     } catch {
         return 0;
@@ -1227,7 +1205,7 @@ const getItemOutstanding = (item) => {
 };
 
 const displayStatusCode = (item, fallback) => {
-    const apiStatus = String(item?.status || item?.status_code || '').toLowerCase();
+    const apiStatus = String(item?.status || item?.statusCode || '').toLowerCase();
     if (apiStatus === 'closed_by_return')  return 'closed_by_return';
     if (apiStatus === 'settled_by_return') return 'settled_by_return';
     if (apiStatus === 'settled_by_credit') return 'settled_by_credit';
@@ -1246,7 +1224,7 @@ const displayStatusCode = (item, fallback) => {
 };
 
 const displayStatusLabel = (item, fallbackCode, fallbackLabel) => {
-    const apiStatus = String(item?.status || item?.status_code || '').toLowerCase();
+    const apiStatus = String(item?.status || item?.statusCode || '').toLowerCase();
     if (apiStatus === 'closed_by_return')  return 'مرتجعة';
     if (apiStatus === 'settled_by_return') return 'مسواة بمرتجع';
     if (apiStatus === 'settled_by_credit') return 'مسوّاة بمرتجع';
@@ -1268,30 +1246,30 @@ const displayStatusLabel = (item, fallbackCode, fallbackLabel) => {
     return fallbackLabel || statusTextLocal(fallbackCode) || '-';
 };
 
-const formatDate = (date) => new Date(date).toLocaleDateString('en-GB');
-const formatDateEn = (date) => date ? new Date(date).toLocaleDateString('en-GB') : '';
+const formatDate = (date) => date ? formatDateForLocale(date, 'en-GB') : new Date(date).toLocaleDateString('en-GB');
+const formatDateEn = (date) => date ? formatDateForLocale(date, 'en-GB') : '';
 const formatPrice = (amount) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(amount || 0));
 const formatPriceEn = (amount) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(amount || 0));
 const referenceParts = (transaction) => {
     const [type = '', id = ''] = String(transaction?.reference || '').split('#');
-    return { type: type.toLowerCase(), id: transaction?.reference_id ?? id };
+    return { type: type.toLowerCase(), id: transaction?.referenceId ?? id };
 };
 
 const relatedInvoiceNumber = (transaction, type, id) => {
-    if (transaction?.invoice_number) return transaction.invoice_number;
+    if (transaction?.invoiceNumber) return transaction.invoiceNumber;
     if (!['sale', 'purchase'].includes(type) || !id) return null;
     const items = referencesData.value?.items || salesOnly.value?.items || [];
     const invoice = items.find(item => {
         const invoiceType = item.type || String(item.reference || '').split('#')[0];
-        return invoiceType === type && String(item.id || item.sale_id || item.purchase_id) === String(id);
+        return invoiceType === type && String(item.id || item.saleId || item.purchaseId) === String(id);
     });
-    return invoice?.invoice_number || null;
+    return invoice?.invoiceNumber || null;
 };
 
 const transactionDocumentLabel = (transaction) => {
     const { type, id } = referenceParts(transaction);
     const invoiceNumber = relatedInvoiceNumber(transaction, type, id);
-    const transactionType = String(transaction?.transaction_type || transaction?.type || '').toLowerCase();
+    const transactionType = String(transaction?.transactionType || transaction?.type || '').toLowerCase();
     if (invoiceNumber && ['receipt', 'payment', 'refund'].includes(transactionType)) {
         return `${type === 'purchase' ? 'دفعة على فاتورة شراء' : 'تحصيل على فاتورة بيع'} ${invoiceNumber}`;
     }
@@ -1300,25 +1278,25 @@ const transactionDocumentLabel = (transaction) => {
         return `${invoiceType} ${invoiceNumber}`;
     }
     const labels = {
-        cash_voucher: 'سند قبض',
-        customer_payment: 'تحصيل من العميل',
-        customer_payment_reclassification: 'تسوية تحصيل',
-        supplier_payment: 'دفعة للمورد',
+        cashVoucher: 'سند قبض',
+        customerPayment: 'تحصيل من العميل',
+        customerPaymentReclassification: 'تسوية تحصيل',
+        supplierPayment: 'دفعة للمورد',
         receipt: 'سند قبض',
         payment: 'سند صرف',
         refund: 'استرداد',
-        sales_return: 'مرتجع بيع',
-        purchase_return: 'مرتجع شراء',
+        salesReturn: 'مرتجع بيع',
+        purchaseReturn: 'مرتجع شراء',
         journal: 'قيد يومية'
     };
-    const label = labels[type] || getTransactionTypeLabel(transaction?.transaction_type || type);
+    const label = labels[type] || getTransactionTypeLabel(transaction?.transactionType || type);
     return id ? `${label} #${id}` : label;
 };
 
 const documentNumber = (transaction) => {
-    if (transaction?.invoice_number) return transaction.invoice_number;
-    if (transaction?.payment_reference_number) return transaction.payment_reference_number;
-    if (transaction?.reference_number) return transaction.reference_number;
+    if (transaction?.invoiceNumber) return transaction.invoiceNumber;
+    if (transaction?.paymentReferenceNumber) return transaction.paymentReferenceNumber;
+    if (transaction?.referenceNumber) return transaction.referenceNumber;
 
     const { id } = referenceParts(transaction);
     if (id) return `#${id}`;
@@ -1328,10 +1306,10 @@ const documentNumber = (transaction) => {
 const transactionRelatedReference = (transaction) => {
     const { type, id } = referenceParts(transaction);
     const invoiceNumber = relatedInvoiceNumber(transaction, type, id);
-    const transactionType = String(transaction?.transaction_type || transaction?.type || '').toLowerCase();
+    const transactionType = String(transaction?.transactionType || transaction?.type || '').toLowerCase();
     if (invoiceNumber && transactionType === type) return '—';
     if (invoiceNumber) return `الفاتورة المرتبطة: ${invoiceNumber}`;
-    if (transaction?.payment_reference_number) return `مرجع التحصيل: ${transaction.payment_reference_number}`;
+    if (transaction?.paymentReferenceNumber) return `مرجع التحصيل: ${transaction.paymentReferenceNumber}`;
     return '—';
 };
 
@@ -1381,17 +1359,17 @@ const getTransactionTypeLabel = (type) => {
 
 const resolvedRefType = (r) => {
     if (isReturnLinkedReceipt(r)) return 'صرف مرتجع';
-    if (r.transaction_subtype) {
+    if (r.transactionSubtype) {
         const subtypeDisplayMap = {
-            'sales_return_only':          'مرتجع بيع (بدون صرف)',
-            'sales_return_refund':        'مرتجع بيع + صرف',
-            'sales_return_bank_refund':   'مرتجع بيع + تحويل',
-            'purchase_return_only':       'مرتجع شراء (بدون صرف)',
-            'purchase_return_refund':     'مرتجع شراء + صرف',
-            'purchase_return_bank_refund':'مرتجع شراء + تحويل',
+            'salesReturnOnly':          'مرتجع بيع (بدون صرف)',
+            'salesReturnRefund':        'مرتجع بيع + صرف',
+            'salesReturnBankRefund':   'مرتجع بيع + تحويل',
+            'purchaseReturnOnly':       'مرتجع شراء (بدون صرف)',
+            'purchaseReturnRefund':     'مرتجع شراء + صرف',
+            'purchaseReturnBankRefund':'مرتجع شراء + تحويل',
         };
-        if (subtypeDisplayMap[r.transaction_subtype]) {
-            return subtypeDisplayMap[r.transaction_subtype];
+        if (subtypeDisplayMap[r.transactionSubtype]) {
+            return subtypeDisplayMap[r.transactionSubtype];
         }
     }
     const type = String(r.type || '').toLowerCase();
@@ -1404,35 +1382,35 @@ const resolvedRefType = (r) => {
 
 const resolvedRefLabel = (r) => {
     if (isReturnLinkedReceipt(r)) return 'سند صرف مرتجع';
-    if (r.source_label) {
-        if (r.invoice_number) return `فاتورة ${r.invoice_number}`;
-        if (r.payment_reference_number) return `مرجع التحصيل: ${r.payment_reference_number}`;
-        return r.source_label;
+    if (r.sourceLabel) {
+        if (r.invoiceNumber) return `فاتورة ${r.invoiceNumber}`;
+        if (r.paymentReferenceNumber) return `مرجع التحصيل: ${r.paymentReferenceNumber}`;
+        return r.sourceLabel;
     }
-    if (r.reference_label) {
-        return r.reference_label;
+    if (r.referenceLabel) {
+        return r.referenceLabel;
     }
     const ref = String(r.reference || '').split('#')[0];
     return refTypeLabel(ref) || '-';
 };
 
 const paymentInvoiceLabel = (payment) => {
-    if (payment?.invoice_number) return payment.invoice_number;
-    const allocatedInvoices = String(payment?.allocated_invoice_numbers || '').trim();
+    if (payment?.invoiceNumber) return payment.invoiceNumber;
+    const allocatedInvoices = String(payment?.allocatedInvoiceNumbers || '').trim();
     return allocatedInvoices ? `موزعة على: ${allocatedInvoices}` : null;
 };
 
 const allocatedInvoiceLabel = (payment) => {
     const invoiceLabel = paymentInvoiceLabel(payment);
     if (!invoiceLabel) return '';
-    return payment?.invoice_number
+    return payment?.invoiceNumber
         ? `مرتبطة بالفاتورة: ${invoiceLabel}`
         : `توزيع التحصيل: ${invoiceLabel}`;
 };
 
 const getTransactionSubtypeLabel = (transaction) => {
     if (!transaction) return '';
-    const groupId = transaction.return_group_id;
+    const groupId = transaction.returnGroupId;
     if (!groupId) return '';
     return `ربط #${groupId}`;
 };
@@ -1457,7 +1435,7 @@ const badgeClass = (type) => {
 const getBalanceWithNature = (transaction) => {
     if (!transaction) return '-';
     const balance = Number(transaction.balance || 0);
-    const nature = String(transaction.balance_nature || 'zero').toLowerCase();
+    const nature = String(transaction.balanceNature || 'zero').toLowerCase();
     if (nature === 'debit') {
         return `${formatPriceEn(balance)} مدين`;
     } else if (nature === 'credit') {
@@ -1468,7 +1446,7 @@ const getBalanceWithNature = (transaction) => {
 
 const getBalanceColorClass = (transaction) => {
     if (!transaction) return 'text-slate-600';
-    const nature = String(transaction.balance_nature || 'zero').toLowerCase();
+    const nature = String(transaction.balanceNature || 'zero').toLowerCase();
     if (nature === 'debit') return 'text-blue-700 font-bold';
     if (nature === 'credit') return 'text-amber-700 font-bold';
     return 'text-slate-600';
@@ -1480,7 +1458,7 @@ const invoiceLink = (item) => {
         if (!ref.includes('#')) return null;
         const [rawPrefix, rawId] = ref.split('#');
         const prefix = String(rawPrefix || '').toLowerCase();
-        const linkId = Number(item.reference_id || item.sale_id || item.purchase_id || rawId);
+        const linkId = Number(item.referenceId || item.saleId || item.purchaseId || rawId);
         if (!linkId || Number.isNaN(linkId)) return null;
         if (prefix === 'sale' || prefix === 'sales') return { name: 'SalesHistory', query: { id: linkId } };
         if (prefix === 'purchase' || prefix === 'purchases') return { name: 'PurchaseHistory', query: { id: linkId } };
@@ -1496,14 +1474,14 @@ const getAllocatedInvoice = (returnItem) => {
     if (!returnItem || !['sales_return', 'return', 'purchase_return'].includes(String(returnItem.type || '').toLowerCase())) {
         return null;
     }
-    const groupId = returnItem.return_group_id;
+    const groupId = returnItem.returnGroupId;
     if (!groupId) return null;
     if (salesOnly.value?.items) {
         const settled = salesOnly.value.items.find(s => 
             String(s.status || '').toLowerCase() === 'settled_by_credit' && 
-            (s.return_group_id === groupId || s.id === returnItem.sale_id)
+            (s.returnGroupId === groupId || s.id === returnItem.saleId)
         );
-        return settled?.invoice_number || null;
+        return settled?.invoiceNumber || null;
     }
     return null;
 };
@@ -1529,9 +1507,9 @@ const openPaymentModal = () => {
             ? { ...pending.payload }
             : {
                 amount: null,
-                payment_date: getLocalDateISO(new Date()),
-                payment_method_id: null,
-                branch_id: null,
+                paymentDate: getLocalDateISO(new Date()),
+                paymentMethodId: null,
+                branchId: null,
                 notes: ''
             };
         showPaymentModal.value = true;
@@ -1545,11 +1523,11 @@ const submitPayment = async () => {
         showToast('ادخل مبلغ صحيح', 'error');
         return;
     }
-    if (!paymentData.value.payment_method_id) {
+    if (!paymentData.value.paymentMethodId) {
         showToast('اختر الطريقة', 'error');
         return;
     }
-    if (!paymentData.value.payment_date) {
+    if (!paymentData.value.paymentDate) {
         showToast('الرجاء تحديد تاريخ الدفع', 'error');
         return;
     }
@@ -1558,9 +1536,9 @@ const submitPayment = async () => {
     try {
         const payload = {
             amount: Number(paymentData.value.amount),
-            payment_date: paymentData.value.payment_date,
-            payment_method_id: Number(paymentData.value.payment_method_id),
-            branch_id: paymentData.value.branch_id ? Number(paymentData.value.branch_id) : undefined,
+            paymentDate: paymentData.value.paymentDate,
+            paymentMethodId: Number(paymentData.value.paymentMethodId),
+            branchId: paymentData.value.branchId ? Number(paymentData.value.branchId) : undefined,
             notes: paymentData.value.notes || '',
         };
         const pending = pendingCustomerPayment.prepare(id.value, payload);
@@ -1570,11 +1548,11 @@ const submitPayment = async () => {
             showToast('تم التحصيل بنجاح', 'success');
             showPaymentModal.value = false;
             await fetchStatementData(type.value, id.value, {
-                start_date: startDate.value,
-                end_date: endDate.value,
+                startDate: startDate.value,
+                endDate: endDate.value,
                 status: statusFilter.value || 'any',
-                fill_gaps: fillGaps.value ? 1 : 0,
-                include_references: 1,
+                fillGaps: fillGaps.value ? 1 : 0,
+                includeReferences: 1,
             }, { force: true });
         } else {
             if (res.outcomeUnknown) {
@@ -1597,14 +1575,14 @@ const fetchStatement = async () => {
         return;
     }
     const result = await fetchStatementData(type.value, id.value, {
-        start_date: startDate.value,
-        end_date: endDate.value,
+        startDate: startDate.value,
+        endDate: endDate.value,
         status: statusFilter.value || 'any',
-        fill_gaps: fillGaps.value ? 1 : 0,
-        include_references: 1,
-        include_types: typeFilter.value || undefined,
-        payment_method_id: paymentMethodId.value || undefined,
-        only_nonzero: onlyNonZero.value ? 1 : 0,
+        fillGaps: fillGaps.value ? 1 : 0,
+        includeReferences: 1,
+        includeTypes: typeFilter.value || undefined,
+        paymentMethodId: paymentMethodId.value || undefined,
+        onlyNonzero: onlyNonZero.value ? 1 : 0,
     });
     if (result.status !== 'success') {
         showToast(result.error?.message || 'فشل في تحميل كشف الحساب', 'error');
@@ -1620,16 +1598,16 @@ const applyFilter = () => {
     _isApplyingFilter = true;
     router.replace({
         query: {
-            start_date: startDate.value,
-            end_date: endDate.value,
-            fill_gaps: fillGaps.value ? '1' : '0',
-            only_nonzero: onlyNonZero.value ? '1' : '0',
+            startDate: startDate.value,
+            endDate: endDate.value,
+            fillGaps: fillGaps.value ? '1' : '0',
+            onlyNonzero: onlyNonZero.value ? '1' : '0',
             type: typeFilter.value || undefined,
             status: statusFilter.value || undefined,
-            payment_method_id: paymentMethodId.value || undefined,
+            paymentMethodId: paymentMethodId.value || undefined,
             view: viewMode.value || undefined,
-            tx_per_page: String(txPerPage.value),
-            tx_page: String(txPage.value),
+            txPerPage: String(txPerPage.value),
+            txPage: String(txPage.value),
         }
     });
     fetchStatement();
@@ -1667,14 +1645,14 @@ const exportPdf = async () => {
 
     try {
         const requestParams = {
-            start_date: startDate.value,
-            end_date: endDate.value,
+            startDate: startDate.value,
+            endDate: endDate.value,
             status: statusFilter.value || 'any',
-            fill_gaps: fillGaps.value ? 1 : 0,
-            include_references: 1,
-            include_types: typeFilter.value || undefined,
-            payment_method_id: paymentMethodId.value || undefined,
-            only_nonzero: onlyNonZero.value ? 1 : 0,
+            fillGaps: fillGaps.value ? 1 : 0,
+            includeReferences: 1,
+            includeTypes: typeFilter.value || undefined,
+            paymentMethodId: paymentMethodId.value || undefined,
+            onlyNonzero: onlyNonZero.value ? 1 : 0,
         };
         const statementResult = type.value === 'customers'
             ? await statementStore.fetchCustomerStatement(id.value, requestParams, { force: true })
@@ -1699,14 +1677,14 @@ const exportPdf = async () => {
         const reportTitle = `${title.value} (${startDate.value} - ${endDate.value})`;
         const rows = printData.transactions.filter((transaction) => {
             if (statusFilter.value === 'any' && ['rejected', 'canceled', 'cancelled'].includes(
-                String(transaction.status || transaction.invoice_status || '').toLowerCase()
+                String(transaction.status || transaction.invoiceStatus || '').toLowerCase()
             )) {
                 return false;
             }
             if (!searchText.value) return true;
             const search = String(searchText.value).toLowerCase();
             return [
-                transaction.reference || transaction.invoice_number,
+                transaction.reference || transaction.invoiceNumber,
                 transaction.description,
                 transaction.debit,
                 transaction.credit,
@@ -1717,7 +1695,7 @@ const exportPdf = async () => {
                 <tr>
                     <td>${escapeHtml(formatDate(transaction.date))}</td>
                     <td>${escapeHtml(documentNumber(transaction))}</td>
-                    <td>${escapeHtml(transaction.reference_label || refTypeLabel(transaction.reference))}</td>
+                    <td>${escapeHtml(transaction.referenceLabel || refTypeLabel(transaction.reference))}</td>
                     <td class="description">${escapeHtml(transaction.description || '-')}</td>
                     <td class="debit">${Number(transaction.debit) > 0 ? formatAmount(transaction.debit) : '-'}</td>
                     <td class="credit">${Number(transaction.credit) > 0 ? formatAmount(transaction.credit) : '-'}</td>
@@ -1776,10 +1754,10 @@ const exportPdf = async () => {
                     </div>
                 </header>
                 <section class="summary">
-                    <div><span>الرصيد الافتتاحي</span><strong>${formatAmount(printData.opening_balance)} ${escapeHtml(currencySymbol.value)}</strong></div>
-                    <div><span>إجمالي مدين</span><strong>${formatAmount(printData.total_debit)} ${escapeHtml(currencySymbol.value)}</strong></div>
-                    <div><span>إجمالي دائن</span><strong>${formatAmount(printData.total_credit)} ${escapeHtml(currencySymbol.value)}</strong></div>
-                    <div><span>الرصيد الختامي</span><strong>${formatAmount(printData.closing_balance)} ${escapeHtml(currencySymbol.value)}</strong></div>
+                    <div><span>الرصيد الافتتاحي</span><strong>${formatAmount(printData.openingBalance)} ${escapeHtml(currencySymbol.value)}</strong></div>
+                    <div><span>إجمالي مدين</span><strong>${formatAmount(printData.totalDebit)} ${escapeHtml(currencySymbol.value)}</strong></div>
+                    <div><span>إجمالي دائن</span><strong>${formatAmount(printData.totalCredit)} ${escapeHtml(currencySymbol.value)}</strong></div>
+                    <div><span>الرصيد الختامي</span><strong>${formatAmount(printData.closingBalance)} ${escapeHtml(currencySymbol.value)}</strong></div>
                 </section>
                 <table>
                     <thead><tr>
@@ -1822,7 +1800,7 @@ const exportCsv = () => {
         rows.push([
             formatDate(t.date),
             documentNumber(t),
-            (t.reference_label || refTypeLabel(t.reference)),
+            (t.referenceLabel || refTypeLabel(t.reference)),
             t.description || '-',
             t.debit > 0 ? Number(t.debit).toFixed(2) : '0.00',
             t.credit > 0 ? Number(t.credit).toFixed(2) : '0.00',
@@ -1848,14 +1826,14 @@ const exportReferencesCsv = () => {
             r.date || '',
             r.reference ? refTypeLabel(r.reference) : (r.type || ''),
             r.reference || '',
-            r.invoice_number || '',
-            r.status_label || r.status || '',
-            Number(r.net_total_amount || 0).toFixed(2),
-            Number(r.tax_amount || 0).toFixed(2),
-            Number(r.total_amount || grossTotal(r) || 0).toFixed(2),
-            Number(r.paid_amount || 0).toFixed(2),
+            r.invoiceNumber || '',
+            r.statusLabel || r.status || '',
+            Number(r.netTotalAmount || 0).toFixed(2),
+            Number(r.taxAmount || 0).toFixed(2),
+            Number(r.totalAmount || grossTotal(r) || 0).toFixed(2),
+            Number(r.paidAmount || 0).toFixed(2),
             Number(r.outstanding || 0).toFixed(2),
-            r.has_journal ? '1' : '0',
+            r.hasJournal ? '1' : '0',
         ]);
     });
     const escapeCsv = (v) => {
@@ -1932,8 +1910,8 @@ onMounted(async () => {
             }
             if (c) {
                 partyInfo.value = {
-                    name: c.name || c.company_name || c.contact_name || '',
-                    address: c.address || c.billing_address || '',
+                    name: c.name || c.companyName || c.contactName || '',
+                    address: c.address || c.billingAddress || '',
                     phone: c.phone || c.mobile || '',
                     email: c.email || ''
                 };
@@ -1953,8 +1931,8 @@ onMounted(async () => {
             }
             if (s) {
                 partyInfo.value = {
-                    name: s.name || s.company_name || s.contact_name || '',
-                    address: s.address || s.billing_address || '',
+                    name: s.name || s.companyName || s.contactName || '',
+                    address: s.address || s.billingAddress || '',
                     phone: s.phone || s.mobile || '',
                     email: s.email || ''
                 };
@@ -1986,10 +1964,10 @@ watch([page, perPage, startDate, endDate], async () => {
         previousFilter.value = { startDate: startDate.value, endDate: endDate.value };
     }
     const result = await fetchStatementData(type.value, id.value, {
-        start_date: startDate.value,
-        end_date: endDate.value,
+        startDate: startDate.value,
+        endDate: endDate.value,
         page: page.value,
-        per_page: perPage.value,
+        perPage: perPage.value,
     });
     if (result.status !== 'success') {
         handleStatementError(result);
@@ -2026,16 +2004,16 @@ const handleStatementError = (result) => {
 
 watch(() => route.query, (q) => {
     if (_isApplyingFilter) return;
-    if (q.start_date) startDate.value = q.start_date;
-    if (q.end_date) endDate.value = q.end_date;
-    if (typeof q.fill_gaps !== 'undefined') fillGaps.value = q.fill_gaps !== '0';
-    if (typeof q.only_nonzero !== 'undefined') onlyNonZero.value = q.only_nonzero === '1';
+    if (q.startDate) startDate.value = q.startDate;
+    if (q.endDate) endDate.value = q.endDate;
+    if (typeof q.fillGaps !== 'undefined') fillGaps.value = q.fillGaps !== '0';
+    if (typeof q.onlyNonzero !== 'undefined') onlyNonZero.value = q.onlyNonzero === '1';
     if (typeof q.type !== 'undefined') typeFilter.value = q.type;
     if (typeof q.status !== 'undefined') statusFilter.value = q.status;
-    if (typeof q.payment_method_id !== 'undefined') paymentMethodId.value = q.payment_method_id;
+    if (typeof q.paymentMethodId !== 'undefined') paymentMethodId.value = q.paymentMethodId;
     if (typeof q.view !== 'undefined') viewMode.value = q.view;
-    if (typeof q.tx_per_page !== 'undefined') txPerPage.value = Number(q.tx_per_page) || 20;
-    if (typeof q.tx_page !== 'undefined') txPage.value = Number(q.tx_page) || 1;
+    if (typeof q.txPerPage !== 'undefined') txPerPage.value = Number(q.txPerPage) || 20;
+    if (typeof q.txPage !== 'undefined') txPage.value = Number(q.txPage) || 1;
     fetchStatement();
 }, { deep: true });
 </script>

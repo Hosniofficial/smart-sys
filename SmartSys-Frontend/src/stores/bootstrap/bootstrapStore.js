@@ -1,3 +1,4 @@
+import logger from '@/utils/services/logger'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import bootstrapService from '@/services/bootstrap'
@@ -49,17 +50,17 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
     try {
       // Return cached data if valid
       if (!forceRefresh && isCacheValid(posDataTimestamp.value) && posData.value) {
-        console.log('[Bootstrap] Using cached POS data')
+        logger.debug('[Bootstrap] Using cached POS data')
         return posData.value
       }
 
-      console.log('[Bootstrap] Fetching POS data...')
+      logger.debug('[Bootstrap] Fetching POS data...')
       const response = await bootstrapService.getPosData()
       
       if (response.data.status === 'success') {
         posData.value = response.data.data
         posDataTimestamp.value = Date.now()
-        console.log('[Bootstrap] POS data fetched successfully')
+        logger.debug('[Bootstrap] POS data fetched successfully')
         return response.data.data
       } else {
         throw new Error(response.data.message || 'فشل في تحميل بيانات نقطة البيع')
@@ -76,7 +77,7 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
   const invalidatePosData = () => {
     posData.value = null
     posDataTimestamp.value = null
-    console.log('[Bootstrap] POS data cache invalidated')
+    logger.debug('[Bootstrap] POS data cache invalidated')
   }
 
   // ═══════════════════════════════════════════════════════
@@ -91,17 +92,17 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
     try {
       // Return cached data if valid
       if (!forceRefresh && isCacheValid(paymentsDataTimestamp.value) && paymentsData.value) {
-        console.log('[Bootstrap] Using cached Payments data')
+        logger.debug('[Bootstrap] Using cached Payments data')
         return paymentsData.value
       }
 
-      console.log('[Bootstrap] Fetching Payments data...')
+      logger.debug('[Bootstrap] Fetching Payments data...')
       const response = await bootstrapService.getPaymentsData()
       
       if (response.data.status === 'success') {
         paymentsData.value = response.data.data
         paymentsDataTimestamp.value = Date.now()
-        console.log('[Bootstrap] Payments data fetched successfully')
+        logger.debug('[Bootstrap] Payments data fetched successfully')
         return response.data.data
       } else {
         throw new Error(response.data.message || 'فشل في تحميل بيانات الدفعات')
@@ -118,7 +119,7 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
   const invalidatePaymentsData = () => {
     paymentsData.value = null
     paymentsDataTimestamp.value = null
-    console.log('[Bootstrap] Payments data cache invalidated')
+    logger.debug('[Bootstrap] Payments data cache invalidated')
   }
 
   // ═══════════════════════════════════════════════════════
@@ -133,17 +134,17 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
     try {
       // Return cached data if valid
       if (!forceRefresh && isCacheValid(sessionsDataTimestamp.value) && sessionsData.value) {
-        console.log('[Bootstrap] Using cached Sessions data')
+        logger.debug('[Bootstrap] Using cached Sessions data')
         return sessionsData.value
       }
 
-      console.log('[Bootstrap] Fetching Sessions data...')
+      logger.debug('[Bootstrap] Fetching Sessions data...')
       const response = await bootstrapService.getSessionsData()
       
       if (response.data.status === 'success') {
         sessionsData.value = response.data.data
         sessionsDataTimestamp.value = Date.now()
-        console.log('[Bootstrap] Sessions data fetched successfully')
+        logger.debug('[Bootstrap] Sessions data fetched successfully')
         return response.data.data
       } else {
         throw new Error(response.data.message || 'فشل في تحميل بيانات الجلسات')
@@ -160,7 +161,7 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
   const invalidateSessionsData = () => {
     sessionsData.value = null
     sessionsDataTimestamp.value = null
-    console.log('[Bootstrap] Sessions data cache invalidated')
+    logger.debug('[Bootstrap] Sessions data cache invalidated')
   }
 
   // ═══════════════════════════════════════════════════════
@@ -178,17 +179,17 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
       if (!forceRefresh && 
           isCacheValid(managementDataTimestamps.value[type]) && 
           managementData.value[type]) {
-        console.log(`[Bootstrap] Using cached ${type} Management data`)
+        logger.debug(`[Bootstrap] Using cached ${type} Management data`)
         return managementData.value[type]
       }
 
-      console.log(`[Bootstrap] Fetching ${type} Management data...`)
+      logger.debug(`[Bootstrap] Fetching ${type} Management data...`)
       const response = await bootstrapService.getManagementData(type)
       
       if (response.data.status === 'success') {
         managementData.value[type] = response.data.data
         managementDataTimestamps.value[type] = Date.now()
-        console.log(`[Bootstrap] ${type} Management data fetched successfully`)
+        logger.debug(`[Bootstrap] ${type} Management data fetched successfully`)
         return response.data.data
       } else {
         throw new Error(response.data.message || 'فشل في تحميل بيانات الإدارة')
@@ -206,11 +207,11 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
     if (type) {
       delete managementData.value[type]
       delete managementDataTimestamps.value[type]
-      console.log(`[Bootstrap] ${type} Management data cache invalidated`)
+      logger.debug(`[Bootstrap] ${type} Management data cache invalidated`)
     } else {
       managementData.value = {}
       managementDataTimestamps.value = {}
-      console.log('[Bootstrap] All Management data cache invalidated')
+      logger.debug('[Bootstrap] All Management data cache invalidated')
     }
   }
 
@@ -226,7 +227,7 @@ export const useBootstrapStore = defineStore('bootstrap', () => {
     invalidatePaymentsData()
     invalidateSessionsData()
     invalidateManagementData()
-    console.log('[Bootstrap] All cache cleared')
+    logger.debug('[Bootstrap] All cache cleared')
   }
 
   // ═══════════════════════════════════════════════════════

@@ -6,32 +6,32 @@ export const buildThermalDetailedHtml = (sale, options = {}) => {
   const cfg     = getPrintConfig(options.config);
   const company = getCompanyData(sale);
   const taxInclusive = isSaleTaxInclusive(sale);
-  const saleDate = sale.sale_date || sale.created_at || getLocalDateISO();
-  const taxRate  = parseFloat(sale.tax_rate ?? 0);
+  const saleDate = sale.saleDate || sale.createdAt || getLocalDateISO();
+  const taxRate  = parseFloat(sale.taxRate ?? 0);
 
-  // ─── Items (numbered, with unit) ─────────────────────────────────────────
+  // Items (numbered, with unit)
   const itemsHtml = (sale.items || []).map((it, idx) => `
     <div style="margin-bottom:9px;padding-bottom:6px;border-bottom:0.3mm dashed #ccc;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
-        <span style="font-weight:bold;font-size:13px;flex:1;">${idx + 1}. ${esc(it.product_name || it.name)}</span>
+        <span style="font-weight:bold;font-size:13px;flex:1;">${idx + 1}. ${esc(it.productName || it.name)}</span>
         <span style="font-weight:bold;white-space:nowrap;">${fmt(itemTotal(it))}</span>
       </div>
       <div style="font-size:11px;color:#444;margin-top:2px;padding-right:14px;">
-        ${fmt(it.quantity)} ${esc(it.unit || '')} × ${fmt(it.sale_price || it.net_price || 0)}
+        ${fmt(it.quantity)} ${esc(it.unit || '')} × ${fmt(it.salePrice || it.netPrice || 0)}
       </div>
     </div>`).join('');
 
   const d = new Date(saleDate);
   const dateStr = d.toLocaleDateString('en-US');
   const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  const paymentName = sale.payment_method_name || sale.payment_method || 'نقداً';
+  const paymentName = sale.paymentMethodName || sale.paymentMethod || 'نقداً';
 
-  // ─── Discount: handle both 'percentage' and 'fixed' stored values ───────
-  const rawDiscount  = parseFloat(sale.discount_value) || 0;
-  const discountAmt  = sale.discount_type === 'percentage'
-    ? rawDiscount / 100 * (parseFloat(sale.total_amount) || 0)
+  // Discount: handle both 'percentage' and 'fixed' stored values
+  const rawDiscount  = parseFloat(sale.discountValue) || 0;
+  const discountAmt  = sale.discountType === 'percentage'
+    ? rawDiscount / 100 * (parseFloat(sale.totalAmount) || 0)
     : rawDiscount;
-  const discountLabel = sale.discount_type === 'percentage' && rawDiscount > 0
+  const discountLabel = sale.discountType === 'percentage' && rawDiscount > 0
     ? `إجمالي الخصم (${rawDiscount}%) (-):`
     : 'إجمالي الخصم (-):';  
 
@@ -39,7 +39,7 @@ export const buildThermalDetailedHtml = (sale, options = {}) => {
 <html dir="rtl">
 <head>
   <meta charset="utf-8"/>
-  <title>فاتورة ${esc(String(sale.invoice_number || sale.id || ''))}</title>
+  <title>فاتورة ${esc(String(sale.invoiceNumber || sale.id || ''))}</title>
   <style>
     *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     body{font-family:Tahoma,Arial,sans-serif;margin:0;padding:0;background:#fff;color:#111;font-size:12px;line-height:1.45;}
@@ -66,7 +66,7 @@ export const buildThermalDetailedHtml = (sale, options = {}) => {
   <div class="tc" style="margin-bottom:12px;padding-bottom:10px;border-bottom:1px dashed #999;">
     ${company.logo ? `<img src="${esc(company.logo)}" style="max-height:60px;max-width:62mm;object-fit:contain;margin-bottom:7px;display:block;margin-left:auto;margin-right:auto;" />` : ''}
     <div style="font-size:22px;font-weight:900;margin-bottom:3px;">${esc(company.name || 'فاتورة مبيعات')}</div>
-    ${company.branch_name ? `<div style="font-size:12px;color:#333;">${esc(company.branch_name)}</div>` : ''}
+    ${company.branchName ? `<div style="font-size:12px;color:#333;">${esc(company.branchName)}</div>` : ''}
     ${company.address     ? `<div style="font-size:11px;color:#555;">${esc(company.address)}</div>` : ''}
     ${company.phone       ? `<div style="font-size:11px;">هاتف: ${esc(company.phone)}</div>` : ''}
     ${company.website     ? `<div style="font-size:10px;color:#777;">${esc(company.website)}</div>` : ''}
@@ -75,11 +75,11 @@ export const buildThermalDetailedHtml = (sale, options = {}) => {
 
   <!-- ② بيانات الفاتورة — شبكة 2×2 -->
   <div class="grid2">
-    <div><span class="lbl">الفاتورة: </span><span class="val">#${esc(String(sale.invoice_number || sale.id || ''))}</span></div>
+    <div><span class="lbl">الفاتورة: </span><span class="val">#${esc(String(sale.invoiceNumber || sale.id || ''))}</span></div>
     <div class="lft"><span class="lbl">التاريخ: </span><span class="val">${dateStr}</span></div>
     <div><span class="lbl">الدفع: </span><span class="val">${esc(paymentName)}</span></div>
     <div class="lft"><span class="lbl">الوقت: </span><span class="val">${timeStr}</span></div>
-    ${sale.customer_name ? `<div style="grid-column:span 2;margin-top:3px;"><span class="lbl">العميل: </span><span class="val">${esc(sale.customer_name)}</span></div>` : ''}
+    ${sale.customerName ? `<div style="grid-column:span 2;margin-top:3px;"><span class="lbl">العميل: </span><span class="val">${esc(sale.customerName)}</span></div>` : ''}
   </div>
 
   <!-- نص الهيدر الديناميكي -->
@@ -93,9 +93,9 @@ export const buildThermalDetailedHtml = (sale, options = {}) => {
   <hr class="hr"/>
 
   <!-- ④ الإجماليات التفصيلية -->
-  <div class="row"><span>الإجمالي الفرعي:</span><span>${fmt(sale.total_amount)}</span></div>
+  <div class="row"><span>الإجمالي الفرعي:</span><span>${fmt(sale.totalAmount)}</span></div>
   ${discountAmt > 0 ? `<div class="row" style="color:#c0392b;"><span>${discountLabel}</span><span>${fmt(discountAmt)}</span></div>` : ''}
-  ${parseFloat(sale.tax_amount) > 0 ? `<div class="row"><span>الضريبة${taxInclusive ? ' (ضمن الإجمالي)' : ''}${taxRate > 0 ? ` (${taxRate}%)` : ''}:</span><span>${fmt(sale.tax_amount)}</span></div>` : ''}
+  ${parseFloat(sale.taxAmount) > 0 ? `<div class="row"><span>الضريبة${taxInclusive ? ' (ضمن الإجمالي)' : ''}${taxRate > 0 ? ` (${taxRate}%)` : ''}:</span><span>${fmt(sale.taxAmount)}</span></div>` : ''}
 
   <!-- الصافي النهائي البارز -->
   <div class="grand-box">
@@ -103,8 +103,8 @@ export const buildThermalDetailedHtml = (sale, options = {}) => {
     <span class="g-val">${fmt(saleGrandTotal(sale))}</span>
   </div>
 
-  <div class="row" style="color:#555;font-size:11px;"><span>المبلغ المدفوع:</span><span>${fmt(sale.paid_amount)}</span></div>
-  ${parseFloat(sale.change_amount) > 0 ? `<div class="row bold" style="color:#27ae60;"><span>الباقي للعميل:</span><span>${fmt(sale.change_amount)}</span></div>` : ''}
+  <div class="row" style="color:#555;font-size:11px;"><span>المبلغ المدفوع:</span><span>${fmt(sale.paidAmount)}</span></div>
+  ${parseFloat(sale.changeAmount) > 0 ? `<div class="row bold" style="color:#27ae60;"><span>الباقي للعميل:</span><span>${fmt(sale.changeAmount)}</span></div>` : ''}
 
   <!-- ⑤ الشروط والأحكام -->
   ${cfg.termsText ? `

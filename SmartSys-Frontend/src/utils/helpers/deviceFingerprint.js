@@ -1,3 +1,4 @@
+import logger from '@/utils/services/logger'
 /**
  * Device Fingerprinting Utility
  * Generates unique device fingerprint for security tracking
@@ -405,7 +406,7 @@ export default deviceFingerprint;
 (async () => {
     try {
         await deviceFingerprint.getFingerprint();
-        console.log('Device fingerprint generated successfully');
+        logger.debug('Device fingerprint generated successfully');
     } catch (error) {
         console.error('Failed to generate device fingerprint:', error);
     }

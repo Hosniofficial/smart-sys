@@ -2,7 +2,6 @@
   <div class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" @click.self="closeModal">
     <div class="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden animate-modalIn border border-white flex flex-col text-right" dir="rtl" @click.stop>
       
-      <!-- Modal Header -->
       <div class="px-8 py-6 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between shrink-0">
         <div class="flex items-center gap-4">
           <div class="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200 text-white">
@@ -18,17 +17,15 @@
         </button>
       </div>
 
-      <!-- Modal Body -->
       <form @submit.prevent="handleSubmit" class="p-8 space-y-6">
         
-        <!-- Active Product Profile -->
         <div class="bg-slate-900 p-6 rounded-[2rem] text-white shadow-xl relative overflow-hidden group border border-slate-800">
           <div class="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full translate-x-8 -translate-y-8 group-hover:scale-110 transition-transform"></div>
           <div class="relative z-10 flex items-center gap-4">
             <div class="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center text-blue-400 shadow-inner"><i class="fas fa-box"></i></div>
             <div>
               <p class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">الصنف المراد نقله</p>
-              <h4 class="text-base font-black leading-tight">{{ product.product_name || product.name }}</h4>
+              <h4 class="text-base font-black leading-tight">{{ product.productName || product.name }}</h4>
             </div>
           </div>
           <div class="mt-6 pt-4 border-t border-white/5 flex justify-between items-center">
@@ -37,7 +34,6 @@
           </div>
         </div>
 
-        <!-- Destination branch -->
         <div class="space-y-2 group">
           <label for="destination-branch" class="modal-label">الفرع الهدف (الوجهة) <span class="text-rose-500">*</span></label>
           <div class="relative">
@@ -55,10 +51,9 @@
             </select>
             <i class="fas fa-map-location-dot absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
           </div>
-          <p v-if="serverErrors.destination_branch_id" class="text-[10px] text-rose-500 font-bold px-1">{{ serverErrors.destination_branch_id[0] }}</p>
+          <p v-if="serverErrors.destinationBranchId" class="text-[10px] text-rose-500 font-bold px-1">{{ serverErrors.destinationBranchId[0] }}</p>
         </div>
 
-        <!-- Quantity Field -->
         <div class="space-y-2 group">
           <label for="quantity" class="modal-label">الكمية المراد نقلها <span class="text-rose-500">*</span></label>
           <div class="relative">
@@ -77,7 +72,6 @@
           <p v-if="serverErrors.quantity" class="text-[10px] text-rose-500 font-bold px-1">{{ serverErrors.quantity[0] }}</p>
         </div>
 
-        <!-- Transfer Notice -->
         <div class="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-start gap-3">
           <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
           <p class="text-[11px] text-blue-700 font-bold leading-relaxed">عند تأكيد النقل، سيتم خصم الكمية من الفرع الحالي وإضافتها إلى المستودع المحدد، مع تسجيل حركة النقل في النظام.</p>
@@ -85,7 +79,6 @@
 
       </form>
 
-      <!-- Modal Footer -->
       <div class="px-8 py-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 shrink-0">
         <button type="button" @click="closeModal" class="px-6 py-3 rounded-xl border-2 border-slate-100 font-black text-slate-400 hover:bg-white transition-all text-xs uppercase tracking-widest">
           إلغاء
@@ -112,7 +105,6 @@ import { useToast } from '@/composables/useToast';
 import LoadingButton from '@/components/ui/LoadingButton.vue'
 import { useBranchStore } from '@/stores/branch/branchStore';
 
-// --- Props & Emits (STRICTLY PRESERVED) ---
 const props = defineProps({
   product: { type: Object, required: true },
   sourcebranchId: { type: [String, Number], required: true }
@@ -122,20 +114,17 @@ const emit = defineEmits(['close', 'success']);
 const { showToast } = useToast();
 const branchStore = useBranchStore();
 
-// --- State (STRICTLY PRESERVED) ---
 const allbranchs = computed(() => branchStore.branches);
 const destinationbranchId = ref(null);
 const quantity = ref(1);
 const isLoading = ref(false);
 const serverErrors = ref({});
 
-// --- Computed Logic (STRICTLY PRESERVED) ---
 const destinationbranchs = computed(() => {
   // Filter out the source branch from the list of possible destinations
   return allbranchs.value.filter(w => w.id != props.sourcebranchId);
 });
 
-// --- API Logic (STRICTLY PRESERVED) ---
 const fetchbranchs = async () => {
   try {
     await branchStore.fetchBranches();
@@ -145,7 +134,6 @@ const fetchbranchs = async () => {
 };
 
 const handleSubmit = async () => {
-  // Basic validation (Preserved)
   if (!destinationbranchId.value) {
     showToast('يرجى اختيار الفرع الهدف.', 'warning');
     return;
@@ -163,9 +151,9 @@ const handleSubmit = async () => {
   serverErrors.value = {};
 
   const payload = {
-    product_id: props.product.id,
-    from_branch: props.sourcebranchId,
-    to_branch: destinationbranchId.value,
+    productId: props.product.id,
+    fromBranch: props.sourcebranchId,
+    toBranch: destinationbranchId.value,
     quantity: quantity.value,
     notes: ''
   };
@@ -194,7 +182,7 @@ const closeModal = () => {
   emit('close');
 };
 
-// --- Lifecycle ---
+// Lifecycle
 onMounted(() => {
   fetchbranchs();
 });

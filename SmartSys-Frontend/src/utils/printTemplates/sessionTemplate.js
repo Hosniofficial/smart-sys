@@ -33,15 +33,15 @@ export const buildSessionHtml = (session, options = {}) => {
       const cancelled = transaction.status === 'cancelled';
       const expense = isExpense(transaction.type);
       return `<tr>
-        <td>${esc(formatTime(transaction.created_at))}</td>
+        <td>${esc(formatTime(transaction.createdAt))}</td>
         <td>${esc(transactionLabel[transaction.type] || transaction.type || 'حركة نقدية')}${cancelled ? ' (ملغاة)' : ''}</td>
         <td class="${cancelled ? 'muted' : expense ? 'expense' : 'income'}">${cancelled ? '' : expense ? '-' : '+'}${esc(fmt(transaction.amount))}</td>
       </tr>`;
     }).join('')
     : '<tr><td colspan="3" class="empty">لا توجد حركات مسجلة لهذه الجلسة</td></tr>';
 
-  const expectedCash = summary.calculated?.expected_cash ?? 0;
-  const variance = summary.calculated?.variance_amount ?? session.variance_amount ?? 0;
+  const expectedCash = summary.calculated?.expectedCash ?? 0;
+  const variance = summary.calculated?.varianceAmount ?? session.varianceAmount ?? 0;
   return `<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -70,26 +70,26 @@ export const buildSessionHtml = (session, options = {}) => {
     <div class="center">
       ${company.logo ? `<img src="${esc(company.logo)}" style="max-height:60px;max-width:180px;object-fit:contain"/>` : ''}
       <div class="company">${esc(company.name || 'تقرير جلسة الكاشير')}</div>
-      ${company.branch_name ? `<div class="sub">${esc(company.branch_name)}</div>` : ''}
+      ${company.branchName ? `<div class="sub">${esc(company.branchName)}</div>` : ''}
       ${company.address ? `<div class="sub">${esc(company.address)}</div>` : ''}
       ${company.phone ? `<div class="sub">هاتف: ${esc(company.phone)}</div>` : ''}
     </div>
     <div class="center title">تقرير جلسة الكاشير #${esc(session.id)}</div>
-    <div class="center meta">${esc(session.device_name || session.device_id || '—')} — ${esc(session.status === 'open' ? 'نشطة' : 'مغلقة')}</div>
+    <div class="center meta">${esc(session.deviceName || session.deviceId || '—')} — ${esc(session.status === 'open' ? 'نشطة' : 'مغلقة')}</div>
     <div class="grid">
-      <div class="card"><span class="label">البداية</span><span class="value">${esc(formatDateTime(session.start_time))}</span></div>
-      <div class="card"><span class="label">النهاية</span><span class="value">${esc(session.end_time ? formatDateTime(session.end_time) : 'حتى الآن')}</span></div>
-      <div class="card"><span class="label">الرصيد الافتتاحي</span><span class="value">${esc(fmt(summary.calculated?.opening_balance ?? session.opening_cash_amount))}</span></div>
+      <div class="card"><span class="label">البداية</span><span class="value">${esc(formatDateTime(session.startTime))}</span></div>
+      <div class="card"><span class="label">النهاية</span><span class="value">${esc(session.endTime ? formatDateTime(session.endTime) : 'حتى الآن')}</span></div>
+      <div class="card"><span class="label">الرصيد الافتتاحي</span><span class="value">${esc(fmt(summary.calculated?.openingBalance ?? session.openingCashAmount))}</span></div>
       <div class="card"><span class="label">المتوقع حاليًا</span><span class="value">${esc(fmt(expectedCash))}</span></div>
     </div>
     <div class="grid">
-      <div class="card"><span class="label">إجمالي المبيعات</span><span class="value">${esc(fmt(summary.totals?.cash_in))}</span></div>
-      <div class="card"><span class="label">إجمالي المصروفات</span><span class="value">${esc(fmt(summary.totals?.cash_out))}</span></div>
+      <div class="card"><span class="label">إجمالي المبيعات</span><span class="value">${esc(fmt(summary.totals?.cashIn))}</span></div>
+      <div class="card"><span class="label">إجمالي المصروفات</span><span class="value">${esc(fmt(summary.totals?.cashOut))}</span></div>
       <div class="card"><span class="label">الفرق</span><span class="value">${esc(fmt(variance))}</span></div>
       <div class="card"><span class="label">عدد الحركات</span><span class="value">${transactions.length}</span></div>
     </div>
     <table><thead><tr><th>الوقت</th><th>النوع</th><th>المبلغ</th></tr></thead><tbody>${transactionRows}</tbody></table>
-    ${Number(variance) ? `<div class="variance"><strong>تقرير الفروقات:</strong> ${esc(summary.session?.variance_reason || 'تم إغلاق الجلسة دون تبرير للفروقات المذكورة.')}</div>` : ''}
+    ${Number(variance) ? `<div class="variance"><strong>تقرير الفروقات:</strong> ${esc(summary.session?.varianceReason || 'تم إغلاق الجلسة دون تبرير للفروقات المذكورة.')}</div>` : ''}
     ${cfg.footerEnabled && cfg.footerText ? `<div class="custom">${esc(cfg.footerText)}</div>` : ''}
     ${cfg.termsText ? `<div class="custom">${esc(cfg.termsText).replace(/\n/g, '<br/>')}</div>` : ''}
   </div>

@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar: High-precision indicator -->
     <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="تقرير ملخص الجلسات"
@@ -29,12 +27,11 @@
         </template>
       </PageHeader>
 
-      <!-- Quick Analytics KPIs: Metric Grid -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div v-for="kpi in [
           { label: 'إجمالي الجلسات', val: totalItems, icon: 'fa-layer-group', color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'المبيعات المتوقعة', val: formatCurrency(sessions.reduce((s, v) => s + (v.expected_cash || 0), 0)), icon: 'fa-cash-register', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'صافي الفروقات', val: formatCurrency(sessions.reduce((s, v) => s + (v.variance_amount || 0), 0)), icon: 'fa-scale-unbalanced', color: 'text-rose-600', bg: 'bg-rose-50' },
+          { label: 'المبيعات المتوقعة', val: formatCurrency(sessions.reduce((s, v) => s + (v.expectedCash || 0), 0)), icon: 'fa-cash-register', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { label: 'صافي الفروقات', val: formatCurrency(sessions.reduce((s, v) => s + (v.varianceAmount || 0), 0)), icon: 'fa-scale-unbalanced', color: 'text-rose-600', bg: 'bg-rose-50' },
           { label: 'جلسات نشطة', val: sessions.filter(s => s.status === 'open').length, icon: 'fa-clock', color: 'text-amber-600', bg: 'bg-amber-50' }
         ]" :key="kpi.label" class="bg-white border border-slate-200 p-5 rounded-xl flex items-center justify-between group hover:border-slate-300 transition-all shadow-sm">
           <div>
@@ -47,7 +44,6 @@
         </div>
       </section>
 
-      <!-- Advanced Filters: Linear-style Utility Bar -->
       <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div class="p-6 space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -106,7 +102,6 @@
         </div>
       </section>
 
-      <!-- Main Data Table: Professional Audit Grid -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
@@ -123,44 +118,42 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 font-medium text-xs">
-              <!-- Loading Skeleton -->
               <template v-if="isLoading && !isExporting">
                 <tr v-for="n in 6" :key="n" class="animate-pulse">
                   <td v-for="m in 8" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                 </tr>
               </template>
               
-              <!-- Data Rows -->
               <tr v-for="session in paginatedSessions" :key="session.id" class="hover:bg-blue-50/20 transition-all group">
                 <td class="px-6 py-4">
                   <div class="flex flex-col gap-1">
-                    <span class="font-bold text-slate-900">{{ formatDate(session.start_time) }}</span>
+                    <span class="font-bold text-slate-900">{{ formatDate(session.startTime) }}</span>
                     <span class="text-[9px] font-bold text-slate-400 uppercase font-mono tracking-tighter">
-                      DURATION: {{ formatDuration(session.start_time, session.end_time) }}
+                      DURATION: {{ formatDuration(session.startTime, session.endTime) }}
                     </span>
                   </div>
                 </td>
                 <td class="px-4 py-4">
                   <div class="flex flex-col gap-1">
-                    <span class="text-slate-700 font-bold">{{ session.branch_name || 'الفرع الرئيسي' }}</span>
+                    <span class="text-slate-700 font-bold">{{ session.branchName || 'الفرع الرئيسي' }}</span>
                     <span class="text-[10px] text-blue-500 font-bold uppercase tracking-widest flex items-center gap-1.5">
-                      <i class="fas fa-desktop opacity-30"></i> {{ session.terminal_name || '-' }}
+                      <i class="fas fa-desktop opacity-30"></i> {{ session.terminalName || '-' }}
                     </span>
                   </div>
                 </td>
                 <td class="px-4 py-4">
-                  <div class="font-bold text-slate-800">{{ session.cashier_name || '-' }}</div>
-                  <div v-if="session.closed_by_name" class="text-[9px] text-slate-400 font-medium mt-1">بإشراف: {{ session.closed_by_name }}</div>
+                  <div class="font-bold text-slate-800">{{ session.cashierName || '-' }}</div>
+                  <div v-if="session.closedByName" class="text-[9px] text-slate-400 font-medium mt-1">بإشراف: {{ session.closedByName }}</div>
                 </td>
-                <td class="px-4 py-4 text-center font-mono font-bold text-slate-400">{{ formatCurrency(session.opening_cash_amount) }}</td>
-                <td class="px-4 py-4 text-center font-mono font-bold text-slate-600">{{ formatCurrency(session.expected_cash) }}</td>
-                <td class="px-4 py-4 text-center font-mono font-bold text-slate-900 bg-slate-50/50 group-hover:bg-white transition-colors">{{ formatCurrency(session.actual_cash) }}</td>
+                <td class="px-4 py-4 text-center font-mono font-bold text-slate-400">{{ formatCurrency(session.openingCashAmount) }}</td>
+                <td class="px-4 py-4 text-center font-mono font-bold text-slate-600">{{ formatCurrency(session.expectedCash) }}</td>
+                <td class="px-4 py-4 text-center font-mono font-bold text-slate-900 bg-slate-50/50 group-hover:bg-white transition-colors">{{ formatCurrency(session.actualCash) }}</td>
                 <td class="px-4 py-4 text-center">
                   <div :class="[
-                    session.variance_amount === 0 ? 'text-slate-300' :
-                    session.variance_amount < 0 ? 'text-rose-600' : 'text-emerald-600'
+                    session.varianceAmount === 0 ? 'text-slate-300' :
+                    session.varianceAmount < 0 ? 'text-rose-600' : 'text-emerald-600'
                   ]" class="font-bold font-mono tracking-tighter text-sm">
-                    {{ formatCurrency(session.variance_amount) }}
+                    {{ formatCurrency(session.varianceAmount) }}
                   </div>
                 </td>
                 <td class="px-6 py-4">
@@ -188,7 +181,6 @@
             </table>
           </div>
 
-        <!-- Pagination Footer (Unified Standard) -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ filters.totalPages.value }}</span>
@@ -215,25 +207,23 @@
       </div>
     </div>
 
-    <!-- Session Details Modal: Audit Terminal Style -->
     <BaseModal :show="showTransactionDetails && !!selectedSession" @close="closeSessionDetails" maxWidth="4xl" variant="modern">
       <template #header>
         <div class="flex items-center gap-4">
           <div class="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center text-white shadow-lg shrink-0"><i class="fas fa-receipt text-base"></i></div>
           <div>
             <h3 class="text-sm font-bold text-slate-900 uppercase">تحليل الجلسة المالية #{{ selectedSession?.session.id }}</h3>
-            <p class="text-[9px] text-slate-400 font-mono mt-1 uppercase tracking-tighter">{{ formatDateTime(selectedSession?.session.start_time) }}</p>
+            <p class="text-[9px] text-slate-400 font-mono mt-1 uppercase tracking-tighter">{{ formatDateTime(selectedSession?.session.startTime) }}</p>
           </div>
         </div>
       </template>
 
       <div class="space-y-10">
-        <!-- Identity Summary Grid -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div v-for="info in [
-            { l: 'الفرع', v: selectedSession?.session.branch_name || 'الفرع الرئيسي' },
-            { l: 'المحطة', v: selectedSession?.session.device_name || 'غير محدد' },
-            { l: 'الموظف المسئول', v: selectedSession?.session.closed_by_name || 'غير محدد' },
+            { l: 'الفرع', v: selectedSession?.session.branchName || 'الفرع الرئيسي' },
+            { l: 'المحطة', v: selectedSession?.session.deviceName || 'غير محدد' },
+            { l: 'الموظف المسئول', v: selectedSession?.session.closedByName || 'غير محدد' },
             { l: 'الحالة', v: selectedSession?.session.status === 'closed' ? 'مغلقة ومرحلة' : 'نشطة حالياً', b: selectedSession?.session.status === 'closed' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-600' }
           ]" :key="info.l" class="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-center space-y-1">
             <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{{ info.l }}</p>
@@ -251,34 +241,33 @@
            </div>
            <div class="p-8 grid grid-cols-1 md:grid-cols-3 gap-10">
               <div class="space-y-4">
-                <div class="flex justify-between items-center text-[11px] font-medium"><span class="text-slate-400">الرصيد الافتتاحي</span><span class="text-slate-900 font-mono">{{ formatCurrency(selectedSession?.calculated.opening_balance) }}</span></div>
-                <div class="flex justify-between items-center text-[11px] font-medium text-emerald-600"><span>المتحصلات النقدية (+)</span><span class="font-mono">+{{ formatCurrency(selectedSession?.totals.cash_in) }}</span></div>
-                <div class="flex justify-between items-center text-[11px] font-medium text-rose-500 pb-3 border-b border-slate-50"><span>إجمالي المصروفات (-)</span><span class="font-mono">-{{ formatCurrency(selectedSession?.totals.cash_out) }}</span></div>
+                <div class="flex justify-between items-center text-[11px] font-medium"><span class="text-slate-400">الرصيد الافتتاحي</span><span class="text-slate-900 font-mono">{{ formatCurrency(selectedSession?.calculated.openingBalance) }}</span></div>
+                <div class="flex justify-between items-center text-[11px] font-medium text-emerald-600"><span>المتحصلات النقدية (+)</span><span class="font-mono">+{{ formatCurrency(selectedSession?.totals.cashIn) }}</span></div>
+                <div class="flex justify-between items-center text-[11px] font-medium text-rose-500 pb-3 border-b border-slate-50"><span>إجمالي المصروفات (-)</span><span class="font-mono">-{{ formatCurrency(selectedSession?.totals.cashOut) }}</span></div>
               </div>
               
               <div class="flex flex-col items-center justify-center text-center p-6 bg-slate-50 rounded-xl border border-slate-100 shadow-inner">
                  <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">النقد المتوقع محاسبياً</p>
-                 <p class="text-2xl font-bold font-mono tracking-tighter text-slate-900">{{ formatCurrency(selectedSession?.calculated.expected_cash) }}</p>
+                 <p class="text-2xl font-bold font-mono tracking-tighter text-slate-900">{{ formatCurrency(selectedSession?.calculated.expectedCash) }}</p>
               </div>
 
               <div class="flex flex-col items-center justify-center text-center p-6 bg-slate-900 rounded-xl text-white shadow-xl relative overflow-hidden">
                  <div class="absolute top-0 right-0 w-20 h-20 bg-white/5 rounded-full -translate-x-4 -translate-y-4"></div>
                  <p class="text-[9px] font-bold text-blue-400 uppercase tracking-widest mb-2">النقد الفعلي المستلم</p>
-                 <p class="text-2xl font-bold font-mono tracking-tighter leading-none">{{ formatCurrency(selectedSession?.session.closing_cash_amount) }}</p>
+                 <p class="text-2xl font-bold font-mono tracking-tighter leading-none">{{ formatCurrency(selectedSession?.session.closingCashAmount) }}</p>
                  <div class="mt-4 pt-3 border-t border-white/10 w-full flex items-center justify-center gap-2">
-                    <span :class="[selectedSession?.calculated.variance_amount === 0 ? 'text-white/40' : 'text-rose-400']" class="text-[10px] font-bold uppercase tracking-tight">الفرق: {{ formatCurrency(selectedSession?.calculated.variance_amount) }}</span>
-                    <i :class="selectedSession?.calculated.variance_amount === 0 ? 'fas fa-check-circle text-emerald-400' : 'fas fa-triangle-exclamation text-rose-400'" class="text-[9px]"></i>
+                    <span :class="[selectedSession?.calculated.varianceAmount === 0 ? 'text-white/40' : 'text-rose-400']" class="text-[10px] font-bold uppercase tracking-tight">الفرق: {{ formatCurrency(selectedSession?.calculated.varianceAmount) }}</span>
+                    <i :class="selectedSession?.calculated.varianceAmount === 0 ? 'fas fa-check-circle text-emerald-400' : 'fas fa-triangle-exclamation text-rose-400'" class="text-[9px]"></i>
                  </div>
               </div>
            </div>
-           <div v-if="selectedSession?.session.variance_reason" class="px-8 pb-6">
+           <div v-if="selectedSession?.session.varianceReason" class="px-8 pb-6">
               <div class="p-4 bg-amber-50 border border-amber-100 rounded-lg text-xs font-bold text-amber-800 italic leading-relaxed">
-                <i class="fas fa-quote-right ml-2 opacity-30"></i> تبرير الفرق: {{ selectedSession?.session.variance_reason }}
+                <i class="fas fa-quote-right ml-2 opacity-30"></i> تبرير الفرق: {{ selectedSession?.session.varianceReason }}
               </div>
            </div>
         </div>
 
-        <!-- Ledger Feed Table -->
         <div class="space-y-4">
           <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">سجل حركات دفتر اليومية للجلسة</h4>
           <div class="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -289,10 +278,10 @@
                   <tr><td colspan="5" class="py-12 text-center text-slate-300"><i class="fas fa-inbox text-2xl mb-2 opacity-20"></i><p class="text-[10px] font-bold uppercase tracking-widest">لا توجد حركات مالية مسجلة لهذه الجلسة</p></td></tr>
                 </template>
                 <tr v-for="tx in selectedSession?.transactions" :key="tx.id" class="hover:bg-slate-50 transition-colors">
-                  <td class="px-6 py-3 font-mono font-bold text-slate-400">{{ formatDateTime(tx.created_at) }}</td>
+                  <td class="px-6 py-3 font-mono font-bold text-slate-400">{{ formatDateTime(tx.createdAt) }}</td>
                   <td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-[10px] font-bold text-slate-600 uppercase">{{ getTransactionTypeLabel(tx.type) }}</span></td>
                   <td class="px-4 py-3 text-left font-mono font-bold" :class="isExpense(tx.type) ? 'text-rose-600' : 'text-emerald-600'">{{ isExpense(tx.type) ? '-' : '+' }}{{ formatCurrency(tx.amount) }}</td>
-                  <td class="px-6 py-3 font-bold text-blue-600 uppercase"><span v-if="tx.reference_type && tx.reference_id" class="font-mono">{{ tx.reference_type }}#{{ tx.reference_id }}</span><span v-else class="text-slate-400">--</span></td>
+                  <td class="px-6 py-3 font-bold text-blue-600 uppercase"><span v-if="tx.referenceType && tx.referenceId" class="font-mono">{{ tx.referenceType }}#{{ tx.referenceId }}</span><span v-else class="text-slate-400">--</span></td>
                   <td class="px-6 py-3 text-slate-500 italic max-w-xs truncate">{{ tx.notes || '--' }}</td>
                 </tr>
               </tbody>
@@ -320,7 +309,6 @@
 </template>
 
 <script setup>
-// [SCRIPT SECTION REMAINS 100% IDENTICAL TO THE ORIGINAL AS PER BUSINESS LOGIC RULE]
 import { ref, computed, onMounted } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
 import { formatCurrency, getLocalDateISO, formatDateTime } from '@/utils';
@@ -353,7 +341,7 @@ const error = ref(null);
 const sessions = ref([]);
 const totalItems = ref(0);
 
-// ─── Pagination (using useTableFilters composable)
+// Pagination (using useTableFilters composable)
 const filters = useTableFilters('sessions_summary_filters');
 
 const selectedSession = ref(null);
@@ -367,7 +355,7 @@ const toDateRef = ref(null);
 const branchId = computed({
   get: () => canSelectBranch.value
     ? branchStore.selectedBranchId ?? ''
-    : authStore.user?.branch_id ?? '',
+    : authStore.user?.branchId ?? '',
   set: (value) => {
     if (canSelectBranch.value) {
       branchStore.setSelectedBranch(value === '' ? null : value);
@@ -410,7 +398,7 @@ const formatDuration = (start, end) => {
 const fetchSessions = async () => {
   try {
     isLoading.value = true; error.value = null;
-    const params = { page: filters.page.value, per_page: filters.perPage.value, from_date: fromDate.value || undefined, to_date: toDate.value || undefined, branch_id: branchId.value || undefined, cashier_id: cashierId.value || undefined, terminal_id: terminalId.value || undefined, has_variance: hasVariance.value || undefined };
+    const params = { page: filters.page.value, perPage: filters.perPage.value, fromDate: fromDate.value || undefined, toDate: toDate.value || undefined, branchId: branchId.value || undefined, cashierId: cashierId.value || undefined, terminalId: terminalId.value || undefined, hasVariance: hasVariance.value || undefined };
     const result = await sessionStore.fetchSessions(params);
     if (result.status === 'success') { sessions.value = result.data || []; totalItems.value = result.total || sessions.value.length; }
     else { error.value = result.message || 'فشل تحميل الجلسات'; showToast(error.value, 'error'); }
@@ -448,7 +436,7 @@ const exportSession = async (session) => {
 };
 
 const getTransactionTypeLabel = (type) => {
-  const types = { 'sale': 'بيع', 'expense': 'مصروف', 'income': 'إيراد', 'return_payment': 'مرتجع مشتريات', 'return_receipt': 'مرتجع مبيعات', 'withdrawal': 'سحب', 'deposit': 'إيداع' };
+  const types = { 'sale': 'بيع', 'expense': 'مصروف', 'income': 'إيراد', 'returnPayment': 'مرتجع مشتريات', 'returnReceipt': 'مرتجع مبيعات', 'withdrawal': 'سحب', 'deposit': 'إيداع' };
   return types[type] || type;
 };
 

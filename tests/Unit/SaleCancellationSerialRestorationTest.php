@@ -48,7 +48,7 @@ final class SaleCancellationSerialRestorationTest extends TestCase
                 unit_id INTEGER, branch_from INTEGER, branch_to INTEGER, quantity REAL,
                 unit_cost REAL, total_cost REAL, movement_type TEXT, reference_type TEXT,
                 reference_id INTEGER, user_id INTEGER, movement_date TEXT,
-                batch_number TEXT, expiry_date TEXT
+                batch_number TEXT, expiry_date TEXT, notes TEXT
             );
             CREATE TABLE product_serials (
                 tenant_id INTEGER, product_id INTEGER, branch_id INTEGER,

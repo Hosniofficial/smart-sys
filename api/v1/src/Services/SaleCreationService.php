@@ -49,9 +49,7 @@ class SaleCreationService
         $this->logger       = MonologHandler::getInstance('sales');
     }
 
-    // =========================================================================
     // Private Helpers (copied from SalesService)
-    // =========================================================================
 
     private function getSettingValue(int $tenantId, string $key, $default = null)
     {
@@ -303,9 +301,7 @@ class SaleCreationService
         }
     }
 
-    // =========================================================================
     // createSaleItemsAndHandleStock — extracted from SalesService
-    // =========================================================================
 
     private function createSaleItemsAndHandleStock(int $saleId, int $tenantId, int $branchId, array $preparedItems, bool $applyStock = true): void
     {
@@ -418,9 +414,7 @@ class SaleCreationService
         }
     }
 
-    // =========================================================================
     // createSale — extracted from SalesService
-    // =========================================================================
 
     /**
      * إنشاء فاتورة بيع كاملة مع عناصرها.
@@ -474,7 +468,7 @@ class SaleCreationService
                 }
             }
 
-            // ── حساب الإجماليات ──────────────────────────────────────────────
+            // حساب الإجماليات
             $totalAmount    = 0;
             $enteredSubtotal = 0;
             $manualPriceDiscountTotal = 0;
@@ -696,7 +690,7 @@ class SaleCreationService
             $paidAmount          = (float)($data['paid_amount'] ?? 0);
             $grossAmountForStatus = $netTotalAmount + $taxAmount;
 
-            // ── Approval mode ─────────────────────────────────────────────────
+            // Approval mode
             $approvalRequired = $this->isApprovalRequired($tenantId, $branchId);
             if ($approvalRequired) {
                 $paidAmount = 0.0;
@@ -709,7 +703,7 @@ class SaleCreationService
                 ? $data['invoice_number']
                 : $this->generateInvoiceNumber($tenantId);
 
-            // ── Early validations ─────────────────────────────────────────────
+            // Early validations
             if ($taxAmount > 0) {
                 $accStmt = $this->pdo->prepare("SELECT id FROM accounts WHERE code = '2202' AND tenant_id = ?");
                 $accStmt->execute([$tenantId]);
@@ -728,7 +722,7 @@ class SaleCreationService
                 }
             }
 
-            // ── Session for cash ──────────────────────────────────────────────
+            // Session for cash
             $sessionIdForSale = !empty($data['session_id']) ? (int) $data['session_id'] : null;
             $isCash = $this->accounting->isCashMethod($paymentMethodId, $tenantId);
             $sessionRequired = $this->settingsRepo->getBool($tenantId, 'pos.sessions.enabled', false)
@@ -747,7 +741,7 @@ class SaleCreationService
                 }
             }
 
-            // ── Resolve cost center ───────────────────────────────────────────
+            // Resolve cost center
             $resolvedCostCenter = $this->accounting->resolveCostCenterForService($tenantId, $this->userId, $data['cost_center_id'] ?? null, $branchId);
             if (empty($resolvedCostCenter)) {
                 try {
@@ -764,7 +758,7 @@ class SaleCreationService
                 throw new Exception('فشل إنشاء الفاتورة: يجب أن يكون cost_center_id معرفًا في الفرع أو إعداد accounting.default_cost_center_id.');
             }
 
-            // ── INSERT sales ──────────────────────────────────────────────────
+            // INSERT sales
             $stmt = $this->pdo->prepare("
                 INSERT INTO sales (
                     tenant_id, customer_id, sale_date, total_amount, net_total_amount, paid_amount,
@@ -810,7 +804,7 @@ class SaleCreationService
             $applyStockNow = !$approvalRequired;
             $this->createSaleItemsAndHandleStock($saleId, $tenantId, $branchId, $saleItemsForDb, $applyStockNow);
 
-            // ── Draft payment for approval mode ───────────────────────────────
+            // Draft payment for approval mode
             if ($approvalRequired) {
                 $intentAmount = isset($data['paid_amount']) ? (float)$data['paid_amount'] : 0.0;
                 if ($intentAmount > 0) {
@@ -828,7 +822,7 @@ class SaleCreationService
                 }
             }
 
-            // ── Journal entry ─────────────────────────────────────────────────
+            // Journal entry
             $journalEntryId = null;
             if (!$approvalRequired) {
                 $salesAccountId = $this->resolveAccountId($tenantId, 'sales_account', '4001');
@@ -857,7 +851,7 @@ class SaleCreationService
                 }
             }
 
-            // ── Payment + cash transaction ────────────────────────────────────
+            // Payment + cash transaction
             if (!$approvalRequired && $paidAmount > 0) {
                 $isCash   = $this->accounting->isCashMethod($paymentMethodId, $tenantId);
                 $sessionId = $isCash ? $sessionIdForSale : null;
@@ -891,7 +885,7 @@ class SaleCreationService
                 }
             }
 
-            // ── Approval log ──────────────────────────────────────────────────
+            // Approval log
             if ($approvalRequired) {
                 $this->pdo->prepare("
                     INSERT INTO invoice_approvals (tenant_id, sale_id, action, previous_status, new_status, note, action_by)

@@ -1,7 +1,6 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar: High-precision indicator -->
     <PageLoadingBar :active="isLoading" />
 
     <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/80 px-6 py-3 backdrop-blur-md">
@@ -28,7 +27,6 @@
 
     <main class="max-w-[1600px] mx-auto p-4 lg:p-8 space-y-8">
 
-      <!-- Registration Form Section: High-Density Utility Card -->
       <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden relative group">
         <div class="absolute top-0 left-0 w-32 h-32 bg-blue-500/5 rounded-full -translate-x-12 -translate-y-12 group-hover:scale-110 transition-transform duration-1000"></div>
         
@@ -43,7 +41,7 @@
         <div class="p-8 grid grid-cols-1 md:grid-cols-4 gap-6 relative z-10">
           <div class="space-y-1.5">
             <label class="metadata-label">الفرع المرتبط <span class="text-rose-500">*</span></label>
-            <select v-model="form.branch_id" class="filter-input-v2 appearance-none font-bold">
+            <select v-model="form.branchId" class="filter-input-v2 appearance-none font-bold">
               <option v-for="wh in branches" :key="wh.id" :value="wh.id">{{ wh.name }}</option>
             </select>
           </div>
@@ -87,7 +85,6 @@
         </div>
       </section>
 
-      <!-- Terminals List Table: Professional Audit Grid -->
       <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative min-h-[400px]">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
@@ -120,14 +117,12 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 font-medium text-xs">
-              <!-- Loading Skeleton -->
               <template v-if="isLoading">
                 <tr v-for="n in 5" :key="n" class="animate-pulse">
                   <td v-for="m in 6" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                 </tr>
               </template>
               
-              <!-- Empty State -->
               <tr v-else-if="!terminals.length">
                 <td colspan="6" class="py-24 text-center text-slate-300">
                    <i class="fas fa-desktop text-3xl mb-4 opacity-20"></i>
@@ -135,7 +130,6 @@
                 </td>
               </tr>
 
-              <!-- Data Rows -->
               <tr v-for="(t, idx) in terminals" :key="t.id" class="hover:bg-blue-50/20 transition-all group">
                 <td class="px-6 py-4 text-center font-mono text-[10px] text-slate-300">{{ idx + 1 }}</td>
                 <td class="px-4 py-4">
@@ -151,7 +145,7 @@
                 </td>
                 <td class="px-4 py-4 text-slate-500 font-bold uppercase">
                    <i class="fas fa-building text-[10px] ml-3 opacity-30"></i>
-                   {{ branches.find(w => w.id === t.branch_id)?.name || t.branch_id }}
+                   {{ branches.find(w => w.id === t.branchId)?.name || t.branchId }}
                 </td>
                 <td class="px-8 py-4 text-center">
                   <span :class="[t.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100']" class="px-2 py-0.5 rounded text-[9px] font-bold border uppercase tracking-tighter">
@@ -175,7 +169,6 @@
         </div>
       </section>
 
-      <!-- Edit Terminal Modal: Framer-Style Refinement -->
       <Teleport to="body">
         <transition name="fade">
           <div v-if="editModal.open" class="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md" @click.self="editModal.open = false">
@@ -190,7 +183,7 @@
 
               <div class="p-8 space-y-6">
                 <div class="space-y-1.5"><label class="metadata-label">مسمى الجهاز</label><input v-model="editModal.name" type="text" class="filter-input-v2 h-10 font-bold" /></div>
-                <div class="space-y-1.5"><label class="metadata-label">الفرع المرتبط</label><select v-model="editModal.branch_id" class="filter-input-v2 h-10 appearance-none font-bold"><option v-for="wh in branches" :key="wh.id" :value="wh.id">{{ wh.name }}</option></select></div>
+                <div class="space-y-1.5"><label class="metadata-label">الفرع المرتبط</label><select v-model="editModal.branchId" class="filter-input-v2 h-10 appearance-none font-bold"><option v-for="wh in branches" :key="wh.id" :value="wh.id">{{ wh.name }}</option></select></div>
                 <div class="space-y-1.5"><label class="metadata-label">حالة التشغيل</label><select v-model="editModal.status" class="filter-input-v2 h-10 appearance-none font-bold"><option value="active">نشط</option><option value="inactive">معطل</option></select></div>
               </div>
 
@@ -217,7 +210,6 @@
 </template>
 
 <script setup>
-// [SCRIPT SECTION REMAINS 100% IDENTICAL AS PER THE CRITICAL BUSINESS LOGIC RULE]
 import { ref, computed, onMounted } from 'vue'
 import { useToast } from '@/composables/useToast'
 import { useBranchStore } from '@/stores/branch/branchStore'
@@ -235,16 +227,16 @@ const isLoading = ref(false)
 const isSaving = ref(false)
 
 const form = ref({
-  branch_id: null,
+  branchId: null,
   code: '',
   name: '',
   status: 'active',
 })
 
-const editModal = ref({ open: false, id: null, name: '', branch_id: null, status: 'active' })
+const editModal = ref({ open: false, id: null, name: '', branchId: null, status: 'active' })
 
 const openEdit = (t) => {
-  editModal.value = { open: true, id: t.id, name: t.name || '', branch_id: t.branch_id, status: t.status }
+  editModal.value = { open: true, id: t.id, name: t.name || '', branchId: t.branchId, status: t.status }
 }
 
 const saveEdit = async () => {
@@ -252,7 +244,7 @@ const saveEdit = async () => {
     isSaving.value = true
     const res = await terminalStore.updateTerminal(editModal.value.id, {
       name:      editModal.value.name.trim() || null,
-      branch_id: editModal.value.branch_id,
+      branchId: editModal.value.branchId,
       status:    editModal.value.status,
     })
     if (res.status === 'success') {
@@ -287,8 +279,8 @@ const toggleStatus = async (t) => {
 const loadbranchs = async () => {
   try {
     await branchStore.fetchBranches()
-    if (!form.value.branch_id && branches.value.length > 0) {
-      form.value.branch_id = branches.value[0].id
+    if (!form.value.branchId && branches.value.length > 0) {
+      form.value.branchId = branches.value[0].id
     }
   } catch (e) {
     console.error('Failed to load branches', e)
@@ -299,7 +291,7 @@ const loadbranchs = async () => {
 const loadTerminals = async () => {
   try {
     isLoading.value = true
-    const result = await terminalStore.fetchTerminals(form.value.branch_id || undefined, {
+    const result = await terminalStore.fetchTerminals(form.value.branchId || undefined, {
       force: true,
       status: 'all',
     });
@@ -317,21 +309,21 @@ const resetForm = () => {
   form.value.name = ''
   form.value.status = 'active'
   if (branches.value.length > 0) {
-    form.value.branch_id = branches.value[0].id
+    form.value.branchId = branches.value[0].id
   } else {
-    form.value.branch_id = null
+    form.value.branchId = null
   }
 }
 
 const saveTerminal = async () => {
-  if (!form.value.branch_id || !form.value.code.trim()) {
+  if (!form.value.branchId || !form.value.code.trim()) {
     showToast('الرجاء إدخال كود الجهاز واختيار المخزن', 'error')
     return
   }
   try {
     isSaving.value = true
     const payload = {
-      branch_id: form.value.branch_id,
+      branchId: form.value.branchId,
       code: form.value.code.trim(),
       name: form.value.name.trim() || null,
       status: form.value.status,

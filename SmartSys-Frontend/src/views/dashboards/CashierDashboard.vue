@@ -1,7 +1,6 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Global Loading Progress -->
     <PageLoadingBar :active="isLoadingData" />
 
     <main class="max-w-[1600px] mx-auto p-6 lg:p-8 space-y-8">
@@ -85,7 +84,6 @@
         </template>
       </PageHeader>
       
-      <!-- KPI Grid -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <template v-if="isLoadingData && !hasLoadedOnce">
           <div v-for="n in 4" :key="n" class="h-28 bg-white border border-slate-200 rounded-xl animate-pulse"></div>
@@ -120,7 +118,6 @@
         </div>
         
         <div class="grid grid-cols-1 lg:grid-cols-2">
-          <!-- Physical Cash Container -->
           <div class="p-8 border-l border-slate-100 flex flex-col items-center justify-center text-center space-y-2">
             <span class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">النقدية الفعلية بالخزينة</span>
             <div class="text-4xl font-bold text-slate-900 tracking-tighter">
@@ -129,7 +126,6 @@
             <span class="text-[10px] font-medium text-slate-400 italic">تشمل المبيعات النقدية والعهد الافتتاحية فقط</span>
           </div>
 
-          <!-- Electronic Breakdown -->
           <div class="p-8 bg-slate-50/30">
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div v-for="(val, key) in { 'تحويل بنكي': 'bank', 'البطاقات': 'card', 'المحفظة': 'wallet', 'آجل': 'credit' }" :key="key" class="space-y-1">
@@ -145,12 +141,9 @@
         </div>
       </section>
 
-      <!-- Main Operational Area -->
       <div class="grid grid-cols-1 items-stretch gap-8 lg:grid-cols-12">
         
-        <!-- Left: Quick Actions -->
         <div class="h-[420px] sm:h-[460px] lg:col-span-4">
-          <!-- Actions -->
           <div class="h-full bg-white border border-slate-200 rounded-2xl p-6 flex flex-col shadow-sm">
             <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
               <i class="fas fa-bolt text-amber-400"></i> اختصارات العمليات
@@ -186,9 +179,7 @@
           </div>
         </div>
 
-        <!-- Right: Sales Chart -->
         <div class="h-[420px] sm:h-[460px] lg:col-span-8">
-          <!-- Main Sales Chart -->
           <div class="h-full bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:shadow-slate-200/50 transition-shadow flex flex-col">
             <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between shrink-0">
               <div class="flex items-center gap-3">
@@ -213,7 +204,6 @@
       </div>
 
       <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-stretch">
-        <!-- Activity Feed -->
         <div class="h-[360px] bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm flex flex-col">
           <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <h3 class="text-xs font-bold text-slate-800">النشاطات الأخيرة</h3>
@@ -288,11 +278,9 @@
       </section>
     </main>
 
-    <!-- Modals: render outside the layout stacking context so the header cannot overlap them -->
     <Teleport to="body">
     <div v-if="openSessionModal || shiftState === 'ending'" class="fixed inset-0 z-[300] flex items-center justify-center overflow-y-auto p-4 bg-slate-900/40 backdrop-blur-sm">
       
-      <!-- Open Session Modal -->
       <div v-if="openSessionModal" ref="openSessionModalRef" class="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn" role="dialog" aria-modal="true" aria-labelledby="open-session-title" @keydown.esc="openSessionModal = false" tabindex="-1">
         <div class="p-6 border-b border-slate-100 bg-slate-50">
           <h3 id="open-session-title" class="text-base font-bold text-slate-900">بدء جلسة عمل جديدة</h3>
@@ -344,7 +332,6 @@
         </div>
       </div>
 
-      <!-- End Shift/Session Modal -->
       <div v-if="shiftState === 'ending'" ref="endShiftModalRef" class="bg-white w-full max-w-lg max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl shadow-2xl border border-slate-200 animate-modalIn" role="dialog" aria-modal="true" aria-labelledby="end-shift-title" @keydown.esc="shiftState = 'active'" tabindex="-1">
         <div class="p-6 border-b border-slate-100 bg-slate-50">
           <h3 id="end-shift-title" class="text-base font-bold text-slate-900">إغلاق الجلسة وتصفية الخزينة</h3>
@@ -352,13 +339,13 @@
         </div>
         <div class="p-6 space-y-6">
           <div class="grid grid-cols-2 gap-4">
-            <div v-for="item in [{l:'المبيعات', v:dashboardStats.sessionData?.total_sales, c:'text-emerald-600'}, {l:'المرتجعات', v:dashboardStats.totalReturns, c:'text-rose-600'}, {l:'الرصيد الافتتاحي', v:dashboardStats.openingBalance, c:'text-slate-600'}]" :key="item.l" class="p-3 bg-slate-50 rounded-lg">
+            <div v-for="item in [{l:'المبيعات', v:dashboardStats.sessionData?.totalSales, c:'text-emerald-600'}, {l:'المرتجعات', v:dashboardStats.totalReturns, c:'text-rose-600'}, {l:'الرصيد الافتتاحي', v:dashboardStats.openingBalance, c:'text-slate-600'}]" :key="item.l" class="p-3 bg-slate-50 rounded-lg">
               <p class="text-[9px] font-bold text-slate-400 uppercase mb-1">{{ item.l }}</p>
               <p :class="[item.c, 'text-sm font-bold']">{{ formatPrice(item.v) }}</p>
             </div>
             <div class="p-3 bg-slate-900 rounded-lg text-center">
               <p class="text-[9px] font-bold text-slate-400 uppercase mb-1">المتوقع بالخزينة</p>
-              <p class="text-sm font-bold text-blue-400">{{ formatPrice(dashboardStats.sessionData?.expected_cash || expectedInDrawer) }}</p>
+              <p class="text-sm font-bold text-blue-400">{{ formatPrice(dashboardStats.sessionData?.expectedCash || expectedInDrawer) }}</p>
             </div>
           </div>
           
@@ -398,6 +385,7 @@
 </template>
 
 <script setup>
+import logger from '@/utils/services/logger'
 import { ref, computed, onMounted, onUnmounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast';
@@ -419,7 +407,7 @@ import { useRequiredBranch } from '@/composables/useRequiredBranch';
 
 Chart.register(Filler);
 
-// ─── Composables ──────────────────────────────────────────────────────────────
+// Composables
 const router = useRouter();
 const { showToast } = useToast();
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
@@ -434,7 +422,6 @@ const sessionStore = useSessionStore();
 const shiftStore = useShiftStore();
 const analyticsStore = useAnalyticsStore();
 
-// ─── State ────────────────────────────────────────────────────────────────────
 const cashierName = ref('مستخدم');
 const currentTime = ref('');
 const currentDate = ref('');
@@ -553,7 +540,7 @@ const varianceReasons = [
 let dateTimeInterval = null;
 let dashboardAbortCtrl = null;
 
-// ─── Product Colors ───────────────────────────────────────────────────────────
+// Product Colors
 const getProductColor = (i) => [
   { bg: 'bg-blue-100', text: 'text-blue-600' },
   { bg: 'bg-indigo-100', text: 'text-indigo-600' },
@@ -562,13 +549,13 @@ const getProductColor = (i) => [
   { bg: 'bg-rose-100', text: 'text-rose-600' }
 ][i % 5];
 
-// ─── Computeds ────────────────────────────────────────────────────────────────
+// Computeds
 const expenses = computed(() => dashboardStats.value.expenses || 0);
 const actualCashDrawer = computed(() => cashDrawerTotal.value || 0);
 
 const expectedInDrawer = computed(() => {
-  if (dashboardStats.value.sessionData?.expected_cash !== undefined && dashboardStats.value.sessionData?.expected_cash !== null) {
-    return dashboardStats.value.sessionData.expected_cash;
+  if (dashboardStats.value.sessionData?.expectedCash !== undefined && dashboardStats.value.sessionData?.expectedCash !== null) {
+    return dashboardStats.value.sessionData.expectedCash;
   }
   const opening = dashboardStats.value.openingBalance || 0;
   const cashSales = dashboardStats.value.cashControl?.cashSales || 0;
@@ -602,7 +589,6 @@ const sessionStatus = computed(() => activeSessionId.value
   : { active: false, text: 'الجلسة مغلقة', color: 'text-amber-600', bgColor: 'bg-amber-100', icon: 'fas fa-exclamation-triangle' }
 );
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 const formatPrice = (v) => formatCurrencyLocale(v, 2);
 const formatNumber = (v) => (Number(v) || 0).toLocaleString('en-US');
 
@@ -648,10 +634,10 @@ const getDeviceIdentity = () => {
   if (!id) { id = 'dev-' + Math.random().toString(36).slice(2, 8) + '-' + Date.now().toString(36).slice(-6); try { localStorage.setItem('pos_device_id', id); } catch {} }
   const custom = (localStorage.getItem('pos_device_name') || '').trim();
   const nameBase = custom || (typeof navigator !== 'undefined' ? (navigator.platform || navigator.userAgent) : 'POS Device');
-  return { device_id: id, device_name: (custom || `POS ${nameBase}`).slice(0, 64) };
+  return { deviceId: id, deviceName: (custom || `POS ${nameBase}`).slice(0, 64) };
 };
 
-// ─── Charts ───────────────────────────────────────────────────────────────────
+// Charts
 function initChart(chartRef, type, data, instanceRef) {
   if (!chartRef.value) return;
   
@@ -766,7 +752,7 @@ function initChart(chartRef, type, data, instanceRef) {
 const updateSalesChart = (d) => initChart(salesChart, 'line', d, salesChartInstance);
 const updateTopProductsChart = (d) => initChart(topProductsChart, 'doughnut', d, topProductsChartInstance);
 
-// ─── API ──────────────────────────────────────────────────────────────────────
+// API
 const fetchDashboardData = async () => {
   if (dashboardAbortCtrl) dashboardAbortCtrl.abort();
   const requestController = new AbortController();
@@ -779,7 +765,7 @@ const fetchDashboardData = async () => {
     const wid = branchStore.selectedBranchId;
 
     if (!wid) {
-      console.log('No branch selected, skipping dashboard data');
+      logger.debug('No branch selected, skipping dashboard data');
       return;
     }
 
@@ -820,8 +806,8 @@ const fetchDashboardData = async () => {
         if (Array.isArray(summary?.recentActivities)) {
           cashierRecentActivities = summary.recentActivities;
         }
-        if (Array.isArray(summary?.hourly_sales)) {
-          cashierHourlySales = summary.hourly_sales;
+        if (Array.isArray(summary?.hourlySales)) {
+          cashierHourlySales = summary.hourlySales;
         }
         if (summary?.paymentBreakdown && typeof summary.paymentBreakdown === 'object') {
           cashierPaymentBreakdown = summary.paymentBreakdown;
@@ -843,7 +829,7 @@ const fetchDashboardData = async () => {
               ? { recentActivities: cashierRecentActivities }
               : {}),
             ...(cashierHourlySales !== null
-              ? { hourly_sales: cashierHourlySales }
+              ? { hourlySales: cashierHourlySales }
               : {}),
             ...(cashierPaymentBreakdown !== null
               ? { paymentBreakdown: cashierPaymentBreakdown }
@@ -867,48 +853,48 @@ const fetchDashboardData = async () => {
     const data = summary || {};
     const sTotals = summary?.totals || {};
     const sCalc = summary?.calculated || {};
-    const sSalesSum = summary?.sales_summary || {};
-    const sCashCtrl = summary?.cash_control || {};
-    const sElectronicSettle = summary?.electronic_settlements || {};
+    const sSalesSum = summary?.salesSummary || {};
+    const sCashCtrl = summary?.cashControl || {};
+    const sElectronicSettle = summary?.electronicSettlements || {};
     const paymentBreakdown = summary?.paymentBreakdown || {};
-    const salesPaymentBreakdown = summary?.payment_breakdown || {};
-    const bankSettlement = sElectronicSettle.bank ?? paymentBreakdown.bank_total ?? salesPaymentBreakdown.bank ?? 0;
-    const cardSettlement = sElectronicSettle.card ?? paymentBreakdown.card_total ?? salesPaymentBreakdown.card ?? 0;
-    const walletSettlement = sElectronicSettle.wallet ?? paymentBreakdown.wallet_total ?? salesPaymentBreakdown.wallet ?? 0;
-    const creditSettlement = sElectronicSettle.credit ?? paymentBreakdown.credit_total ?? salesPaymentBreakdown.credit ?? 0;
+    const salesPaymentBreakdown = summary?.paymentBreakdown || {};
+    const bankSettlement = sElectronicSettle.bank ?? paymentBreakdown.bankTotal ?? salesPaymentBreakdown.bank ?? 0;
+    const cardSettlement = sElectronicSettle.card ?? paymentBreakdown.cardTotal ?? salesPaymentBreakdown.card ?? 0;
+    const walletSettlement = sElectronicSettle.wallet ?? paymentBreakdown.walletTotal ?? salesPaymentBreakdown.wallet ?? 0;
+    const creditSettlement = sElectronicSettle.credit ?? paymentBreakdown.creditTotal ?? salesPaymentBreakdown.credit ?? 0;
 
     dashboardStats.value = {
-      openingBalance: sCashCtrl.opening_float || sCalc.opening_balance || data.openingBalance || 0,
-      totalSales: cashierPeriodTotals?.totalSales ?? sSalesSum.gross_sales ?? sTotals.total_sales ?? data.totalSales ?? data.net_grand_total ?? 0,
-      totalReturns: cashierPeriodTotals?.totalReturns ?? data.returns_grand_total ?? data.totalReturns ?? 0,
+      openingBalance: sCashCtrl.openingFloat || sCalc.openingBalance || data.openingBalance || 0,
+      totalSales: cashierPeriodTotals?.totalSales ?? sSalesSum.grossSales ?? sTotals.totalSales ?? data.totalSales ?? data.netGrandTotal ?? 0,
+      totalReturns: cashierPeriodTotals?.totalReturns ?? data.returnsGrandTotal ?? data.totalReturns ?? 0,
       expenses: data.expenses || 0,
       sessionData: {
-        total_sales: cashierPeriodTotals?.totalSales ?? sSalesSum.gross_sales ?? sTotals.total_sales ?? 0,
-        expected_cash: sCashCtrl.expected_physical_cash || sCalc.expected_cash || 0,
-        actual_physical_cash: sCashCtrl.actual_physical_cash || sCalc.closing_balance || null,
-        variance: sCashCtrl.variance || sCalc.variance_amount || null
+        totalSales: cashierPeriodTotals?.totalSales ?? sSalesSum.grossSales ?? sTotals.totalSales ?? 0,
+        expectedCash: sCashCtrl.expectedPhysicalCash || sCalc.expectedCash || 0,
+        actualPhysicalCash: sCashCtrl.actualPhysicalCash || sCalc.closingBalance || null,
+        variance: sCashCtrl.variance || sCalc.varianceAmount || null
       },
       electronicSettlements: {
         bank: bankSettlement,
         card: cardSettlement,
         wallet: walletSettlement,
         credit: creditSettlement,
-        total: sElectronicSettle.total_electronic ?? sElectronicSettle.total ?? (bankSettlement + cardSettlement + walletSettlement)
+        total: sElectronicSettle.totalElectronic ?? sElectronicSettle.total ?? (bankSettlement + cardSettlement + walletSettlement)
       },
       cashControl: {
-        cashSales: sCashCtrl.cash_sales || 0,
-        cashRefunds: sCashCtrl.cash_refunds || 0,
-        manualCashIn: sCashCtrl.manual_cash_in || 0,
-        manualCashOut: sCashCtrl.manual_cash_out || 0
+        cashSales: sCashCtrl.cashSales || 0,
+        cashRefunds: sCashCtrl.cashRefunds || 0,
+        manualCashIn: sCashCtrl.manualCashIn || 0,
+        manualCashOut: sCashCtrl.manualCashOut || 0
       }
     };
 
     if (Array.isArray(data.recentActivities) && data.recentActivities.length > 0) {
       recentActivities.value = data.recentActivities.map(activity => {
-        const createdAt = activity.created_at || null;
+        const createdAt = activity.createdAt || null;
         const parsedAmount = parseFloat(activity.amount || 0) || 0;
         const type = activity.type || 'sale';
-        const reference = activity.reference_code || activity.reference_id || '';
+        const reference = activity.referenceCode || activity.referenceId || '';
         
         // Determine icon and color based on type
         let icon = 'fa-receipt';
@@ -927,10 +913,10 @@ const fetchDashboardData = async () => {
         
         return {
           id: `${type}_${activity.id}`,
-          reference_id: activity.reference_id,
+          referenceId: activity.referenceId,
           type: type,
           amount: parsedAmount,
-          raw_amount: parsedAmount,
+          rawAmount: parsedAmount,
           reference,
           description: activity.description || `عملية #${reference}`,
           icon: icon,
@@ -943,7 +929,7 @@ const fetchDashboardData = async () => {
       recentActivities.value = [];
     }
 
-    cashDrawerTotal.value = Number(paymentBreakdown.cash_drawer) || 0;
+    cashDrawerTotal.value = Number(paymentBreakdown.cashDrawer) || 0;
 
     // Top products
     try {
@@ -957,13 +943,13 @@ const fetchDashboardData = async () => {
         signal: requestController.signal
       });
       const sData = salesResp?.data || salesResp || {};
-      const hourlyRows = Array.isArray(data.hourly_sales) ? data.hourly_sales : [];
-      const hourlyTotals = new Map(hourlyRows.map(row => [String(row.hour).slice(0, 2), Number(row.total_sales) || 0]));
+      const hourlyRows = Array.isArray(data.hourlySales) ? data.hourlySales : [];
+      const hourlyTotals = new Map(hourlyRows.map(row => [String(row.hour).slice(0, 2), Number(row.totalSales) || 0]));
       const currentHour = new Date().getHours();
       const labels = Array.from({ length: currentHour + 1 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`);
       const hourlyData = labels.map(label => hourlyTotals.get(label.slice(0, 2)) || 0);
-      const fallbackDailySales = Array.isArray(sData.daily_sales) ? sData.daily_sales : [];
-      const fallbackChart = data.salesChart || data.sales_chart;
+      const fallbackDailySales = Array.isArray(sData.dailySales) ? sData.dailySales : [];
+      const fallbackChart = data.salesChart || data.salesChart;
       updateSalesChart(hourlyRows.length
         ? { labels, data: hourlyData }
         : fallbackChart?.labels?.length
@@ -971,25 +957,25 @@ const fetchDashboardData = async () => {
           : fallbackDailySales.length
             ? {
                 labels: fallbackDailySales.map(row => row.date || ''),
-                data: fallbackDailySales.map(row => Number(row.total_revenue ?? row.total) || 0)
+                data: fallbackDailySales.map(row => Number(row.totalRevenue ?? row.total) || 0)
               }
             : { labels: [], data: [] });
       
-      if (Array.isArray(sData.top_products) && sData.top_products.length > 0) {
-        topProducts.value = sData.top_products
+      if (Array.isArray(sData.topProducts) && sData.topProducts.length > 0) {
+        topProducts.value = sData.topProducts
           .filter(p => p && p.id)
           .map(p => ({
             id: p.id, 
             name: p.name || 'منتج غير معروف',
             code: p.code || '',
-            quantity: parseFloat(p.total_quantity || 0) || 0,
-            totalSales: parseFloat(p.total_revenue || 0) || 0,
-            avgPrice: (parseFloat(p.total_quantity || 0) || 0) > 0 
-              ? (parseFloat(p.total_revenue || 0) || 0) / (parseFloat(p.total_quantity || 0) || 1)
+            quantity: parseFloat(p.totalQuantity || 0) || 0,
+            totalSales: parseFloat(p.totalRevenue || 0) || 0,
+            avgPrice: (parseFloat(p.totalQuantity || 0) || 0) > 0
+              ? (parseFloat(p.totalRevenue || 0) || 0) / (parseFloat(p.totalQuantity || 0) || 1)
               : 0,
-            orderCount: parseInt(p.order_count || 0) || 0,
-            avgQuantityPerOrder: (parseInt(p.order_count || 0) || 0) > 0
-              ? (parseFloat(p.total_quantity || 0) || 0) / (parseInt(p.order_count || 0) || 1)
+            orderCount: parseInt(p.orderCount || 0) || 0,
+            avgQuantityPerOrder: (parseInt(p.orderCount || 0) || 0) > 0
+              ? (parseFloat(p.totalQuantity || 0) || 0) / (parseInt(p.orderCount || 0) || 1)
               : 0,
             unit: p.unit || 'قطعة'
           }))
@@ -1029,7 +1015,7 @@ const fetchDashboardData = async () => {
   }
 };
 
-// ─── Session Actions ──────────────────────────────────────────────────────────
+// Session Actions
 const getUser = () => {
   try {
     return authStore.user || JSON.parse(localStorage.getItem('user') || 'null');
@@ -1042,7 +1028,7 @@ const triggerOpenSession = async () => {
   try {
     const user = getUser();
     const userId = user?.id || null;
-    const branchId = user?.branch_id ?? null;
+    const branchId = user?.branchId ?? null;
 
     if (!userId) return;
 
@@ -1052,7 +1038,7 @@ const triggerOpenSession = async () => {
     }
 
     if (branchId) {
-      const { device_id } = getDeviceIdentity();
+      const { deviceId: device_id } = getDeviceIdentity();
       const result = await sessionStore.getCurrentSession(branchId, userId, device_id);
       if (result?.status === 'success' && result.data?.id) {
         activeSessionId.value = result.data.id;
@@ -1081,9 +1067,9 @@ const triggerOpenSession = async () => {
 
     // ✅ تحميل الأجهزة قبل فتح modal
     try {
-      console.log('[CashierDashboard] About to fetch terminals for branch:', targetBranchId);
+      logger.debug('[CashierDashboard] About to fetch terminals for branch:', targetBranchId);
       const loadedTerminals = await terminalStore.fetchTerminals(targetBranchId, { force: true });
-      console.log('[CashierDashboard] Fetch completed. Terminals count:', loadedTerminals?.length || 0);
+      logger.debug('[CashierDashboard] Fetch completed. Terminals count:', loadedTerminals?.length || 0);
       
       // تأكد من وجود أجهزة
       if (!loadedTerminals || loadedTerminals.length === 0) {
@@ -1139,7 +1125,7 @@ const confirmOpenSession = async () => {
       }
     }
 
-    const { device_id, device_name } = getDeviceIdentity();
+    const { deviceId: device_id, deviceName: device_name } = getDeviceIdentity();
     
     // ✅ التحقق النهائي من terminal_id
     if (!selectedTerminalId.value) {
@@ -1149,12 +1135,12 @@ const confirmOpenSession = async () => {
     }
 
     const result = await sessionStore.openSession({
-      branch_id: wid,
-      opening_cash_amount: openingCashAmount.value,
-      session_type: 'manual',
-      device_id,
-      device_name,
-      terminal_id: Number(selectedTerminalId.value)  // ✅ تحويل إلى رقم
+      branchId: wid,
+      openingCashAmount: openingCashAmount.value,
+      sessionType: 'manual',
+      deviceId: device_id,
+      deviceName: device_name,
+      terminalId: Number(selectedTerminalId.value)  // ✅ تحويل إلى رقم
     });
     if (result?.status === 'success' && result.data?.id) {
       activeSessionId.value = result.data.id;
@@ -1178,7 +1164,7 @@ const confirmOpenSession = async () => {
   }
 };
 
-// ─── Shift Actions (اُزيلت الدوال اليدوية — الوردية أوتوماتيك 100%) ──
+// Shift Actions (اُزيلت الدوال اليدوية — الوردية أوتوماتيك 100%)
 
 const attemptEndShift = async () => {
   await fetchDashboardData();
@@ -1207,7 +1193,7 @@ const confirmEndShift = async () => {
         const variance = result.data?.closing?.variance ?? null;
         showToast(typeof variance === 'number' && variance !== 0 ? `تم الإغلاق. فرق الخزينة: ${variance.toFixed(2)}` : 'تم إغلاق الجلسة بنجاح.', variance !== 0 ? 'warning' : 'success');
         try {
-          const wid = authStore.user?.branch_id || branchStore.selectedBranchId;
+          const wid = authStore.user?.branchId || branchStore.selectedBranchId;
           if (wid && selectedTerminalId.value) {
             const shiftResult = await shiftStore.getCurrentShift(wid, selectedTerminalId.value, true);
             currentShift.value = shiftResult?.status === 'success' && shiftResult.data?.id ? shiftResult.data : null;
@@ -1227,9 +1213,9 @@ const confirmEndShift = async () => {
   }
 };
 
-// ─── Device ───────────────────────────────────────────────────────────────────
+// Device
 
-// ─── Event Handlers ───────────────────────────────────────────────────────────
+// Event Handlers
 const handleQuickAction = (action) => {
   if (action.adminOnly && !authStore.isAdmin) { showToast('هذه الصفحة للمشرفين فقط', 'error'); return; }
   if (action.id === 'refresh') { handleRefresh(); return; }
@@ -1238,10 +1224,10 @@ const handleQuickAction = (action) => {
 
 const handleActivityClick = (activity) => {
   switch (activity.type) {
-    case 'sale':       router.push({ path: '/sales/history', query: { id: activity.reference_id } }); break;
-    case 'return':     router.push({ path: '/returns', query: { id: activity.reference_id } }); break;
+    case 'sale':       router.push({ path: '/sales/history', query: { id: activity.referenceId } }); break;
+    case 'return':     router.push({ path: '/returns', query: { id: activity.referenceId } }); break;
     case 'withdrawal':
-    case 'deposit':    router.push({ path: '/payments', query: { id: activity.reference_id } }); break;
+    case 'deposit':    router.push({ path: '/payments', query: { id: activity.referenceId } }); break;
     default:           showToast('لا يمكن عرض تفاصيل هذه العملية', 'info');
   }
 };
@@ -1273,7 +1259,7 @@ const ensureCashierSession = async () => {
       activeSessionId.value = null;
       return;
     }
-    const { device_id } = getDeviceIdentity();
+    const { deviceId: device_id } = getDeviceIdentity();
     const result = await sessionStore.getCurrentSession(branchId, userId, device_id);
     activeSessionId.value = result?.status === 'success' && result.data?.id ? result.data.id : null;
   } catch (e) {
@@ -1291,7 +1277,7 @@ watch(() => shiftState.value === 'ending', (val) => {
   if (val) nextTick(() => endShiftModalRef.value?.focus());
 });
 
-// ─── Lifecycle ────────────────────────────────────────────────────────────────
+// Lifecycle
 onMounted(async () => {
   updateDateTime();
   dateTimeInterval = setInterval(updateDateTime, 1000);
@@ -1347,7 +1333,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* Animations */
 @keyframes loading {
   0% { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
@@ -1367,7 +1352,6 @@ onBeforeUnmount(() => {
   @apply bg-slate-200 rounded-full;
 }
 
-/* Animation Classes */
 .animate-modalIn {
   animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }

@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-indigo-100" dir="rtl">
 
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="loading || loadingLists" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
 
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="{ parent: { label: 'المالية', path: '/payments' }, current: 'مساهمات المالك' }"
         title="مساهمات المالك"
@@ -24,7 +22,7 @@
             >
               <option value="">{{ loadingTenants ? 'جاري تحميل الشركات...' : 'اختر الشركة' }}</option>
               <option v-for="tenant in availableTenants" :key="tenant.id" :value="String(tenant.id)">
-                {{ tenant.company_name }} — #{{ tenant.id }}
+                {{ tenant.companyName }} — #{{ tenant.id }}
               </option>
             </select>
           </label>
@@ -40,7 +38,7 @@
       </PageHeader>
 
     <div v-if="isPlatformSuperAdmin && selectedTenant" role="status" class="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
-      سياق التشغيل الحالي: {{ selectedTenant.company_name }} — #{{ selectedTenant.id }}. جميع البيانات والعمليات في هذه الصفحة تخص هذه الشركة فقط.
+      سياق التشغيل الحالي: {{ selectedTenant.companyName }} — #{{ selectedTenant.id }}. جميع البيانات والعمليات في هذه الصفحة تخص هذه الشركة فقط.
     </div>
     <div v-if="isPlatformSuperAdmin && !selectedTenantId && !pageError" role="status" class="mb-5 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">
       اختر شركة نشطة لمراجعة مساهماتها. لا تُحمّل أي بيانات مالية قبل اختيار الشركة.
@@ -55,7 +53,7 @@
     <section v-if="hasTenantContext" class="mb-5 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-4">
       <label class="text-xs font-bold text-slate-600">
         نوع المساهمة
-        <select v-model="filters.contribution_type" class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3">
+        <select v-model="filters.contributionType" class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3">
           <option value="">الكل</option>
           <option value="capital">رأس مال</option>
           <option value="owner_loan">قرض من المالك</option>
@@ -109,15 +107,15 @@
           <tbody class="divide-y divide-slate-100 text-xs">
             <tr v-for="item in contributions" :key="item.id" class="hover:bg-slate-50/70">
               <td class="px-5 py-4 font-bold">#{{ item.id }}</td>
-              <td class="px-5 py-4">{{ typeLabel(item.contribution_type) }}</td>
+              <td class="px-5 py-4">{{ typeLabel(item.contributionType) }}</td>
               <td class="px-5 py-4 text-left font-mono font-bold">{{ formatAmount(item.amount) }}</td>
-              <td class="px-5 py-4">{{ formatDate(item.created_at) }}</td>
+              <td class="px-5 py-4">{{ formatDate(item.createdAt) }}</td>
               <td class="px-5 py-4">
                 <span :class="statusClass(item.status)" class="rounded-full border px-2 py-1 text-[10px] font-bold">
                   {{ statusLabel(item.status) }}
                 </span>
               </td>
-              <td class="px-5 py-4 font-mono">{{ item.journal_entry_id || '—' }}</td>
+              <td class="px-5 py-4 font-mono">{{ item.journalEntryId || '—' }}</td>
               <td v-if="canVoid" class="px-5 py-4 text-center">
                 <button
                   v-if="item.status === 'recorded'"
@@ -153,7 +151,7 @@
         <form class="grid grid-cols-1 gap-4 md:grid-cols-2" @submit.prevent="submitCreate">
           <label class="text-xs font-bold text-slate-600">
             نوع المساهمة
-            <select v-model="form.contribution_type" required class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3" @change="form.related_gl_account_id = ''">
+            <select v-model="form.contributionType" required class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3" @change="form.relatedGlAccountId = ''">
               <option value="capital">رأس مال</option>
               <option value="owner_loan">قرض من المالك</option>
               <option value="opening_balance">رصيد افتتاحي</option>
@@ -165,34 +163,34 @@
           </label>
           <label class="text-xs font-bold text-slate-600">
             حساب السيولة (أصول)
-            <select v-model="form.target_account_id" required class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3">
+            <select v-model="form.targetAccountId" required class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3">
               <option value="">اختر الحساب</option>
               <option v-for="account in assetAccounts" :key="account.id" :value="String(account.id)">{{ account.code }} — {{ account.name }}</option>
             </select>
           </label>
           <label class="text-xs font-bold text-slate-600">
             الحساب المقابل ({{ relatedAccountTypeLabel }})
-            <select v-model="form.related_gl_account_id" required class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3">
+            <select v-model="form.relatedGlAccountId" required class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3">
               <option value="">اختر الحساب</option>
               <option v-for="account in relatedAccounts" :key="account.id" :value="String(account.id)">{{ account.code }} — {{ account.name }}</option>
             </select>
           </label>
-          <template v-if="form.contribution_type === 'owner_loan'">
+          <template v-if="form.contributionType === 'owner_loan'">
             <label class="text-xs font-bold text-slate-600">
               نسبة الفائدة (%)
-              <input v-model.number="form.interest_rate" type="number" min="0" max="100" step="0.01" class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3" />
+              <input v-model.number="form.interestRate" type="number" min="0" max="100" step="0.01" class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3" />
             </label>
             <label class="text-xs font-bold text-slate-600">
               تاريخ الاستحقاق
-              <input v-model="form.due_date" type="date" class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3" />
+              <input v-model="form.dueDate" type="date" class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3" />
             </label>
             <label class="text-xs font-bold text-slate-600 md:col-span-2">
               شروط السداد
-              <input v-model="form.repayment_terms" type="text" maxlength="1000" class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3" />
+              <input v-model="form.repaymentTerms" type="text" maxlength="1000" class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3" />
             </label>
             <label class="text-xs font-bold text-slate-600 md:col-span-2">
               جدول السداد
-              <select v-model="form.repayment_schedule" class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3">
+              <select v-model="form.repaymentSchedule" class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3">
                 <option value="">غير محدد</option>
                 <option value="monthly">شهري</option>
                 <option value="quarterly">ربع سنوي</option>
@@ -226,14 +224,14 @@
         <form class="space-y-4" @submit.prevent="submitVoid">
           <label class="block text-xs font-bold text-slate-600">
             طريقة الدفع للحساب الأصلي
-            <select v-model="voidForm.payment_method_id" required class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3">
+            <select v-model="voidForm.paymentMethodId" required class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3">
               <option value="">اختر طريقة الدفع</option>
               <option v-for="method in voidPaymentMethods" :key="method.id" :value="String(method.id)">{{ method.name }}</option>
             </select>
           </label>
           <label v-if="isCashVoid" class="block text-xs font-bold text-slate-600">
             الفرع
-            <select v-model="voidForm.branch_id" required class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3" :disabled="!canSelectBranches">
+            <select v-model="voidForm.branchId" required class="mt-1 h-10 w-full rounded-md border border-slate-200 px-3" :disabled="!canSelectBranches">
               <option value="">اختر الفرع</option>
               <option v-for="branch in branches" :key="branch.id" :value="String(branch.id)">{{ branch.name }}</option>
             </select>
@@ -326,20 +324,20 @@ const voidError = ref('');
 const showCreate = ref(false);
 const showVoid = ref(false);
 const selectedContribution = ref(null);
-const filters = reactive({ contribution_type: '', status: '' });
+const filters = reactive({ contributionType: '', status: '' });
 const form = reactive({
-  contribution_type: 'capital',
+  contributionType: 'capital',
   amount: '',
-  target_account_id: '',
-  related_gl_account_id: '',
-  interest_rate: '',
-  due_date: '',
-  repayment_terms: '',
-  repayment_schedule: '',
+  targetAccountId: '',
+  relatedGlAccountId: '',
+  interestRate: '',
+  dueDate: '',
+  repaymentTerms: '',
+  repaymentSchedule: '',
 });
-const voidForm = reactive({ payment_method_id: '', branch_id: '', reason: '' });
+const voidForm = reactive({ paymentMethodId: '', branchId: '', reason: '' });
 const pendingCreateStorageKey = computed(() =>
-  `pending_owner_contribution:${selectedTenantId.value || authStore.user?.tenant_id || 'no-tenant'}:${authStore.user?.id || 'no-user'}`
+  `pending_owner_contribution:${selectedTenantId.value || authStore.user?.tenantId || 'no-tenant'}:${authStore.user?.id || 'no-user'}`
 );
 const readPendingCreate = () => {
   try {
@@ -363,7 +361,7 @@ const persistPendingCreate = (pending) => {
 
 const mappedLiquidityAccountIds = computed(() => new Set(
   paymentMethods.value
-    .map(method => Number(method.account_id))
+    .map(method => Number(method.accountId))
     .filter(accountId => accountId > 0)
 ));
 const selectedTenant = computed(() =>
@@ -372,21 +370,21 @@ const selectedTenant = computed(() =>
 const assetAccounts = computed(() => accounts.value.filter(account =>
   account.type === 'asset' && mappedLiquidityAccountIds.value.has(Number(account.id))
 ));
-const relatedAccountType = computed(() => form.contribution_type === 'owner_loan' ? 'liability' : 'equity');
+const relatedAccountType = computed(() => form.contributionType === 'owner_loan' ? 'liability' : 'equity');
 const relatedAccountTypeLabel = computed(() => relatedAccountType.value === 'equity' ? 'حقوق الملكية' : 'الالتزامات');
 const relatedAccounts = computed(() => accounts.value.filter(account => account.type === relatedAccountType.value));
 const voidPaymentMethods = computed(() => paymentMethods.value.filter(method =>
-  Number(method.account_id) === Number(selectedContribution.value?.target_account_id)
+  Number(method.accountId) === Number(selectedContribution.value?.targetAccountId)
 ));
 const selectedVoidMethod = computed(() => voidPaymentMethods.value.find(method =>
-  String(method.id) === String(voidForm.payment_method_id)
+  String(method.id) === String(voidForm.paymentMethodId)
 ));
 const isCashVoid = computed(() => String(selectedVoidMethod.value?.kind || '').toLowerCase() === 'cash');
 
 const typeLabel = type => ({
   capital: 'رأس مال',
-  owner_loan: 'قرض من المالك',
-  opening_balance: 'رصيد افتتاحي',
+  ownerLoan: 'قرض من المالك',
+  openingBalance: 'رصيد افتتاحي',
 }[type] || type || '—');
 const statusLabel = status => ({
   recorded: 'مسجلة',
@@ -412,12 +410,12 @@ const loadContributions = async (requestedPage = 1) => {
     const result = await contributionStore.fetchContributions({
       limit: pageSize,
       offset: (requestedPage - 1) * pageSize,
-      contribution_type: filters.contribution_type || undefined,
+      contributionType: filters.contributionType || undefined,
       status: filters.status || undefined,
     });
     if (result.status !== 'success') throw new Error(result.message || 'تعذر تحميل المساهمات.');
-    contributions.value = result.data?.data || [];
-    total.value = Number(result.data?.total) || 0;
+    contributions.value = result.data?.items || [];
+    total.value = Number(result.meta?.total) || 0;
     page.value = requestedPage;
   } catch (error) {
     pageError.value = error.message || 'تعذر تحميل المساهمات.';
@@ -492,14 +490,14 @@ const selectTenant = async (tenantId) => {
 
 const resetCreateForm = () => {
   Object.assign(form, {
-    contribution_type: 'capital',
+    contributionType: 'capital',
     amount: '',
-    target_account_id: '',
-    related_gl_account_id: '',
-    interest_rate: '',
-    due_date: '',
-    repayment_terms: '',
-    repayment_schedule: '',
+    targetAccountId: '',
+    relatedGlAccountId: '',
+    interestRate: '',
+    dueDate: '',
+    repaymentTerms: '',
+    repaymentSchedule: '',
   });
   formError.value = '';
 };
@@ -519,16 +517,16 @@ const submitCreate = async () => {
   if (!canCreate.value || saving.value) return;
   formError.value = '';
   const payload = {
-    contribution_type: form.contribution_type,
+    contributionType: form.contributionType,
     amount: Number(form.amount),
-    target_account_id: Number(form.target_account_id),
-    related_gl_account_id: Number(form.related_gl_account_id),
+    targetAccountId: Number(form.targetAccountId),
+    relatedGlAccountId: Number(form.relatedGlAccountId),
   };
-  if (form.contribution_type === 'owner_loan') {
-    if (form.interest_rate !== '') payload.interest_rate = Number(form.interest_rate);
-    if (form.due_date) payload.due_date = form.due_date;
-    if (form.repayment_terms) payload.repayment_terms = form.repayment_terms;
-    if (form.repayment_schedule) payload.repayment_schedule = form.repayment_schedule;
+  if (form.contributionType === 'owner_loan') {
+    if (form.interestRate !== '') payload.interestRate = Number(form.interestRate);
+    if (form.dueDate) payload.dueDate = form.dueDate;
+    if (form.repaymentTerms) payload.repaymentTerms = form.repaymentTerms;
+    if (form.repaymentSchedule) payload.repaymentSchedule = form.repaymentSchedule;
   }
   if (pendingCreate.value && JSON.stringify(payload) !== JSON.stringify(pendingCreate.value.payload)) {
     formError.value = 'بيانات المساهمة تغيّرت بعد طلب غير مؤكد. استعد البيانات الأصلية أو تحقق من السجل قبل تسجيل مساهمة جديدة.';
@@ -548,7 +546,7 @@ const submitCreate = async () => {
   try {
     const result = await contributionStore.createContribution({
       ...pendingCreate.value.payload,
-      idempotency_key: pendingCreate.value.key,
+      idempotencyKey: pendingCreate.value.key,
     });
     if (result.status !== 'success') {
       formError.value = result.outcomeUnknown
@@ -578,11 +576,11 @@ const openVoid = async (item) => {
   }
   selectedContribution.value = result.data;
   const targetMethod = paymentMethods.value.find(method =>
-    Number(method.account_id) === Number(result.data.target_account_id)
+    Number(method.accountId) === Number(result.data.targetAccountId)
   );
   Object.assign(voidForm, {
-    payment_method_id: targetMethod ? String(targetMethod.id) : '',
-    branch_id: '',
+    paymentMethodId: targetMethod ? String(targetMethod.id) : '',
+    branchId: '',
     reason: '',
   });
   showVoid.value = true;
@@ -591,12 +589,12 @@ const closeVoid = () => {
   if (voidLoading.value) return;
   showVoid.value = false;
   selectedContribution.value = null;
-  Object.assign(voidForm, { payment_method_id: '', branch_id: '', reason: '' });
+  Object.assign(voidForm, { paymentMethodId: '', branchId: '', reason: '' });
 };
 const submitVoid = async () => {
   if (!canVoid.value || voidLoading.value || !selectedContribution.value) return;
   voidError.value = '';
-  let branchId = voidForm.branch_id || null;
+  let branchId = voidForm.branchId || null;
   if (isCashVoid.value) {
     if (!canSelectBranches.value) {
       try {
@@ -628,8 +626,8 @@ const submitVoid = async () => {
   voidLoading.value = true;
   try {
     const result = await contributionStore.voidContribution(selectedContribution.value.id, {
-      payment_method_id: Number(voidForm.payment_method_id),
-      branch_id: branchId ? Number(branchId) : undefined,
+      paymentMethodId: Number(voidForm.paymentMethodId),
+      branchId: branchId ? Number(branchId) : undefined,
       reason: voidForm.reason || '',
     });
     if (result.status !== 'success') {

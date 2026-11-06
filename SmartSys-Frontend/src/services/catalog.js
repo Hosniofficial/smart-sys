@@ -2,7 +2,7 @@ import apiClient from '@/config/axios';
 
 export const catalogService = {
   getCategories(branchId) {
-    return apiClient.get('/categories', { params: { branch_id: branchId } });
+    return apiClient.get('/categories', { params: { branchId: branchId } });
   },
 
   createCategory(payload) {
@@ -15,7 +15,7 @@ export const catalogService = {
 
   deleteCategory(categoryId, branchId) {
     return apiClient.delete(`/categories/${categoryId}`, {
-      params: branchId ? { branch_id: branchId } : {},
+      params: branchId ? { branchId: branchId } : {},
     });
   },
 

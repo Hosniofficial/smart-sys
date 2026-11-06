@@ -22,7 +22,7 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
   const authStore = useAuthStore();
   const branchStore = useBranchStore();
 
-  // ─── isExempt: computed مباشرة من authStore بدلاً من useSessionExemption() instance منفصل
+  // isExempt: computed مباشرة من authStore بدلاً من useSessionExemption() instance منفصل
   // السبب: useSessionExemption() يُنشئ ref(false) جديد لكل caller، ويحتاج ensureLoaded() منفصلة.
   // الصفحة (CashVouchers, SessionsList, ...) تستدعي ensureLoaded() على نسختها الخاصة،
   // لكن useTableFilters كان يُنشئ نسخة ثالثة لم تُشغَّل ensureLoaded() عليها أبدًا → isExempt=false دائمًا.
@@ -36,7 +36,7 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
     );
   });
 
-  // ─── States ────────────────────────────────────────────────────────────────
+  // States
   const showFilters = ref(false);
   const searchQuery = ref('');
   const dateFrom = ref('');
@@ -53,7 +53,7 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
   const totalCount = ref(0);
   const totalPages = computed(() => Math.max(1, Math.ceil((totalCount.value || 0) / perPage.value)));
 
-  // ─── Unified Branch Selection (مرة واحدة فقط) ─────────────────────────────
+  // Unified Branch Selection (مرة واحدة فقط)
   // ✅ SSOT FIX: selectedBranch is now a computed proxy to branchStore.selectedBranchId
   // This ensures all components using useTableFilters read from the single source of truth
   const selectedBranch = computed({
@@ -64,18 +64,18 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
   /**
    * Computed branchId based on isExempt
    * If isExempt: use selectedBranch or null (allows filtering by branch)
-   * If not exempt: use authStore.user.branch_id (fixed to user's branch)
+   * If not exempt: use authStore.user.branchId (fixed to user's branch)
    * 
    * يحل مكان الكود المكرر في 3 صفحات:
    * ```
    * const branchId = !isExempt.value
-   *   ? (authStore?.user?.branch_id || branchStore.selectedBranchId)
+   *   ? (authStore?.user?.branchId || branchStore.selectedBranchId)
    *   : (selectedBranch.value || null);
    * ```
    */
   const branchId = computed(() => {
     if (!isExempt.value) {
-      return authStore.user?.branch_id || null;
+      return authStore.user?.branchId || null;
     }
     return selectedBranch.value || null;
   });
@@ -84,7 +84,7 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
   const dateFromRef = ref(null);
   const dateToRef = ref(null);
 
-  // ─── Handle Branch Change ─────────────────────────────────────────────────
+  // Handle Branch Change
   /**
    * عند تغيير الفرع: reset pagination وأطلب تحديث البيانات
    */
@@ -111,7 +111,7 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
     }
   });
 
-  // ─── Load من localStorage ──────────────────────────────────────────────────
+  // Load من localStorage
   const loadFromLocalStorage = () => {
     try {
       const stored = localStorage.getItem(storagePrefix);
@@ -131,7 +131,7 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
     }
   };
 
-  // ─── Save إلى localStorage ────────────────────────────────────────────────
+  // Save إلى localStorage
   const saveToLocalStorage = () => {
     try {
       const data = {
@@ -150,7 +150,6 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
     }
   };
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const hasActiveFilters = computed(() => {
     return !!(
       searchQuery.value ||
@@ -169,7 +168,7 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
     return filters;
   };
 
-  // ─── Clear Functions ──────────────────────────────────────────────────────
+  // Clear Functions
   const clearSearch = () => {
     searchQuery.value = '';
   };
@@ -188,7 +187,7 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
     saveToLocalStorage();
   };
 
-  // ─── Sort Functions ────────────────────────────────────────────────────────
+  // Sort Functions
   const toggleSort = (key) => {
     if (sortKey.value === key) {
       sortAsc.value = !sortAsc.value;
@@ -200,7 +199,7 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
     saveToLocalStorage();
   };
 
-  // ─── Pagination Functions ─────────────────────────────────────────────────
+  // Pagination Functions
   // ملاحظة: هذه الدوال فقط تغيّر page.value — الـ watch أعلاه هو المسؤول
   // عن استدعاء onFilterChange تلقائيًا، فلا حاجة للصفحة لاستدعاء fetch يدويًا بعدها.
   const goToPage = (newPage) => {
@@ -216,7 +215,7 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
     page.value = Math.max(1, page.value - 1);
   };
 
-  // ─── Selection Functions ──────────────────────────────────────────────────
+  // Selection Functions
   const toggleSelectAll = (items) => {
     if (selectedIds.value.length === items.length) {
       selectedIds.value = [];
@@ -233,7 +232,7 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
     return selectedIds.value.includes(itemId);
   };
 
-  // ─── Date Picker Helpers ──────────────────────────────────────────────────
+  // Date Picker Helpers
   const showDateFromPicker = () => {
     if (dateFromRef.value?.showPicker) {
       dateFromRef.value.showPicker();
@@ -246,7 +245,7 @@ export const useTableFilters = (storagePrefix = 'table_filters', options = {}) =
     }
   };
 
-  // ─── Reset to Defaults ────────────────────────────────────────────────────
+  // Reset to Defaults
   const resetFilters = () => {
     searchQuery.value = '';
     dateFrom.value = '';

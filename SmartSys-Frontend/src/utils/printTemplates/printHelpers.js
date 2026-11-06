@@ -47,14 +47,14 @@ export const getCompanyData = (sale = null) => {
     website: localStorage.getItem('pos_company_website')    || '',
   };
 
-  if (!sale) return { ...company, branch_name: null, branch_email: null };
+  if (!sale) return { ...company, branchName: null, branchEmail: null };
 
   return {
     ...company,
-    branch_name:  sale.branch_name  || null,
-    branch_email: sale.branch_email || null,
-    phone:        sale.branch_phone    || company.phone,
-    address:      sale.branch_location || company.address,
+    branchName:  sale.branchName  || null,
+    branchEmail: sale.branchEmail || null,
+    phone:        sale.branchPhone    || company.phone,
+    address:      sale.branchLocation || company.address,
   };
 };
 
@@ -64,15 +64,15 @@ export const getCompanyData = (sale = null) => {
  * falls back to quantity × price
  */
 export const itemTotal = (it) =>
-  parseFloat(it.net_total || it.total || (it.quantity * (it.sale_price || it.net_price || 0)) || 0);
+  parseFloat(it.netTotal || it.total || (it.quantity * (it.salePrice || it.netPrice || 0)) || 0);
 
 export const isSaleTaxInclusive = (sale) =>
   [true, 1, '1', 'true', 'yes', 'on'].includes(
-    typeof sale?.tax_inclusive === 'string' ? sale.tax_inclusive.trim().toLowerCase() : sale?.tax_inclusive
+    typeof sale?.taxInclusive === 'string' ? sale.taxInclusive.trim().toLowerCase() : sale?.taxInclusive
   );
 
 export const saleGrandTotal = (sale) =>
   Number((
-    (parseFloat(sale?.net_total_amount ?? sale?.total_amount) || 0)
-    + (parseFloat(sale?.tax_amount) || 0)
+    (parseFloat(sale?.netTotalAmount ?? sale?.totalAmount) || 0)
+    + (parseFloat(sale?.taxAmount) || 0)
   ).toFixed(2));

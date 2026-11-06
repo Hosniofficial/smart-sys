@@ -91,6 +91,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth/authStore'
+import logger from '@/utils/services/logger'
 import AuthField from '@/components/auth/AuthField.vue'
 import AuthLayout from '@/components/auth/AuthLayout.vue'
 import LoadingButton from '@/components/ui/LoadingButton.vue'
@@ -124,7 +125,7 @@ const handleLogin = async () => {
       const redirectPath = authStore.returnUrl || '/cashier'
       authStore.returnUrl = null
       router.push(redirectPath).catch((navigationError) => {
-        console.error('Navigation error:', navigationError)
+        logger.error('Login navigation failed', { message: navigationError?.message })
         router.push('/cashier')
       })
     } else {
@@ -133,7 +134,10 @@ const handleLogin = async () => {
       showToast(errorMessage, 'error')
     }
   } catch (requestError) {
-    console.error('Login error:', requestError)
+    logger.error('Login request failed', {
+      message: requestError?.message,
+      status: requestError?.response?.status,
+    })
     const errorMessage = requestError.response?.data?.message || 'حدث خطأ أثناء تسجيل الدخول'
     error.value = errorMessage
     showToast(errorMessage, 'error')

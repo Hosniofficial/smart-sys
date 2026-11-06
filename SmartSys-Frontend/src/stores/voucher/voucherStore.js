@@ -8,12 +8,11 @@ const nowMs = () => Date.now();
 
 export const useVoucherStore = defineStore('voucher', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     vouchersList: 5 * 60 * 1000, // 5 دقائق
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const vouchersList          = ref({});
   const vouchersListFetchedAt = ref({});
   const vouchersListInFlight  = ref(null);
@@ -21,11 +20,10 @@ export const useVoucherStore = defineStore('voucher', () => {
   const searchCache           = ref({});
   const searchCacheFetchedAt  = ref({});
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
-  // ─── fetchVouchersList ────────────────────────────────────────────────────
+  // fetchVouchersList
   const fetchVouchersList = async ({
     branchId  = null,
     page      = 1,
@@ -53,23 +51,24 @@ export const useVoucherStore = defineStore('voucher', () => {
 
     const promise = (async () => {
       try {
-        const params = { page: String(page), per_page: String(perPage) };
-        if (branchId) params.branch_id = String(branchId);
+        const params = { page: String(page), perPage: String(perPage) };
+        if (branchId) params.branchId = String(branchId);
         if (type)     params.type       = type;
         if (status)   params.status     = status;
-        if (dateFrom) params.start_date = dateFrom;
-        if (dateTo)   params.end_date   = dateTo;
+        if (dateFrom) params.startDate = dateFrom;
+        if (dateTo)   params.endDate   = dateTo;
         if (search)   params.search     = search;
 
         const response = await vouchersService.list(params);
-        const data  = response?.data?.data || response?.data || {};
-        const items = Array.isArray(data?.items)
-          ? data.items
-          : (Array.isArray(data) ? data : []);
+        const data = response?.data?.data || {};
+        const result = {
+          items: Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []),
+          meta: response?.data?.meta || {},
+        };
 
-        vouchersList.value[cacheKey]          = items;
+        vouchersList.value[cacheKey]          = result;
         vouchersListFetchedAt.value[cacheKey] = nowMs();
-        return items;
+        return result;
       } finally {
         if (vouchersListInFlight.value?.[cacheKey])
           delete vouchersListInFlight.value[cacheKey];
@@ -81,7 +80,7 @@ export const useVoucherStore = defineStore('voucher', () => {
     return await promise;
   };
 
-  // ─── searchVouchers ───────────────────────────────────────────────────────
+  // searchVouchers
   const searchVouchers = async ({
     query    = '',
     branchId = null,
@@ -99,11 +98,11 @@ export const useVoucherStore = defineStore('voucher', () => {
     if (!force && cached && isFresh(cachedAt, TTL.vouchersList)) return cached;
 
     const params = { q, limit: String(limit) };
-    if (branchId) params.branch_id = String(branchId);
+    if (branchId) params.branchId = String(branchId);
     if (type)     params.type      = type;
 
     const response = await vouchersService.list(params);
-    const data     = response?.data?.data || response?.data || {};
+    const data     = response?.data?.data || {};
     const items    = Array.isArray(data?.items)
       ? data.items
       : (Array.isArray(data) ? data : []);
@@ -113,7 +112,7 @@ export const useVoucherStore = defineStore('voucher', () => {
     return items;
   };
 
-  // ─── createVoucher ────────────────────────────────────────────────────────
+  // createVoucher
   /**
    * ينشئ سند جديد ويمسح الـ cache عشان القائمة تتحدث
    * @param {Object} payload
@@ -132,11 +131,11 @@ export const useVoucherStore = defineStore('voucher', () => {
 
     return {
       status: 'success',
-      data:   response?.data?.data || response?.data || {},
+      data:   response?.data?.data || {},
     };
   };
 
-  // ─── updateVoucher ────────────────────────────────────────────────────────
+  // updateVoucher
   /**
    * يحدث سند موجود ويمسح الـ cache المرتبط بيه
    * @param {number|string} voucherId
@@ -157,11 +156,11 @@ export const useVoucherStore = defineStore('voucher', () => {
 
     return {
       status: 'success',
-      data:   response?.data?.data || response?.data || {},
+      data:   response?.data?.data || {},
     };
   };
 
-  // ─── cancelVoucher ────────────────────────────────────────────────────────
+  // cancelVoucher
   /**
    * يلغي سندًا دون حذف أثره ويمسح الـ cache
    * @param {number|string} voucherId
@@ -182,7 +181,7 @@ export const useVoucherStore = defineStore('voucher', () => {
     return { status: 'success' };
   };
 
-  // ─── Cache Clearers ───────────────────────────────────────────────────────
+  // Cache Clearers
   const clear = () => {
     vouchersList.value          = {};
     vouchersListFetchedAt.value = {};
@@ -202,7 +201,7 @@ export const useVoucherStore = defineStore('voucher', () => {
     searchCacheFetchedAt.value = {};
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     vouchersList,

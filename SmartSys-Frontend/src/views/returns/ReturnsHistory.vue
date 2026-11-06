@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-rose-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoadingReturns || isLoadingDetails" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="سجل المرتجعات"
@@ -28,7 +26,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPI Summary -->
       <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
         <div v-for="kpi in [
           { label: 'عدد المرتجعات', val: kpiCount, icon: 'fa-clipboard-list', color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -46,7 +43,6 @@
         </div>
       </section>
 
-      <!-- Filters Panel -->
       <transition name="slide-down">
         <div v-if="filters.showFilters.value" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden animate-fadeIn">
           <div class="p-6 space-y-6">
@@ -91,7 +87,7 @@
                   <i class="fas fa-user-circle absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] pointer-events-none"></i>
                   <div v-if="filters.showCustomerDropdown.value" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-auto">
                     <button @mousedown.prevent="filters.clearCustomerFilter()" class="w-full text-right px-4 py-2 text-[11px] hover:bg-slate-50 border-b border-slate-50 text-rose-600 font-bold">الكل</button>
-                    <button v-for="p in filteredParties" :key="p.id" @mousedown.prevent="selectParty(p)" class="w-full text-right px-4 py-2 text-[11px] hover:bg-slate-50 border-b border-slate-50 last:border-0 font-medium">{{ p.name || p.customer_name || p.supplier_name }}</button>
+                    <button v-for="p in filteredParties" :key="p.id" @mousedown.prevent="selectParty(p)" class="w-full text-right px-4 py-2 text-[11px] hover:bg-slate-50 border-b border-slate-50 last:border-0 font-medium">{{ p.name || p.customerName || p.supplierName }}</button>
                   </div>
                 </div>
               </div>
@@ -102,7 +98,6 @@
         </div>
       </transition>
 
-      <!-- Active Filter Chips -->
       <div v-if="filters.hasActiveFilters.value || filters.customerFilter.value || (isExempt.value && hasExplicitBranchSelection)" class="flex flex-wrap gap-2">
         <div v-for="chip in [
           { show: filters.searchQuery.value, label: filters.searchQuery.value, clear: () => filters.searchQuery.value = '' },
@@ -115,7 +110,6 @@
         </div>
       </div>
 
-      <!-- Main Data Table -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
@@ -137,13 +131,13 @@
               </template>
               <tr v-else-if="!rows.length"><td colspan="8" class="py-20 text-center text-slate-300"><i class="fas fa-box-open text-3xl mb-4 opacity-20"></i><p class="text-xs font-bold uppercase tracking-widest">لا توجد فواتير مرتجعات حتى الآن</p></td></tr>
               <tr v-for="r in rows" :key="r.id" class="hover:bg-blue-50/20 transition-all group">
-                <td class="px-6 py-4 text-xs font-bold text-slate-900 font-mono tracking-wider">{{ r.return_number || ('RET-' + String(r.id).padStart(4, '0')) }}</td>
-                <td class="px-4 py-4 text-xs font-bold text-slate-400 font-mono">{{ r.invoice_number || '-' }}</td>
-                <td class="px-4 py-4 text-[10px] font-mono text-slate-400 whitespace-nowrap">{{ formatReturnDateTime(r.return_date, r.created_at) }}</td>
+                <td class="px-6 py-4 text-xs font-bold text-slate-900 font-mono tracking-wider">{{ r.returnNumber || ('RET-' + String(r.id).padStart(4, '0')) }}</td>
+                <td class="px-4 py-4 text-xs font-bold text-slate-400 font-mono">{{ r.invoiceNumber || '-' }}</td>
+                <td class="px-4 py-4 text-[10px] font-mono text-slate-400 whitespace-nowrap">{{ formatReturnDateTime(r.returnDate, r.createdAt) }}</td>
                 <td class="px-4 py-4 text-center">
-                  <span class="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{{ Number(r.items_count || 0) }}</span>
+                  <span class="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{{ Number(r.itemsCount || 0) }}</span>
                 </td>
-                <td class="px-4 py-4 text-xs font-bold text-rose-600">{{ formatPrice(r.grand_total || r.total_amount || r.total || 0) }}</td>
+                <td class="px-4 py-4 text-xs font-bold text-rose-600">{{ formatPrice(r.grandTotal || r.totalAmount || r.total || 0) }}</td>
                 <td class="px-4 py-4 text-center">
                   <span :class="[type === 'sales' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100']" class="px-2 py-0.5 rounded text-[9px] font-bold border">
                     {{ type === 'sales' ? 'مرتجع بيع' : 'مرتجع شراء' }}
@@ -151,18 +145,17 @@
                 </td>
                 <td class="px-4 py-4 text-center">
                   <span :class="returnStatusClass(r.status)" class="px-2 py-0.5 rounded text-[9px] font-bold border">
-                    {{ returnStatusLabel(r.status, r.status_label) }}
+                    {{ returnStatusLabel(r.status, r.statusLabel) }}
                   </span>
                 </td>
                 <td class="px-4 py-4 text-center">
-                  <button @click="openReturnDetails(r)" :disabled="isLoadingDetails" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center mx-auto" :aria-label="`فتح تفاصيل المرتجع ${r.return_number || r.id} في تبويب`"><i class="fas fa-eye text-[10px]"></i></button>
+                  <button @click="openReturnDetails(r)" :disabled="isLoadingDetails" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center mx-auto" :aria-label="`فتح تفاصيل المرتجع ${r.returnNumber || r.id} في تبويب`"><i class="fas fa-eye text-[10px]"></i></button>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ totalPages }}</span>
@@ -181,11 +174,10 @@
       </div>
     </div>
 
-    <!-- Details Modal -->
     <HistoryDetailsModal
       :show="showDetailsModal && !!selectedReturn"
       @close="closeReturnDetails"
-      :title="`تفاصيل المرتجع ${selectedReturn?.return_number || ('RET-' + String(selectedReturn?.id).padStart(4, '0'))}`"
+      :title="`تفاصيل المرتجع ${selectedReturn?.returnNumber || ('RET-' + String(selectedReturn?.id).padStart(4, '0'))}`"
       icon="fas fa-undo"
     >
 
@@ -208,10 +200,10 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
-              <tr v-for="item in returnItems" :key="item.id || item.product_id" class="hover:bg-blue-50/20 transition-all">
+              <tr v-for="item in returnItems" :key="item.id || item.productId" class="hover:bg-blue-50/20 transition-all">
                 <td class="px-4 py-3">
-                  <p class="font-bold text-slate-800">{{ item.product_name || item.name || 'منتج غير معروف' }}</p>
-                  <p v-if="item.product_code" class="text-[9px] text-slate-400 font-mono">{{ item.product_code }}</p>
+                  <p class="font-bold text-slate-800">{{ item.productName || item.name || 'منتج غير معروف' }}</p>
+                  <p v-if="item.productCode" class="text-[9px] text-slate-400 font-mono">{{ item.productCode }}</p>
                 </td>
                 <td class="px-4 py-3 text-center font-bold text-slate-500">{{ item.quantity ?? item.qty ?? '-' }}</td>
                 <td class="px-4 py-3 text-center text-slate-700 font-mono font-bold">{{ formatPrice(returnItemUnitPrice(item)) }}</td>
@@ -232,17 +224,16 @@
           <div class="w-full md:w-72 space-y-2.5 bg-slate-50 border border-slate-200 p-5 rounded-xl">
             <div class="flex justify-between text-[11px] font-medium text-slate-500">
               <span>إجمالي المرتجع (شامل الضريبة)</span>
-              <span class="font-mono font-bold text-slate-700">{{ formatPrice(selectedReturn?.grand_total ?? selectedReturn?.total_amount ?? selectedReturn?.total ?? 0) }}</span>
+              <span class="font-mono font-bold text-slate-700">{{ formatPrice(selectedReturn?.grandTotal ?? selectedReturn?.totalAmount ?? selectedReturn?.total ?? 0) }}</span>
             </div>
-            <div v-if="Number(selectedReturn?.tax_amount) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
+            <div v-if="Number(selectedReturn?.taxAmount) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
               <span>الضريبة (ضمن إجمالي المرتجع)</span>
-              <span class="font-mono font-bold text-indigo-600">{{ formatPrice(selectedReturn?.tax_amount) }}</span>
+              <span class="font-mono font-bold text-indigo-600">{{ formatPrice(selectedReturn?.taxAmount) }}</span>
             </div>
-            <div v-if="Number(selectedReturn?.discount_value ?? selectedReturn?.discount_amount) > 0" class="flex justify-between text-[11px] font-medium text-slate-500 pb-2.5 border-b border-slate-200">
+            <div v-if="Number(selectedReturn?.discountValue ?? selectedReturn?.discountAmount) > 0" class="flex justify-between text-[11px] font-medium text-slate-500 pb-2.5 border-b border-slate-200">
               <span>الخصم</span>
-              <span class="font-mono font-bold text-rose-500">- {{ formatPrice(selectedReturn?.discount_value ?? selectedReturn?.discount_amount) }}</span>
+              <span class="font-mono font-bold text-rose-500">- {{ formatPrice(selectedReturn?.discountValue ?? selectedReturn?.discountAmount) }}</span>
             </div>
-            <!-- صافي التسوية pill مميز -->
             <div class="flex justify-between items-center bg-indigo-600 text-white px-4 py-3 rounded-lg">
               <span class="text-[11px] font-bold uppercase tracking-widest opacity-80">صافي التسوية</span>
               <span class="text-xl font-bold font-mono tracking-tighter">{{ formatPrice(returnNetSettlementAmount) }}</span>
@@ -253,7 +244,7 @@
                 <span class="font-mono font-bold text-slate-700">{{ formatPrice(returnOffsetAmount) }}</span>
               </div>
               <div v-if="returnCashRefundAmount > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
-                <span>{{ Number(selectedReturn?.is_cash) === 1 ? 'المبلغ المسترد نقدًا' : 'المبلغ المسترد' }}</span>
+                <span>{{ Number(selectedReturn?.isCash) === 1 ? 'المبلغ المسترد نقدًا' : 'المبلغ المسترد' }}</span>
                 <span class="font-mono font-bold text-emerald-600">{{ formatPrice(returnCashRefundAmount) }}</span>
               </div>
             </div>
@@ -273,6 +264,7 @@
 </template>
 
 <script setup>
+import logger from '@/utils/services/logger'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -341,13 +333,13 @@ const suppliers = computed(() => supplierStore.suppliers);
 const filteredParties = computed(() => {
   const list = type.value === 'sales' ? (customers.value || []) : (suppliers.value || []);
   const q = (filters.customerSearch.value || '').toLowerCase();
-  const getName = type.value === 'sales' ? (c => c.name || c.customer_name || '') : (s => s.name || s.supplier_name || '');
+  const getName = type.value === 'sales' ? (c => c.name || c.customerName || '') : (s => s.name || s.supplierName || '');
   if (!q) return list.slice(0, 50);
   return list.filter(item => String(getName(item)).toLowerCase().includes(q)).slice(0, 50);
 });
 
 const selectParty = (p) => {
-  filters.setCustomerFilter(p.id, p.name || p.customer_name || p.supplier_name || '');
+  filters.setCustomerFilter(p.id, p.name || p.customerName || p.supplierName || '');
 };
 
 const hidePartyDropdown = () => filters.hideCustomerDropdown();
@@ -356,7 +348,7 @@ const kpiCount = computed(() => filters.total.value || rows.value.length);
 const returnStatusLabel = (status, apiLabel = null) => ({
   approved: 'معتمدة',
   pending: 'قيد الانتظار',
-  pending_approval: 'تحت الاعتماد',
+  pendingApproval: 'تحت الاعتماد',
   rejected: 'مرفوضة',
   canceled: 'ملغاة',
   cancelled: 'ملغاة',
@@ -364,19 +356,19 @@ const returnStatusLabel = (status, apiLabel = null) => ({
 const returnStatusClass = (status) => ({
   approved: 'bg-emerald-50 text-emerald-700 border-emerald-100',
   pending: 'bg-amber-50 text-amber-700 border-amber-100',
-  pending_approval: 'bg-amber-50 text-amber-700 border-amber-100',
+  pendingApproval: 'bg-amber-50 text-amber-700 border-amber-100',
   rejected: 'bg-rose-50 text-rose-700 border-rose-100',
   canceled: 'bg-slate-100 text-slate-600 border-slate-200',
   cancelled: 'bg-slate-100 text-slate-600 border-slate-200',
 }[String(status || '').toLowerCase()] || 'bg-slate-100 text-slate-600 border-slate-200');
-const kpiSum = computed(() => rows.value.reduce((s, r) => s + parseFloat(r.grand_total || r.total_amount || r.total || 0), 0));
+const kpiSum = computed(() => rows.value.reduce((s, r) => s + parseFloat(r.grandTotal || r.totalAmount || r.total || 0), 0));
 const kpiTax = computed(() => {
-  const any = rows.value.some(r => r.tax_amount != null);
-  return any ? rows.value.reduce((s, r) => s + parseFloat(r.tax_amount || 0), 0) : null;
+  const any = rows.value.some(r => r.taxAmount != null);
+  return any ? rows.value.reduce((s, r) => s + parseFloat(r.taxAmount || 0), 0) : null;
 });
 const kpiDiscount = computed(() => {
-  const any = rows.value.some(r => r.discount_amount != null || r.discount_value != null);
-  return any ? rows.value.reduce((s, r) => s + parseFloat((r.discount_amount ?? r.discount_value) || 0), 0) : null;
+  const any = rows.value.some(r => r.discountAmount != null || r.discountValue != null);
+  return any ? rows.value.reduce((s, r) => s + parseFloat((r.discountAmount ?? r.discountValue) || 0), 0) : null;
 });
 const totalPages = computed(() => Math.max(1, Math.ceil((filters.total.value || 0) / filters.perPage.value)));
 
@@ -398,18 +390,18 @@ const formatReturnDateTime = (returnDate, createdAt) => {
     : date.toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true });
 };
 const isPurchaseReturn = computed(() => {
-  const returnType = String(selectedReturn.value?.return_type || selectedReturn.value?.type || '').toLowerCase();
+  const returnType = String(selectedReturn.value?.returnType || selectedReturn.value?.type || '').toLowerCase();
   return type.value === 'purchases'
     || returnType === 'purchase'
     || returnType === 'purchase_return'
-    || selectedReturn.value?.return_type_label?.includes('مشتريات');
+    || selectedReturn.value?.returnTypeLabel?.includes('مشتريات');
 });
 const returnPartyName = computed(() => {
   const item = selectedReturn.value;
   if (!item) return '-';
   const partyName = [
-    item.party_name,
-    isPurchaseReturn.value ? item.supplier_name : item.customer_name,
+    item.partyName,
+    isPurchaseReturn.value ? item.supplierName : item.customerName,
     isPurchaseReturn.value ? item.supplier?.name : item.customer?.name
   ].find((name) => {
     const normalizedName = String(name ?? '').trim();
@@ -418,24 +410,24 @@ const returnPartyName = computed(() => {
   return partyName || (isPurchaseReturn.value ? '-' : 'عميل نقدي');
 });
 const returnItems = computed(() => {
-  const items = selectedReturn.value?.items || selectedReturn.value?.return_items || [];
+  const items = selectedReturn.value?.items || selectedReturn.value?.returnItems || [];
   return Array.isArray(items) ? items : [];
 });
 const returnCashRefundAmount = computed(() => Math.max(
   0,
-  Number(selectedReturn.value?.cash_refund_amount ?? selectedReturn.value?.paid_amount ?? 0)
+  Number(selectedReturn.value?.cashRefundAmount ?? selectedReturn.value?.paidAmount ?? 0)
 ));
-const returnOffsetAmount = computed(() => Math.max(0, Number(selectedReturn.value?.offset_amount ?? 0)));
+const returnOffsetAmount = computed(() => Math.max(0, Number(selectedReturn.value?.offsetAmount ?? 0)));
 const returnNetSettlementAmount = computed(() => Number(
-  selectedReturn.value?.net_settlement_amount ?? (returnCashRefundAmount.value + returnOffsetAmount.value)
+  selectedReturn.value?.netSettlementAmount ?? (returnCashRefundAmount.value + returnOffsetAmount.value)
 ));
 const returnRefundChannel = computed(() => {
-  if (Number(selectedReturn.value?.is_cash) === 1) return 'نقدًا';
-  const method = String(selectedReturn.value?.refund_method || '').toLowerCase();
+  if (Number(selectedReturn.value?.isCash) === 1) return 'نقدًا';
+  const method = String(selectedReturn.value?.refundMethod || '').toLowerCase();
   const labels = {
     cash: 'نقدًا',
     bank: 'تحويل بنكي',
-    bank_transfer: 'تحويل بنكي',
+    bankTransfer: 'تحويل بنكي',
     card: 'بطاقة ائتمان',
     wallet: 'محفظة إلكترونية',
     credit: 'رصيد آجل',
@@ -447,7 +439,7 @@ const returnRefundChannel = computed(() => {
 const returnSettlementLabel = computed(() => {
   const hasCashRefund = returnCashRefundAmount.value > 0.005;
   const hasOffset = returnOffsetAmount.value > 0.005;
-  const total = Number(selectedReturn.value?.grand_total ?? selectedReturn.value?.total_amount ?? selectedReturn.value?.total ?? 0);
+  const total = Number(selectedReturn.value?.grandTotal ?? selectedReturn.value?.totalAmount ?? selectedReturn.value?.total ?? 0);
   const fullySettled = total > 0 && Math.abs(returnCashRefundAmount.value + returnOffsetAmount.value - total) <= 0.01;
   const channel = returnRefundChannel.value;
 
@@ -471,16 +463,16 @@ const returnSettlementLabel = computed(() => {
 });
 const returnDetailFacts = computed(() => [
   { l: isPurchaseReturn.value ? 'المورد' : 'العميل', v: returnPartyName.value },
-  { l: 'الفاتورة الأصلية', v: selectedReturn.value?.original_invoice_number || selectedReturn.value?.invoice_number || 'غير محدد' },
-  { l: 'الوقت والتاريخ', v: formatReturnDateTime(selectedReturn.value?.return_date, selectedReturn.value?.created_at) },
-  { l: 'الفرع', v: selectedReturn.value?.branch_name || branches.value.find(branch => String(branch.id) === String(selectedReturn.value?.branch_id))?.name || '-' },
-  { l: 'الكاشير', v: selectedReturn.value?.created_by_name || 'النظام' },
-  { l: 'نوع العملية', v: selectedReturn.value?.return_type_label || (isPurchaseReturn.value ? 'مرتجع مشتريات' : 'مرتجع مبيعات') },
+  { l: 'الفاتورة الأصلية', v: selectedReturn.value?.originalInvoiceNumber || selectedReturn.value?.invoiceNumber || 'غير محدد' },
+  { l: 'الوقت والتاريخ', v: formatReturnDateTime(selectedReturn.value?.returnDate, selectedReturn.value?.createdAt) },
+  { l: 'الفرع', v: selectedReturn.value?.branchName || branches.value.find(branch => String(branch.id) === String(selectedReturn.value?.branchId))?.name || '-' },
+  { l: 'الكاشير', v: selectedReturn.value?.createdByName || 'النظام' },
+  { l: 'نوع العملية', v: selectedReturn.value?.returnTypeLabel || (isPurchaseReturn.value ? 'مرتجع مشتريات' : 'مرتجع مبيعات') },
   { l: 'طريقة التسوية', v: returnSettlementLabel.value }
 ]);
-const returnItemUnitPrice = (item) => Number(item.unit_price ?? item.sale_price ?? item.price ?? 0);
+const returnItemUnitPrice = (item) => Number(item.unitPrice ?? item.salePrice ?? item.price ?? 0);
 const returnItemTotal = (item) => {
-  const explicitTotal = item.subtotal ?? item.total ?? item.net_total ?? item.amount;
+  const explicitTotal = item.subtotal ?? item.total ?? item.netTotal ?? item.amount;
   if (explicitTotal !== null && explicitTotal !== undefined && explicitTotal !== '') {
     return Number(explicitTotal) || 0;
   }
@@ -503,7 +495,7 @@ const fetchReturns = async (forceRefresh = false) => {
     }
     const params = { ...filters.getApiParams({ type: type.value, partyId: filters.customerFilter.value || undefined, force: forceRefresh }), branchId: branchId };
     
-    console.log('[fetchReturns] API Call params:', {
+    logger.debug('[fetchReturns] API Call params:', {
       branchId,
       selectedBranchId: branchStore.selectedBranchId,
       isExempt: isExempt.value,
@@ -605,7 +597,7 @@ watch([() => route.query.id, () => route.query.type], async ([id, routeType]) =>
 watch([filters.customerFilter, type, customers, suppliers], () => {
   const list = type.value === 'sales' ? (customers.value || []) : (suppliers.value || []);
   const found = list.find(x => String(x.id) === String(filters.customerFilter.value));
-  filters.customerSearch.value = found ? (found.name || found.customer_name || found.supplier_name || '') : '';
+  filters.customerSearch.value = found ? (found.name || found.customerName || found.supplierName || '') : '';
 });
 
 onMounted(async () => {
@@ -644,7 +636,6 @@ onUnmounted(() => { if (returnsAbortCtrl) returnsAbortCtrl.abort(); if (searchDe
 </script>
 
 <style scoped>
-/* Animations */
 @keyframes loading {
   0% { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
@@ -692,7 +683,6 @@ onUnmounted(() => { if (returnsAbortCtrl) returnsAbortCtrl.abort(); if (searchDe
   transform: translateY(-10px);
 }
 
-/* Animation Classes */
 .animate-modalIn {
   animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }

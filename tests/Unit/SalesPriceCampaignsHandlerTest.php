@@ -46,10 +46,11 @@ final class SalesPriceCampaignsHandlerTest extends TestCase
         $this->addCampaign(3, null, 'Global');
 
         $response = $this->invoke('list', 'GET');
-        $data = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR)['data'];
+        $envelope = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        $data = $envelope['data'];
 
         self::assertSame(200, $response->getStatusCode());
-        self::assertSame(2, $data['total']);
+        self::assertSame(2, $envelope['meta']['total']);
         self::assertEqualsCanonicalizing(['Assigned', 'Global'], array_column($data['items'], 'name'));
     }
 

@@ -5,13 +5,11 @@
     :aria-label="'التنقل الرئيسي'"
   >
 
-    <!-- Menu Items -->
     <nav
       class="flex-1 overflow-y-auto custom-scroll px-2 py-4 space-y-1"
       :aria-label="'قائمة التنقل'"
     >
       <template v-for="item in menuItems" :key="item.key || item.path">
-        <!-- Direct Link (no children) -->
         <router-link
           v-if="!item.items"
           :to="item.path"
@@ -28,7 +26,6 @@
           <span v-if="!collapsed" class="truncate">{{ item.name }}</span>
         </router-link>
 
-        <!-- Parent with Children -->
         <button
           v-else
           :title="!collapsed ? '' : item.name"
@@ -53,7 +50,6 @@
       </template>
     </nav>
 
-    <!-- Collapse Toggle Button (Bottom) -->
     <div class="border-t border-slate-200 p-2 shrink-0">
       <button
         class="w-full flex items-center justify-center h-10 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 transition-all"

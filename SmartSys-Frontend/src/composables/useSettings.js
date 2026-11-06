@@ -7,7 +7,7 @@ export function useDirtyTracking(sections) {
   // sections is an object like { general: ref({}), invoice: ref({}), printers: ref({}), users?: ref([]) }
   const sectionKeys = Object.keys(sections || {})
 
-  // ── snapshots MUST be reactive so Vue tracks mutations and re-evaluates
+  // snapshots MUST be reactive so Vue tracks mutations and re-evaluates
   // isDirty computed whenever a snapshot is set or cleared.
   // A plain object would NOT trigger Vue's dependency tracking, causing isDirty
   // to stay stale even after setSnapshotsFromCurrent() is called.

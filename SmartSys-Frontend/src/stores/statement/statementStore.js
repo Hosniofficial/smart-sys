@@ -6,23 +6,23 @@ const nowMs = () => Date.now();
 
 export const useStatementStore = defineStore('statement', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     statements: 5 * 60 * 1000, // 5 دقائق
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const customerStatements          = ref({});
+  const customerStatementsMeta      = ref({});
   const customerStatementsFetchedAt = ref({});
 
   const supplierStatements          = ref({});
+  const supplierStatementsMeta      = ref({});
   const supplierStatementsFetchedAt = ref({});
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
-  // ─── fetchCustomerStatement ───────────────────────────────────────────────
+  // fetchCustomerStatement
   /**
    * يجيب كشف حساب عميل معين مع caching
    * الـ component يستخدمها هكذا:
@@ -47,19 +47,23 @@ export const useStatementStore = defineStore('statement', () => {
         return {
           status: 'success',
           data:   cached,
+          meta:   customerStatementsMeta.value[cacheKey] || {},
           message: null
         };
       }
 
       const response  = await statementsService.getCustomerStatement(customerId, params);
-      const statement = response?.data?.data || response?.data || null;
+      const statement = response?.data?.data || null;
+      const meta = response?.data?.meta || {};
 
       customerStatements.value[cacheKey]          = statement;
+      customerStatementsMeta.value[cacheKey]      = meta;
       customerStatementsFetchedAt.value[cacheKey] = nowMs();
 
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
         data:   statement,
+        meta,
         message: response?.data?.message || null
       };
     } catch (err) {
@@ -67,12 +71,13 @@ export const useStatementStore = defineStore('statement', () => {
       return {
         status: 'error',
         data:   null,
+        meta:   {},
         message: err.response?.data?.message || err.message
       };
     }
   };
 
-  // ─── fetchSupplierStatement ───────────────────────────────────────────────
+  // fetchSupplierStatement
   /**
    * يجيب كشف حساب مورد معين مع caching
    * الـ component يستخدمها هكذا:
@@ -97,19 +102,23 @@ export const useStatementStore = defineStore('statement', () => {
         return {
           status: 'success',
           data:   cached,
+          meta:   supplierStatementsMeta.value[cacheKey] || {},
           message: null
         };
       }
 
       const response  = await statementsService.getSupplierStatement(supplierId, params);
-      const statement = response?.data?.data || response?.data || null;
+      const statement = response?.data?.data || null;
+      const meta = response?.data?.meta || {};
 
       supplierStatements.value[cacheKey]          = statement;
+      supplierStatementsMeta.value[cacheKey]      = meta;
       supplierStatementsFetchedAt.value[cacheKey] = nowMs();
 
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
         data:   statement,
+        meta,
         message: response?.data?.message || null
       };
     } catch (err) {
@@ -117,30 +126,35 @@ export const useStatementStore = defineStore('statement', () => {
       return {
         status: 'error',
         data:   null,
+        meta:   {},
         message: err.response?.data?.message || err.message
       };
     }
   };
 
-  // ─── Cache Clearers ───────────────────────────────────────────────────────
+  // Cache Clearers
   const clear = () => {
     customerStatements.value          = {};
+    customerStatementsMeta.value      = {};
     customerStatementsFetchedAt.value = {};
     supplierStatements.value          = {};
+    supplierStatementsMeta.value      = {};
     supplierStatementsFetchedAt.value = {};
   };
 
   const clearCustomerCache = () => {
     customerStatements.value          = {};
+    customerStatementsMeta.value      = {};
     customerStatementsFetchedAt.value = {};
   };
 
   const clearSupplierCache = () => {
     supplierStatements.value          = {};
+    supplierStatementsMeta.value      = {};
     supplierStatementsFetchedAt.value = {};
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     customerStatements,

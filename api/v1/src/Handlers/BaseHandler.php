@@ -45,7 +45,7 @@ class BaseHandler
         // to avoid memory exhaustion when many handlers are registered in the DI container.
     }
 
-    // ── Lazy accessors ────────────────────────────────────────────────────────
+    // Lazy accessors
     // These are called internally AND by subclasses via $this->accounting etc.
     // The properties are declared above; they are populated on first use only.
 
@@ -322,8 +322,6 @@ class BaseHandler
             'message' => $message,
         ], $status, false);
     }
-
-
 
     /** Ensure a database connection is present; request authentication is handled upstream. */
     protected function validateAuth(): bool

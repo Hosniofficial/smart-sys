@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="ترحيل الرصيد الافتتاحي"
@@ -24,7 +22,6 @@
         </template>
       </PageHeader>
 
-      <!-- Strategy & Global Toggles: Professional SaaS Toolbar -->
       <section class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
         <div class="flex flex-wrap items-center justify-between gap-6">
           <div class="flex flex-wrap items-center gap-8">
@@ -47,7 +44,6 @@
             </label>
           </div>
 
-          <!-- Quick Actions Bar -->
           <div class="flex items-center gap-1.5 p-1 bg-slate-50 rounded-lg border border-slate-100">
             <button v-for="action in [
               { id: 'add', icon: 'plus', title: 'إضافة صف', click: addRow, color: 'text-blue-600' },
@@ -64,7 +60,6 @@
         </div>
       </section>
 
-      <!-- Inventory Summary: High Contrast context -->
       <section class="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div class="bg-white rounded-xl p-6 text-slate-900 shadow-sm flex items-center justify-between border border-slate-200 relative overflow-hidden">
           <div class="absolute top-0 left-0 w-32 h-32 bg-blue-50 rounded-full -translate-x-12 -translate-y-12"></div>
@@ -86,7 +81,6 @@
         </div>
       </section>
 
-      <!-- Main Entry Grid: Professional Table Style -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div class="overflow-x-auto custom-scroll" style="max-height: 50vh;">
           <table class="w-full text-right border-collapse">
@@ -110,10 +104,9 @@
                 </td>
               </tr>
               <tr v-for="(row, idx) in items" :key="idx" class="hover:bg-blue-50/20 group/row transition-all">
-                <!-- Branch -->
                 <td class="px-6 py-3">
                   <div class="relative dropdown-container">
-                    <input type="text" v-model="row.branch_search" @input="filterbranchs(idx)" @focus="showbranchDropdown(idx)"
+                    <input type="text" v-model="row.branchSearch" @input="filterbranchs(idx)" @focus="showbranchDropdown(idx)"
                            class="h-8 w-44 bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" placeholder="بحث المخزن..." />
                     <div v-if="row.showbranchList" class="absolute top-full right-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-2xl z-20 overflow-hidden py-1">
                       <div v-for="branch in filteredbranchs(idx)" :key="branch.id" @click="selectbranch(idx, branch)" class="px-4 py-2 hover:bg-slate-50 cursor-pointer flex justify-between items-center transition-colors">
@@ -123,10 +116,9 @@
                     </div>
                   </div>
                 </td>
-                <!-- Product -->
                 <td class="px-4 py-3">
                   <div class="relative dropdown-container">
-                    <input type="text" v-model="row.product_search" @input="filterProducts(idx)" @focus="showProductDropdown(idx)"
+                    <input type="text" v-model="row.productSearch" @input="filterProducts(idx)" @focus="showProductDropdown(idx)"
                            class="h-8 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" placeholder="اسم المنتج أو الكود..." />
                     <div v-if="row.showProductList" class="absolute top-full right-0 mt-1 w-80 bg-white border border-slate-200 rounded-lg shadow-2xl z-20 overflow-hidden py-1">
                       <div v-for="product in filteredProducts(idx)" :key="product.id" @click="selectProduct(idx, product)" class="px-4 py-2 hover:bg-slate-50 cursor-pointer flex justify-between items-center border-b border-slate-50 last:border-0">
@@ -136,36 +128,30 @@
                     </div>
                   </div>
                 </td>
-                <!-- Unit -->
                 <td class="px-4 py-3">
                   <div class="relative dropdown-container">
-                    <input type="text" v-model="row.unit_search" @input="filterUnits(idx)" @focus="showUnitDropdown(idx)" :disabled="!row.product_id"
+                    <input type="text" v-model="row.unitSearch" @input="filterUnits(idx)" @focus="showUnitDropdown(idx)" :disabled="!row.productId"
                            class="h-8 w-24 bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 disabled:opacity-30" placeholder="الوحدة" />
                     <div v-if="row.showUnitList" class="absolute top-full right-0 mt-1 w-32 bg-white border border-slate-200 rounded-lg shadow-2xl z-20 overflow-hidden py-1">
                       <div v-for="unit in filteredUnits(idx)" :key="unit.id" @click="selectUnit(idx, unit)" class="px-4 py-2 hover:bg-slate-50 cursor-pointer text-[11px] font-bold text-slate-700">{{ unit.name }}</div>
                     </div>
                   </div>
                 </td>
-                <!-- Quantity -->
                 <td class="px-4 py-3 text-center">
                   <input type="number" step="0.0001" min="0" v-model.number="row.quantity" @change="autoSave"
                          class="h-8 w-24 bg-white border border-slate-200 rounded-md text-center text-[11px] font-bold font-mono text-blue-600 outline-none" />
                 </td>
-                <!-- Cost -->
                 <td class="px-4 py-3 text-center">
                   <input type="number" step="0.01" min="0" v-model.number="row.cost" @change="autoSave"
                          class="h-8 w-24 bg-white border border-slate-200 rounded-md text-center text-[11px] font-bold font-mono text-emerald-600 outline-none" />
                 </td>
-                <!-- Subtotal -->
                 <td class="px-4 py-3 text-left text-xs font-bold font-mono text-slate-900 tracking-tighter">
                   {{ formatMoney(row.quantity * row.cost) }}
                 </td>
-                <!-- Notes -->
                 <td class="px-4 py-3">
                   <input type="text" v-model="row.notes" @change="autoSave" placeholder="ملاحظة اختيارية..."
                          class="h-8 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 italic" />
                 </td>
-                <!-- Remove -->
                 <td class="px-6 py-3 text-center">
                   <button @click="removeRow(idx)" class="w-6 h-6 text-slate-300 hover:text-rose-500 transition-colors">
                     <i class="fas fa-times-circle"></i>
@@ -177,7 +163,6 @@
         </div>
       </div>
 
-      <!-- Preview Report: Audit Document Look -->
       <transition name="slide-down">
         <section v-if="previewResult" class="bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-fadeIn">
           <div :class="[previewResult.status === 'success' ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100']" class="px-8 py-5 border-b flex items-center justify-between">
@@ -189,15 +174,14 @@
           </div>
 
           <div class="p-8 space-y-8">
-            <!-- Summary Stats -->
             <div v-if="previewResult.data?.summary" class="grid grid-cols-3 gap-4">
               <div class="p-4 bg-blue-50 border border-blue-100 rounded-lg text-center">
                 <p class="text-[9px] font-bold text-blue-600 uppercase mb-1">الأصناف</p>
-                <p class="text-2xl font-bold text-blue-900">{{ previewResult.data.summary.total_quantity || 0 }}</p>
+                <p class="text-2xl font-bold text-blue-900">{{ previewResult.data.summary.totalQuantity || 0 }}</p>
               </div>
               <div class="p-4 bg-emerald-50 border border-emerald-100 rounded-lg text-center">
                 <p class="text-[9px] font-bold text-emerald-600 uppercase mb-1">التكلفة الإجمالية</p>
-                <p class="text-2xl font-bold text-emerald-900 font-mono">{{ formatMoney(previewResult.data.summary.total_cost || 0) }}</p>
+                <p class="text-2xl font-bold text-emerald-900 font-mono">{{ formatMoney(previewResult.data.summary.totalCost || 0) }}</p>
               </div>
               <div class="p-4 bg-indigo-50 border border-indigo-100 rounded-lg text-center">
                 <p class="text-[9px] font-bold text-indigo-600 uppercase mb-1">عدد الصفوف</p>
@@ -220,9 +204,9 @@
                  <thead><tr class="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase text-[9px]"><th class="px-4 py-2">المخزن</th><th class="px-4 py-2">المنتج</th><th class="px-4 py-2 text-center">الوحدة</th><th class="px-4 py-2 text-center">الكمية</th><th class="px-4 py-2 text-center">التكلفة</th><th class="px-4 py-2 text-left">الإجمالي</th><th class="px-4 py-2">الملاحظات</th></tr></thead>
                  <tbody class="divide-y divide-slate-100 font-bold">
                    <tr v-for="(r, i) in previewItems" :key="i" class="text-slate-600">
-                     <td class="px-4 py-2">{{ r.branch_code || r.branch_id }}</td>
-                     <td class="px-4 py-2">{{ r.product_code || r.barcode || r.product_id }}</td>
-                     <td class="px-4 py-2 text-center font-mono text-slate-500">{{ r.unit_code || '—' }}</td>
+                     <td class="px-4 py-2">{{ r.branchCode || r.branchId }}</td>
+                     <td class="px-4 py-2">{{ r.productCode || r.barcode || r.productId }}</td>
+                     <td class="px-4 py-2 text-center font-mono text-slate-500">{{ r.unitCode || '—' }}</td>
                      <td class="px-4 py-2 text-center font-mono">{{ formatNumber(r.quantity) }}</td>
                      <td class="px-4 py-2 text-center font-mono">{{ formatMoney(r.cost) }}</td>
                      <td class="px-4 py-2 text-left font-mono text-emerald-600">{{ formatMoney(r.subtotal) }}</td>
@@ -235,7 +219,6 @@
         </section>
       </transition>
 
-      <!-- Import Methods Navigation: Segmented Switch -->
       <section class="bg-white border border-slate-200 rounded-xl p-8 lg:p-10 shadow-sm space-y-8 max-w-5xl mx-auto">
         <div class="text-center space-y-2">
           <h3 class="text-lg font-bold text-slate-900">استيراد البيانات الخارجية</h3>
@@ -260,9 +243,7 @@
           </div>
         </div>
 
-        <!-- Tab: Paste -->
         <div v-if="activeTab === 'paste'" class="space-y-6 animate-fadeIn">
-          <!-- Instructions Box -->
           <div class="p-4 bg-blue-50 border border-blue-100 rounded-lg">
             <p class="text-[10px] font-bold text-blue-700 uppercase mb-3 flex items-center gap-2"><i class="fas fa-lightbulb"></i> خطوات الاستخدام:</p>
             <ol class="text-[11px] text-blue-700 space-y-2 ml-4">
@@ -289,7 +270,6 @@
           </div>
         </div>
 
-        <!-- Tab: File Upload -->
         <div v-if="activeTab === 'file'" class="animate-fadeIn space-y-6">
           <label class="flex flex-col items-center justify-center w-full h-48 border-2 border-slate-100 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-white hover:border-blue-300 transition-all duration-500 group relative">
             <div class="flex flex-col items-center justify-center py-6 text-center">
@@ -315,7 +295,6 @@
                </div>
             </div>
 
-            <!-- Sample Preview Table -->
             <div v-if="filePreview.sample?.data?.length" class="border border-slate-200 rounded-lg overflow-hidden bg-white">
               <div class="px-4 py-2 bg-slate-50 border-b border-slate-100">
                 <p class="text-[10px] font-bold text-slate-600 uppercase">معاينة من محتوى الملف (أول 5 صفوف)</p>
@@ -340,9 +319,7 @@
           </div>
         </div>
 
-        <!-- Tab: Templates -->
         <div v-if="activeTab === 'templates'" class="space-y-6 animate-fadeIn">
-          <!-- Tip Box -->
           <div class="p-4 bg-amber-50 border border-amber-100 rounded-lg">
             <p class="text-[10px] font-bold text-amber-700 uppercase mb-2 flex items-center gap-2"><i class="fas fa-lightbulb"></i> نصيحة:</p>
             <p class="text-[11px] text-amber-700">استخدم القالب الأساسي للبدء السريع. استخدم القالب المتقدم إذا كنت تملك معرّفات محددة من النظام. قالب الأمثلة يحتوي على 8 صفوف جاهزة للاختبار.</p>
@@ -370,6 +347,7 @@
 </template>
 
 <script setup>
+import logger from '@/utils/services/logger'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSetupStore } from '@/stores/setup/setupStore'
 import { useProductStore } from '@/stores/product/productStore'
@@ -378,8 +356,6 @@ import AlertService from '@/services/AlertService'
 import { useBranchStore } from '@/stores/branch/branchStore'
 import { useBreadcrumb } from '@/composables/useBreadcrumb';
 import PageHeader from '@/components/PageHeader.vue';
-
-// ─── State ───────────────────────────────────────────────────────────────────
 
 // Stores
 const productStore = useProductStore();
@@ -414,38 +390,36 @@ const lastSaveTime = ref(null)
 // Change log (kept from original)
 const changeLog = ref([])
 
-// ─── Computed ─────────────────────────────────────────────────────────────────
-
 const totalQuantity = computed(() => items.value.reduce((s, r) => s + (Number(r.quantity) || 0), 0))
 const totalCost = computed(() => items.value.reduce((s, r) => s + ((Number(r.quantity) || 0) * (Number(r.cost) || 0)), 0))
 
-// ─── Row Factory ──────────────────────────────────────────────────────────────
+// Row Factory
 
 function makeRow(overrides = {}) {
   return {
-    branch_code: '',
-    product_code_or_barcode: '',
-    unit_code: '',
+    branchCode: '',
+    productCodeOrBarcode: '',
+    unitCode: '',
     quantity: 0,
     cost: 0,
     notes: '',
-    branch_search: '',
-    product_search: '',
-    unit_search: '',
+    branchSearch: '',
+    productSearch: '',
+    unitSearch: '',
     showbranchList: false,
     showProductList: false,
     showUnitList: false,
     filteredbranchs: [],
     filteredProducts: [],
     filteredUnits: [],
-    branch_id: null,
-    product_id: null,
-    unit_id: null,
+    branchId: null,
+    productId: null,
+    unitId: null,
     ...overrides
   }
 }
 
-// ─── Row Management ───────────────────────────────────────────────────────────
+// Row Management
 
 function addRow() {
   items.value.push(makeRow())
@@ -463,8 +437,6 @@ function clearRows() {
   items.value = []
   autoSave()
 }
-
-// ─── Dropdown / Filter Logic (STRICTLY PRESERVED from original) ───────────────
 
 function initializeRowFilters(idx) {
   const row = items.value[idx]
@@ -485,7 +457,7 @@ function closeAllDropdowns() {
 function filterbranchs(idx) {
   closeAllDropdowns()
   const row = items.value[idx]
-  const q = (row.branch_search || '').toLowerCase()
+  const q = (row.branchSearch || '').toLowerCase()
   row.filteredbranchs = branches.value.filter(w =>
     w.name.toLowerCase().includes(q) || (w.code && w.code.toLowerCase().includes(q))
   )
@@ -495,7 +467,7 @@ function filterbranchs(idx) {
 function filterProducts(idx) {
   closeAllDropdowns()
   const row = items.value[idx]
-  const q = (row.product_search || '').toLowerCase()
+  const q = (row.productSearch || '').toLowerCase()
   row.filteredProducts = products.value.filter(p =>
     p.name.toLowerCase().includes(q) ||
     (p.code && p.code.toLowerCase().includes(q)) ||
@@ -507,7 +479,7 @@ function filterProducts(idx) {
 function filterUnits(idx) {
   closeAllDropdowns()
   const row = items.value[idx]
-  const q = (row.unit_search || '').toLowerCase()
+  const q = (row.unitSearch || '').toLowerCase()
   row.filteredUnits = units.value.filter(u =>
     u.name.toLowerCase().includes(q) || (u.code && u.code.toLowerCase().includes(q))
   )
@@ -528,7 +500,7 @@ function showProductDropdown(idx) {
 
 function showUnitDropdown(idx) {
   closeAllDropdowns()
-  if (items.value[idx].product_id) {
+  if (items.value[idx].productId) {
     items.value[idx].showUnitList = true
     filterUnits(idx)
   }
@@ -536,9 +508,9 @@ function showUnitDropdown(idx) {
 
 function selectbranch(idx, branch) {
   const row = items.value[idx]
-  row.branch_code = branch.code || branch.name
-  row.branch_id = branch.id
-  row.branch_search = branch.name
+  row.branchCode = branch.code || branch.name
+  row.branchId = branch.id
+  row.branchSearch = branch.name
   row.showbranchList = false
   logChange('select_branch', { index: idx, branch: branch.name })
   autoSave()
@@ -546,23 +518,21 @@ function selectbranch(idx, branch) {
 
 function selectProduct(idx, product) {
   const row = items.value[idx]
-  row.product_code_or_barcode = product.code || product.barcode
-  row.product_id = product.id
-  row.product_search = product.name
+  row.productCodeOrBarcode = product.code || product.barcode
+  row.productId = product.id
+  row.productSearch = product.name
   row.showProductList = false
 
-  // Auto-fill cost if available (preserved from original)
-  if (product.purchase_price && !row.cost) {
-    row.cost = product.purchase_price
+  if (product.purchasePrice && !row.cost) {
+    row.cost = product.purchasePrice
   }
 
-  // Auto-fill default unit (preserved from original)
-  if (product.unit_id) {
-    const defaultUnit = units.value.find(u => u.id === product.unit_id)
+  if (product.unitId) {
+    const defaultUnit = units.value.find(u => u.id === product.unitId)
     if (defaultUnit) {
-      row.unit_code = defaultUnit.code
-      row.unit_id = defaultUnit.id
-      row.unit_search = defaultUnit.name
+      row.unitCode = defaultUnit.code
+      row.unitId = defaultUnit.id
+      row.unitSearch = defaultUnit.name
     }
   }
 
@@ -572,9 +542,9 @@ function selectProduct(idx, product) {
 
 function selectUnit(idx, unit) {
   const row = items.value[idx]
-  row.unit_code = unit.code
-  row.unit_id = unit.id
-  row.unit_search = unit.name
+  row.unitCode = unit.code
+  row.unitId = unit.id
+  row.unitSearch = unit.name
   row.showUnitList = false
   logChange('select_unit', { index: idx, unit: unit.name })
   autoSave()
@@ -583,8 +553,6 @@ function selectUnit(idx, unit) {
 function filteredbranchs(idx) { return items.value[idx]?.filteredbranchs || [] }
 function filteredProducts(idx) { return items.value[idx]?.filteredProducts || [] }
 function filteredUnits(idx) { return items.value[idx]?.filteredUnits || [] }
-
-// ─── Auto-save (STRICTLY PRESERVED from original) ─────────────────────────────
 
 function autoSave() {
   const data = {
@@ -621,14 +589,10 @@ function clearAutoSave() {
   lastSaveTime.value = null
 }
 
-// ─── Change Tracking (preserved from original) ────────────────────────────────
-
 function logChange(action, details) {
   changeLog.value.unshift({ action, details, timestamp: new Date().toISOString() })
   if (changeLog.value.length > 50) changeLog.value = changeLog.value.slice(0, 50)
 }
-
-// ─── CSV Paste Parser (STRICTLY PRESERVED from original) ──────────────────────
 
 function parseCsvText(text) {
   const lines = text.split(/\r?\n/).filter(l => l.trim() !== '')
@@ -643,18 +607,18 @@ function parseCsvText(text) {
     const isIds = !isNaN(aNum) && !isNaN(bNum) && !isNaN(cNum) && a !== '' && b !== '' && c !== ''
     if (isIds) {
       out.push({
-        branch_id: aNum || null,
-        product_id: bNum || null,
-        unit_id: cNum || 1,
+        branchId: aNum || null,
+        productId: bNum || null,
+        unitId: cNum || 1,
         quantity: isNaN(quantity) ? 0 : quantity,
         cost: isNaN(costNum) ? 0 : costNum,
         notes: rest.join(',') || ''
       })
     } else {
       out.push({
-        branch_code: a || '',
-        product_code_or_barcode: b || '',
-        unit_code: c || '',
+        branchCode: a || '',
+        productCodeOrBarcode: b || '',
+        unitCode: c || '',
         quantity: isNaN(quantity) ? 0 : quantity,
         cost: isNaN(costNum) ? 0 : costNum,
         notes: rest.join(',') || ''
@@ -663,8 +627,6 @@ function parseCsvText(text) {
   }
   return out
 }
-
-// ─── Bulk Paste Validation (STRICTLY PRESERVED from original) ─────────────────
 
 function validateBulkText() {
   const text = bulkText.value.trim()
@@ -695,8 +657,6 @@ function validateBulkText() {
   }
 }
 
-// ─── Convert Bulk to Rows (STRICTLY PRESERVED from original) ──────────────────
-
 async function convertBulkToRows() {
   if (!bulkValidation.value.valid) {
     await AlertService.warning('يرجى تصحيح الأخطاء أولاً', 'بيانات غير صالحة')
@@ -706,9 +666,9 @@ async function convertBulkToRows() {
   const newItems = lines.map(line => {
     const p = line.split(',').map(s => s.trim())
     return makeRow({
-      branch_code: p[0],
-      product_code_or_barcode: p[1],
-      unit_code: p[2],
+      branchCode: p[0],
+      productCodeOrBarcode: p[1],
+      unitCode: p[2],
       quantity: parseFloat(p[3]) || 0,
       cost: parseFloat(p[4]) || 0,
       notes: p[5] || ''
@@ -726,8 +686,6 @@ function clearBulk() {
   bulkText.value = ''
   bulkValidation.value = { valid: false, message: '', validRows: 0 }
 }
-
-// ─── CSV Quick Import (STRICTLY PRESERVED from original) ──────────────────────
 
 async function onCsvSelected(e) {
   const file = e.target.files?.[0]
@@ -751,8 +709,6 @@ async function onCsvSelected(e) {
     e.target.value = ''
   }
 }
-
-// ─── File Selection & Preview (STRICTLY PRESERVED from original) ───────────────
 
 async function onFileSelected(event) {
   const file = event.target.files[0]
@@ -808,8 +764,6 @@ async function onFileSelected(event) {
   reader.readAsArrayBuffer(file)
 }
 
-// ─── File Import (STRICTLY PRESERVED from original) ───────────────────────────
-
 async function importFile() {
   if (!selectedFile.value || !filePreview.value) return
   loading.value = true
@@ -845,24 +799,23 @@ async function importFile() {
         }
       }
 
-      // Convert to our format (preserved logic)
       const newItems = jsonData.map(row => {
-        const hasCodes = row.branch_code || row.product_code_or_barcode || row.unit_code
-        const hasIds = row.branch_id || row.product_id || row.unit_id
+        const hasCodes = row.branchCode || row.productCodeOrBarcode || row.unitCode
+        const hasIds = row.branchId || row.productId || row.unitId
         if (hasCodes) {
           return makeRow({
-            branch_code: row.branch_code || '',
-            product_code_or_barcode: row.product_code_or_barcode || row.barcode || '',
-            unit_code: row.unit_code || '',
+            branchCode: row.branchCode || '',
+            productCodeOrBarcode: row.productCodeOrBarcode || row.barcode || '',
+            unitCode: row.unitCode || '',
             quantity: parseFloat(row.quantity) || 0,
             cost: parseFloat(row.cost) || 0,
             notes: row.notes || ''
           })
         } else if (hasIds) {
           return makeRow({
-            branch_id: parseInt(row.branch_id) || null,
-            product_id: parseInt(row.product_id) || null,
-            unit_id: parseInt(row.unit_id) || 1,
+            branchId: parseInt(row.branchId) || null,
+            productId: parseInt(row.productId) || null,
+            unitId: parseInt(row.unitId) || 1,
             quantity: parseFloat(row.quantity) || 0,
             cost: parseFloat(row.cost) || 0,
             notes: row.notes || ''
@@ -870,15 +823,15 @@ async function importFile() {
         } else {
           const keys = Object.keys(row)
           return makeRow({
-            branch_code: row[keys[0]] || '',
-            product_code_or_barcode: row[keys[1]] || '',
-            unit_code: row[keys[2]] || '',
+            branchCode: row[keys[0]] || '',
+            productCodeOrBarcode: row[keys[1]] || '',
+            unitCode: row[keys[2]] || '',
             quantity: parseFloat(row[keys[3]]) || 0,
             cost: parseFloat(row[keys[4]]) || 0,
             notes: row[keys[5]] || ''
           })
         }
-      }).filter(r => r.branch_code || r.branch_id || r.product_code_or_barcode || r.product_id)
+      }).filter(r => r.branchCode || r.branchId || r.productCodeOrBarcode || r.productId)
 
       items.value = [...items.value, ...newItems]
       newItems.forEach((_, i) => initializeRowFilters(items.value.length - newItems.length + i))
@@ -901,8 +854,6 @@ function clearFile() {
   const fi = document.getElementById('file-input-main')
   if (fi) fi.value = ''
 }
-
-// ─── Download Template (STRICTLY PRESERVED from original, all 3 types) ─────────
 
 async function downloadTemplate(type = 'basic') {
   try {
@@ -941,22 +892,20 @@ THIRD,SKU-008,PCS,12,22.75,seasonal stock`
   }
 }
 
-// ─── Preview (STRICTLY PRESERVED from original — full payload mapping) ─────────
-
 async function preview() {
   previewResult.value = null; previewItems.value = []; previewWarnings.value = []
   loading.value = true
   try {
     const payload = items.value.map(r => ({
-      branch_id: r.branch_id ?? null,
-      product_id: r.product_id ?? null,
-      unit_id: r.unit_id ?? null,
-      branch_code: r.branch_code || undefined,
-      product_code: (r.product_code || r.product_code_or_barcode)?.match(/\D/)
-        ? (r.product_code || r.product_code_or_barcode) : undefined,
-      barcode: (r.barcode || r.product_code_or_barcode)?.match(/^\d+$/)
-        ? (r.barcode || r.product_code_or_barcode) : undefined,
-      unit_code: r.unit_code || undefined,
+      branchId: r.branchId ?? null,
+      productId: r.productId ?? null,
+      unitId: r.unitId ?? null,
+      branchCode: r.branchCode || undefined,
+      productCode: (r.productCode || r.productCodeOrBarcode)?.match(/\D/)
+        ? (r.productCode || r.productCodeOrBarcode) : undefined,
+      barcode: (r.barcode || r.productCodeOrBarcode)?.match(/^\d+$/)
+        ? (r.barcode || r.productCodeOrBarcode) : undefined,
+      unitCode: r.unitCode || undefined,
       quantity: r.quantity,
       cost: r.cost,
       notes: r.notes || ''
@@ -964,8 +913,8 @@ async function preview() {
     const res = await setupStore.preview(payload)
     if (res.status === 'success') {
       previewResult.value = res.data
-      previewItems.value = res.data?.items || []
-      previewWarnings.value = res.data?.warnings || []
+      previewItems.value = res.data?.data?.items || []
+      previewWarnings.value = res.data?.data?.warnings || []
     } else {
       previewResult.value = { status: 'error', message: res.message }
     }
@@ -975,8 +924,6 @@ async function preview() {
     loading.value = false
   }
 }
-
-// ─── Commit (STRICTLY PRESERVED from original — double confirm + full payload) ─
 
 async function commit() {
   // Double confirmation as in original
@@ -998,15 +945,15 @@ async function commit() {
   loading.value = true
   try {
     const payload = items.value.map(r => ({
-      branch_id: r.branch_id ?? null,
-      product_id: r.product_id ?? null,
-      unit_id: r.unit_id ?? null,
-      branch_code: r.branch_code || undefined,
-      product_code: (r.product_code || r.product_code_or_barcode)?.match(/\D/)
-        ? (r.product_code || r.product_code_or_barcode) : undefined,
-      barcode: (r.barcode || r.product_code_or_barcode)?.match(/^\d+$/)
-        ? (r.barcode || r.product_code_or_barcode) : undefined,
-      unit_code: r.unit_code || undefined,
+      branchId: r.branchId ?? null,
+      productId: r.productId ?? null,
+      unitId: r.unitId ?? null,
+      branchCode: r.branchCode || undefined,
+      productCode: (r.productCode || r.productCodeOrBarcode)?.match(/\D/)
+        ? (r.productCode || r.productCodeOrBarcode) : undefined,
+      barcode: (r.barcode || r.productCodeOrBarcode)?.match(/^\d+$/)
+        ? (r.barcode || r.productCodeOrBarcode) : undefined,
+      unitCode: r.unitCode || undefined,
       quantity: r.quantity,
       cost: r.cost,
       notes: r.notes,
@@ -1021,7 +968,7 @@ async function commit() {
       previewResult.value = null; previewItems.value = []; previewWarnings.value = []
       logChange('commit', { itemCount: items.value.length })
       
-      // ─── Emit event to notify InventoryManagement.vue to refresh ────────────
+      // Emit event to notify InventoryManagement.vue to refresh
       // Wait a moment for backend to finish processing
       await new Promise(resolve => setTimeout(resolve, 500))
       
@@ -1033,7 +980,7 @@ async function commit() {
         }
       })
       window.dispatchEvent(event)
-      console.log('📡 openingBalancePosted event emitted', { itemCount: items.value.length })
+      logger.debug('📡 openingBalancePosted event emitted', { itemCount: items.value.length })
       
       if (typeof productStore !== 'undefined' && productStore.invalidateCache) {
         productStore.invalidateCache()
@@ -1058,13 +1005,11 @@ async function commit() {
   }
 }
 
-// ─── Click Outside Handler ─────────────────────────────────────────────────────
+// Click Outside Handler
 
 function handleClickOutside(event) {
   if (!event.target.closest('.dropdown-container')) closeAllDropdowns()
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatNumber(n) {
   return (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 4 })
@@ -1080,7 +1025,7 @@ function formatFileSize(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-// ─── Lifecycle ────────────────────────────────────────────────────────────────
+// Lifecycle
 
 onMounted(async () => {
   // Initialize stores
@@ -1098,7 +1043,6 @@ onMounted(async () => {
     console.error('Error loading master data', e)
   }
 
-  // Auto-save restore prompt (STRICTLY PRESERVED from original)
   const hasAutoSave = loadAutoSave()
   if (hasAutoSave) {
     const restore = await AlertService.confirm(

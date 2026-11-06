@@ -6,8 +6,7 @@ const RepairOrdersService = {
     if (data?.status !== 'success' || !data?.data) {
       throw new Error(data?.message || 'تعذر تحميل أوامر الصيانة.')
     }
-    // Backend يُعيد { items, total, page, limit, total_pages }
-    return data.data
+    return { ...data.data, meta: data.meta || {} }
   },
 
   async get(id) {
@@ -36,7 +35,7 @@ const RepairOrdersService = {
 
   async createInvoice(id) {
     const { data } = await apiClient.post(`/repairs/${id}/invoice`)
-    if (data?.status !== 'success' || !data?.data?.sale_id) {
+    if (data?.status !== 'success' || !data?.data?.saleId) {
       throw new Error(data?.message || 'تعذر إصدار فاتورة الصيانة.')
     }
     return data.data

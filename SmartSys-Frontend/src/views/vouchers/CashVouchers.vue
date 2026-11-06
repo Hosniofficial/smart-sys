@@ -1,10 +1,8 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading || isLoadingSearch" />
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
 
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="إدارة السندات المالية"
@@ -33,7 +31,6 @@
         </div>
       </transition>
 
-      <!-- Financial KPI Summary -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
 
         <div v-for="kpi in [
@@ -52,7 +49,6 @@
 
       </section>
 
-      <!-- Filters & Search Toolbar -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="p-6 bg-slate-50/30 border-b border-slate-100 space-y-6">
           <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
@@ -74,7 +70,7 @@
                       <template v-else>
                         <div v-for="result in searchResults.slice(0, 10)" :key="result.id" @click="selectSearchResult(result)" class="px-4 py-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 flex items-center justify-between group">
                           <div>
-                            <p class="text-xs font-bold text-slate-900">{{ result.reference_number || '#' + result.id }}</p>
+                            <p class="text-xs font-bold text-slate-900">{{ result.referenceNumber || '#' + result.id }}</p>
                             <p class="text-[10px] text-slate-400 font-mono">{{ result.date }}</p>
                           </div>
                           <p :class="[result.type === 'receipt' ? 'text-emerald-600' : 'text-rose-600', 'text-xs font-bold font-mono']">
@@ -124,7 +120,6 @@
             </div>
           </div>
         </div>
-        <!-- Vouchers Table -->
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
 
@@ -163,7 +158,7 @@
                 <td class="px-4 py-4 text-xs font-bold font-mono tracking-tighter" :class="voucher.type === 'receipt' ? 'text-emerald-600' : 'text-rose-600'">
                   {{ voucher.type === 'receipt' ? '+' : '-' }}{{ formatPrice(voucher.amount) }}
                 </td>
-                <td class="px-4 py-4 text-xs font-bold text-slate-700 truncate max-w-[180px]">{{ voucher.account_name }}</td>
+                <td class="px-4 py-4 text-xs font-bold text-slate-700 truncate max-w-[180px]">{{ voucher.accountName }}</td>
                 <td class="px-6 py-4 text-[11px] text-slate-400 italic truncate max-w-[200px]" :title="voucher.description">{{ voucher.description || '—' }}</td>
                 <td class="px-6 py-4 text-center">
                   <div class="flex items-center justify-center gap-2">
@@ -176,7 +171,6 @@
             </tbody>
           </table>
         </div>
-        <!-- Pagination -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900 font-mono">{{ currentPage }}</span> من <span class="text-slate-900 font-mono">{{ totalPages }}</span>
@@ -202,7 +196,6 @@
         </div>
       </div>
     </div>
-    <!-- The Refactored Voucher Form Modal -->
     <VoucherFormModal
       v-if="showFormModal"
       :show="showFormModal"
@@ -227,7 +220,7 @@
       :show="showVoucherDetails"
       @close="closeVoucherDetails"
       :title="`تفاصيل ${selectedVoucher?.type === 'receipt' ? 'سند القبض' : 'سند الصرف'}`"
-      :subtitle="selectedVoucher?.reference || selectedVoucher?.reference_number || (route.query.id ? `رقم السند ${route.query.id}` : '')"
+      :subtitle="selectedVoucher?.reference || selectedVoucher?.referenceNumber || (route.query.id ? `رقم السند ${route.query.id}` : '')"
       :icon="selectedVoucher?.type === 'receipt' ? 'fas fa-arrow-down-long' : 'fas fa-arrow-up-long'"
       max-width="4xl"
     >
@@ -260,7 +253,6 @@
       </template>
     </HistoryDetailsModal>
 
-    <!-- Delete Confirmation Modal -->
     <BaseModal :show="showDeleteModal" @close="showDeleteModal = false" maxWidth="sm" align="center" :zIndex="130">
       <template #header>
         <h3 class="text-base font-bold text-slate-900 uppercase">تأكيد إلغاء السند</h3>
@@ -270,7 +262,7 @@
         <div class="w-14 h-14 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center mx-auto"><i class="fas fa-trash-alt text-xl"></i></div>
         <p class="text-xs text-slate-400 font-medium leading-relaxed">سيُحفظ السند في السجل، ويُنشأ قيد عكسي لأثره. لا يمكن إلغاء سند مرتبط بفاتورة أو بجلسة كاشير مغلقة.</p>
         <div class="p-3 bg-slate-50 rounded-lg border border-slate-100 text-right space-y-1 font-bold text-[10px]">
-          <div class="flex justify-between"><span>الحساب:</span><span>{{ deleteTarget?.account_name }}</span></div>
+          <div class="flex justify-between"><span>الحساب:</span><span>{{ deleteTarget?.accountName }}</span></div>
           <div class="flex justify-between"><span>المبلغ:</span><span class="text-rose-600 font-mono">{{ formatPrice(deleteTarget?.amount) }}</span></div>
         </div>
         <p v-if="deleteError" class="text-xs font-bold text-rose-600">{{ deleteError }}</p>
@@ -325,7 +317,7 @@ const { breadcrumb } = useBreadcrumb();
 const authStore = useAuthStore();
 const route = useRoute();
 const router = useRouter();
-const pendingVoucherStorageKey = `pending_cash_voucher_create:${authStore.user?.tenant_id || 'no-tenant'}:${authStore.user?.id || 'no-user'}`;
+const pendingVoucherStorageKey = `pending_cash_voucher_create:${authStore.user?.tenantId || 'no-tenant'}:${authStore.user?.id || 'no-user'}`;
 const readPendingVoucherRequest = () => {
   try {
     const saved = JSON.parse(sessionStorage.getItem(pendingVoucherStorageKey) || 'null');
@@ -408,24 +400,24 @@ const canEditVoucher = computed(() => authStore.isSuperAdmin || userPermissions.
 const canDeleteVoucher = computed(() => authStore.isSuperAdmin || userPermissions.value.includes('voucher.delete'));
 const totalPages = computed(() => Math.ceil(totalCount.value / pageSize.value));
 const voucherDetailFields = computed(() => [
-  { label: 'المرجع', value: selectedVoucher.value?.reference || selectedVoucher.value?.reference_number },
+  { label: 'المرجع', value: selectedVoucher.value?.reference || selectedVoucher.value?.referenceNumber },
   { label: 'التاريخ', value: selectedVoucher.value?.date },
   { label: 'النوع', value: selectedVoucher.value?.type === 'receipt' ? 'سند قبض' : 'سند صرف' },
   { label: 'المبلغ', value: selectedVoucher.value ? formatPrice(selectedVoucher.value.amount) : '' },
-  { label: 'الحساب المتأثر', value: selectedVoucher.value?.account_name },
+  { label: 'الحساب المتأثر', value: selectedVoucher.value?.accountName },
   {
     label: 'الفرع',
-    value: selectedVoucher.value?.branch_name
-      || branches.value.find(branch => String(branch.id) === String(selectedVoucher.value?.branch_id))?.name
+    value: selectedVoucher.value?.branchName
+      || branches.value.find(branch => String(branch.id) === String(selectedVoucher.value?.branchId))?.name
   },
   {
     label: 'طريقة الدفع',
-    value: selectedVoucher.value?.payment_method_name
-      || paymentStore.paymentMethods.find(method => String(method.id) === String(selectedVoucher.value?.payment_method_id))?.name
+    value: selectedVoucher.value?.paymentMethodName
+      || paymentStore.paymentMethods.find(method => String(method.id) === String(selectedVoucher.value?.paymentMethodId))?.name
   },
   { label: 'الحالة', value: selectedVoucher.value?.status === 'cancelled' ? 'ملغى' : 'نشط' },
-  { label: 'العميل', value: selectedVoucher.value?.customer_name || selectedVoucher.value?.customer_id },
-  { label: 'المورد', value: selectedVoucher.value?.supplier_name || selectedVoucher.value?.supplier_id },
+  { label: 'العميل', value: selectedVoucher.value?.customerName || selectedVoucher.value?.customerId },
+  { label: 'المورد', value: selectedVoucher.value?.supplierName || selectedVoucher.value?.supplierId },
 ]);
 const fetchVouchers = async () => {
   isLoading.value = true;
@@ -440,9 +432,8 @@ const fetchVouchers = async () => {
       page: currentPage.value,
       perPage: pageSize.value
     });
-    if (Array.isArray(res)) { vouchers.value = res; totalCount.value = res.length; }
-    else if (res?.data?.items) { vouchers.value = res.data.items; totalCount.value = res.data.total || 0; }
-    else { vouchers.value = res?.items || res || []; totalCount.value = res?.total || vouchers.value.length; }
+    vouchers.value = res?.items || [];
+    totalCount.value = Number(res?.meta?.total) || vouchers.value.length;
   } catch (err) {
     vouchers.value = [];
     pageError.value = err?.message || 'فشل تحميل السندات';
@@ -464,8 +455,7 @@ const loadVoucherDetails = async (voucherId) => {
         perPage: 50,
         force: true,
       });
-      voucher = (Array.isArray(result) ? result : result?.data?.items || result?.items || [])
-        .find(item => Number(item.id) === id);
+      voucher = (result?.items || []).find(item => Number(item.id) === id);
     }
     if (requestId !== voucherDetailsRequestId) return;
     if (!voucher) {
@@ -502,7 +492,7 @@ const performSearch = async (query) => {
   isLoadingSearch.value = true;
   try {
     const res = await voucherStore.fetchVouchersList({ search: query.trim(), branchId: branchId.value || undefined, perPage: 50 });
-    searchResults.value = Array.isArray(res) ? res : (res?.data?.items || []);
+    searchResults.value = res?.items || [];
   } catch { searchResults.value = []; } finally { isLoadingSearch.value = false; }
 };
 
@@ -538,7 +528,7 @@ const fetchLists = () => {
 const getDeviceIdentity = () => {
   let id = localStorage.getItem('pos_device_id');
   if (!id) { id = 'dev-' + Math.random().toString(36).slice(2, 8) + '-' + Date.now().toString().slice(-6); try { localStorage.setItem('pos_device_id', id); } catch {} }
-  return { device_id: id };
+  return { deviceId: id };
 };
 const isCashPayment = (pmId) => {
   if (!pmId) return false;
@@ -547,13 +537,13 @@ const isCashPayment = (pmId) => {
   return String(pm.kind || '').toLowerCase() === 'cash';
 };
 const ensureCashierSessionForCash = async (payload) => {
-  if (!(Number(payload.amount) > 0 && isCashPayment(payload.payment_method_id))) return true;
+  if (!(Number(payload.amount) > 0 && isCashPayment(payload.paymentMethodId))) return true;
   const settings = await fetchSettings(true);
   const sessionsEnabled = isSettingEnabled(settings?.['pos.sessions.enabled']);
   if (!sessionsEnabled || isExempt.value) return true;
   try {
-    const { device_id } = getDeviceIdentity();
-    const result = await sessionStore.getCurrentSession(payload.branch_id || undefined, undefined, device_id);
+    const { deviceId: device_id } = getDeviceIdentity();
+    const result = await sessionStore.getCurrentSession(payload.branchId || undefined, undefined, device_id);
     if (!result.data?.id) {
       modalError.value = 'لا توجد جلسة كاشير مفتوحة. لا يمكن إتمام المدفوعات النقدية بدون جلسة.';
       return false;
@@ -568,13 +558,13 @@ const ensureCashierSessionForCash = async (payload) => {
 const enrichCostCenter = (payload) => {
   if (authStore.isAdmin) {
     if (costCenterStore.selectedCostCenterId) {
-      payload.cost_center_id = costCenterStore.selectedCostCenterId;
+      payload.costCenterId = costCenterStore.selectedCostCenterId;
 
     } else if (branchStore.selectedBranchId) {
 
       const selectedBranchData = branchStore.branches.find(b => b.id === branchStore.selectedBranchId);
 
-      if (selectedBranchData?.cost_center_id) payload.cost_center_id = selectedBranchData.cost_center_id;
+      if (selectedBranchData?.costCenterId) payload.costCenterId = selectedBranchData.costCenterId;
 
     }
 
@@ -599,7 +589,7 @@ const onAddVoucher = async () => {
     showFormModal.value = true;
     return;
   }
-  form.value = { type: 'receipt', date: getLocalDateISO(), amount: '', branch_id: bId, payment_method_id: '', account_id: '', description: '', payment_to_type: 'supplier', customer_id: null, supplier_id: null, expense_account_id: null, purchase_id: null, sale_id: null };
+  form.value = { type: 'receipt', date: getLocalDateISO(), amount: '', branchId: bId, paymentMethodId: '', accountId: '', description: '', paymentToType: 'supplier', customerId: null, supplierId: null, expenseAccountId: null, purchaseId: null, saleId: null };
   showFormModal.value = true;
 };
 const onEditVoucher = async (v) => {
@@ -608,10 +598,10 @@ const onEditVoucher = async (v) => {
   await ensureExemptionLoaded();
   if (!await fetchLists()) return;
   let editData = { ...v };
-  if (!('payment_method_id' in editData)) {
-    editData.payment_method_id = '';
+  if (!('paymentMethodId' in editData)) {
+    editData.paymentMethodId = '';
   }
-  if (!editData.branch_id) {
+  if (!editData.branchId) {
     let userBranchId = '';
     if (!isExempt.value) {
       try {
@@ -624,15 +614,15 @@ const onEditVoucher = async (v) => {
     }
     if (userBranchId && branches.value.length > 0) {
       const validBranch = branches.value.find(b => String(b.id) === String(userBranchId));
-      editData.branch_id = validBranch ? userBranchId : branches.value[0]?.id || '';
+      editData.branchId = validBranch ? userBranchId : branches.value[0]?.id || '';
     }
   }
-  editData.payment_to_type = v.supplier_id ? 'supplier' : (v.expense_account_id ? 'expense' : 'supplier');
+  editData.paymentToType = v.supplierId ? 'supplier' : (v.expenseAccountId ? 'expense' : 'supplier');
   form.value = editData;
-  if (form.value.payment_method_id && !form.value.account_id) {
-    const pm = validPaymentMethods.value.find(p => p.id === form.value.payment_method_id);
-    if (pm?.account_id) {
-      form.value.account_id = pm.account_id;
+  if (form.value.paymentMethodId && !form.value.accountId) {
+    const pm = validPaymentMethods.value.find(p => p.id === form.value.paymentMethodId);
+    if (pm?.accountId) {
+      form.value.accountId = pm.accountId;
     }
   }
   showFormModal.value = true;
@@ -670,7 +660,7 @@ const submitAddVoucher = async (payload) => {
     }
     await voucherStore.createVoucher(finalPayload, idempotencyKey);
     persistPendingVoucherRequest(null);
-    window.dispatchEvent(new CustomEvent('pos:voucher-recorded', { detail: { voucher_type: payload.type, amount: Number(payload.amount), payment_method_id: payload.payment_method_id } }));
+    window.dispatchEvent(new CustomEvent('pos:voucher-recorded', { detail: { voucherType: payload.type, amount: Number(payload.amount), paymentMethodId: payload.paymentMethodId } }));
     productStore.invalidateCache();
     closeFormModal(); await fetchVouchers();
   } catch (e) {
@@ -719,7 +709,7 @@ const suppliersList = computed(() => supplierStore.suppliers);
 const expensesList = computed(() => accountStore.allAccounts.filter(a => a.code?.startsWith('51')));
 const allAccounts = computed(() => accountStore.allAccounts);
 
-const validPaymentMethods = computed(() => paymentStore.paymentMethods.filter(pm => pm.account_id));
+const validPaymentMethods = computed(() => paymentStore.paymentMethods.filter(pm => pm.accountId));
 const formatPrice = (v) => formatCurrencyLocale(v, 2);
 watch(filterType, () => { currentPage.value = 1; fetchVouchers(); });
 watch(() => route.query.id, (id) => {
@@ -734,7 +724,7 @@ watch(() => route.query.id, (id) => {
 onMounted(async () => {
   await Promise.all([branchStore.initialize(), ensureExemptionLoaded(), fetchSettings()]);
   loadFromLocalStorage();
-  if (!canSelectBranch.value && authStore.user?.branch_id) branchStore.setSelectedBranch(authStore.user.branch_id);
+  if (!canSelectBranch.value && authStore.user?.branchId) branchStore.setSelectedBranch(authStore.user.branchId);
   await fetchLists();
   await fetchVouchers();
   if (Number(route.query.id) > 0) await loadVoucherDetails(route.query.id);
@@ -742,7 +732,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* Animations */
 @keyframes loading { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes modalIn { from { opacity: 0; transform: scale(0.98) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
@@ -752,7 +741,6 @@ onMounted(async () => {
 .custom-scroll::-webkit-scrollbar { width: 5px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
 
-/* Animation Classes */
 .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
 .animate-modalIn { animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 

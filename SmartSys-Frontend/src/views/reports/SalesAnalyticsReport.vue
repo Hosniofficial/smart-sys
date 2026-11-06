@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="{ parent: { label: 'التقارير', path: '/reports/sales-summary' }, current: 'تحليلات المبيعات' }"
         title="مركز تحليلات المبيعات"
@@ -31,7 +29,6 @@
 
       <main class="space-y-8">
 
-      <!-- Analytical Filters Utility Bar -->
       <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
         <div class="p-6 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
           <div class="flex flex-wrap gap-4 items-end flex-grow">
@@ -82,7 +79,6 @@
         </p>
       </section>
 
-      <!-- KPI Performance Grid -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <div v-for="card in summaryCards" :key="card.title" class="bg-white border border-slate-200 p-5 rounded-xl flex flex-col justify-between group hover:border-slate-300 transition-all shadow-sm border-r-4" :class="card.color.replace('text', 'border-r')">
           <div class="flex justify-between items-start mb-4">
@@ -97,7 +93,6 @@
         </div>
       </section>
 
-      <!-- Main Trend Chart -->
       <section class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden group">
         <div class="absolute top-0 left-0 w-64 h-64 bg-blue-500/5 rounded-full -translate-x-12 -translate-y-12 group-hover:scale-110 transition-transform duration-1000"></div>
         
@@ -122,9 +117,7 @@
         </div>
       </section>
       
-      <!-- Distribution Grid -->
       <section class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <!-- Top Products (8/12) -->
           <div class="lg:col-span-8 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
                <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                   <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
@@ -135,7 +128,6 @@
                    <div class="xl:col-span-7 h-[300px]">
                       <BarChart v-if="!isLoading" :data="topProductsChart" :options="chartOptions" />
                    </div>
-                   <!-- Technical Data Table -->
                    <div class="xl:col-span-5 bg-slate-50 border border-slate-100 rounded-xl overflow-hidden">
                       <table class="w-full text-right text-[11px] font-medium border-collapse">
                           <thead>
@@ -157,7 +149,6 @@
                </div>
           </div>
 
-          <!-- Category Doughnut (4/12) -->
           <div class="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col items-center">
                <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest self-start flex items-center gap-2 mb-8">
                  <i class="fas fa-chart-pie text-indigo-500"></i> توزيع الحصص حسب الفئة
@@ -317,20 +308,17 @@ const fetchAnalytics = async () => {
         const result = await analyticsStore.fetchSalesAnalytics({ startDate: startDate.value, endDate: endDate.value, branchId: selectedBranch.value === 'all' ? null : selectedBranch.value });
         if (result?.status === 'error') throw new Error(result.message || 'فشل تحميل تحليلات المبيعات');
 
-        // The store normally returns { status, data }, while a direct Axios
-        // response is shaped as { data: { status, data } }. Support both so
-        // the view always reads the actual analytics payload.
-        const apiData = result?.data?.data ?? result?.data ?? result ?? {};
+        const apiData = result.data ?? {};
         const summary = apiData.summary || {};
         const revenue = apiData.revenue || {};
-        const totalSales = toNumber(apiData.total_sales_amount ?? summary.total_sales_amount);
-        const totalReturns = toNumber(apiData.total_returns_amount ?? summary.total_returns_amount);
-        const totalRevenue = toNumber(apiData.net_sales ?? (totalSales - totalReturns));
-        const totalTax = toNumber(apiData.total_tax_amount ?? summary.total_tax_amount);
-        const netTax = totalTax - toNumber(apiData.total_returns_tax);
-        const grandTotal = toNumber(apiData.net_grand_total ?? (totalRevenue + netTax));
-        const grossProfit = toNumber(summary.gross_profit ?? revenue.gross_profit ?? apiData.gross_profit);
-        const netProfit = toNumber(summary.net_profit ?? apiData.net_profit ?? grossProfit);
+        const totalSales = toNumber(apiData.totalSalesAmount ?? summary.totalSalesAmount);
+        const totalReturns = toNumber(apiData.totalReturnsAmount ?? summary.totalReturnsAmount);
+        const totalRevenue = toNumber(apiData.netSales ?? (totalSales - totalReturns));
+        const totalTax = toNumber(apiData.totalTaxAmount ?? summary.totalTaxAmount);
+        const netTax = totalTax - toNumber(apiData.totalReturnsTax);
+        const grandTotal = toNumber(apiData.netGrandTotal ?? (totalRevenue + netTax));
+        const grossProfit = toNumber(summary.grossProfit ?? revenue.grossProfit ?? apiData.grossProfit);
+        const netProfit = toNumber(summary.netProfit ?? apiData.netProfit ?? grossProfit);
 
         analyticsData.value = {
             summary: {
@@ -341,12 +329,12 @@ const fetchAnalytics = async () => {
                 grandTotal,
                 netProfit,
                 grossProfit,
-                returnsCostUnresolvedLineCount: toNumber(apiData.returns_cost_unresolved_line_count),
-                returnsCostUnresolvedQuantity: toNumber(apiData.returns_cost_unresolved_quantity),
+                returnsCostUnresolvedLineCount: toNumber(apiData.returnsCostUnresolvedLineCount),
+                returnsCostUnresolvedQuantity: toNumber(apiData.returnsCostUnresolvedQuantity),
             },
-            salesOverTime: (apiData.daily_sales || apiData.salesOverTime || []).map(day => ({ date: day.date, total: toNumber(day.total_revenue ?? day.total) })),
-            topProducts: (apiData.top_products || apiData.topProducts || []).map(p => ({ id: p.id, name: p.name, totalSales: toNumber(p.total_revenue ?? p.totalSales), quantity: toNumber(p.total_quantity ?? p.quantity) })),
-            salesByCategory: (apiData.top_categories || apiData.salesByCategory || []).map(c => ({ id: c.id, name: c.name, totalSales: toNumber(c.total_revenue ?? c.totalSales) }))
+            salesOverTime: (apiData.dailySales || apiData.salesOverTime || []).map(day => ({ date: day.date, total: toNumber(day.totalRevenue ?? day.total) })),
+            topProducts: (apiData.topProducts || apiData.topProducts || []).map(p => ({ id: p.id, name: p.name, totalSales: toNumber(p.totalRevenue ?? p.totalSales), quantity: toNumber(p.totalQuantity ?? p.quantity) })),
+            salesByCategory: (apiData.topCategories || apiData.salesByCategory || []).map(c => ({ id: c.id, name: c.name, totalSales: toNumber(c.totalRevenue ?? c.totalSales) }))
         };
     } catch (e) { error.value = e.message || "خطأ في التحميل"; } finally { isLoading.value = false; }
 };

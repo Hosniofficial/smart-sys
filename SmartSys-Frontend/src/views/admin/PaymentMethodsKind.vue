@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="إدارة طرق الدفع"
@@ -33,7 +31,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPI Summary Section -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div v-for="kpi in [
           { label: 'إجمالي الطرق', val: methods.length, icon: 'fa-list-ul', color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -51,7 +48,6 @@
         </div>
       </section>
 
-      <!-- Error Handling -->
       <transition name="slide-down">
         <div v-if="error" class="bg-white border-r-4 border-rose-500 rounded-lg p-4 shadow-lg flex items-center justify-between">
           <div class="flex items-center gap-3">
@@ -69,7 +65,6 @@
         </div>
       </transition>
 
-      <!-- Main Settings Grid: Utility Table -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative min-h-[400px]">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
            <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
@@ -92,14 +87,12 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 font-medium">
-              <!-- Loading State -->
               <template v-if="loading && !methods.length">
                 <tr v-for="n in 5" :key="n" class="animate-pulse">
                   <td v-for="m in 6" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                 </tr>
               </template>
               
-              <!-- Empty State -->
               <tr v-else-if="methods.length === 0">
                 <td colspan="6" class="py-24 text-center text-slate-300">
                    <i class="fas fa-credit-card text-3xl mb-4 opacity-20"></i>
@@ -107,7 +100,6 @@
                 </td>
               </tr>
 
-              <!-- Data Rows -->
               <tr v-for="(m, idx) in methods" :key="m.id" class="hover:bg-blue-50/10 transition-all group">
                 <td class="px-6 py-4 text-center font-mono text-[10px] text-slate-400">{{ idx + 1 }}</td>
                 <td class="px-4 py-4">
@@ -172,7 +164,6 @@
       </div>
     </div>
 
-    <!-- Create Modal: Restructured for Technical Clarity -->
     <transition name="fade">
       <div v-if="showCreate" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
         <div class="bg-white w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn flex flex-col max-h-[90vh]">
@@ -186,7 +177,6 @@
 
           <div class="p-8 overflow-y-auto custom-scroll space-y-10">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <!-- General Info -->
               <div class="space-y-6">
                  <div class="space-y-1.5 group">
                     <label class="metadata-label">اسم الطريقة <span class="text-rose-500">*</span></label>
@@ -209,25 +199,24 @@
                  </div>
               </div>
 
-              <!-- Integration Settings -->
               <div class="space-y-6">
                  <div class="space-y-1.5">
                     <label class="metadata-label">شروط السداد</label>
-                    <input v-model="form.payment_terms" type="text" class="filter-input-v2 h-10" placeholder="مثال: فوري، 30 يوم..." />
+                    <input v-model="form.paymentTerms" type="text" class="filter-input-v2 h-10" placeholder="مثال: فوري، 30 يوم..." />
                  </div>
 
                   <div v-if="form.kind === 'bank'" class="space-y-1.5">
                     <label class="metadata-label">حد السحب على المكشوف</label>
-                    <input v-model.number="form.overdraft_limit" type="number" min="0" step="0.01" class="filter-input-v2 h-10" placeholder="0 = منع السالب" />
+                    <input v-model.number="form.overdraftLimit" type="number" min="0" step="0.01" class="filter-input-v2 h-10" placeholder="0 = منع السالب" />
                   </div>
 
                   <div v-if="form.kind === 'wallet'" class="space-y-3">
                     <label class="metadata-label">سياسة المحفظة</label>
-                    <select v-model="form.wallet_type" class="filter-input-v2 h-10">
+                    <select v-model="form.walletType" class="filter-input-v2 h-10">
                      <option value="prepaid">مسبقة الدفع</option>
                      <option value="postpaid">لاحقة الدفع</option>
                     </select>
-                    <input v-if="form.wallet_type === 'postpaid'" v-model.number="form.credit_limit" type="number" min="0.01" step="0.01" class="filter-input-v2 h-10" placeholder="حد الائتمان" />
+                    <input v-if="form.walletType === 'postpaid'" v-model.number="form.creditLimit" type="number" min="0.01" step="0.01" class="filter-input-v2 h-10" placeholder="حد الائتمان" />
                   </div>
 
                  <div class="p-6 bg-slate-50 border border-slate-200 rounded-xl space-y-5">
@@ -240,7 +229,7 @@
                          <input v-model="accountSearch" type="text" class="h-8 w-full bg-white border border-slate-200 rounded-md pr-8 pl-3 text-[10px] font-bold outline-none focus:border-blue-500" placeholder="البحث في الدليل..." />
                          <i class="fas fa-magnifying-glass absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300 text-[9px]"></i>
                        </div>
-                       <select v-model.number="form.account_id" class="filter-input-v2 h-9 text-[11px] font-bold appearance-none">
+                       <select v-model.number="form.accountId" class="filter-input-v2 h-9 text-[11px] font-bold appearance-none">
                           <option :value="null">-- بدون ربط مباشر --</option>
                           <option v-for="acc in filteredAccounts" :key="acc.id" :value="acc.id">{{ acc.code }} - {{ acc.name }}</option>
                        </select>
@@ -290,7 +279,7 @@ const accounts = ref([]);
 const lastRefreshed = ref('');
 const kinds = ['cash','bank','card','credit','wallet','other'];
 
-const form = ref({ name: '', kind: 'cash', description: '', payment_terms: '', account_id: null, overdraft_limit: null, wallet_type: 'prepaid', credit_limit: null });
+const form = ref({ name: '', kind: 'cash', description: '', paymentTerms: '', accountId: null, overdraftLimit: null, walletType: 'prepaid', creditLimit: null });
 const creating = ref(false);
 const showCreate = ref(false);
 const accountsLoading = ref(false);
@@ -301,7 +290,7 @@ const filteredAccounts = computed(() => {
   const q = accountSearch.value.trim().toLowerCase();
   const g = accountGroup.value.trim();
   return accounts.value.filter(a => {
-    const matchGroup = g ? String(a.account_group_code) === g : true;
+    const matchGroup = g ? String(a.accountGroupCode) === g : true;
     if (!q) return matchGroup;
     const text = `${a.code || ''} ${a.name || ''}`.toLowerCase();
     return matchGroup && text.includes(q);
@@ -331,14 +320,14 @@ async function load() {
     const result = await paymentStore.fetchPaymentMethods({ force: true });
     if (result.status !== 'success') throw new Error(result.message || 'فشل تحميل طرق الدفع');
     const items = (Array.isArray(result.data) ? result.data : [])
-      .filter(x => !x.is_global); // صفحة الإدارة تعرض طرق الـ tenant فقط — لا الـ global templates
+      .filter(x => !x.isGlobal); // صفحة الإدارة تعرض طرق الـ tenant فقط — لا الـ global templates
     methods.value = items.map(x => ({
       ...x,
       _kind: (x.kind || 'other').toLowerCase(),
-      _account_id: x.account_id ? Number(x.account_id) : null,
-      _overdraft_limit: x.overdraft_limit == null ? null : Number(x.overdraft_limit),
-      _wallet_type: x.wallet_type || 'prepaid',
-      _credit_limit: x.credit_limit == null ? null : Number(x.credit_limit),
+      _account_id: x.accountId ? Number(x.accountId) : null,
+      _overdraft_limit: x.overdraftLimit == null ? null : Number(x.overdraftLimit),
+      _wallet_type: x.walletType || 'prepaid',
+      _credit_limit: x.creditLimit == null ? null : Number(x.creditLimit),
       _saving: false,
     }));
     lastRefreshed.value = new Date().toLocaleString();
@@ -354,9 +343,9 @@ async function saveMethod(m) {
   m._saving = true;
   try {
     const result = await paymentStore.updatePaymentMethodKind(m.id, m._kind, m._account_id ?? null, {
-      overdraft_limit: m._overdraft_limit,
-      wallet_type: m._wallet_type,
-      credit_limit: m._credit_limit,
+      overdraftLimit: m._overdraft_limit,
+      walletType: m._wallet_type,
+      creditLimit: m._credit_limit,
     });
     if (result.status !== 'success') {
       error.value = result.message;
@@ -372,7 +361,7 @@ async function saveMethod(m) {
 }
 
 function resetForm() {
-  form.value = { name: '', kind: 'cash', description: '', payment_terms: '', account_id: null, overdraft_limit: null, wallet_type: 'prepaid', credit_limit: null };
+  form.value = { name: '', kind: 'cash', description: '', paymentTerms: '', accountId: null, overdraftLimit: null, walletType: 'prepaid', creditLimit: null };
 }
 
 async function create() {
@@ -383,7 +372,7 @@ async function create() {
   creating.value = true;
   try {
     const payload = { ...form.value };
-    if (!payload.account_id) payload.account_id = null;
+    if (!payload.accountId) payload.accountId = null;
     payload.global = false;
     const result = await paymentStore.createPaymentMethod(payload);
     if (result.status !== 'success') {

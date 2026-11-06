@@ -1,7 +1,6 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoadingList || isLoadingDetails" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
@@ -20,7 +19,6 @@
         </div>
       </transition>
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="سجل عمليات البيع"
@@ -42,7 +40,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPI Summary: Supabase-inspired Data Cards -->
       <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
         <div v-for="kpi in [
           { label: 'عدد الفواتير', val: filters.total.value, icon: 'fa-clipboard-list', color: 'text-blue-600', bg: 'bg-blue-50', show: true },
@@ -60,7 +57,6 @@
         </div>
       </section>
 
-      <!-- Filters Panel: Linear-style high density inputs -->
       <transition name="slide-down">
         <div v-if="filters.showFilters.value" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden animate-fadeIn">
           <div class="p-6 space-y-6">
@@ -106,8 +102,8 @@
                   
                   <div v-if="filters.showCustomerDropdown.value" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-auto">
                     <button @mousedown.prevent="filters.clearCustomerFilter()" class="w-full text-right px-4 py-2 text-[11px] hover:bg-slate-50 border-b border-slate-50 text-blue-600 font-bold">جميع العملاء</button>
-                    <button v-for="c in filteredCustomers" :key="c.id" @mousedown.prevent="filters.setCustomerFilter(c.id, c.name || c.customer_name)" class="w-full text-right px-4 py-2 text-[11px] hover:bg-slate-50 border-b border-slate-50 last:border-0 font-medium">
-                      {{ c.name || c.customer_name }}
+                    <button v-for="c in filteredCustomers" :key="c.id" @mousedown.prevent="filters.setCustomerFilter(c.id, c.name || c.customerName)" class="w-full text-right px-4 py-2 text-[11px] hover:bg-slate-50 border-b border-slate-50 last:border-0 font-medium">
+                      {{ c.name || c.customerName }}
                     </button>
                   </div>
                 </div>
@@ -121,7 +117,6 @@
         </div>
       </transition>
 
-      <!-- Active Filter Chips -->
       <div v-if="filters.hasActiveFilters.value || filters.customerFilter.value || (canSelectBranch && selectedBranch !== null)" class="flex flex-wrap gap-2 animate-fadeIn">
         <div v-for="chip in [
           { show: filters.searchQuery.value, label: filters.searchQuery.value, clear: () => filters.searchQuery.value = '' },
@@ -136,12 +131,10 @@
         </div>
       </div>
 
-      <!-- Main Data Table -->
       <div class="bg-white rounded-xl overflow-hidden shadow-sm relative" :class="[
         isDataStale ? 'border-2 border-amber-300' : 'border border-slate-200'
       ]">
         
-        <!-- Bulk Actions: Dark SaaS overlay -->
         <transition name="slide-up">
           <div v-if="filters.selectedIds.value.length" class="absolute bottom-6 left-1/2 -translate-x-1/2 z-[50] bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-6 border border-white/10">
             <div class="flex items-center gap-3 border-l border-white/10 pl-6">
@@ -200,11 +193,11 @@
                 <td class="px-6 py-3">
                   <input type="checkbox" :value="sale.id" v-model="filters.selectedIds.value" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20" />
                 </td>
-                <td class="px-4 py-3 text-[11px] font-bold text-slate-900">{{ sale.invoice_number || '#' + sale.id }}</td>
-                <td class="px-4 py-3 text-[10px] font-mono text-slate-400">{{ formatDateTime(sale.created_at) }}</td>
-                <td class="px-4 py-3 text-[11px] font-bold text-slate-700 truncate max-w-[150px]">{{ sale.customer_name || 'عميل نقدي' }}</td>
+                <td class="px-4 py-3 text-[11px] font-bold text-slate-900">{{ sale.invoiceNumber || '#' + sale.id }}</td>
+                <td class="px-4 py-3 text-[10px] font-mono text-slate-400">{{ formatDateTime(sale.createdAt) }}</td>
+                <td class="px-4 py-3 text-[11px] font-bold text-slate-700 truncate max-w-[150px]">{{ sale.customerName || 'عميل نقدي' }}</td>
                 <td class="px-4 py-3 text-center">
-                  <span class="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-500">{{ sale.total_items }}</span>
+                  <span class="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-500">{{ sale.totalItems }}</span>
                 </td>
                 <td class="px-4 py-3 text-[11px] font-bold text-blue-600">{{ formatPrice(getSaleGross(sale)) }}</td>
                 <td class="px-4 py-3 text-[9px] font-bold whitespace-nowrap">
@@ -213,8 +206,8 @@
                 </td>
                 <td class="px-4 py-3 text-center">
                   <div class="flex items-center justify-center gap-2">
-                    <span :class="[getDynamicStatusClass(sale.dynamic_status)]" class="px-2 py-0.5 rounded text-[8px] font-bold border">
-                      {{ getStatusLabel(sale.status === 'canceled' ? 'canceled' : sale.dynamic_status) }}
+                    <span :class="[getDynamicStatusClass(sale.dynamicStatus)]" class="px-2 py-0.5 rounded text-[8px] font-bold border">
+                      {{ getStatusLabel(sale.status === 'canceled' ? 'canceled' : sale.dynamicStatus) }}
                     </span>
                     <span v-if="getAgeBadge(sale)" :class="[getAgeBadge(sale).cls]" class="px-1.5 py-0.5 rounded text-[7px] font-bold border">
                       {{ getAgeBadge(sale).label }}
@@ -222,7 +215,7 @@
                   </div>
                 </td>
                 <td class="px-4 py-3 text-center">
-                  <button @click="openSaleDetails(sale.id)" :disabled="isLoadingDetails" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center mx-auto disabled:opacity-50" :aria-label="`فتح تفاصيل فاتورة البيع ${sale.invoice_number || sale.id} في تبويب`">
+                  <button @click="openSaleDetails(sale.id)" :disabled="isLoadingDetails" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center justify-center mx-auto disabled:opacity-50" :aria-label="`فتح تفاصيل فاتورة البيع ${sale.invoiceNumber || sale.id} في تبويب`">
                     <i class="fas fa-eye text-[10px]"></i>
                   </button>
                 </td>
@@ -231,7 +224,6 @@
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ totalPages }}</span>
@@ -258,11 +250,10 @@
       </div>
     </div>
 
-    <!-- Details Modal -->
     <HistoryDetailsModal
       :show="showDetailsModal && !!selectedSale"
       @close="closeSaleDetails"
-      :title="`تفاصيل فاتورة البيع ${selectedSale?.invoice_number || '#' + selectedSale?.id}`"
+      :title="`تفاصيل فاتورة البيع ${selectedSale?.invoiceNumber || '#' + selectedSale?.id}`"
       icon="fas fa-receipt"
     >
 
@@ -270,12 +261,12 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label class="space-y-1.5">
             <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">تاريخ الفاتورة</span>
-            <input v-model="saleEditForm.sale_date" type="date" required class="filter-input" />
+            <input v-model="saleEditForm.saleDate" type="date" required class="filter-input" />
           </label>
           <label class="space-y-1.5">
             <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">طريقة الدفع</span>
-            <select v-model="saleEditForm.payment_method_id" class="filter-input" :disabled="hasSalePayment">
-              <option value="" :disabled="!!selectedSale?.payment_method_id">غير محددة</option>
+            <select v-model="saleEditForm.paymentMethodId" class="filter-input" :disabled="hasSalePayment">
+              <option value="" :disabled="!!selectedSale?.paymentMethodId">غير محددة</option>
               <option v-for="method in paymentMethods" :key="method.id" :value="String(method.id)">
                 {{ method.name }}
               </option>
@@ -286,7 +277,7 @@
           </label>
           <label v-if="canSelectBranch" class="space-y-1.5">
             <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">الفرع</span>
-            <select v-model="saleEditForm.branch_id" class="filter-input" @change="onSaleEditBranchChange">
+            <select v-model="saleEditForm.branchId" class="filter-input" @change="onSaleEditBranchChange">
               <option v-for="branch in branches" :key="branch.id" :value="String(branch.id)">
                 {{ branch.name }}
               </option>
@@ -297,7 +288,7 @@
           </label>
           <label class="space-y-1.5">
             <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">مركز التكلفة</span>
-            <select v-model="saleEditForm.cost_center_id" class="filter-input" :disabled="!costCenters.length">
+            <select v-model="saleEditForm.costCenterId" class="filter-input" :disabled="!costCenters.length">
               <option value="">بدون مركز تكلفة</option>
               <option v-for="center in saleEditCostCenters" :key="center.id" :value="String(center.id)">
                 {{ center.name }}
@@ -339,7 +330,7 @@
               @click="addSaleEditProduct(product)"
             >
               <span class="min-w-0 truncate text-[11px] font-bold text-slate-700">{{ product.name }}</span>
-              <span class="shrink-0 text-[10px] font-mono text-blue-700">{{ formatPrice(product.campaign_price ?? product.sale_price) }}</span>
+              <span class="shrink-0 text-[10px] font-mono text-blue-700">{{ formatPrice(product.campaignPrice ?? product.salePrice) }}</span>
             </button>
           </div>
           <div class="overflow-x-auto rounded-lg border border-slate-100">
@@ -355,24 +346,24 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
-                <tr v-for="(item, index) in saleEditForm.items" :key="`${item.product_id}-${item.unit_id}-${index}`">
+                <tr v-for="(item, index) in saleEditForm.items" :key="`${item.productId}-${item.unitId}-${index}`">
                   <td class="px-2 py-2">
-                    <p class="font-bold text-slate-700">{{ item.product_name }}</p>
-                    <input v-if="item.has_serial_number" v-model="item.serial" class="filter-input mt-1 h-8" placeholder="الرقم المسلسل مطلوب" />
-                    <input v-if="item.has_batch_number" v-model="item.batch_number" class="filter-input mt-1 h-8" placeholder="رقم الدفعة (اختياري)" />
+                    <p class="font-bold text-slate-700">{{ item.productName }}</p>
+                    <input v-if="item.hasSerialNumber" v-model="item.serial" class="filter-input mt-1 h-8" placeholder="الرقم المسلسل مطلوب" />
+                    <input v-if="item.hasBatchNumber" v-model="item.batchNumber" class="filter-input mt-1 h-8" placeholder="رقم الدفعة (اختياري)" />
                     <label class="mt-1 flex items-center gap-1 text-[9px] text-amber-700">
-                      <input v-model="item.price_override_confirmed" type="checkbox" class="rounded border-amber-300" />
+                      <input v-model="item.priceOverrideConfirmed" type="checkbox" class="rounded border-amber-300" />
                       تأكيد مراجعة السعر
                     </label>
                   </td>
-                  <td class="px-2 py-2 text-[10px] text-slate-500">{{ item.unit_name || '-' }}</td>
+                  <td class="px-2 py-2 text-[10px] text-slate-500">{{ item.unitName || '-' }}</td>
                   <td class="px-2 py-2">
                     <input v-model.number="item.quantity" type="number" min="0.001" step="0.001" class="filter-input h-9 w-24" />
                   </td>
                   <td class="px-2 py-2">
-                    <input v-model.number="item.sale_price" type="number" min="0" step="0.01" class="filter-input h-9 w-28" />
+                    <input v-model.number="item.salePrice" type="number" min="0" step="0.01" class="filter-input h-9 w-28" />
                   </td>
-                  <td class="px-2 py-2 font-mono font-bold text-slate-700">{{ formatPrice(Number(item.quantity || 0) * Number(item.sale_price || 0)) }}</td>
+                  <td class="px-2 py-2 font-mono font-bold text-slate-700">{{ formatPrice(Number(item.quantity || 0) * Number(item.salePrice || 0)) }}</td>
                   <td class="px-2 py-2">
                     <button type="button" class="flex h-8 w-8 items-center justify-center rounded-md text-rose-600 hover:bg-rose-50" aria-label="حذف الصنف" title="حذف الصنف" @click="removeSaleEditItem(index)">
                       <i class="fas fa-trash text-[10px]"></i>
@@ -391,9 +382,9 @@
               </tfoot>
             </table>
           </div>
-          <label v-if="saleEditForm.items.some(item => item.price_override_confirmed)" class="block space-y-1">
+          <label v-if="saleEditForm.items.some(item => item.priceOverrideConfirmed)" class="block space-y-1">
             <span class="text-[10px] font-bold text-slate-500">سبب اعتماد سعر منخفض (إن انطبق)</span>
-            <textarea v-model="saleEditForm.below_cost_reason" rows="2" maxlength="500" class="filter-input h-auto py-2" placeholder="اذكر السبب عند تجاوز تكلفة المنتج"></textarea>
+            <textarea v-model="saleEditForm.belowCostReason" rows="2" maxlength="500" class="filter-input h-auto py-2" placeholder="اذكر السبب عند تجاوز تكلفة المنتج"></textarea>
           </label>
         </section>
         <label class="block space-y-1.5">
@@ -408,21 +399,20 @@
       <div v-else class="space-y-6">
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
           <div v-for="info in [
-            { l: 'العميل', v: selectedSale?.customer_name || 'عميل نقدي' },
-            { l: 'الفرع', v: selectedSale?.branch_name || '-' },
-            { l: 'الوقت والتاريخ', v: formatDateTime(selectedSale?.sale_date || selectedSale?.created_at) },
-            { l: 'الكاشير', v: selectedSale?.created_by_name || '-' },
+            { l: 'العميل', v: selectedSale?.customerName || 'عميل نقدي' },
+            { l: 'الفرع', v: selectedSale?.branchName || '-' },
+            { l: 'الوقت والتاريخ', v: formatDateTime(selectedSale?.saleDate || selectedSale?.createdAt) },
+            { l: 'الكاشير', v: selectedSale?.createdByName || '-' },
             { l: 'طريقة الدفع', v: getPaymentMethodName(selectedSalePaymentMethodId) },
-            { l: 'حالة الفاتورة', v: getStatusLabel(selectedSale?.status === 'canceled' ? 'canceled' : selectedSale?.dynamic_status) },
+            { l: 'حالة الفاتورة', v: getStatusLabel(selectedSale?.status === 'canceled' ? 'canceled' : selectedSale?.dynamicStatus) },
           ]" :key="info.l" class="min-w-0 space-y-1 rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-2">
             <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">{{ info.l }}</p>
             <p class="break-words text-[11px] font-bold leading-4 text-slate-800">{{ info.v }}</p>
           </div>
         </div>
 
-        <!-- Status Message if Available -->
-        <div v-if="getStatusMessage(selectedSale?.dynamic_status)" class="p-4 rounded-lg border-l-4 border-blue-400 bg-blue-50">
-          <p class="text-xs font-bold text-blue-700">{{ getStatusMessage(selectedSale?.dynamic_status) }}</p>
+        <div v-if="getStatusMessage(selectedSale?.dynamicStatus)" class="p-4 rounded-lg border-l-4 border-blue-400 bg-blue-50">
+          <p class="text-xs font-bold text-blue-700">{{ getStatusMessage(selectedSale?.dynamicStatus) }}</p>
         </div>
 
         <div class="overflow-x-auto rounded-xl border border-slate-100 shadow-sm">
@@ -442,12 +432,12 @@
             <tbody class="divide-y divide-slate-50">
               <tr v-for="item in selectedSale?.items" :key="item.id">
                 <td class="px-2 py-3">
-                  <p class="font-bold text-slate-800">{{ item.product_name }}</p>
+                  <p class="font-bold text-slate-800">{{ item.productName }}</p>
                 </td>
                 <td class="px-2 py-3 text-center font-bold text-slate-500">{{ item.quantity }}</td>
-                <td class="px-2 py-3 font-bold text-slate-700">{{ formatPrice(item.sale_price) }}</td>
-                <td class="px-2 py-3 font-bold text-slate-700">{{ formatPrice((item.sale_price || 0) * (item.quantity || 0)) }}</td>
-                <td class="px-2 py-3 font-bold text-rose-500">{{ formatPrice(item.discount_value || 0) }}</td>
+                <td class="px-2 py-3 font-bold text-slate-700">{{ formatPrice(item.salePrice) }}</td>
+                <td class="px-2 py-3 font-bold text-slate-700">{{ formatPrice((item.salePrice || 0) * (item.quantity || 0)) }}</td>
+                <td class="px-2 py-3 font-bold text-rose-500">{{ formatPrice(item.discountValue || 0) }}</td>
                 <td class="px-2 py-3 font-bold text-indigo-500">{{ formatPrice(getSaleItemTax(item)) }}</td>
                 <td class="px-2 py-3 font-bold text-slate-700">{{ formatPrice(getSaleItemNet(item) / (Number(item.quantity) || 1)) }}</td>
                 <td class="px-2 py-3 font-bold text-slate-900">{{ formatPrice(getSaleItemGross(item)) }}</td>
@@ -468,23 +458,22 @@
               <span>الضريبة{{ detailTaxInclusive ? ' (ضمن السعر)' : '' }} ({{ detailTaxRateDisplay }}%)</span>
               <span class="font-mono font-bold text-slate-700">{{ formatPrice(detailTaxAmount) }}</span>
             </div>
-            <!-- سطر الصافي مميز -->
             <div class="flex justify-between items-center bg-blue-600 text-white px-4 py-3 rounded-lg">
               <span class="text-[11px] font-bold uppercase tracking-widest opacity-80">{{ detailTaxInclusive ? 'الإجمالي شامل الضريبة' : 'الإجمالي النهائي' }}</span>
               <span class="text-xl font-bold font-mono tracking-tighter">{{ formatPrice(selectedSaleGrandTotal) }}</span>
             </div>
             <div class="pt-1 space-y-2">
-              <div v-if="Number(selectedSale?.return_amount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
+              <div v-if="Number(selectedSale?.returnAmount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
                 <span>صافي الفاتورة بعد المرتجعات</span>
-                <span class="font-mono font-bold text-slate-700">{{ formatPrice(selectedSale.net_invoice_total ?? Math.max(0, selectedSaleGrandTotal - Number(selectedSale.return_amount || 0))) }}</span>
+                <span class="font-mono font-bold text-slate-700">{{ formatPrice(selectedSale.netInvoiceTotal ?? Math.max(0, selectedSaleGrandTotal - Number(selectedSale.returnAmount || 0))) }}</span>
               </div>
               <div class="flex justify-between text-[11px] font-medium text-slate-500">
                 <span>صافي التحصيل</span>
                 <span class="font-mono font-bold text-emerald-600">{{ formatPrice(getSalePaid(selectedSale)) }}</span>
               </div>
-              <div v-if="Number(selectedSale?.return_amount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
+              <div v-if="Number(selectedSale?.returnAmount || 0) > 0" class="flex justify-between text-[11px] font-medium text-slate-500">
                 <span>قيمة المرتجعات</span>
-                <span class="font-mono font-bold text-amber-500">{{ formatPrice(selectedSale.return_amount) }}</span>
+                <span class="font-mono font-bold text-amber-500">{{ formatPrice(selectedSale.returnAmount) }}</span>
               </div>
               <div v-if="getSaleRemaining(selectedSale) > 0" class="flex justify-between text-[11px] font-bold pt-1 border-t border-slate-200">
                 <span class="text-slate-500">المتبقي</span>
@@ -498,7 +487,6 @@
       <template #footer>
         <div class="mr-auto flex flex-row flex-wrap items-center gap-3">
 
-          <!-- تعديل الفاتورة -->
           <button
             v-if="canEditSelectedSale && !isEditingSale"
             @click="openSaleEdit"
@@ -507,7 +495,6 @@
             <i class="fas fa-edit ml-1.5"></i>تعديل الفاتورة
           </button>
 
-          <!-- أزرار وضع التعديل -->
           <button
             v-if="isEditingSale"
             @click="cancelSaleEdit"
@@ -535,7 +522,6 @@
             <i class="fas fa-hand-holding-usd text-[10px]"></i> تحصيل دفعة
           </button>
 
-          <!-- 2. إلغاء الفاتورة -->
           <button
             v-if="canVoidSelectedSale && !isEditingSale"
             @click="voidSelectedSale"
@@ -545,7 +531,6 @@
             <i class="fas fa-ban ml-1.5"></i>{{ isVoidingSale ? 'جارٍ الإلغاء...' : 'إلغاء الفاتورة' }}
           </button>
 
-          <!-- 3. طباعة الفاتورة -->
           <button
             v-if="!isEditingSale"
             @click="printSaleDetails"
@@ -554,7 +539,6 @@
             <i class="fas fa-print"></i> طباعة الفاتورة
           </button>
 
-          <!-- 4. إغلاق -->
           <button
             @click="closeSaleDetails"
             :disabled="isUpdatingSale"
@@ -567,7 +551,6 @@
       </template>
     </HistoryDetailsModal>
 
-    <!-- Collect Payment Modal — Teleported to body to escape BaseModal stacking context -->
     <Teleport to="body">
       <Transition name="fade">
         <div
@@ -577,12 +560,11 @@
           @keydown.esc="showCollectModal = false"
         >
           <div class="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn" dir="rtl">
-            <!-- Header -->
             <div class="px-8 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
               <div>
                 <h3 class="text-sm font-bold text-slate-900">تحصيل دفعة</h3>
                 <p class="text-[10px] text-slate-400 mt-0.5 font-medium font-mono">
-                  فاتورة {{ selectedSale?.invoice_number || '#' + selectedSale?.id }}
+                  فاتورة {{ selectedSale?.invoiceNumber || '#' + selectedSale?.id }}
                   <span v-if="collectOutstanding > 0" class="text-rose-500 mr-2">
                     · متبقي {{ formatPrice(collectOutstanding) }}
                   </span>
@@ -594,7 +576,6 @@
               </button>
             </div>
 
-            <!-- Form -->
             <form @submit.prevent="submitCollectPayment" class="px-8 py-6 space-y-4">
               <p
                 v-if="pendingCollectPayment"
@@ -603,7 +584,6 @@
                 توجد عملية تحصيل لم تُحسم نتيجتها. أعد المحاولة بالبيانات نفسها حتى لا تُسجل الدفعة مرتين.
               </p>
 
-              <!-- المبلغ -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   المبلغ <span class="text-rose-500">*</span>
@@ -626,13 +606,12 @@
                 </button>
               </div>
 
-              <!-- تاريخ الدفع -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   تاريخ الدفع <span class="text-rose-500">*</span>
                 </label>
                 <input
-                  v-model="collectForm.payment_date"
+                  v-model="collectForm.paymentDate"
                   type="date"
                   :disabled="!!pendingCollectPayment"
                   class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-mono"
@@ -640,13 +619,12 @@
                 />
               </div>
 
-              <!-- طريقة الدفع -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   طريقة الدفع <span class="text-rose-500">*</span>
                 </label>
                 <select
-                  v-model="collectForm.payment_method_id"
+                  v-model="collectForm.paymentMethodId"
                   :disabled="!!pendingCollectPayment"
                   class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none"
                   required
@@ -656,8 +634,6 @@
                 </select>
               </div>
 
-              <!-- الفرع -->
-              <!-- ملاحظات -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">ملاحظات</label>
                 <textarea
@@ -669,7 +645,6 @@
                 ></textarea>
               </div>
 
-              <!-- أزرار -->
               <div class="pt-4 border-t border-slate-100 flex gap-3">
                 <button
                   type="button"
@@ -697,6 +672,7 @@
 </template>
 
 <script setup>
+import logger from '@/utils/services/logger'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -742,11 +718,11 @@ const { breadcrumb } = useBreadcrumb();
 const formatPrice = (amount) => formatCurrencyLocale(amount, 2);
 
 const taxRate = ref(0);
-const detailTaxRate = computed(() => Number(selectedSale.value?.tax_rate ?? taxRate.value) || 0);
+const detailTaxRate = computed(() => Number(selectedSale.value?.taxRate ?? taxRate.value) || 0);
 const detailTaxRateDisplay = computed(() => detailTaxRate.value.toFixed(2).replace(/\.?0+$/, ''));
-const detailTaxInclusive = computed(() => isSettingEnabled(selectedSale.value?.tax_inclusive));
+const detailTaxInclusive = computed(() => isSettingEnabled(selectedSale.value?.taxInclusive));
 const detailTaxAmount = computed(() => {
-  const storedTax = selectedSale.value?.tax_amount;
+  const storedTax = selectedSale.value?.taxAmount;
   if (storedTax !== undefined && storedTax !== null) return Number(storedTax) || 0;
   return Math.round((finalNetTotal.value * detailTaxRate.value / 100 + Number.EPSILON) * 100) / 100;
 });
@@ -798,7 +774,7 @@ const filteredCustomers = computed(() => {
   const q = (filters.customerSearch.value || '').toLowerCase();
   const list = customers.value || [];
   if (!q) return list.slice(0, 50);
-  return list.filter(c => String(c.name || c.customer_name || '').toLowerCase().includes(q)).slice(0, 50);
+  return list.filter(c => String(c.name || c.customerName || '').toLowerCase().includes(q)).slice(0, 50);
 });
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filters.total.value / filters.perPage.value)));
@@ -810,12 +786,12 @@ const isVoidingSale = ref(false);
 const isUpdatingSale = ref(false);
 const isEditingSale = ref(false);
 const saleEditForm = ref({
-  sale_date: '',
+  saleDate: '',
   notes: '',
-  payment_method_id: '',
-  cost_center_id: '',
-  branch_id: '',
-  below_cost_reason: '',
+  paymentMethodId: '',
+  costCenterId: '',
+  branchId: '',
+  belowCostReason: '',
   items: [],
 });
 const saleEditProductQuery = ref('');
@@ -823,7 +799,7 @@ const saleEditProductResults = ref([]);
 const saleEditProductError = ref('');
 const isSearchingSaleEditProducts = ref(false);
 const saleEditSubtotal = computed(() => saleEditForm.value.items.reduce(
-  (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.sale_price) || 0),
+  (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.salePrice) || 0),
   0
 ));
 const isDataStale = ref(false);
@@ -847,21 +823,21 @@ const subTotalNet = computed(() => {
 
 const totalDiscount = computed(() => {
   if (!selectedSale.value?.items) return 0;
-  return selectedSale.value.items.reduce((sum, item) => sum + (parseFloat(item.discount_value) || 0), 0);
+  return selectedSale.value.items.reduce((sum, item) => sum + (parseFloat(item.discountValue) || 0), 0);
 });
 
 const finalNetTotal = computed(() => {
-  if (selectedSale.value?.net_total_amount !== undefined) return parseFloat(selectedSale.value.net_total_amount) || 0;
-  if (selectedSale.value?.sale?.net_total_amount !== undefined) return parseFloat(selectedSale.value.sale.net_total_amount) || 0;
-  if (selectedSale.value?.items) return selectedSale.value.items.reduce((sum, item) => sum + (parseFloat(item.net_total) || 0), 0);
+  if (selectedSale.value?.netTotalAmount !== undefined) return parseFloat(selectedSale.value.netTotalAmount) || 0;
+  if (selectedSale.value?.sale?.netTotalAmount !== undefined) return parseFloat(selectedSale.value.sale.netTotalAmount) || 0;
+  if (selectedSale.value?.items) return selectedSale.value.items.reduce((sum, item) => sum + (parseFloat(item.netTotal) || 0), 0);
   return 0;
 });
 const getSaleItemTax = (item) => {
-  if (item.tax_amount !== undefined && item.tax_amount !== null
-    && (Number(item.tax_amount) !== 0 || Number(selectedSale.value?.tax_amount) === 0)) {
-    return Number(item.tax_amount) || 0;
+  if (item.taxAmount !== undefined && item.taxAmount !== null
+    && (Number(item.taxAmount) !== 0 || Number(selectedSale.value?.taxAmount) === 0)) {
+    return Number(item.taxAmount) || 0;
   }
-  const amount = Number(item.net_total) || 0;
+  const amount = Number(item.netTotal) || 0;
   const rate = detailTaxRate.value;
   if (detailTaxInclusive.value && rate > 0) {
     return Math.round((amount - amount / (1 + rate / 100) + Number.EPSILON) * 100) / 100;
@@ -869,18 +845,18 @@ const getSaleItemTax = (item) => {
   return Math.round((amount * rate / 100 + Number.EPSILON) * 100) / 100;
 };
 const getSaleItemNet = (item) => {
-  const amount = Number(item.net_total) || 0;
+  const amount = Number(item.netTotal) || 0;
   return detailTaxInclusive.value ? amount - getSaleItemTax(item) : amount;
 };
 const getSaleItemGross = (item) => {
   const net = getSaleItemNet(item);
-  return detailTaxInclusive.value ? Number(item.net_total) || 0 : net + getSaleItemTax(item);
+  return detailTaxInclusive.value ? Number(item.netTotal) || 0 : net + getSaleItemTax(item);
 };
 const selectedSaleGrandTotal = computed(() => getSaleGross(selectedSale.value));
 
 const selectedSalePaymentMethodId = computed(() => {
   const s = selectedSale.value || {};
-  return s.payment_method_id || (s.payments && s.payments[0]?.payment_method_id) || null;
+  return s.paymentMethodId || (s.payments && s.payments[0]?.paymentMethodId) || null;
 });
 
 const showDetailsModal = ref(false);
@@ -891,17 +867,17 @@ const canEditSelectedSale = computed(() => {
   const hasPermission = authStore.isSuperAdmin || authStore.user?.permissions?.includes('sale.edit') === true;
   return hasPermission
     && ['draft', 'pending_approval', 'rejected'].includes(String(sale.status || '').toLowerCase())
-    && !Number(sale.journal_entry_id || 0);
+    && !Number(sale.journalEntryId || 0);
 });
 const saleEditCostCenters = computed(() => {
-  const branchId = Number(saleEditForm.value.branch_id);
+  const branchId = Number(saleEditForm.value.branchId);
   return costCenters.value.filter(center =>
-    !center.branch_id || Number(center.branch_id) === branchId
+    !center.branchId || Number(center.branchId) === branchId
   );
 });
 const hasSalePayment = computed(() =>
-  selectedSale.value?.has_payment_records === true
-  || Number(selectedSale.value?.actual_paid_amount ?? selectedSale.value?.paid_amount ?? 0) > 0.009
+  selectedSale.value?.hasPaymentRecords === true
+  || Number(selectedSale.value?.actualPaidAmount ?? selectedSale.value?.paidAmount ?? 0) > 0.009
 );
 const canVoidSelectedSale = computed(() => {
   const sale = selectedSale.value;
@@ -910,19 +886,19 @@ const canVoidSelectedSale = computed(() => {
   const status = String(sale.status || '').toLowerCase();
   return hasPermission
     && !['paid', 'canceled', 'cancelled'].includes(status)
-    && Number(sale.actual_paid_amount ?? sale.paid_amount ?? 0) <= 0.009
-    && Number(sale.return_amount ?? 0) <= 0.009
-    && Number(sale.return_credit_amount ?? 0) <= 0.009;
+    && Number(sale.actualPaidAmount ?? sale.paidAmount ?? 0) <= 0.009
+    && Number(sale.returnAmount ?? 0) <= 0.009
+    && Number(sale.returnCreditAmount ?? 0) <= 0.009;
 });
 
-// ─── Collect Payment Modal ────────────────────────────────────────────────
+// Collect Payment Modal
 const showCollectModal = ref(false);
 const isCollecting = ref(false);
-const collectForm = ref({ amount: null, payment_date: null, payment_method_id: null, notes: '' });
+const collectForm = ref({ amount: null, paymentDate: null, paymentMethodId: null, notes: '' });
 const pendingCollectPayment = ref(null);
 
 const collectPaymentStorageKey = (saleId) =>
-  `pending_sale_payment:${authStore.user?.tenant_id || 'platform'}:${authStore.user?.id || 'current'}:${saleId}`;
+  `pending_sale_payment:${authStore.user?.tenantId || 'platform'}:${authStore.user?.id || 'current'}:${saleId}`;
 
 const createIdempotencyKey = () => {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -949,7 +925,7 @@ const canCollectPayment = computed(() => {
   const sale = selectedSale.value;
   if (!sale) return false;
   // نتحقق من dynamic_status أولاً (يعكس المرتجعات والتسويات)، ثم status
-  const status = String(sale.dynamic_status || sale.status || '').toLowerCase();
+  const status = String(sale.dynamicStatus || sale.status || '').toLowerCase();
   if (['paid', 'returned', 'canceled', 'cancelled', 'closed_by_return', 'settled_by_return', 'settled_by_credit'].includes(status)) return false;
   if (getSaleRemaining(sale) <= 0.009) return false;
   return authStore.isSuperAdmin || authStore.user?.permissions?.includes('sale.payment.create') === true;
@@ -972,8 +948,8 @@ const openCollectModal = () => {
     ? { ...pending.payload }
     : {
         amount: collectOutstanding.value > 0 ? collectOutstanding.value : null,
-        payment_date: getLocalDateISO(new Date()),
-        payment_method_id: cashMethodId.value || (collectiblePaymentMethods.value[0]?.id ?? null),
+        paymentDate: getLocalDateISO(new Date()),
+        paymentMethodId: cashMethodId.value || (collectiblePaymentMethods.value[0]?.id ?? null),
         notes: '',
       };
 };
@@ -985,21 +961,21 @@ const submitCollectPayment = async () => {
   if (!collectForm.value.amount || collectForm.value.amount <= 0) {
     showToast('ادخل مبلغ صحيح', 'error'); return;
   }
-  if (!collectForm.value.payment_method_id) {
+  if (!collectForm.value.paymentMethodId) {
     showToast('اختر طريقة الدفع', 'error'); return;
   }
-  if (!collectForm.value.payment_date) {
+  if (!collectForm.value.paymentDate) {
     showToast('الرجاء تحديد تاريخ الدفع', 'error'); return;
   }
 
   isCollecting.value = true;
   try {
     const formPayload = {
-      sale_id: Number(sale.id),
-      customer_id: sale.customer_id ? Number(sale.customer_id) : undefined,
+      saleId: Number(sale.id),
+      customerId: sale.customerId ? Number(sale.customerId) : undefined,
       amount: Number(collectForm.value.amount),
-      payment_date: collectForm.value.payment_date,
-      payment_method_id: Number(collectForm.value.payment_method_id),
+      paymentDate: collectForm.value.paymentDate,
+      paymentMethodId: Number(collectForm.value.paymentMethodId),
       notes: collectForm.value.notes || undefined,
     };
     let pending = pendingCollectPayment.value;
@@ -1070,21 +1046,21 @@ const getStatusLabel = (status) => {
     settled: 'مسددة',
     unpaid: 'غير مدفوعة',
     partial: 'مدفوعة جزئياً',
-    pending_payment: 'قيد الدفع',
+    pendingPayment: 'قيد الدفع',
     returned: 'مرتجعة',
-    settled_by_return: 'مسددة',
-    closed_by_return: 'مرتجعة',
-    settled_by_credit: 'مسوّاة بمرتجع',
-    settled_mixed: 'مسوّاة نقدي/إشعار دائن',
+    settledByReturn: 'مسددة',
+    closedByReturn: 'مرتجعة',
+    settledByCredit: 'مسوّاة بمرتجع',
+    settledMixed: 'مسوّاة نقدي/إشعار دائن',
   };
   return map[status] || status;
 };
 
 const getStatusMessage = (status) => {
   const messages = {
-    settled_by_return: 'مسددة بإشعار دائن ناتج عن مرتجع.',
-    settled_by_credit: 'مسددة بمرتجع.',
-    settled_mixed: 'مسددة جزئياً نقدي وجزئياً بإشعار دائن.',
+    settledByReturn: 'مسددة بإشعار دائن ناتج عن مرتجع.',
+    settledByCredit: 'مسددة بمرتجع.',
+    settledMixed: 'مسددة جزئياً نقدي وجزئياً بإشعار دائن.',
   };
   return messages[status] || null;
 };
@@ -1097,39 +1073,39 @@ const getDynamicStatusClass = (status) => {
     settled: 'status-paid-v2',
     unpaid: 'status-unpaid-v2',
     partial: 'status-partial-v2',
-    pending_payment: 'status-partial-v2',
+    pendingPayment: 'status-partial-v2',
     returned: 'status-unpaid-v2',
-    settled_by_return: 'status-paid-v2',
-    closed_by_return: 'status-unpaid-v2',
-    settled_by_credit: 'status-paid-v2',
-    settled_mixed: 'status-paid-v2',
+    settledByReturn: 'status-paid-v2',
+    closedByReturn: 'status-unpaid-v2',
+    settledByCredit: 'status-paid-v2',
+    settledMixed: 'status-paid-v2',
   };
   return classMap[status] || 'status-partial-v2';
 };
 
 const getSaleGross = (s) => {
   if (!s) return 0;
-  const net = parseFloat(s.net_total_amount ?? s.total_amount ?? 0) || 0;
-  if (s.grand_total !== undefined && s.grand_total !== null) return parseFloat(s.grand_total) || net;
-  const rate = Number(s.tax_rate ?? taxRate.value) || 0;
-  const tax = (s.tax_amount !== undefined && s.tax_amount !== null)
-    ? (parseFloat(s.tax_amount) || 0)
+  const net = parseFloat(s.netTotalAmount ?? s.totalAmount ?? 0) || 0;
+  if (s.grandTotal !== undefined && s.grandTotal !== null) return parseFloat(s.grandTotal) || net;
+  const rate = Number(s.taxRate ?? taxRate.value) || 0;
+  const tax = (s.taxAmount !== undefined && s.taxAmount !== null)
+    ? (parseFloat(s.taxAmount) || 0)
     : (net * (rate / 100));
   return net + tax;
 };
 const isSaleCanceled = (sale) =>
-  ['canceled', 'cancelled'].includes(String(sale?.status || sale?.dynamic_status || '').toLowerCase());
-const getSalePaid = (s) => Math.max(0, parseFloat(s?.actual_paid_amount ?? s?.paid_amount ?? 0) || 0);
+  ['canceled', 'cancelled'].includes(String(sale?.status || sale?.dynamicStatus || '').toLowerCase());
+const getSalePaid = (s) => Math.max(0, parseFloat(s?.actualPaidAmount ?? s?.paidAmount ?? 0) || 0);
 const getSaleRemaining = (s) => {
   if (!s || isSaleCanceled(s)) return 0;
-  const status = String(s.dynamic_status || s.status || '').toLowerCase();
+  const status = String(s.dynamicStatus || s.status || '').toLowerCase();
   if (['returned', 'closed_by_return', 'settled_by_return', 'settled_by_credit'].includes(status)) return 0;
-  if (s.remaining_balance !== null && s.remaining_balance !== undefined && s.remaining_balance !== '') {
-    return Math.max(0, parseFloat(s.remaining_balance) || 0);
+  if (s.remainingBalance !== null && s.remainingBalance !== undefined && s.remainingBalance !== '') {
+    return Math.max(0, parseFloat(s.remainingBalance) || 0);
   }
   return Math.max(
     0,
-    getSaleGross(s) - getSalePaid(s) - (parseFloat(s?.return_credit_amount ?? s?.return_credits ?? 0) || 0)
+    getSaleGross(s) - getSalePaid(s) - (parseFloat(s?.returnCreditAmount ?? s?.returnCredits ?? 0) || 0)
   );
 };
 
@@ -1140,8 +1116,8 @@ const getPaymentMethodName = (id) => {
 };
 
 const getAgeBadge = (sale) => {
-  if (!sale || isSaleCanceled(sale) || ['paid', 'returned', 'settled_by_return', 'closed_by_return', 'settled_by_credit', 'settled_mixed'].includes(sale.dynamic_status)) return null;
-  const base = sale.due_date || sale.created_at;
+  if (!sale || isSaleCanceled(sale) || ['paid', 'returned', 'settled_by_return', 'closed_by_return', 'settled_by_credit', 'settled_mixed'].includes(sale.dynamicStatus)) return null;
+  const base = sale.dueDate || sale.createdAt;
   if (!base) return null;
   const days = Math.max(0, Math.floor((Date.now() - new Date(base).getTime()) / (1000 * 60 * 60 * 24)));
   if (days <= 7) return { cls: 'bg-emerald-50 text-emerald-600 border-emerald-100', label: `${days} يوم` };
@@ -1168,7 +1144,7 @@ const fetchSalesHistory = async (forceRefresh = false) => {
       params.branchId = String(branchStore.selectedBranchId);
     }
     
-    console.log('[fetchSalesHistory] API Call params:', {
+    logger.debug('[fetchSalesHistory] API Call params:', {
       branchId: params.branchId,
       selectedBranchId: branchStore.selectedBranchId,
       canSelectBranch: canSelectBranch.value,
@@ -1244,32 +1220,32 @@ const openSaleEdit = async () => {
   }
   const sale = selectedSale.value;
   saleEditForm.value = {
-    sale_date: String(sale.sale_date || sale.created_at || '').slice(0, 10),
+    saleDate: String(sale.saleDate || sale.createdAt || '').slice(0, 10),
     notes: sale.notes || '',
-    payment_method_id: sale.payment_method_id ? String(sale.payment_method_id) : '',
-    cost_center_id: sale.cost_center_id ? String(sale.cost_center_id) : '',
-    branch_id: sale.branch_id ? String(sale.branch_id) : '',
-    below_cost_reason: '',
+    paymentMethodId: sale.paymentMethodId ? String(sale.paymentMethodId) : '',
+    costCenterId: sale.costCenterId ? String(sale.costCenterId) : '',
+    branchId: sale.branchId ? String(sale.branchId) : '',
+    belowCostReason: '',
     items: (sale.items || []).map(item => {
       const quantity = Number(item.quantity) || 0;
-      const savedPrice = Number(item.sale_price) || 0;
-      const savedDiscount = Number(item.discount_value) || 0;
+      const savedPrice = Number(item.salePrice) || 0;
+      const savedDiscount = Number(item.discountValue) || 0;
       return {
-        product_id: Number(item.product_id),
-        product_name: item.product_name || '',
-        unit_id: Number(item.unit_id),
-        unit_name: item.unit_name || '',
+        productId: Number(item.productId),
+        productName: item.productName || '',
+        unitId: Number(item.unitId),
+        unitName: item.unitName || '',
         quantity,
-        sale_price: quantity > 0 ? Math.max(0, savedPrice - savedDiscount / quantity) : savedPrice,
-        purchase_price: Number(item.purchase_price) || 0,
-        conversion_factor: Number(item.conversion_factor) || 1,
-        min_sale_price: Number(item.min_sale_price) || 0,
-        has_batch_number: Number(item.has_batch_number) === 1,
-        has_serial_number: Number(item.has_serial_number) === 1,
-        batch_number: item.batch_number || '',
-        expiry_date: item.expiry_date || '',
+        salePrice: quantity > 0 ? Math.max(0, savedPrice - savedDiscount / quantity) : savedPrice,
+        purchasePrice: Number(item.purchasePrice) || 0,
+        conversionFactor: Number(item.conversionFactor) || 1,
+        minSalePrice: Number(item.minSalePrice) || 0,
+        hasBatchNumber: Number(item.hasBatchNumber) === 1,
+        hasSerialNumber: Number(item.hasSerialNumber) === 1,
+        batchNumber: item.batchNumber || '',
+        expiryDate: item.expiryDate || '',
         serial: item.serial || '',
-        price_override_confirmed: false,
+        priceOverrideConfirmed: false,
       };
     }),
   };
@@ -1285,7 +1261,7 @@ const searchSaleEditProducts = async () => {
     saleEditProductResults.value = [];
     return;
   }
-  const branchId = saleEditForm.value.branch_id || selectedSale.value?.branch_id;
+  const branchId = saleEditForm.value.branchId || selectedSale.value?.branchId;
   if (!branchId) {
     saleEditProductError.value = 'حدد الفرع قبل البحث عن المنتجات.';
     return;
@@ -1311,33 +1287,33 @@ const searchSaleEditProducts = async () => {
 };
 
 const addSaleEditProduct = (product) => {
-  if (!product?.unit_id) {
+  if (!product?.unitId) {
     saleEditProductError.value = 'لا توجد وحدة بيع أساسية مرتبطة بهذا المنتج.';
     return;
   }
   const existing = saleEditForm.value.items.find(item =>
-    Number(item.product_id) === Number(product.id)
-    && Number(item.unit_id) === Number(product.unit_id)
+    Number(item.productId) === Number(product.id)
+    && Number(item.unitId) === Number(product.unitId)
   );
   if (existing) {
     existing.quantity = (Number(existing.quantity) || 0) + 1;
   } else {
     saleEditForm.value.items.push({
-      product_id: Number(product.id),
-      product_name: product.name || '',
-      unit_id: Number(product.unit_id),
-      unit_name: product.unit_name || '',
+      productId: Number(product.id),
+      productName: product.name || '',
+      unitId: Number(product.unitId),
+      unitName: product.unitName || '',
       quantity: 1,
-      sale_price: Number(product.campaign_price ?? product.sale_price) || 0,
-      purchase_price: Number(product.purchase_price) || 0,
-      conversion_factor: Number(product.conversion_factor) || 1,
-      min_sale_price: Number(product.min_sale_price) || 0,
-      has_batch_number: Number(product.has_batch_number) === 1,
-      has_serial_number: Number(product.has_serial_number) === 1,
-      batch_number: '',
-      expiry_date: '',
+      salePrice: Number(product.campaignPrice ?? product.salePrice) || 0,
+      purchasePrice: Number(product.purchasePrice) || 0,
+      conversionFactor: Number(product.conversionFactor) || 1,
+      minSalePrice: Number(product.minSalePrice) || 0,
+      hasBatchNumber: Number(product.hasBatchNumber) === 1,
+      hasSerialNumber: Number(product.hasSerialNumber) === 1,
+      batchNumber: '',
+      expiryDate: '',
       serial: '',
-      price_override_confirmed: false,
+      priceOverrideConfirmed: false,
     });
   }
   saleEditProductQuery.value = '';
@@ -1351,10 +1327,10 @@ const removeSaleEditItem = (index) => {
 
 const onSaleEditBranchChange = () => {
   const selectedCostCenter = saleEditCostCenters.value.some(
-    center => String(center.id) === String(saleEditForm.value.cost_center_id)
+    center => String(center.id) === String(saleEditForm.value.costCenterId)
   );
   if (!selectedCostCenter) {
-    saleEditForm.value.cost_center_id = '';
+    saleEditForm.value.costCenterId = '';
   }
 };
 
@@ -1365,7 +1341,7 @@ const cancelSaleEdit = () => {
 const submitSaleEdit = async () => {
   const sale = selectedSale.value;
   if (!sale || !canEditSelectedSale.value || isUpdatingSale.value) return;
-  if (!saleEditForm.value.sale_date) {
+  if (!saleEditForm.value.saleDate) {
     showToast('حدد تاريخ الفاتورة', 'error');
     return;
   }
@@ -1375,7 +1351,7 @@ const submitSaleEdit = async () => {
   }
   if (saleEditForm.value.items.some(item =>
     !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0
-    || !Number.isFinite(Number(item.sale_price)) || Number(item.sale_price) < 0
+    || !Number.isFinite(Number(item.salePrice)) || Number(item.salePrice) < 0
   )) {
     showToast('راجع كميات وأسعار الأصناف قبل الحفظ.', 'error');
     return;
@@ -1384,30 +1360,30 @@ const submitSaleEdit = async () => {
   isUpdatingSale.value = true;
   try {
     const payload = {
-      sale_date: saleEditForm.value.sale_date,
+      saleDate: saleEditForm.value.saleDate,
       notes: saleEditForm.value.notes,
-      cost_center_id: saleEditForm.value.cost_center_id || null,
+      costCenterId: saleEditForm.value.costCenterId || null,
       items: saleEditForm.value.items.map(item => ({
-        product_id: Number(item.product_id),
-        unit_id: Number(item.unit_id),
+        productId: Number(item.productId),
+        unitId: Number(item.unitId),
         quantity: Number(item.quantity),
-        sale_price: Number(item.sale_price),
-        below_cost_confirmed: Boolean(item.price_override_confirmed),
-        below_minimum_price_confirmed: Boolean(item.price_override_confirmed),
-        batch_number: item.batch_number || null,
-        expiry_date: item.expiry_date || null,
+        salePrice: Number(item.salePrice),
+        belowCostConfirmed: Boolean(item.priceOverrideConfirmed),
+        belowMinimumPriceConfirmed: Boolean(item.priceOverrideConfirmed),
+        batchNumber: item.batchNumber || null,
+        expiryDate: item.expiryDate || null,
         serial: item.serial || null,
       })),
-      below_cost_reason: saleEditForm.value.below_cost_reason,
+      belowCostReason: saleEditForm.value.belowCostReason,
     };
     if (
       canSelectBranch.value
-      && String(saleEditForm.value.branch_id) !== String(sale.branch_id || '')
+      && String(saleEditForm.value.branchId) !== String(sale.branchId || '')
     ) {
-      payload.branch_id = Number(saleEditForm.value.branch_id);
+      payload.branchId = Number(saleEditForm.value.branchId);
     }
     if (!hasSalePayment.value) {
-      payload.payment_method_id = saleEditForm.value.payment_method_id || null;
+      payload.paymentMethodId = saleEditForm.value.paymentMethodId || null;
     }
     const result = await salesStore.updateSale(sale.id, payload);
     if (result?.status !== 'success') {
@@ -1460,9 +1436,9 @@ const markSelectedAsPaid = async () => {
   if (!filters.selectedIds.value.length || isMarkingPaid.value) return;
   const rows = (sales.value || []).filter(s => new Set(filters.selectedIds.value).has(s.id));
   const payable = rows.filter(s => {
-    const status = String(s.dynamic_status || s.status || '').toLowerCase();
-    const paid = parseFloat(s.actual_paid_amount ?? s.paid_amount ?? 0);
-    const returnCredits = parseFloat(s.return_credit_amount ?? 0);
+    const status = String(s.dynamicStatus || s.status || '').toLowerCase();
+    const paid = parseFloat(s.actualPaidAmount ?? s.paidAmount ?? 0);
+    const returnCredits = parseFloat(s.returnCreditAmount ?? 0);
     return !['paid', 'canceled', 'cancelled', 'closed_by_return', 'settled_by_return', 'settled_by_credit'].includes(status)
       && (getSaleGross(s) - paid - returnCredits > 0.0001);
   });
@@ -1475,25 +1451,25 @@ const markSelectedAsPaid = async () => {
   let ok = 0, fail = 0;
   for (const s of payable) {
     try {
-      const paid = parseFloat(s.actual_paid_amount ?? s.paid_amount ?? 0);
-      const returnCredits = parseFloat(s.return_credit_amount ?? 0);
+      const paid = parseFloat(s.actualPaidAmount ?? s.paidAmount ?? 0);
+      const returnCredits = parseFloat(s.returnCreditAmount ?? 0);
       const remaining = Math.max(0, getSaleGross(s) - paid - returnCredits);
       if (remaining <= 0) { ok++; continue; }
       const paymentMethodId = Number(batchPaymentMethodId);
       const storageKey = collectPaymentStorageKey(s.id);
       const intendedPayload = {
-        sale_id: Number(s.id),
-        customer_id: s.customer_id ? Number(s.customer_id) : undefined,
+        saleId: Number(s.id),
+        customerId: s.customerId ? Number(s.customerId) : undefined,
         amount: Number(remaining),
-        payment_date: getLocalDateISO(new Date()),
-        payment_method_id: paymentMethodId,
+        paymentDate: getLocalDateISO(new Date()),
+        paymentMethodId: paymentMethodId,
       };
       let pending = loadPendingCollectPayment(s.id);
       if (pending && (
-        Number(pending.payload.sale_id) !== intendedPayload.sale_id
+        Number(pending.payload.saleId) !== intendedPayload.saleId
         || Number(pending.payload.amount) !== intendedPayload.amount
-        || Number(pending.payload.payment_method_id) !== intendedPayload.payment_method_id
-        || Number(pending.payload.customer_id || 0) !== Number(intendedPayload.customer_id || 0)
+        || Number(pending.payload.paymentMethodId) !== intendedPayload.paymentMethodId
+        || Number(pending.payload.customerId || 0) !== Number(intendedPayload.customerId || 0)
       )) {
         fail++;
         continue;
@@ -1534,13 +1510,13 @@ const exportSelectedCsv = () => {
   
   const headers = ['رقم الفاتورة', 'التاريخ', 'العميل', 'عدد الأصناف', 'الإجمالي', 'الحالة', 'طريقة الدفع'];
   const data = rows.map(s => [
-    s.invoice_number || `#${s.id}`,
-    formatDateTime(s.created_at),
-    s.customer_name || 'عميل نقدي',
-    s.total_items,
+    s.invoiceNumber || `#${s.id}`,
+    formatDateTime(s.createdAt),
+    s.customerName || 'عميل نقدي',
+    s.totalItems,
     formatPrice(getSaleGross(s)),
-    getStatusLabel(s.status === 'canceled' ? 'canceled' : s.dynamic_status),
-    getPaymentMethodName(s.payment_method_id)
+    getStatusLabel(s.status === 'canceled' ? 'canceled' : s.dynamicStatus),
+    getPaymentMethodName(s.paymentMethodId)
   ]);
   
   const csvContent = [
@@ -1565,7 +1541,7 @@ const printSelected = () => {
   if (!rows.length) return;
   const win = window.open('', '_blank');
   const totalSelected = rows.reduce((sum, s) => sum + parseFloat(getSaleGross(s) || 0), 0);
-  const html = `<!DOCTYPE html><html lang="ar"><head><meta charset="utf-8"/><title>طباعة فواتير</title><style>body{font-family:Tahoma,Arial,sans-serif;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:center}th{background:#f5f5f5}</style></head><body><h3>فواتير مختارة</h3><table><thead><tr><th>#</th><th>الوقت والتاريخ</th><th>العميل</th><th>الأصناف</th><th>الإجمالي</th><th>الحالة</th></tr></thead><tbody>${rows.map(s => `<tr><td>${s.id}</td><td>${formatDateTime(s.created_at)}</td><td>${s.customer_name || 'عميل نقدي'}</td><td>${s.total_items}</td><td>${formatPrice(getSaleGross(s))}</td><td>${getStatusLabel(s.dynamic_status)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="3">الملخص</th><th>${rows.length} فاتورة</th><th>${formatPrice(totalSelected)}</th><th></th></tr></tfoot></table></body></html>`;
+  const html = `<!DOCTYPE html><html lang="ar"><head><meta charset="utf-8"/><title>طباعة فواتير</title><style>body{font-family:Tahoma,Arial,sans-serif;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:center}th{background:#f5f5f5}</style></head><body><h3>فواتير مختارة</h3><table><thead><tr><th>#</th><th>الوقت والتاريخ</th><th>العميل</th><th>الأصناف</th><th>الإجمالي</th><th>الحالة</th></tr></thead><tbody>${rows.map(s => `<tr><td>${s.id}</td><td>${formatDateTime(s.createdAt)}</td><td>${s.customerName || 'عميل نقدي'}</td><td>${s.totalItems}</td><td>${formatPrice(getSaleGross(s))}</td><td>${getStatusLabel(s.dynamicStatus)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="3">الملخص</th><th>${rows.length} فاتورة</th><th>${formatPrice(totalSelected)}</th><th></th></tr></tfoot></table></body></html>`;
   win.document.open(); win.document.write(html); win.document.close();
   win.onload = () => { win.print(); setTimeout(() => { try { win.close(); } catch {} }, 300); };
 };
@@ -1613,7 +1589,7 @@ watch(() => filters.searchQuery.value, () => {
 
 watch(() => filters.customerFilter.value, (nv) => {
   const selected = (customers.value || []).find(c => String(c.id) === String(nv));
-  filters.customerSearch.value = selected ? (selected.name || selected.customer_name || '') : '';
+  filters.customerSearch.value = selected ? (selected.name || selected.customerName || '') : '';
 });
 
 watch(() => route.query.id, async (nv) => {
@@ -1661,7 +1637,7 @@ onMounted(async () => {
     }
   }
   
-  console.log('[SalesHistory] Before first API call:', {
+  logger.debug('[SalesHistory] Before first API call:', {
     selectedBranchId: branchStore.selectedBranchId,
     selectedBranch: branchStore.selectedBranch?.name || null,
     canSelectBranch: canSelectBranch.value,
@@ -1670,7 +1646,7 @@ onMounted(async () => {
   });
   
   const selected = customers.value.find(c => String(c.id) === String(filters.customerFilter.value));
-  filters.customerSearch.value = selected ? (selected.name || selected.customer_name || '') : '';
+  filters.customerSearch.value = selected ? (selected.name || selected.customerName || '') : '';
   filters.page.value = 1;
   isMounting = false;
   fetchSalesHistory();
@@ -1686,7 +1662,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Animations */
 @keyframes loading {
   0% { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
@@ -1758,7 +1733,6 @@ onUnmounted(() => {
   transform: translate(-50%, 20px);
 }
 
-/* Animation Classes */
 .animate-modalIn {
   animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }

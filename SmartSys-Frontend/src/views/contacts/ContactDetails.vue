@@ -1,7 +1,6 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
 
-    <!-- Global Loading Progress -->
     <PageLoadingBar :active="isLoading || statementLoading" />
 
     <main class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8 min-w-0">
@@ -35,13 +34,11 @@
         </template>
       </PageHeader>
 
-      <!-- Loading State Overlay -->
       <div v-if="isLoading" class="py-32 text-center bg-white border border-slate-200 rounded-xl shadow-sm">
         <BaseSpinner :size="40" :color="type === 'customers' ? '#2563eb' : '#4f46e5'" />
         <p class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-4 animate-pulse">جاري تحليل ملف البيانات...</p>
       </div>
 
-      <!-- Empty State -->
       <div v-else-if="!contact" class="py-32 text-center bg-white border border-slate-200 rounded-xl shadow-sm">
         <div class="w-16 h-16 bg-slate-50 text-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
           <i class="fas fa-user-slash text-2xl"></i>
@@ -51,10 +48,8 @@
         <button @click="goBack" class="mt-6 text-xs font-bold text-blue-600 hover:underline">العودة للقائمة</button>
       </div>
 
-      <!-- Main Profile Body -->
       <div v-else class="space-y-8 animate-fadeIn">
 
-        <!-- Filters Panel -->
         <transition name="slide-down">
           <section v-if="showFilters" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden animate-fadeIn">
             <div class="p-6 space-y-6">
@@ -108,7 +103,6 @@
           </section>
         </transition>
 
-        <!-- Profile Identity Header -->
         <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div class="flex flex-col lg:flex-row">
             <div class="p-5 sm:p-8 flex-grow min-w-0 space-y-6">
@@ -148,7 +142,6 @@
           </div>
         </section>
 
-        <!-- Smart Decision Alerts -->
         <section v-if="hasOutstanding || hasCredit" class="grid grid-cols-1 gap-4">
           <div v-if="hasOutstanding" class="bg-white border-r-4 border-r-rose-500 border border-slate-200 rounded-xl p-4 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 group">
             <div class="flex items-center gap-4 sm:gap-5 min-w-0">
@@ -181,12 +174,11 @@
           </div>
         </section>
 
-        <!-- KPI Performance Grid -->
         <section v-if="activeTab === 'overview'" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-6">
           <div v-for="kpi in [
-            { l: 'إجمالي الفواتير', v: contact.invoices_count ?? invoicesCount, i: 'fa-file-invoice', c: 'text-slate-400', bg: 'bg-slate-50' },
-            { l: type === 'customers' ? 'إجمالي المبيعات' : 'إجمالي المشتريات', v: formatPrice(contact.invoices_total ?? invoicesTotal), i: 'fa-receipt', c: 'text-blue-600', bg: 'bg-blue-50' },
-            { l: type === 'customers' ? 'التحصيلات المستلمة' : 'المدفوعات للمورد', v: formatPrice(contact.payments_total ?? paymentsTotal), i: 'fa-hand-holding-dollar', c: 'text-emerald-600', bg: 'bg-emerald-50' },
+            { l: 'إجمالي الفواتير', v: contact.invoicesCount ?? invoicesCount, i: 'fa-file-invoice', c: 'text-slate-400', bg: 'bg-slate-50' },
+            { l: type === 'customers' ? 'إجمالي المبيعات' : 'إجمالي المشتريات', v: formatPrice(contact.invoicesTotal ?? invoicesTotal), i: 'fa-receipt', c: 'text-blue-600', bg: 'bg-blue-50' },
+            { l: type === 'customers' ? 'التحصيلات المستلمة' : 'المدفوعات للمورد', v: formatPrice(contact.paymentsTotal ?? paymentsTotal), i: 'fa-hand-holding-dollar', c: 'text-emerald-600', bg: 'bg-emerald-50' },
             { l: 'المتبقي المستحق', v: formatPrice(contact.balance ?? remainingTotal), i: 'fa-hourglass-half', c: 'text-rose-600', bg: 'bg-rose-50' }
           ]" :key="kpi.l" class="bg-white border border-slate-200 rounded-xl p-3 sm:p-5 shadow-sm space-y-3 sm:space-y-4 hover:border-slate-300 transition-all min-w-0">
             <div class="flex justify-between items-start">
@@ -223,7 +215,6 @@
           </div>
         </section>
 
-        <!-- Navigation Segmented Tabs -->
         <section class="flex items-center justify-center min-w-0">
           <div class="flex w-full sm:w-fit overflow-x-auto bg-slate-100 p-1 rounded-lg border border-slate-200/50 custom-scroll">
             <button v-for="tab in tabs" :key="tab.id" @click="activeTab = tab.id"
@@ -235,7 +226,6 @@
           </div>
         </section>
 
-        <!-- Tab Content Rendering -->
         <div class="min-h-[500px]">
 
           <!-- ══════════════════════════════════════
@@ -260,7 +250,6 @@
               </div>
             </transition>
 
-            <!-- Aging Analysis: SAP/Oracle Architecture -->
             <div v-if="canViewAgingAnalysis" class="space-y-6">
               <div class="flex items-center gap-3 px-1">
                  <div class="w-1.5 h-6 bg-gradient-to-b from-amber-400 to-rose-500 rounded-full"></div>
@@ -343,7 +332,7 @@
                   </tr>
                   <tr v-else v-for="t in transactions" :key="t.id" class="hover:bg-slate-50 transition-colors group">
                     <td class="px-6 py-4 text-[10px] font-mono font-bold text-slate-400 group-hover:text-slate-900">{{ formatDate(t.date) }}</td>
-                    <td class="px-4 py-4 font-bold text-slate-700">{{ transactionTypeText(t.type || t.transaction_type) }}</td>
+                    <td class="px-4 py-4 font-bold text-slate-700">{{ transactionTypeText(t.type || t.transactionType) }}</td>
                     <td class="px-6 py-4 text-slate-500 italic max-w-xs truncate" :title="t.description">{{ t.description }}</td>
                     <td class="px-4 py-4 font-mono text-slate-400 text-[10px] uppercase tracking-tighter">{{ t.reference || '-' }}</td>
                     <td class="px-4 py-4 font-bold font-mono tracking-tighter" :class="t.debit > 0 ? 'text-rose-600' : 'text-slate-200'">{{ t.debit > 0 ? formatPrice(t.debit) : '—' }}</td>
@@ -356,7 +345,6 @@
               </table>
             </div>
 
-            <!-- Table Footer Pagination -->
             <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
               <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">إجمالي الحركات: {{ totalRecords }} (الصفحة الحالية: {{ transactions.length }})</span>
               <PaginationControls
@@ -406,32 +394,32 @@
                     </td>
                   </tr>
                   <tr v-else v-for="inv in sortedInvoices" :key="inv.id" class="hover:bg-slate-50 transition-all group">
-                    <td class="px-6 py-4 text-[10px] font-mono text-slate-400">{{ formatDate(inv.invoice_date || inv.created_at) }}</td>
+                    <td class="px-6 py-4 text-[10px] font-mono text-slate-400">{{ formatDate(inv.invoiceDate || inv.createdAt) }}</td>
                     <td class="px-4 py-4">
                       <RouterLink :to="invoiceRoute(inv)" class="text-blue-600 font-bold hover:underline">
-                        {{ inv.invoice_number || ('#' + inv.id) }}
+                        {{ inv.invoiceNumber || ('#' + inv.id) }}
                       </RouterLink>
                     </td>
                     <td class="px-4 py-4 text-center">
                       <!-- ✅ RESTORED: تلوين كامل لكل حالات الفاتورة بدل ثنائي مدفوعة/غير مدفوعة -->
                       <span :class="['status-badge',
-                        (inv.dynamic_status || inv.status) === 'returned' || (inv.dynamic_status || inv.status) === 'closed_by_return' ? 'text-orange-700 border-orange-100 bg-orange-50'
-                        : (inv.dynamic_status || inv.status) === 'paid'                                          ? 'text-emerald-700 border-emerald-100 bg-emerald-50'
-                        : (inv.dynamic_status || inv.status) === 'settled_by_return'                             ? 'text-teal-700 border-teal-100 bg-teal-50'
-                        : (inv.dynamic_status || inv.status) === 'settled_by_credit'                             ? 'text-cyan-700 border-cyan-100 bg-cyan-50'
-                        : ((inv.dynamic_status || inv.status) === 'partial' || (inv.dynamic_status || inv.status) === 'partially_paid' || (inv.dynamic_status || inv.status) === 'pending_payment') ? 'text-amber-700 border-amber-100 bg-amber-50'
-                        : ((inv.dynamic_status || inv.status) === 'rejected' || (inv.dynamic_status || inv.status) === 'canceled' || (inv.dynamic_status || inv.status) === 'cancelled') ? 'text-red-700 border-red-100 bg-red-50'
+                        (inv.dynamicStatus || inv.status) === 'returned' || (inv.dynamicStatus || inv.status) === 'closed_by_return' ? 'text-orange-700 border-orange-100 bg-orange-50'
+                        : (inv.dynamicStatus || inv.status) === 'paid'                                          ? 'text-emerald-700 border-emerald-100 bg-emerald-50'
+                        : (inv.dynamicStatus || inv.status) === 'settled_by_return'                             ? 'text-teal-700 border-teal-100 bg-teal-50'
+                        : (inv.dynamicStatus || inv.status) === 'settled_by_credit'                             ? 'text-cyan-700 border-cyan-100 bg-cyan-50'
+                        : ((inv.dynamicStatus || inv.status) === 'partial' || (inv.dynamicStatus || inv.status) === 'partially_paid' || (inv.dynamicStatus || inv.status) === 'pending_payment') ? 'text-amber-700 border-amber-100 bg-amber-50'
+                        : ((inv.dynamicStatus || inv.status) === 'rejected' || (inv.dynamicStatus || inv.status) === 'canceled' || (inv.dynamicStatus || inv.status) === 'cancelled') ? 'text-red-700 border-red-100 bg-red-50'
                         : 'text-yellow-700 border-yellow-100 bg-yellow-50']" class="px-2 py-0.5 rounded text-[9px] font-bold border">
-                        {{ inv.status_label || statusText(inv.dynamic_status || inv.status) }}
+                        {{ inv.statusLabel || statusText(inv.dynamicStatus || inv.status) }}
                       </span>
                     </td>
-                    <td class="px-4 py-4 text-right font-mono text-slate-400">{{ inv.items_count || 0 }}</td>
-                    <td class="px-4 py-4 text-right font-bold text-slate-900 font-mono">{{ formatPriceEn((Number(inv.net_total_amount ?? inv.total_amount ?? 0) + Number(inv.tax_amount ?? 0))) }}</td>
-                    <td class="px-4 py-4 text-right font-bold text-emerald-600 font-mono">{{ formatPriceEn(inv.actual_paid_amount ?? inv.paid_amount ?? 0) }}</td>
+                    <td class="px-4 py-4 text-right font-mono text-slate-400">{{ inv.itemsCount || 0 }}</td>
+                    <td class="px-4 py-4 text-right font-bold text-slate-900 font-mono">{{ formatPriceEn((Number(inv.netTotalAmount ?? inv.totalAmount ?? 0) + Number(inv.taxAmount ?? 0))) }}</td>
+                    <td class="px-4 py-4 text-right font-bold text-emerald-600 font-mono">{{ formatPriceEn(inv.actualPaidAmount ?? inv.paidAmount ?? 0) }}</td>
                     <td class="px-6 py-4 text-right font-bold font-mono" :class="getInvoiceRemaining(inv) > 0 ? 'text-rose-600' : 'text-slate-200'">{{ formatPriceEn(getInvoiceRemaining(inv)) }}</td>
                     <!-- ✅ RESTORED: مؤشر وجود قيد محاسبي -->
                     <td class="px-4 py-4 text-center">
-                      <span v-if="inv.has_journal" class="inline-flex items-center justify-center w-6 h-6 bg-emerald-100 text-emerald-600 rounded-lg text-[10px]" title="قيد محاسبي موجود">✓</span>
+                      <span v-if="inv.hasJournal" class="inline-flex items-center justify-center w-6 h-6 bg-emerald-100 text-emerald-600 rounded-lg text-[10px]" title="قيد محاسبي موجود">✓</span>
                       <span v-else class="text-slate-300 font-bold">—</span>
                     </td>
                   </tr>
@@ -445,7 +433,6 @@
                ══════════════════════════════════════ -->
           <div v-else-if="activeTab === 'payments'" class="grid grid-cols-1 gap-6 animate-fadeIn">
             
-            <!-- Receipts/Payments List -->
             <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
               <div class="p-4 sm:p-6 bg-slate-50/50 border-b border-slate-100 flex flex-wrap items-center gap-3">
                 <span class="w-1.5 h-5 bg-emerald-500 rounded-full"></span>
@@ -462,7 +449,6 @@
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-50 font-medium text-xs text-slate-700">
-                    <!-- ✅ RESTORED: حالة التحميل -->
                     <tr v-if="isLoading">
                       <td colspan="4" class="py-12 text-center"><BaseSpinner :size="24" :color="type === 'customers' ? '#2563eb' : '#4f46e5'" /></td>
                     </tr>
@@ -470,14 +456,14 @@
                       <td colspan="4" class="py-12 text-center text-slate-300 font-bold uppercase text-[10px]">لا توجد دفعات مسجلة</td>
                     </tr>
                     <tr v-else v-for="p in sortedReceiptPayments" :key="p.id" class="hover:bg-slate-50 transition-all font-bold">
-                      <td class="px-6 py-4 text-[10px] font-mono text-slate-400">{{ formatDateEn(p.payment_date || p.date) }}</td>
+                      <td class="px-6 py-4 text-[10px] font-mono text-slate-400">{{ formatDateEn(p.paymentDate || p.date) }}</td>
                       <td class="px-4 py-4">
-                        <p class="text-slate-800 leading-none">{{ p.invoice_number ? `فاتورة ${p.invoice_number}` : (p.source_label || p.reference_label || paymentRef(p)) }}</p>
-                        <p v-if="p.invoice_number" class="text-[9px] text-blue-600 mt-1">{{ paymentSourceLabel(p) }}</p>
+                        <p class="text-slate-800 leading-none">{{ p.invoiceNumber ? `فاتورة ${p.invoiceNumber}` : (p.sourceLabel || p.referenceLabel || paymentRef(p)) }}</p>
+                        <p v-if="p.invoiceNumber" class="text-[9px] text-blue-600 mt-1">{{ paymentSourceLabel(p) }}</p>
                         <p class="text-[9px] text-slate-400 mt-1 uppercase tracking-tighter">رقم العملية: {{ p.id }}</p>
                       </td>
                       <td class="px-4 py-4">
-                        <span class="px-2 py-1 bg-slate-100 rounded text-[9px] font-bold text-slate-500 border border-slate-200 uppercase">{{ p.payment_method_name || 'نقدي' }}</span>
+                        <span class="px-2 py-1 bg-slate-100 rounded text-[9px] font-bold text-slate-500 border border-slate-200 uppercase">{{ p.paymentMethodName || 'نقدي' }}</span>
                       </td>
                       <td class="px-6 py-4 text-left font-bold font-mono tracking-tighter text-sm text-emerald-600">+ {{ formatPriceEn(p.amount) }}</td>
                     </tr>
@@ -494,7 +480,6 @@
               </div>
               <div class="overflow-x-auto">
                 <table class="w-full text-right border-collapse">
-                  <!-- ✅ RESTORED: رأس الجدول (كان مفقوداً بالكامل) -->
                   <thead>
                     <tr class="bg-rose-50/50 border-b border-rose-100 text-slate-400 font-bold uppercase text-[10px] tracking-widest">
                       <th class="px-6 py-4">التاريخ</th>
@@ -505,10 +490,10 @@
                   </thead>
                   <tbody class="divide-y divide-slate-50 font-medium text-xs text-slate-700">
                     <tr v-for="p in sortedRefundPayments" :key="p.id" class="hover:bg-slate-50 transition-all font-bold">
-                      <td class="px-6 py-4 text-[10px] font-mono text-slate-400 w-1/4">{{ formatDateEn(p.payment_date || p.date) }}</td>
+                      <td class="px-6 py-4 text-[10px] font-mono text-slate-400 w-1/4">{{ formatDateEn(p.paymentDate || p.date) }}</td>
                       <!-- ✅ RESTORED: تفضيل reference_label القادم من الـ API قبل الاشتقاق اليدوي -->
-                      <td class="px-4 py-4 w-1/4">{{ p.reference_label || paymentRef(p) }}</td>
-                      <td class="px-4 py-4 w-1/4"><span class="px-2 py-1 bg-rose-50 rounded text-[9px] font-bold text-rose-500 border border-rose-100 uppercase">{{ p.payment_method_name || 'نقدي' }}</span></td>
+                      <td class="px-4 py-4 w-1/4">{{ p.referenceLabel || paymentRef(p) }}</td>
+                      <td class="px-4 py-4 w-1/4"><span class="px-2 py-1 bg-rose-50 rounded text-[9px] font-bold text-rose-500 border border-rose-100 uppercase">{{ p.paymentMethodName || 'نقدي' }}</span></td>
                       <td class="px-6 py-4 text-left font-bold font-mono tracking-tighter text-sm text-rose-500 w-1/4">- {{ formatPriceEn(p.amount) }}</td>
                     </tr>
                   </tbody>
@@ -521,7 +506,6 @@
       </div>
     </main>
 
-    <!-- Payment / Collection Modal — Teleported to body to escape Layout stacking context -->
     <Teleport to="body">
       <Transition name="fade">
         <div
@@ -531,7 +515,6 @@
           @keydown.esc="showPaymentModal = false"
         >
           <div class="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn" dir="rtl">
-            <!-- Header -->
             <div class="px-8 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
               <div>
                 <h3 class="text-sm font-bold text-slate-900">{{ type === 'customers' ? 'تحصيل دفعة من' : 'تسجيل دفعة إلى' }}</h3>
@@ -543,12 +526,10 @@
               </button>
             </div>
 
-            <!-- Form -->
             <form @submit.prevent="submitPayment" class="px-8 py-6 space-y-4">
               <p v-if="pendingPayment" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-800">
                 توجد دفعة لم تُحسم نتيجتها. أعد المحاولة بالبيانات نفسها قبل بدء دفعة أخرى.
               </p>
-              <!-- المبلغ -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   المبلغ <span class="text-rose-500">*</span>
@@ -571,13 +552,12 @@
                 </button>
               </div>
 
-              <!-- تاريخ الدفع -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   تاريخ الدفع <span class="text-rose-500">*</span>
                 </label>
                 <input
-                  v-model="paymentData.payment_date"
+                  v-model="paymentData.paymentDate"
                   :disabled="!!pendingPayment"
                   type="date"
                   class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-mono"
@@ -585,13 +565,12 @@
                 />
               </div>
 
-              <!-- طريقة الدفع -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   طريقة الدفع <span class="text-rose-500">*</span>
                 </label>
                 <select
-                  v-model="paymentData.payment_method_id"
+                  v-model="paymentData.paymentMethodId"
                   :disabled="!!pendingPayment"
                   class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none"
                   required
@@ -601,23 +580,21 @@
                 </select>
               </div>
 
-              <!-- الفرع -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   الفرع <span class="text-rose-500">*</span>
                 </label>
                 <select
-                  v-model="paymentData.branch_id"
+                  v-model="paymentData.branchId"
                   :disabled="!!pendingPayment || !canSelectBranches"
                   class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none"
                   required
                 >
                   <option value="">اختر الفرع</option>
-                  <option v-for="w in paymentBranches" :key="w.id" :value="w.id">{{ w.name || w.branch_name }}</option>
+                  <option v-for="w in paymentBranches" :key="w.id" :value="w.id">{{ w.name || w.branchName }}</option>
                 </select>
               </div>
 
-              <!-- ملاحظات -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">ملاحظات</label>
                 <textarea
@@ -629,7 +606,6 @@
                 ></textarea>
               </div>
 
-              <!-- أزرار -->
               <div class="pt-4 border-t border-slate-100 flex gap-3">
                 <button
                   type="button"
@@ -657,6 +633,7 @@
 </template>
 
 <script setup>
+import logger from '@/utils/services/logger'
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast';
@@ -671,12 +648,13 @@ import { useCustomerStore } from '@/stores/customer/customerStore';
 import { useSupplierStore } from '@/stores/supplier/supplierStore';
 import { usePendingIdempotentRequest } from '@/composables/usePendingIdempotentRequest';
 import { getLocalDateISO, getImageUrl } from '@/utils';
+import { formatDateForLocale } from '@/utils/formatters/date';
 import PageHeader from '@/components/PageHeader.vue';
 import PaginationControls from '@/components/ui/PaginationControls.vue';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 
-// --- Core ---
+// Core
 const route = useRoute();
 const router = useRouter();
 const { showToast } = useToast();
@@ -692,7 +670,7 @@ const breadcrumb = computed(() => ({
   current: { label: contact.value?.name || (type.value === 'customers' ? 'تفاصيل العميل' : 'تفاصيل المورد') }
 }));
 
-// --- Composables ---
+// Composables
 const {
   fetchStatementData,
   loading: statementLoading,
@@ -714,7 +692,7 @@ const {
   formatCurrencyLocale
 } = useStatementData();
 
-// --- RBAC Composable ---
+// RBAC Composable
 const {
   canViewStatement,
   canExport,
@@ -724,7 +702,7 @@ const {
   logDenial
 } = useStatementRBAC(type.value);
 
-// --- Stores ---
+// Stores
 const customerStore = useCustomerStore();
 const supplierStore = useSupplierStore();
 const pendingCustomerPayment = usePendingIdempotentRequest('customer-payment');
@@ -733,16 +711,15 @@ const paymentStore = usePaymentStore();
 const branchStore = useBranchStore();
 const branchIsolation = useBranchIsolation();
 
-// --- State ---
 const isLoading = ref(false);
 const contact = ref(null);
 const activeTab = ref('overview');
 const showFilters = ref(false);
 
-// --- Payment Modal State ---
+// Payment Modal State
 const showPaymentModal = ref(false);
 const paymentLoading = ref(false);
-const paymentData = ref({ amount: null, payment_date: null, payment_method_id: null, branch_id: null, notes: '' });
+const paymentData = ref({ amount: null, paymentDate: null, paymentMethodId: null, branchId: null, notes: '' });
 const pendingPayment = computed(() =>
   type.value === 'customers' ? pendingCustomerPayment.pending.value : pendingSupplierPayment.pending.value
 );
@@ -759,7 +736,7 @@ const statementBranchId = computed(() => canSelectBranches.value
     ? branchStore.selectedBranchId
     : branchIsolation.currentBranchId.value);
 const statementBranchParams = computed(() => statementBranchId.value
-    ? { branch_id: Number(statementBranchId.value) }
+    ? { branchId: Number(statementBranchId.value) }
     : {});
 const paymentBranches = computed(() => {
     if (canSelectBranches.value) return branches.value;
@@ -771,7 +748,7 @@ const paymentBranches = computed(() => {
     }
 });
 
-// ─── Filter State ───────────────────────────────────────────────────────────
+// Filter State
 const today = new Date();
 const yyyy = today.getFullYear();
 const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -803,7 +780,7 @@ const tabs = computed(() => [
 const txPage = ref(1);
 const txPageSize = ref(20);
 
-// ─── Computed: Overview Totals (from unified composable) ────────────────────
+// Computed: Overview Totals (from unified composable)
 
 const invoicesCount = computed(() => totals.value.invoicesCount);
 const invoicesTotal = computed(() => totals.value.invoicesTotal);
@@ -814,25 +791,25 @@ const remainingTotal = computed(() => totals.value.remainingBalance);
 // Debug: Watch statement data changes
 watch(statementData, (newData) => {
   if (newData) {
-    console.log('[ContactDetails] Statement data loaded:', {
-      hasSalesOnly: !!newData.sales_only,
+    logger.debug('[ContactDetails] Statement data loaded:', {
+      hasSalesOnly: !!newData.salesOnly,
       hasReferences: !!newData.references,
       hasTransactions: !!newData.transactions,
       keys: Object.keys(newData),
-      salesOnlyCount: newData.sales_only?.items?.length || 0,
-      closingBalance: newData.closing_balance
+      salesOnlyCount: newData.salesOnly?.items?.length || 0,
+      closingBalance: newData.closingBalance
     });
   }
 }, { deep: true });
 
 const returnsTotalValue = computed(() => {
-  return returns.value.reduce((sum, r) => sum + Number(r.total_amount || 0), 0);
+  return returns.value.reduce((sum, r) => sum + Number(r.totalAmount || 0), 0);
 });
 
 const refundsCash = computed(() => {
   return returns.value
     .filter(r => ['refund', 'return_payment'].includes(String(r.type).toLowerCase()))
-    .reduce((sum, r) => sum + Number(r.total_amount || 0), 0);
+    .reduce((sum, r) => sum + Number(r.totalAmount || 0), 0);
 });
 
 const returnsAppliedToInvoices = computed(() => {
@@ -844,7 +821,7 @@ const returnsAppliedToInvoices = computed(() => {
 
 const overpaymentCredit = computed(() => availableCredit.value);
 
-// ─── Computed: Smart Alerts ──────────────────────────────────────────────
+// Computed: Smart Alerts
 
 const hasOutstanding = computed(() => {
   const bal = Number(contact.value?.balance ?? 0);
@@ -874,7 +851,7 @@ const creditAmount = computed(() => {
   }
 });
 
-// ─── Computed: Aging Analysis (from unified composable) ──────────────────
+// Computed: Aging Analysis (from unified composable)
 
 const agingBreakdown = computed(() => {
   const analysis = agingAnalysis.value || {};
@@ -884,17 +861,17 @@ const agingBreakdown = computed(() => {
     '_31to60': Number(analysis._31to60 || 0),
     '_60plus': Number(analysis._60plus || 0)
   };
-  console.log('[ContactDetails] Aging Analysis:', { analysis, result, invoicesCount: invoices.value.length });
+  logger.debug('[ContactDetails] Aging Analysis:', { analysis, result, invoicesCount: invoices.value.length });
   return result;
 });
 
 // Expose computed properties for template
 watch([invoices, payments], () => {}, { deep: true });
 
-// ─── Formatting Helpers ───────────────────────────────────────────────────
+// Formatting Helpers
 
-const formatDate    = (v) => v ? new Date(v).toLocaleDateString('en-GB') : '-';
-const formatDateEn  = (v) => v ? new Date(v).toLocaleDateString('en-GB') : '-';
+const formatDate    = (v) => v ? formatDateForLocale(v, 'en-GB') : '-';
+const formatDateEn  = (v) => v ? formatDateForLocale(v, 'en-GB') : '-';
 const formatPrice   = (v) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v || 0));
 const formatPriceEn = (v) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v || 0));
 const formatNumber  = (v) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(v) || 0);
@@ -905,13 +882,13 @@ const statusText = (s) => {
         'settled': 'مسددة',
         'unpaid': 'غير مدفوعة',
         'partial': 'مدفوعة جزئياً',
-        'pending_payment': 'آجل',
+        'pendingPayment': 'آجل',
         'returned': 'مرتجعة',
-        'settled_by_return': 'مسددة',
-        'closed_by_return': 'مرتجعة',
-        'settled_by_credit': 'مسوّاة بمرتجع',
-        'settled_mixed': 'مسوّاة نقدي/إشعار دائن',
-        'partially_paid': 'مدفوعة جزئياً',
+        'settledByReturn': 'مسددة',
+        'closedByReturn': 'مرتجعة',
+        'settledByCredit': 'مسوّاة بمرتجع',
+        'settledMixed': 'مسوّاة نقدي/إشعار دائن',
+        'partiallyPaid': 'مدفوعة جزئياً',
         'rejected': 'مرفوضة',
         'canceled': 'ملغاة',
         'cancelled': 'ملغاة'
@@ -924,14 +901,14 @@ const transactionTypeText = (type) => {
     const map = {
         'sale': 'فاتورة بيع',
         'receipt': 'سند قبض',
-        'cash_voucher': 'سند نقدي',
+        'cashVoucher': 'سند نقدي',
         'purchase': 'فاتورة شراء',
-        'purchase_return': 'مرتجع شراء',
-        'sales_return': 'مرتجع بيع',
+        'purchaseReturn': 'مرتجع شراء',
+        'salesReturn': 'مرتجع بيع',
         'refund': 'استرجاع',
         'payment': 'سند دفع',
         'journal': 'قيد محاسبي',
-        'opening_balance': 'رصيد افتتاحي'
+        'openingBalance': 'رصيد افتتاحي'
     };
     const v = String(type || '').toLowerCase().trim();
     return map[v] || v;
@@ -940,8 +917,8 @@ const transactionTypeText = (type) => {
 const getInvoiceRemaining = (inv) => {
   try {
     // Prefer explicit remaining_balance if provided by API
-    if (inv?.remaining_balance != null && String(inv.remaining_balance).trim() !== '') {
-      return Number(inv.remaining_balance) || 0;
+    if (inv?.remainingBalance != null && String(inv.remainingBalance).trim() !== '') {
+      return Number(inv.remainingBalance) || 0;
     }
 
     // Fallback to outstanding if provided by statement API
@@ -950,8 +927,8 @@ const getInvoiceRemaining = (inv) => {
     }
 
     // Final fallback: compute from totals and paid fields
-    const total = Number(inv?.net_total_amount ?? inv?.total_amount ?? inv?.grand_total ?? 0);
-    const paid = Number(inv?.actual_paid_amount ?? inv?.paid ?? inv?.paid_amount ?? inv?.amount_paid ?? 0);
+    const total = Number(inv?.netTotalAmount ?? inv?.totalAmount ?? inv?.grandTotal ?? 0);
+    const paid = Number(inv?.actualPaidAmount ?? inv?.paid ?? inv?.paidAmount ?? inv?.amountPaid ?? 0);
     return Math.max(0, total - paid);
   } catch {
     return 0;
@@ -971,52 +948,52 @@ const refundPayments  = computed(() => payments.value.filter(p => p.type === 're
 // Sort data by date (oldest first) - fixed to match AccountStatement behavior
 const sortedInvoices = computed(() => {
     if (!Array.isArray(invoices.value)) return [];
-    return [...invoices.value].sort((a, b) => new Date(a?.date || a?.invoice_date || a?.created_at || 0).getTime() - new Date(b?.date || b?.invoice_date || b?.created_at || 0).getTime());
+    return [...invoices.value].sort((a, b) => new Date(a?.date || a?.invoiceDate || a?.createdAt || 0).getTime() - new Date(b?.date || b?.invoiceDate || b?.createdAt || 0).getTime());
 });
 
 const sortedReceiptPayments = computed(() => {
     if (!Array.isArray(receiptPayments.value)) return [];
-    return [...receiptPayments.value].sort((a, b) => new Date(a?.payment_date || a?.date || a?.created_at || 0).getTime() - new Date(b?.payment_date || b?.date || b?.created_at || 0).getTime());
+    return [...receiptPayments.value].sort((a, b) => new Date(a?.paymentDate || a?.date || a?.createdAt || 0).getTime() - new Date(b?.paymentDate || b?.date || b?.createdAt || 0).getTime());
 });
 
 const sortedRefundPayments = computed(() => {
     if (!Array.isArray(refundPayments.value)) return [];
-    return [...refundPayments.value].sort((a, b) => new Date(a?.payment_date || a?.date || a?.created_at || 0).getTime() - new Date(b?.payment_date || b?.date || b?.created_at || 0).getTime());
+    return [...refundPayments.value].sort((a, b) => new Date(a?.paymentDate || a?.date || a?.createdAt || 0).getTime() - new Date(b?.paymentDate || b?.date || b?.createdAt || 0).getTime());
 });
 
 // Full paymentRef with all reference-resolution strategies (from old file)
 const paymentRef = (p) => {
     // 0) return_payment → صرف مرتجع label
     if (p?.type === 'return_payment') {
-        const rid  = p?.return_id ?? p?.return_sale_id ?? p?.return?.id ?? p?.sales_return_id;
-        const sid  = p?.sale_id ?? p?.invoice_id;
+        const rid  = p?.returnId ?? p?.returnSaleId ?? p?.return?.id ?? p?.salesReturnId;
+        const sid  = p?.saleId ?? p?.invoiceId;
         if (rid)  return `صرف مرتجع #${rid}`;
         if (sid)  return `صرف مرتجع فاتورة #${sid}`;
         return `صرف مرتجع #${p?.id ?? '-'}`;
     }
 
     // 1) Explicit link fields
-    const sid  = p?.sale_id ?? p?.invoice_id ?? p?.sale?.id;
-    const prid = p?.purchase_id ?? p?.purchase?.id;
-    const rid  = p?.return_id ?? p?.return_sale_id ?? p?.return?.id ?? p?.sales_return_id ?? p?.purchase_return_id;
-    const cvId = p?.cash_voucher_id ?? p?.voucher_id ?? p?.cash_voucher?.id;
+    const sid  = p?.saleId ?? p?.invoiceId ?? p?.sale?.id;
+    const prid = p?.purchaseId ?? p?.purchase?.id;
+    const rid  = p?.returnId ?? p?.returnSaleId ?? p?.return?.id ?? p?.salesReturnId ?? p?.purchaseReturnId;
+    const cvId = p?.cashVoucherId ?? p?.voucherId ?? p?.cashVoucher?.id;
 
     if (sid)  return `فاتورة بيع #${sid}`;
     if (prid) return `فاتورة شراء #${prid}`;
     if (rid) {
-        if (p?.purchase_id || /purchase/i.test(p?.reference || '')) return `مرتجع شراء #${rid}`;
+        if (p?.purchaseId || /purchase/i.test(p?.reference || '')) return `مرتجع شراء #${rid}`;
         return `مرتجع بيع #${rid}`;
     }
     if (cvId) return `سند قبض #${cvId}`;
 
     // 2) Explicit numbers
-    if (p?.receipt_number)  return `سند قبض #${p.receipt_number}`;
-    if (p?.invoice_number)  return `فاتورة بيع #${p.invoice_number}`;
-    if (p?.sale_number)     return `فاتورة بيع #${p.sale_number}`;
-    if (p?.purchase_number) return `فاتورة شراء #${p.purchase_number}`;
+    if (p?.receiptNumber)  return `سند قبض #${p.receiptNumber}`;
+    if (p?.invoiceNumber)  return `فاتورة بيع #${p.invoiceNumber}`;
+    if (p?.saleNumber)     return `فاتورة بيع #${p.saleNumber}`;
+    if (p?.purchaseNumber) return `فاتورة شراء #${p.purchaseNumber}`;
 
     // 3) Parse raw reference prefix#id
-    const raw = p?.reference || p?.reference_number || '';
+    const raw = p?.reference || p?.referenceNumber || '';
     if (raw) {
         const [pref, num] = String(raw).split('#');
         const n   = num || raw;
@@ -1037,14 +1014,14 @@ const paymentRef = (p) => {
 };
 
 const paymentSourceLabel = (payment) => {
-    if (payment?.source_label) return payment.source_label;
-    if (payment?.source_payment_type === 'return_payment' || payment?.return_id) return 'استرداد مرتجع';
-    if (payment?.source_payment_type === 'voucher') return 'سند قبض';
-    if (payment?.source_payment_type === 'sale' || payment?.sale_id) return 'تحصيل مرتبط بفاتورة';
-    if (payment?.source_payment_type === 'customer' || payment?.source_payment_type === 'debt_payment') return 'تحصيل من حساب العميل';
-    if (payment?.type === 'return_payment' || payment?.return_id) return 'استرداد مرتجع';
+    if (payment?.sourceLabel) return payment.sourceLabel;
+    if (payment?.sourcePaymentType === 'return_payment' || payment?.returnId) return 'استرداد مرتجع';
+    if (payment?.sourcePaymentType === 'voucher') return 'سند قبض';
+    if (payment?.sourcePaymentType === 'sale' || payment?.saleId) return 'تحصيل مرتبط بفاتورة';
+    if (payment?.sourcePaymentType === 'customer' || payment?.sourcePaymentType === 'debt_payment') return 'تحصيل من حساب العميل';
+    if (payment?.type === 'return_payment' || payment?.returnId) return 'استرداد مرتجع';
     if (payment?.type === 'voucher' || payment?.type === 'cash_voucher') return 'سند قبض';
-    if (payment?.type === 'sale' || payment?.sale_id) return 'تحصيل مرتبط بفاتورة';
+    if (payment?.type === 'sale' || payment?.saleId) return 'تحصيل مرتبط بفاتورة';
     if (payment?.type === 'customer' || payment?.type === 'debt_payment') return 'تحصيل من حساب العميل';
     return type.value === 'customers' ? 'تحصيل من العميل' : 'دفعة إلى المورد';
 };
@@ -1053,11 +1030,11 @@ const paymentSourceLabel = (payment) => {
 const contactParams = computed(() => {
     const pid = id.value;
     return type.value === 'customers'
-        ? { contact_id: pid, customer_id: pid, party_id: pid }
-        : { contact_id: pid, supplier_id: pid, party_id: pid };
+        ? { contactId: pid, customerId: pid, partyId: pid }
+        : { contactId: pid, supplierId: pid, partyId: pid };
 });
 
-// ─── Payload Extraction Helper ────────────────────────────────────────────
+// Payload Extraction Helper
 
 const extractContactPayload = (payload) => {
     if (!payload) return null;
@@ -1068,7 +1045,7 @@ const extractContactPayload = (payload) => {
     return null;
 };
 
-// ─── API: Fetch Contact (3-tier failover) ─────────────────────────────────
+// API: Fetch Contact (3-tier failover)
 
 const fetchContact = async () => {
     isLoading.value = true;
@@ -1106,7 +1083,7 @@ const fetchContact = async () => {
     isLoading.value = false;
 };
 
-// ─── Filter Functions ────────────────────────────────────────────────────────
+// Filter Functions
 
 const applyFilter = async () => {
     if (!startDate.value || !endDate.value) {
@@ -1115,9 +1092,9 @@ const applyFilter = async () => {
     }
     
     const result = await fetchStatementData(type.value, id.value, {
-        start_date: startDate.value,
-        end_date: endDate.value,
-        include_references: 1,
+        startDate: startDate.value,
+        endDate: endDate.value,
+        includeReferences: 1,
         status: 'any',
         ...statementBranchParams.value,
     });
@@ -1132,9 +1109,9 @@ const handleBranchChange = async (branchId) => {
     branchStore.setSelectedBranch(branchId);
     page.value = 1;
     const result = await fetchStatementData(type.value, id.value, {
-        start_date: startDate.value,
-        end_date: endDate.value,
-        include_references: 1,
+        startDate: startDate.value,
+        endDate: endDate.value,
+        includeReferences: 1,
         status: 'any',
         ...statementBranchParams.value,
     }, { force: true });
@@ -1168,7 +1145,7 @@ const setQuickRange = async (kind) => {
     await applyFilter();
 };
 
-// ─── Error Handling ───────────────────────────────────────────────────────
+// Error Handling
 
 /**
  * معالجة الأخطاء من جلب البيانات
@@ -1198,7 +1175,7 @@ const handleStatementError = (result) => {
     showToast(message || 'فشل تحميل البيانات', 'error');
 };
 
-// ─── Navigation ───────────────────────────────────────────────────────────
+// Navigation
 
 const goBack = () => {
     try {
@@ -1208,7 +1185,7 @@ const goBack = () => {
     router.back();
 };
 
-// ─── Payment Collection ────────────────────────────────────────────────────
+// Payment Collection
 
 const openPaymentModal = () => {
     try {
@@ -1229,13 +1206,13 @@ const openPaymentModal = () => {
             ? { ...pending.payload }
             : {
                 amount: outstandingAmount.value > 0 ? outstandingAmount.value : null,
-                payment_date: getLocalDateISO(new Date()),
-                payment_method_id: null,
-                branch_id: branchStore.selectedBranchId || null,
+                paymentDate: getLocalDateISO(new Date()),
+                paymentMethodId: null,
+                branchId: branchStore.selectedBranchId || null,
                 notes: ''
             };
         if (!canSelectBranches.value) {
-            paymentData.value.branch_id = requiredBranchId;
+            paymentData.value.branchId = requiredBranchId;
         }
         showPaymentModal.value = true;
     } catch (error) {
@@ -1248,21 +1225,21 @@ const submitPayment = async () => {
         showToast('ادخل مبلغ صحيح', 'error');
         return;
     }
-    if (!paymentData.value.payment_method_id) {
+    if (!paymentData.value.paymentMethodId) {
         showToast('اختر طريقة الدفع', 'error');
         return;
     }
-    if (!paymentData.value.payment_date) {
+    if (!paymentData.value.paymentDate) {
         showToast('الرجاء تحديد تاريخ الدفع', 'error');
         return;
     }
-    if (!paymentData.value.branch_id) {
+    if (!paymentData.value.branchId) {
         showToast('اختر فرعاً لتسجيل الدفعة', 'error');
         return;
     }
     if (!canSelectBranches.value) {
         try {
-            paymentData.value.branch_id = branchIsolation.getRequiredBranchId();
+            paymentData.value.branchId = branchIsolation.getRequiredBranchId();
         } catch (error) {
             showToast(error.message || 'لم يتم تعيين فرع لحسابك.', 'error');
             return;
@@ -1275,17 +1252,17 @@ const submitPayment = async () => {
         const payload = type.value === 'customers'
             ? {
                 amount: Number(paymentData.value.amount),
-                payment_date: paymentData.value.payment_date,
-                payment_method_id: Number(paymentData.value.payment_method_id),
-                branch_id: paymentData.value.branch_id ? Number(paymentData.value.branch_id) : undefined,
+                paymentDate: paymentData.value.paymentDate,
+                paymentMethodId: Number(paymentData.value.paymentMethodId),
+                branchId: paymentData.value.branchId ? Number(paymentData.value.branchId) : undefined,
                 notes: paymentData.value.notes || '',
             }
             : {
-                supplier_id: Number(id.value),
+                supplierId: Number(id.value),
                 amount: Number(paymentData.value.amount),
-                payment_date: paymentData.value.payment_date,
-                payment_method_id: Number(paymentData.value.payment_method_id),
-                branch_id: paymentData.value.branch_id ? String(paymentData.value.branch_id) : undefined,
+                paymentDate: paymentData.value.paymentDate,
+                paymentMethodId: Number(paymentData.value.paymentMethodId),
+                branchId: paymentData.value.branchId ? String(paymentData.value.branchId) : undefined,
                 notes: paymentData.value.notes || '',
             };
         const pending = requestStore.prepare(id.value, payload);
@@ -1298,9 +1275,9 @@ const submitPayment = async () => {
             showPaymentModal.value = false;
             // Refresh statement data to reflect updated balance
             await fetchStatementData(type.value, id.value, {
-                start_date: startDate.value,
-                end_date: endDate.value,
-                include_references: 1,
+                startDate: startDate.value,
+                endDate: endDate.value,
+                includeReferences: 1,
                 status: 'any',
                 ...statementBranchParams.value,
             }, { force: true });
@@ -1330,7 +1307,7 @@ const submitPayment = async () => {
     }
 };
 
-// ─── Lifecycle ────────────────────────────────────────────────────────────
+// Lifecycle
 
 onMounted(async () => {
     // Check RBAC: User must have permission to view statements
@@ -1355,9 +1332,9 @@ onMounted(async () => {
     
     // Single unified call replaces fetchInvoices + fetchPayments + fetchTransactions
     const result = await fetchStatementData(type.value, id.value, {
-        start_date: startDate.value,
-        end_date: endDate.value,
-        include_references: 1,
+        startDate: startDate.value,
+        endDate: endDate.value,
+        includeReferences: 1,
         status: 'any',
         ...statementBranchParams.value,
     });
@@ -1374,9 +1351,9 @@ watch(() => route.params, async (nv) => {
     await fetchContact();
     
     const result = await fetchStatementData(type.value, id.value, {
-        start_date: startDate.value,
-        end_date: endDate.value,
-        include_references: 1,
+        startDate: startDate.value,
+        endDate: endDate.value,
+        includeReferences: 1,
         status: 'any',
         ...statementBranchParams.value,
     });
@@ -1386,7 +1363,7 @@ watch(() => route.params, async (nv) => {
     }
 });
 
-// ─── Combined Watcher: Pagination + Filter ─────────────────────────────────
+// Combined Watcher: Pagination + Filter
 // مراقبة موحدة لتجنب Double Fetch
 // عند تغيير الصفحة → Fetch بدون reset
 // عند تغيير التصفية → Reset الصفحة ثم Fetch
@@ -1404,12 +1381,12 @@ watch([page, perPage, startDate, endDate], async () => {
     
     // Fetch once with all parameters
     const result = await fetchStatementData(type.value, id.value, {
-        start_date: startDate.value,
-        end_date: endDate.value,
-        include_references: 1,
+        startDate: startDate.value,
+        endDate: endDate.value,
+        includeReferences: 1,
         status: 'any',
         page: page.value,
-        per_page: perPage.value,
+        perPage: perPage.value,
         ...statementBranchParams.value,
     });
 

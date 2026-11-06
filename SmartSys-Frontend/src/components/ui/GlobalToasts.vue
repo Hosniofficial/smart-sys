@@ -1,5 +1,4 @@
 <template>
-  <!-- Toast Container: Positioned at the top center with high z-index -->
   <div class="fixed top-8 left-1/2 -translate-x-1/2 z-[10000] space-y-3 w-full max-w-[400px] px-4 pointer-events-none" dir="rtl">
     <transition-group 
       name="toast-list" 
@@ -11,12 +10,10 @@
         :key="t.id" 
         class="pointer-events-auto w-full group relative overflow-hidden"
       >
-        <!-- Modern Toast Card -->
         <div 
           class="flex items-start gap-4 p-4 rounded-2xl shadow-2xl border border-white backdrop-blur-md bg-white/90 transition-all duration-300 hover:scale-[1.02]"
           :class="toastBorderClass(t.type)"
         >
-          <!-- Status Icon -->
           <div 
             class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm transition-transform duration-500 group-hover:rotate-12"
             :class="iconBgClass(t.type)"
@@ -24,7 +21,6 @@
             <i :class="[iconClass(t.type), 'text-lg']"></i>
           </div>
 
-          <!-- Message Content -->
           <div class="flex-grow pt-1">
             <p class="text-xs font-black uppercase tracking-widest opacity-40 mb-1 leading-none">
               {{ typeTitle(t.type) }}
@@ -34,7 +30,6 @@
             </p>
           </div>
 
-          <!-- Progress Bar (Visual Timer) -->
           <div class="absolute bottom-0 right-0 h-1 bg-slate-100/30 w-full">
             <div 
               class="h-full transition-all duration-[3000ms] ease-linear"

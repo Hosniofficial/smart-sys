@@ -18,11 +18,17 @@ export const useOwnerContributionStore = defineStore('ownerContribution', () => 
   const fetchContributions = async (params = {}) => {
     try {
       const response = await ownerContributionsService.list(params);
-      return { status: 'success', data: response?.data?.data || {}, message: null };
+      return {
+        status: 'success',
+        data: response?.data?.data || {},
+        meta: response?.data?.meta || {},
+        message: null,
+      };
     } catch (error) {
       return {
         status: 'error',
         data: null,
+        meta: {},
         message: error.response?.data?.message || error.message,
       };
     }

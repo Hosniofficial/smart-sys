@@ -1,13 +1,10 @@
 <template>
-  <!-- Main Canvas: Using a neutral Zinc/Slate palette for a high-end SaaS feel -->
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress/Loading Bar (Subtle) -->
     <PageLoadingBar :active="isLoading || isRefreshing" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Error State: Stripe-inspired Alert -->
       <transition name="slide-down">
         <div v-if="error" class="bg-white border border-red-200 rounded-lg p-4 shadow-sm flex items-center justify-between group">
           <div class="flex items-center gap-3">
@@ -30,7 +27,6 @@
         </div>
       </transition>
 
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="{ parent: { label: 'الرئيسية', path: '/dashboard' }, current: 'لوحة تحكم المدير' }"
         :title="`أهلًا، ${username} 👋`"
@@ -41,7 +37,6 @@
         @branch-changed="onBranchChange"
       >
         <template #controls>
-          <!-- Date Range Toggles -->
           <div class="flex bg-slate-100 p-1 rounded-lg border border-slate-200/50">
             <button v-for="range in ['today', 'week', 'month']" :key="range" 
               @click="setDateRange(range)" 
@@ -82,7 +77,6 @@
         </p>
       </section>
 
-      <!-- KPI Grid: Supabase-inspired Data Cards -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <template v-if="isLoading">
           <div v-for="i in kpis.length" :key="i" class="h-32 bg-white border border-slate-200 rounded-xl animate-pulse"></div>
@@ -104,7 +98,6 @@
                 {{ Math.abs(kpi.change).toFixed(1) }}%
               </div>
             </div>
-            <!-- Sparkline visualization (Decoration only) -->
             <div class="mt-4 h-1 w-full bg-slate-50 rounded-full overflow-hidden">
               <div :class="[kpi.change >= 0 ? 'bg-emerald-500' : 'bg-red-500']" class="h-full opacity-20" :style="{ width: '100%' }"></div>
             </div>
@@ -112,9 +105,7 @@
         </template>
       </section>
 
-      <!-- Main Analytics -->
       <section class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <!-- Sales Chart -->
         <div class="lg:col-span-8 bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:shadow-slate-200/50 transition-shadow">
           <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -136,7 +127,6 @@
           </div>
         </div>
 
-        <!-- Top Products: Side Widget -->
         <div class="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:shadow-slate-200/50 transition-shadow">
           <div class="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
@@ -153,9 +143,7 @@
         </div>
       </section>
 
-      <!-- Bottom Grid: Inventory & Staff -->
       <section class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <!-- Low Stock Table -->
         <div class="lg:col-span-5 bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm flex flex-col">
           <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-l from-rose-50/70 to-white">
             <div class="flex items-center gap-3">
@@ -174,7 +162,7 @@
           </div>
           <div class="flex-1 overflow-y-auto custom-scroll">
             <div v-if="lowStockItems.length" class="divide-y divide-slate-100">
-              <div v-for="item in lowStockItems" :key="`${item.id}_${item.branch_id || 'all'}`"
+              <div v-for="item in lowStockItems" :key="`${item.id}_${item.branchId || 'all'}`"
                 class="px-6 py-4 flex items-center justify-between hover:bg-rose-50/40 transition-colors group">
                 <div class="flex items-center gap-3 min-w-0">
                   <span :class="Number(item.quantity) <= 0 ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'" class="w-9 h-9 shrink-0 rounded-lg flex items-center justify-center">
@@ -182,9 +170,9 @@
                   </span>
                   <div class="min-w-0">
                   <p class="text-sm font-bold text-slate-800">{{ item.name }}</p>
-                  <p v-if="item.branch_name" class="text-[10px] font-bold text-indigo-600">{{ item.branch_name }}</p>
+                  <p v-if="item.branchName" class="text-[10px] font-bold text-indigo-600">{{ item.branchName }}</p>
                   <p class="text-[10px] text-slate-500">
-                    {{ Number(item.quantity) <= 0 ? 'نفد المخزون' : `الحد الأدنى: ${item.min_quantity} وحدة` }}
+                    {{ Number(item.quantity) <= 0 ? 'نفد المخزون' : `الحد الأدنى: ${item.minQuantity} وحدة` }}
                   </p>
                   </div>
                 </div>
@@ -206,7 +194,6 @@
           </div>
         </div>
 
-        <!-- POS Performance -->
         <div class="lg:col-span-7 bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:shadow-slate-200/50 transition-shadow">
           <div class="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -223,7 +210,6 @@
         </div>
       </section>
 
-      <!-- Quick Access: Action Bar -->
       <section class="bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
         <div class="mb-8 flex items-center gap-4">
           <h2 class="text-sm font-bold text-slate-900">الوصول السريع</h2>
@@ -363,7 +349,7 @@ function calcRange(range) {
 }
 
 function handleLowStockClick(item) {
-  try { router.push({ path: '/inventory', query: { product_id: item?.id } }) } catch {}
+  try { router.push({ path: '/inventory', query: { productId: item?.id } }) } catch {}
 }
 
 function initChart(chartRef, type, data, instanceRef) {
@@ -588,16 +574,16 @@ async function fetchDashboardData(refresh = false) {
         const salesData = salesResponse?.data || salesResponse || {}
 
       try {
-        const dailySales = Array.isArray(salesData.daily_sales) ? salesData.daily_sales : []
-        const invoiceCount = Number(salesData.invoices_count)
-          || dailySales.reduce((sum, day) => sum + (Number(day?.total_orders) || 0), 0)
-        const grossProfit = parseFloat(salesData.gross_profit) || 0
-        unresolvedReturnCostLineCount.value = Number(salesData.returns_cost_unresolved_line_count) || 0
-        unresolvedReturnCostQuantity.value = Number(salesData.returns_cost_unresolved_quantity) || 0
-        const grossGrandTotal = Number(salesData.grand_total ?? salesData.total_sales_amount ?? 0) || 0
-        const netSales = Number(salesData.net_sales ?? 0) || 0
-        const totalReturns = Number(salesData.total_returns_amount ?? 0) || 0
-        const avgOrderValue = Number(salesData.avg_invoice)
+        const dailySales = Array.isArray(salesData.dailySales) ? salesData.dailySales : []
+        const invoiceCount = Number(salesData.invoicesCount)
+          || dailySales.reduce((sum, day) => sum + (Number(day?.totalOrders) || 0), 0)
+        const grossProfit = parseFloat(salesData.grossProfit) || 0
+        unresolvedReturnCostLineCount.value = Number(salesData.returnsCostUnresolvedLineCount) || 0
+        unresolvedReturnCostQuantity.value = Number(salesData.returnsCostUnresolvedQuantity) || 0
+        const grossGrandTotal = Number(salesData.grandTotal ?? salesData.totalSalesAmount ?? 0) || 0
+        const netSales = Number(salesData.netSales ?? 0) || 0
+        const totalReturns = Number(salesData.totalReturnsAmount ?? 0) || 0
+        const avgOrderValue = Number(salesData.avgInvoice)
           || (invoiceCount > 0 ? grossGrandTotal / invoiceCount : 0)
 
         kpis.value[0].value = formatCurrency(grossGrandTotal)
@@ -607,74 +593,74 @@ async function fetchDashboardData(refresh = false) {
         kpis.value[4].value = invoiceCount.toLocaleString('en-US')
         kpis.value[5].value = formatCurrency(avgOrderValue)
 
-        kpis.value[0].change = typeof salesData.sales_change === 'number' ? salesData.sales_change : 0
-        kpis.value[1].change = typeof salesData.net_sales_change === 'number' ? salesData.net_sales_change : 0
-        kpis.value[3].change = typeof salesData.gross_profit_change === 'number' ? salesData.gross_profit_change : 0
-        kpis.value[4].change = typeof salesData.invoice_count_change === 'number' ? salesData.invoice_count_change : 0
-        kpis.value[5].change = typeof salesData.avg_order_value_change === 'number' ? salesData.avg_order_value_change : 0
+        kpis.value[0].change = typeof salesData.salesChange === 'number' ? salesData.salesChange : 0
+        kpis.value[1].change = typeof salesData.netSalesChange === 'number' ? salesData.netSalesChange : 0
+        kpis.value[3].change = typeof salesData.grossProfitChange === 'number' ? salesData.grossProfitChange : 0
+        kpis.value[4].change = typeof salesData.invoiceCountChange === 'number' ? salesData.invoiceCountChange : 0
+        kpis.value[5].change = typeof salesData.avgOrderValueChange === 'number' ? salesData.avgOrderValueChange : 0
       } catch { setDefaultKpiValues() }
 
       const inventoryData = inventoryResponse?.data || inventoryResponse || {}
-      const branchProducts = inventoryData.branch_products || inventoryData.data?.branch_products || []
+      const branchProducts = inventoryData.branchProducts || inventoryData.data?.branchProducts || []
       if (Array.isArray(branchProducts) && branchProducts.length > 0) {
         lowStockItems.value = branchProducts
           .filter(it => {
-            const status = (it?.stock_status || '').toLowerCase()
+            const status = (it?.stockStatus || '').toLowerCase()
             const qty = Number(it?.quantity || 0)
-            const minQty = Number(it?.min_quantity || 0)
+            const minQty = Number(it?.minQuantity || 0)
               return status === 'out_of_stock' || status === 'low' || qty <= 0 || (minQty > 0 && qty <= minQty)
           })
             .map(it => ({
-              id: it.product_id || it.id,
-              branch_id: it.branch_id,
-              branch_name: it.branch_name,
-              name: it.product_name || it.name,
+              id: it.productId || it.id,
+              branchId: it.branchId,
+              branchName: it.branchName,
+              name: it.productName || it.name,
               quantity: it.quantity,
-              min_quantity: it.min_quantity,
-              stock_status: it.stock_status
+              minQuantity: it.minQuantity,
+              stockStatus: it.stockStatus
             }))
           .slice(0, 10)
       } else {
         lowStockItems.value = []
       }
 
-      if (Array.isArray(salesData.daily_sales) && salesData.daily_sales.length) {
+      if (Array.isArray(salesData.dailySales) && salesData.dailySales.length) {
         updateSalesChart({
-          labels: salesData.daily_sales.map(item => item.date || ''),
-          data:   salesData.daily_sales.map(item => Number(item.total_revenue ?? item.total) || 0)
+          labels: salesData.dailySales.map(item => item.date || ''),
+          data:   salesData.dailySales.map(item => Number(item.totalRevenue ?? item.total) || 0)
         })
       } else {
         updateSalesChart({ labels: [], data: [] })
       }
 
-      const topProducts = Array.isArray(salesData?.top_products) ? salesData.top_products : []
+      const topProducts = Array.isArray(salesData?.topProducts) ? salesData.topProducts : []
       const tpLabels = [], tpData = []
       topProducts.slice(0, 5).forEach(p => {
         if (!p) return
-        const name = p.name || p.product_name || p.title || 'منتج غير معروف'
-        const value = p.total_revenue ? parseFloat(p.total_revenue) : Number(p.quantity ?? p.qty ?? p.count ?? p.amount ?? 0)
+        const name = p.name || p.productName || p.title || 'منتج غير معروف'
+        const value = p.totalRevenue ? parseFloat(p.totalRevenue) : Number(p.quantity ?? p.qty ?? p.count ?? p.amount ?? 0)
         if (name && !isNaN(value) && value > 0) { tpLabels.push(name); tpData.push(value) }
       })
       updateTopProductsChart(tpLabels.length ? { labels: tpLabels, data: tpData } : { labels: [], data: [] })
 
       try {
-        const posPayload = posResponse?.data?.data ?? posResponse?.data ?? posResponse
+        const posPayload = posResponse?.data?.data
         const posData = Array.isArray(posPayload?.data)
           ? posPayload.data
           : (Array.isArray(posPayload) ? posPayload : [])
         if (posData.length) {
           updatePosPerformanceChart({
-            labels: posData.map(p => p.cashier_name || p.user_name || p.device_name || 'غير معروف'),
+            labels: posData.map(p => p.cashierName || p.userName || p.deviceName || 'غير معروف'),
             datasets: [
               {
                 label: 'إجمالي المبيعات',
-                data: posData.map(p => Number(p.total_sales ?? p.total_amount ?? 0)),
+                data: posData.map(p => Number(p.totalSales ?? p.totalAmount ?? 0)),
                 backgroundColor: 'rgba(99,102,241,0.7)',
                 borderRadius: 4
               },
               {
                 label: 'صافي المبيعات',
-                data: posData.map(p => Number(p.net_sales ?? p.total_sales ?? p.total_amount ?? 0)),
+                data: posData.map(p => Number(p.netSales ?? p.totalSales ?? p.totalAmount ?? 0)),
                 backgroundColor: 'rgba(16,185,129,0.7)',
                 borderRadius: 4
               }

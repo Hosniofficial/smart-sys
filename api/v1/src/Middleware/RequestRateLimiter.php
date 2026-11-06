@@ -142,7 +142,6 @@ class RequestRateLimiter implements MiddlewareInterface
         return null;
     }
 
-
     private function insertOrReset(string $ip, string $route, int $now, int $counter): void
     {
         $stmt = $this->db->prepare("INSERT INTO rate_limits (ip, route, window_start, counter) VALUES (?, ?, FROM_UNIXTIME(?), ?)");

@@ -9,7 +9,7 @@ function check2(bool $ok): void { global $failures; if (!$ok) $failures++; }
 echo "=== Group D: StockTransferHandler quantity_cost arithmetic (Fix #11) ===\n";
 echo "Setup: branch 1 has 100 units, quantity_cost=1000.00 (avg cost/unit = 10.00). Transfer 20 units.\n\n";
 
-// ── D1: reproduce the ORIGINAL BUGGY SQL verbatim (self-referential expression
+// D1: reproduce the ORIGINAL BUGGY SQL verbatim (self-referential expression
 // inside one UPDATE statement) against a fresh copy of the same starting row,
 // to empirically prove the MySQL execution-order bug existed as described.
 $pdo->exec("INSERT INTO branch_products (id,tenant_id,branch_id,product_id,quantity,quantity_cost) VALUES (901,1,1,1,100,1000.00)");
@@ -24,7 +24,7 @@ $buggyDeducted = round(1000.00 - (float)$buggyRow['quantity_cost'], 2);
 echo "[OLD BUGGY SQL] remaining quantity={$buggyRow['quantity']}, remaining quantity_cost={$buggyRow['quantity_cost']}, actual deducted={$buggyDeducted}\n";
 check2(assert_close($buggyDeducted, 250.0, 'D1 confirms the ORIGINAL bug: buggy SQL deducts 250 (not 200)'));
 
-// ── D2: run the FIXED logic — exact same PHP computation now used in
+// D2: run the FIXED logic — exact same PHP computation now used in
 // StockTransferHandler::transferStock() (values computed in PHP from the
 // pre-update row, then passed as literal parameters to the UPDATE).
 $pdo->exec("INSERT INTO branch_products (id,tenant_id,branch_id,product_id,quantity,quantity_cost) VALUES (902,1,1,2,100,1000.00)");
@@ -55,7 +55,7 @@ check2(assert_close((float)$fixedRow['quantity'], 80.0, 'D2 remaining quantity =
 $avgAfter = round((float)$fixedRow['quantity_cost'] / (float)$fixedRow['quantity'], 4);
 check2(assert_close($avgAfter, 10.0, 'D2 average cost/unit UNCHANGED after transfer (10.00 -> 10.00, was 9.375 under the bug)'));
 
-// ── D3: unified cost consistency — destination branch receives EXACTLY the
+// D3: unified cost consistency — destination branch receives EXACTLY the
 // same amount deducted from source (Finding #10 fix), so total tenant-wide
 // inventory value is unchanged by the transfer itself.
 $pdo->exec("INSERT INTO branch_products (tenant_id,branch_id,product_id,quantity,quantity_cost) VALUES (1,2,2,{$transferQty},{$deductedCost})

@@ -1,0 +1,265 @@
+﻿# API Contract Unification Report
+
+## Contract changes
+
+- API v1 request and response keys are mapped between camelCase at the HTTP boundary and the existing snake_case backend/database representation.
+- JSON responses use the stable envelope `status`, `message`, `data`, `errors`, and `meta`.
+- Pagination is normalized into `meta`; list consumers that used nested pagination were updated, including sales/purchase lists, approvals, statements, audit logs, owner contributions, quotations, campaigns, and vouchers.
+- No database schema or documented integration format outside API v1 was modified. API v1 is intentionally changed in place; external consumers were not available for end-to-end verification.
+
+## Validation
+
+- `composer test`: PASS — 436 tests, 1,226 assertions, 48 skipped.
+- PHP syntax check: PASS — all 252 PHP files under `api/v1/src` and `tests` linted.
+- `npm.cmd run build`: PASS — 2,305 frontend modules transformed. The project has no frontend test script. The build passed when run on its own; a concurrent attempt ran out of memory.
+- `git diff --check`: PASS (Git reported existing line-ending normalization warnings only).
+- Live public `GET /smartsys/health`: PASS — returned HTTP 200 with the complete response envelope.
+- Live unauthenticated `GET /api/v1/sales`: PASS — returned HTTP 401 with the complete `status`, `message`, `data`, `errors`, and `meta` envelope.
+- Live CORS `OPTIONS /api/v1/auth/login`: PASS — returned HTTP 204.
+- `GET /api/v1/health` returned HTTP 405; the implemented public health route is `/health`. Ensure deployment probes target the supported route.
+- Authenticated API workflows (login, permissions, sales, purchases, payments, reports, and approvals) were not exercised because no test credentials or isolated integration environment were provided. The local smoke tests do not validate their business behavior.
+
+## Remaining risks and notes
+
+- Since the contract change is applied directly to v1, any unlisted third-party consumer still expecting snake_case keys or pagination outside `meta` must be migrated.
+- The suite still skips 48 backend tests; the frontend has build validation only, not an automated test runner.
+- Authenticated end-to-end behavior and external consumers remain unverified. Run the operational acceptance suite in a staging environment with test accounts before production rollout.
+- The build may report existing large-chunk warnings; they do not fail the build.
+- The file inventory below is the complete Git working-tree snapshot relative to `HEAD` as of this report update. It includes carried-over local changes from earlier work in this workspace; Git history alone cannot attribute those changes to a particular request.
+
+## Changed and untracked files
+
+- `api/v1/crons/cleanup_cron.php`
+- `api/v1/crons/cleanup_tokens.php`
+- `api/v1/src/Handlers/AccountingReportsHandler.php`
+- `api/v1/src/Handlers/BaseHandler.php`
+- `api/v1/src/Handlers/InventoryAnalyticsHandler.php`
+- `api/v1/src/Handlers/OpeningBalanceHandler.php`
+- `api/v1/src/Handlers/OwnerContributionHandler.php`
+- `api/v1/src/Handlers/PaymentsHandler.php`
+- `api/v1/src/Handlers/PurchasesHandler.php`
+- `api/v1/src/Handlers/RBACHandler.php`
+- `api/v1/src/Handlers/RepairOrdersHandler.php`
+- `api/v1/src/Handlers/SalesAnalyticsHandler.php`
+- `api/v1/src/Handlers/SalesHandler.php`
+- `api/v1/src/Handlers/SuppliersHandler.php`
+- `api/v1/src/Middleware/ApiRequestFieldMiddleware.php`
+- `api/v1/src/Middleware/ApiResponseContractMiddleware.php`
+- `api/v1/src/Middleware/RequestRateLimiter.php`
+- `api/v1/src/Middleware/StrictSubscriptionMiddleware.php`
+- `api/v1/src/Repositories/PaymentRepository.php`
+- `api/v1/src/Repositories/PurchaseRepository.php`
+- `api/v1/src/Repositories/SaleRepository.php`
+- `api/v1/src/Repositories/SettingsRepository.php`
+- `api/v1/src/Security/Permissions.php`
+- `api/v1/src/Services/AccountingService.php`
+- `api/v1/src/Services/BalanceCalculationService.php`
+- `api/v1/src/Services/CashierSessionService.php`
+- `api/v1/src/Services/CashVoucherService.php`
+- `api/v1/src/Services/InventoryOpeningBalanceService.php`
+- `api/v1/src/Services/ReturnService.php`
+- `api/v1/src/Services/SaleApprovalService.php`
+- `api/v1/src/Services/SaleCreationService.php`
+- `api/v1/src/Services/SalePaymentService.php`
+- `api/v1/src/Services/SalesService.php`
+- `api/v1/src/Services/ServiceFactory.php`
+- `api/v1/src/Utils/ApiFieldNameMapper.php`
+- `api/v1/src/Utils/ApiResponseEnvelope.php`
+- `API_CONTRACT_UNIFICATION_REPORT.md`
+- `app/routes/accounting-periods.php`
+- `app/routes/admin.php`
+- `app/routes/branches.php`
+- `app/routes/opening-balance.php`
+- `app/routes/public.php`
+- `app/routes/rbac.php`
+- `app/routes/reports.php`
+- `app/routes/sales.php`
+- `app/routes/users.php`
+- `app/routes/warranty.php`
+- `config/container.php`
+- `config/middleware.php`
+- `config/routes.php`
+- `database/migrate.php`
+- `database/MigrationDatabase.php`
+- `database/migrations/001_create_system_configuration.php`
+- `database/migrations/002_create_roles_and_permissions.php`
+- `database/migrations/003_insert_core_data.php`
+- `database/migrations/008_add_liquidity_policy_columns.php`
+- `database/migrations/009_create_owner_contributions_table.php`
+- `database/migrations/010_add_cash_negative_setting.php`
+- `database/migrations/011_add_owner_contribution_permissions.php`
+- `public/index.php`
+- `SmartSys-Frontend/src/App.vue`
+- `SmartSys-Frontend/src/components/BaseModal.vue`
+- `SmartSys-Frontend/src/components/branch/BranchInventory.vue`
+- `SmartSys-Frontend/src/components/branch/StockAdjustmentModal.vue`
+- `SmartSys-Frontend/src/components/branch/StockModal.vue`
+- `SmartSys-Frontend/src/components/BranchForm.vue`
+- `SmartSys-Frontend/src/components/common/AlertComponent.vue`
+- `SmartSys-Frontend/src/components/layout/AppSidebar.vue`
+- `SmartSys-Frontend/src/components/layout/Layout.vue`
+- `SmartSys-Frontend/src/components/layout/SectionPanel.vue`
+- `SmartSys-Frontend/src/components/layout/WorkspaceTabs.vue`
+- `SmartSys-Frontend/src/components/PageHeader.vue`
+- `SmartSys-Frontend/src/components/ProductForm.vue`
+- `SmartSys-Frontend/src/components/PurchaseForm.vue`
+- `SmartSys-Frontend/src/components/ReturnForm.vue`
+- `SmartSys-Frontend/src/components/StockTransferModal.vue`
+- `SmartSys-Frontend/src/components/ui/BaseSkeleton.vue`
+- `SmartSys-Frontend/src/components/ui/BaseSpinner.vue`
+- `SmartSys-Frontend/src/components/ui/BusyIndicator.vue`
+- `SmartSys-Frontend/src/components/ui/GlobalToasts.vue`
+- `SmartSys-Frontend/src/components/VoucherForm.vue`
+- `SmartSys-Frontend/src/composables/useBranchIsolation.js`
+- `SmartSys-Frontend/src/composables/useCashierSessionGuard.js`
+- `SmartSys-Frontend/src/composables/useCompanyCurrency.js`
+- `SmartSys-Frontend/src/composables/useHistoryFilters.js`
+- `SmartSys-Frontend/src/composables/usePendingIdempotentRequest.js`
+- `SmartSys-Frontend/src/composables/useSearchDropdown.js`
+- `SmartSys-Frontend/src/composables/useSettings.js`
+- `SmartSys-Frontend/src/composables/useStatementData.js`
+- `SmartSys-Frontend/src/composables/useStatementRBAC.js`
+- `SmartSys-Frontend/src/composables/useTableFilters.js`
+- `SmartSys-Frontend/src/config/axios.js`
+- `SmartSys-Frontend/src/config/menuConfig.js`
+- `SmartSys-Frontend/src/main.js`
+- `SmartSys-Frontend/src/router/index.js`
+- `SmartSys-Frontend/src/services/accountingPeriods.js`
+- `SmartSys-Frontend/src/services/analytics.js`
+- `SmartSys-Frontend/src/services/branches.js`
+- `SmartSys-Frontend/src/services/BulkAdjustmentsService.js`
+- `SmartSys-Frontend/src/services/catalog.js`
+- `SmartSys-Frontend/src/services/inventory.js`
+- `SmartSys-Frontend/src/services/payment.js`
+- `SmartSys-Frontend/src/services/products.js`
+- `SmartSys-Frontend/src/services/repairOrders.js`
+- `SmartSys-Frontend/src/services/reports.js`
+- `SmartSys-Frontend/src/services/returns.js`
+- `SmartSys-Frontend/src/services/sessions.js`
+- `SmartSys-Frontend/src/services/settings.js`
+- `SmartSys-Frontend/src/services/shifts.js`
+- `SmartSys-Frontend/src/services/terminals.js`
+- `SmartSys-Frontend/src/services/warranty.js`
+- `SmartSys-Frontend/src/stores/account/accountStore.js`
+- `SmartSys-Frontend/src/stores/accounting/ownerContributionStore.js`
+- `SmartSys-Frontend/src/stores/admin/adminStore.js`
+- `SmartSys-Frontend/src/stores/analytics/analyticsStore.js`
+- `SmartSys-Frontend/src/stores/approvals/approvalsStore.js`
+- `SmartSys-Frontend/src/stores/auth/authStore.js`
+- `SmartSys-Frontend/src/stores/bootstrap/bootstrapStore.js`
+- `SmartSys-Frontend/src/stores/branch/branchStore.js`
+- `SmartSys-Frontend/src/stores/bulk/bulkAdjustmentStore.js`
+- `SmartSys-Frontend/src/stores/catalog/catalogStore.js`
+- `SmartSys-Frontend/src/stores/costCenter/costCenterStore.js`
+- `SmartSys-Frontend/src/stores/customer/customerStore.js`
+- `SmartSys-Frontend/src/stores/inventory/inventoryStore.js`
+- `SmartSys-Frontend/src/stores/payment/paymentStore.js`
+- `SmartSys-Frontend/src/stores/product/productStore.js`
+- `SmartSys-Frontend/src/stores/purchase/purchaseStore.js`
+- `SmartSys-Frontend/src/stores/rbac/rbacStore.js`
+- `SmartSys-Frontend/src/stores/reports/reportsStore.js`
+- `SmartSys-Frontend/src/stores/return/returnStore.js`
+- `SmartSys-Frontend/src/stores/sales/salesStore.js`
+- `SmartSys-Frontend/src/stores/session/sessionStore.js`
+- `SmartSys-Frontend/src/stores/settings/settingsStore.js`
+- `SmartSys-Frontend/src/stores/setup/setupStore.js`
+- `SmartSys-Frontend/src/stores/shift/shiftStore.js`
+- `SmartSys-Frontend/src/stores/statement/statementStore.js`
+- `SmartSys-Frontend/src/stores/subscriptions/subscriptionStore.js`
+- `SmartSys-Frontend/src/stores/supplier/supplierStore.js`
+- `SmartSys-Frontend/src/stores/terminal/terminalStore.js`
+- `SmartSys-Frontend/src/stores/voucher/voucherStore.js`
+- `SmartSys-Frontend/src/stores/warranty/warrantyStore.js`
+- `SmartSys-Frontend/src/utils/formatters/date.js`
+- `SmartSys-Frontend/src/utils/formatters/text.js`
+- `SmartSys-Frontend/src/utils/helpers/deviceFingerprint.js`
+- `SmartSys-Frontend/src/utils/printTemplates/a4Professional.js`
+- `SmartSys-Frontend/src/utils/printTemplates/a4Simple.js`
+- `SmartSys-Frontend/src/utils/printTemplates/branchPrintSettings.js`
+- `SmartSys-Frontend/src/utils/printTemplates/printHelpers.js`
+- `SmartSys-Frontend/src/utils/printTemplates/purchaseTemplate.js`
+- `SmartSys-Frontend/src/utils/printTemplates/returnTemplate.js`
+- `SmartSys-Frontend/src/utils/printTemplates/sessionTemplate.js`
+- `SmartSys-Frontend/src/utils/printTemplates/thermalCompact.js`
+- `SmartSys-Frontend/src/utils/printTemplates/thermalDetailed.js`
+- `SmartSys-Frontend/src/utils/roleDisplay.js`
+- `SmartSys-Frontend/src/utils/services/PrintService.js`
+- `SmartSys-Frontend/src/utils/validators/deviceIdentity.js`
+- `SmartSys-Frontend/src/views/accounting/AccountingPeriods.vue`
+- `SmartSys-Frontend/src/views/accounting/OwnerContributions.vue`
+- `SmartSys-Frontend/src/views/admin/DataIntegrity.vue`
+- `SmartSys-Frontend/src/views/admin/PaymentMethodsKind.vue`
+- `SmartSys-Frontend/src/views/admin/RolePermissionsManagement.vue`
+- `SmartSys-Frontend/src/views/admin/UserManagement.vue`
+- `SmartSys-Frontend/src/views/auth/Login.vue`
+- `SmartSys-Frontend/src/views/auth/Register.vue`
+- `SmartSys-Frontend/src/views/auth/ResetPassword.vue`
+- `SmartSys-Frontend/src/views/auth/VerifyEmail.vue`
+- `SmartSys-Frontend/src/views/branches/BranchDetails.vue`
+- `SmartSys-Frontend/src/views/branches/BranchManagement.vue`
+- `SmartSys-Frontend/src/views/branches/BulkDistribution.vue`
+- `SmartSys-Frontend/src/views/contacts/AccountStatement.vue`
+- `SmartSys-Frontend/src/views/contacts/ContactDetails.vue`
+- `SmartSys-Frontend/src/views/contacts/CustomersManagement.vue`
+- `SmartSys-Frontend/src/views/contacts/SuppliersManagement.vue`
+- `SmartSys-Frontend/src/views/dashboards/CashierDashboard.vue`
+- `SmartSys-Frontend/src/views/dashboards/Dashboard.vue`
+- `SmartSys-Frontend/src/views/errors/Forbidden.vue`
+- `SmartSys-Frontend/src/views/errors/Upgrade.vue`
+- `SmartSys-Frontend/src/views/inventory/CategoriesManagement.vue`
+- `SmartSys-Frontend/src/views/inventory/InventoryManagement.vue`
+- `SmartSys-Frontend/src/views/payments/PaymentsList.vue`
+- `SmartSys-Frontend/src/views/products/ProductManagement.vue`
+- `SmartSys-Frontend/src/views/profile/Profile.vue`
+- `SmartSys-Frontend/src/views/purchases/PurchaseHistory.vue`
+- `SmartSys-Frontend/src/views/purchases/PurchaseManagement.vue`
+- `SmartSys-Frontend/src/views/repairs/RepairOrders.vue`
+- `SmartSys-Frontend/src/views/reports/AccountingReports.vue`
+- `SmartSys-Frontend/src/views/reports/AuditLogsReport.vue`
+- `SmartSys-Frontend/src/views/reports/CashVouchersReport.vue`
+- `SmartSys-Frontend/src/views/reports/InventoryMovementsReport.vue`
+- `SmartSys-Frontend/src/views/reports/InventoryValueBybranch.vue`
+- `SmartSys-Frontend/src/views/reports/InventoryValueReport.vue`
+- `SmartSys-Frontend/src/views/reports/ProfitLossReport.vue`
+- `SmartSys-Frontend/src/views/reports/SalesAnalyticsReport.vue`
+- `SmartSys-Frontend/src/views/reports/SalesSummaryReport.vue`
+- `SmartSys-Frontend/src/views/reports/SessionsSummaryReport.vue`
+- `SmartSys-Frontend/src/views/returns/ReturnsHistory.vue`
+- `SmartSys-Frontend/src/views/returns/ReturnsManagement.vue`
+- `SmartSys-Frontend/src/views/sales/SalesApprovals.vue`
+- `SmartSys-Frontend/src/views/sales/SalesHistory.vue`
+- `SmartSys-Frontend/src/views/sales/SalesPoint.vue`
+- `SmartSys-Frontend/src/views/sales/SalesPriceCampaigns.vue`
+- `SmartSys-Frontend/src/views/sales/SalesQuotations.vue`
+- `SmartSys-Frontend/src/views/sessions/SessionsList.vue`
+- `SmartSys-Frontend/src/views/settings/BranchesAccounting.vue`
+- `SmartSys-Frontend/src/views/settings/SettingsView.vue`
+- `SmartSys-Frontend/src/views/settings/TerminalsManagement.vue`
+- `SmartSys-Frontend/src/views/setup/OpeningBalance.vue`
+- `SmartSys-Frontend/src/views/setup/Setup.vue`
+- `SmartSys-Frontend/src/views/superadmin/Plans.vue`
+- `SmartSys-Frontend/src/views/superadmin/Subscriptions.vue`
+- `SmartSys-Frontend/src/views/vouchers/CashVouchers.vue`
+- `SmartSys-Frontend/src/views/warranty/WarrantyManagement.vue`
+- `SmartSys-Frontend/vite.config.js`
+- `test_suite/test_balance_calculation.php`
+- `test_suite/test_report_filters.php`
+- `test_suite/test_stock_transfer.php`
+- `tests/Unit/AccountingReportsDateRangeTest.php`
+- `tests/Unit/ApiContractMiddlewareTest.php`
+- `tests/Unit/ApiFieldNameMapperTest.php`
+- `tests/Unit/ApiResponseEnvelopeTest.php`
+- `tests/Unit/BranchInventoryMovementCancellationTest.php`
+- `tests/Unit/InventoryAnalyticsBranchFilterTest.php`
+- `tests/Unit/JwtAuthMiddlewareExceptionBoundaryTest.php`
+- `tests/Unit/LiquidityFrameworkIntegrationTest.php`
+- `tests/Unit/PosPerformanceBranchFilterTest.php`
+- `tests/Unit/PublicHealthRouteTest.php`
+- `tests/Unit/PurchaseCreateIdempotencyResponseTest.php`
+- `tests/Unit/SaleCancellationSerialRestorationTest.php`
+- `tests/Unit/SalesAnalyticsPaymentBreakdownTest.php`
+- `tests/Unit/SalesAnalyticsReturnScopeTest.php`
+- `tests/Unit/SalesPriceCampaignsHandlerTest.php`
+- `tests/Unit/SalesQuotationsHandlerTest.php`
+- `tests/Unit/SalesVoidReportExclusionTest.php`
+- `tests/Unit/SupplierPaymentAllocationPolicyTest.php`

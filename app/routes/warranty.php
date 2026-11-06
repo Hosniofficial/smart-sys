@@ -15,14 +15,12 @@ return function (RouteCollectorProxy $group, Container $container): void {
 
     $group->group('/warranty', function (RouteCollectorProxy $group) use ($handler, $db) {
 
-        // ── Read ──────────────────────────────────────────────────────────────
         $group->get('/requests', [$handler, 'list'])
             ->add(PermissionMiddleware::require(Permissions::WARRANTY_VIEW, $db));
 
         $group->get('/requests/{id}', [$handler, 'get'])
             ->add(PermissionMiddleware::require(Permissions::WARRANTY_VIEW, $db));
 
-        // ── Write ─────────────────────────────────────────────────────────────
         $group->post('/requests', [$handler, 'create'])
             ->add(PermissionMiddleware::require(Permissions::WARRANTY_CREATE, $db));
 
@@ -38,7 +36,7 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->post('/requests/{id}/attachments', [$handler, 'uploadAttachment'])
             ->add(PermissionMiddleware::require(Permissions::WARRANTY_EDIT, $db));
 
-        // ── Delete ────────────────────────────────────────────────────────────
+        // Delete
         $group->delete('/attachments/{attachmentId}', [$handler, 'deleteAttachment'])
             ->add(PermissionMiddleware::require(Permissions::WARRANTY_DELETE, $db));
     });

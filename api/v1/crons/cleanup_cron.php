@@ -27,7 +27,7 @@ use App\Utils\ApiResponseEnvelope;
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../../../');
 $dotenv->load();
 
-// ── Auth: CLI only or valid CRON_SECRET ──────────────────────────────────────
+// Auth: CLI only or valid CRON_SECRET
 $isCli = PHP_SAPI === 'cli';
 if (!$isCli) {
     $cronSecret = $_ENV['CRON_SECRET'] ?? '';
@@ -44,7 +44,6 @@ if (!$isCli) {
     }
 }
 
-// ── DB connection ─────────────────────────────────────────────────────────────
 try {
     $dsn = sprintf(
         'mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
@@ -73,7 +72,7 @@ try {
 $startTime = microtime(true);
 $results   = [];
 
-// ── Task 1: JWT blacklist ─────────────────────────────────────────────────────
+// Task 1: JWT blacklist
 try {
     $stmt = $pdo->prepare("DELETE FROM jwt_blacklist WHERE expires_at < NOW()");
     $stmt->execute();
@@ -83,7 +82,7 @@ try {
     $results['jwt_blacklist'] = ['status' => 'error', 'message' => $e->getMessage()];
 }
 
-// ── Task 2: Payment idempotency keys ─────────────────────────────────────────
+// Task 2: Payment idempotency keys
 try {
     $stmt = $pdo->prepare("DELETE FROM payment_idempotency_keys WHERE expires_at < NOW()");
     $stmt->execute();
@@ -93,7 +92,7 @@ try {
     $results['idempotency_keys'] = ['status' => 'error', 'message' => $e->getMessage()];
 }
 
-// ── Task 3: Expired refresh tokens ───────────────────────────────────────────
+// Task 3: Expired refresh tokens
 try {
     $stmt = $pdo->prepare("DELETE FROM refresh_tokens WHERE expires_at < NOW()");
     $stmt->execute();
@@ -103,7 +102,7 @@ try {
     $results['refresh_tokens'] = ['status' => 'error', 'message' => $e->getMessage()];
 }
 
-// ── Task 4: Old login attempts (> 30 days) ────────────────────────────────────
+// Task 4: Old login attempts (> 30 days)
 try {
     $stmt = $pdo->prepare("DELETE FROM login_attempts WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
     $stmt->execute();
@@ -113,7 +112,7 @@ try {
     $results['login_attempts'] = ['status' => 'error', 'message' => $e->getMessage()];
 }
 
-// ── Task 5: Old security events (per retention policy) ───────────────────────
+// Task 5: Old security events (per retention policy)
 try {
     $retentionDays = (int) ($_ENV['SECURITY_LOG_RETENTION_DAYS'] ?? 365);
     $stmt = $pdo->prepare("DELETE FROM security_events WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)");
@@ -124,7 +123,7 @@ try {
     $results['security_events'] = ['status' => 'error', 'message' => $e->getMessage()];
 }
 
-// ── Summary ───────────────────────────────────────────────────────────────────
+// Summary
 $duration = round((microtime(true) - $startTime) * 1000, 1);
 $hasErrors = array_filter($results, fn ($r) => ($r['status'] ?? '') === 'error');
 

@@ -6,24 +6,22 @@ const nowMs = () => Date.now();
 
 export const useSettingsStore = defineStore('settings', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     settings: 30 * 60 * 1000,   // 30 دقيقة
     taxSettings: 15 * 60 * 1000, // 15 دقيقة
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const settings        = ref({});
   const settingsFetchedAt = ref(0);
   const settingsInFlight  = ref(null);
   const loading = ref(false);
   const error = ref(null);
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
-  // ─── fetchSettings ────────────────────────────────────────────────────────
+  // fetchSettings
   /**
    * يرجع object فيه:
    *   - settings: كائن البيانات الكامل (لفحص if (s && s.settings))
@@ -55,11 +53,11 @@ export const useSettingsStore = defineStore('settings', () => {
       const promise = (async () => {
         try {
           const response = await settingsService.getSettings({ suppress403: true });
-          // الـ API ممكن يرجع { data: {...} } أو { settings: {...} } أو flat object
-          const raw  = response?.data?.data
-                    || response?.data?.settings
-                    || response?.data
-                    || {};
+          const envelope = response?.data;
+          const raw = envelope?.data;
+          if (envelope?.status !== 'success' || !raw || typeof raw !== 'object' || Array.isArray(raw)) {
+            throw new Error(envelope?.message || 'استجابة الإعدادات غير صالحة');
+          }
 
           // نحتفظ بالبيانات flat في الـ store
           settings.value         = raw;
@@ -104,7 +102,7 @@ export const useSettingsStore = defineStore('settings', () => {
     ...raw,          // لـ s['company.name'] وغيرها مباشرةً
   });
 
-  // ─── updateSettings ───────────────────────────────────────────────────────
+  // updateSettings
   /**
    * يرجع { status: 'success', data } لتتوافق مع كل مكان في الصفحة:
    *   if (response.status === 'success') { ... }
@@ -139,12 +137,12 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   };
 
-  // ─── updateSetting (مفرد) ─────────────────────────────────────────────────
+  // updateSetting (مفرد)
   const updateSetting = async (key, value) => {
     return await updateSettings({ [key]: value });
   };
 
-  // ─── uploadLogo ───────────────────────────────────────────────────────────
+  // uploadLogo
   /**
    * يرسل FormData تحتوي على logo + settings JSON
    * يرجع { status: 'success', data }
@@ -157,13 +155,13 @@ export const useSettingsStore = defineStore('settings', () => {
       const response = await settingsService.uploadLogo(formData);
 
       // حدّث الـ cache بأي settings جديدة إن وجدت في الـ response
-      const returned = response?.data?.settings ?? response?.data?.data ?? {};
+      const returned = response?.data?.data?.settings ?? response?.data?.data ?? {};
       if (Object.keys(returned).length) {
         Object.assign(settings.value, returned);
       }
 
       // لو الـ API رجّع مسار اللوجو مباشرة
-      const logoPath = response?.data?.logo_path ?? response?.data?.data?.['company.logo'];
+      const logoPath = response?.data?.data?.logoPath ?? response?.data?.data?.['company.logo'];
       if (logoPath) {
         settings.value['company.logo'] = logoPath;
       }
@@ -189,19 +187,19 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   };
 
-  // ─── fetchTaxSettings ─────────────────────────────────────────────────────
+  // fetchTaxSettings
   const fetchTaxSettings = async ({ force = false } = {}) => {
     return await fetchSettings({ force });
   };
 
-  // ─── clearCache ───────────────────────────────────────────────────────────
+  // clearCache
   const clearCache = () => {
     settings.value          = {};
     settingsFetchedAt.value = 0;
     settingsInFlight.value  = null;
   };
 
-  // ─── Computed Selectors ───────────────────────────────────────────────────
+  // Computed Selectors
   const company = computed(() => {
     const prefix = 'company.';
     return Object.fromEntries(
@@ -255,11 +253,11 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const tenant = computed(() => settings.value?.tenant ?? {});
 
-  // ─── Tax helpers (backward compat) ───────────────────────────────────────
+  // Tax helpers (backward compat)
   const isTaxEnabled = computed(() => tax.value.enabled);
   const getTaxRate   = computed(() => tax.value.rate);
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     settings,

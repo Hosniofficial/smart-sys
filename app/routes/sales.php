@@ -37,7 +37,6 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->get('/quotations/{id:[0-9]+}', [$quotationsHandler, 'get'])
             ->add(PermissionMiddleware::require(Permissions::SALE_VIEW, $db));
 
-        // ── Read ──────────────────────────────────────────────────────────────
         $group->get('', [$handler, 'list'])
             ->add(PermissionMiddleware::require(Permissions::SALE_VIEW, $db));
 
@@ -47,7 +46,6 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->get('/pending-approvals', [$handler, 'pendingApprovals'])
             ->add(PermissionMiddleware::require(Permissions::SALE_APPROVAL_VIEW, $db));
 
-        // ── Write ─────────────────────────────────────────────────────────────
         $group->post('', [$handler, 'create'])
             ->add(PermissionMiddleware::require(Permissions::SALE_CREATE, $db));
 

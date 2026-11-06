@@ -21,15 +21,15 @@ export const settingsService = {
   },
 
   getBranchPrintSettings(branchId) {
-    return apiClient.get('/settings/print', { params: { branch_id: branchId } });
+    return apiClient.get('/settings/print', { params: { branchId: branchId } });
   },
 
   updateBranchPrintSettings(branchId, settings) {
-    return apiClient.put('/settings/print', { branch_id: branchId, settings });
+    return apiClient.put('/settings/print', { branchId: branchId, settings });
   },
 
   resetBranchPrintSettings(branchId) {
-    return apiClient.delete('/settings/print', { params: { branch_id: branchId } });
+    return apiClient.delete('/settings/print', { params: { branchId: branchId } });
   },
 
   updateSettings(settings) {

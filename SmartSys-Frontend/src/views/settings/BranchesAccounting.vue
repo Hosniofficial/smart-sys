@@ -1,11 +1,8 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
-
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="توجيه الحسابات للمستودعات"
@@ -21,12 +18,11 @@
         </template>
       </PageHeader>
 
-      <!-- Mapping Statistics Overview -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div v-for="kpi in [
           { label: 'إجمالي الفروع', val: branches.length, icon: 'fa-warehouse', color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'مستودعات مرتبطة', val: branches.filter(w => w.account_id).length, icon: 'fa-link', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'بانتظار الربط', val: branches.filter(w => !w.account_id).length, icon: 'fa-link-slash', color: 'text-amber-600', bg: 'bg-amber-50' }
+          { label: 'مستودعات مرتبطة', val: branches.filter(w => w.accountId).length, icon: 'fa-link', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { label: 'بانتظار الربط', val: branches.filter(w => !w.accountId).length, icon: 'fa-link-slash', color: 'text-amber-600', bg: 'bg-amber-50' }
         ]" :key="kpi.label" class="bg-white border border-slate-200 p-5 rounded-xl flex items-center justify-between group hover:border-slate-300 transition-all shadow-sm">
           <div>
             <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{{ kpi.label }}</p>
@@ -38,7 +34,6 @@
         </div>
       </section>
 
-      <!-- Toolbar: Utility Grid -->
       <section class="bg-white border border-slate-200 rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
         <div class="flex-grow group max-w-xl">
           <label class="metadata-label">البحث الشامل في دليل الحسابات</label>
@@ -59,7 +54,6 @@
         />
       </section>
 
-      <!-- Main Mapping Table: Professional Audit Grid -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
@@ -86,9 +80,9 @@
                     </div>
                     <div>
                       <span class="text-xs font-bold text-slate-900 leading-none block mb-1.5">{{ w.name }}</span>
-                      <span :class="[w.account_id ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-amber-600 bg-amber-50 border-amber-100']" class="px-2 py-0.5 rounded text-[9px] font-bold border uppercase tracking-tighter">
-                        <i :class="[w.account_id ? 'fas fa-check-circle' : 'fas fa-link-slash', 'text-[8px] ml-1']"></i>
-                        {{ w.account_id ? 'مرتبط' : 'غير مرتبط' }}
+                      <span :class="[w.accountId ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-amber-600 bg-amber-50 border-amber-100']" class="px-2 py-0.5 rounded text-[9px] font-bold border uppercase tracking-tighter">
+                        <i :class="[w.accountId ? 'fas fa-check-circle' : 'fas fa-link-slash', 'text-[8px] ml-1']"></i>
+                        {{ w.accountId ? 'مرتبط' : 'غير مرتبط' }}
                       </span>
                     </div>
                   </div>
@@ -127,7 +121,6 @@
           </table>
         </div>
 
-        <!-- Bulk Actions Tray: High Contrast SaaS Footer -->
         <footer class="px-8 py-6 bg-slate-900 text-white flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden">
           <div class="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full translate-x-12 -translate-y-12"></div>
           
@@ -156,7 +149,6 @@
 </template>
 
 <script setup>
-// [SCRIPT SECTION REMAINS 100% IDENTICAL AS PER BUSINESS LOGIC RULE]
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth/authStore';
 import { useBranchStore } from '@/stores/branch/branchStore';
@@ -186,7 +178,7 @@ function filterAccounts(list, q) {
 
 const filteredbranchs = computed(() => {
   const arr = branches.value || []
-  return arr.filter(w => !showMissingOnly.value || !w.account_id)
+  return arr.filter(w => !showMissingOnly.value || !w.accountId)
 })
 
 async function reload() {
@@ -199,7 +191,7 @@ async function reload() {
     ])
     branchStore.branches.forEach(w => {
       if (!('_account_id' in w)) {
-        w._account_id = Number(w.account_id || 0)
+        w._account_id = Number(w.accountId || 0)
         w._search = ''
         w._saving = false
       }
@@ -216,9 +208,9 @@ async function saveOne(w) {
   try {
     w._saving = true
     const account_id = w._account_id && w._account_id > 0 ? w._account_id : null
-    const response = await branchStore.updateBranch(w.id, { account_id })
+    const response = await branchStore.updateBranch(w.id, { accountId: account_id })
     if (response.status === 'success') {
-      w.account_id = account_id
+      w.accountId = account_id
       window.showToast && window.showToast(`تم ربط ${w.name} بنجاح`, 'success')
     } else {
       window.showToast && window.showToast(response.message || 'فشل حفظ التغييرات', 'error')
@@ -236,10 +228,10 @@ async function saveAll() {
     let successCount = 0
     let errorCount = 0
     for (const w of branches.value) {
-      if (w._account_id !== (Number(w.account_id || 0))) {
-        const response = await branchStore.updateBranch(w.id, { account_id: w._account_id && w._account_id > 0 ? w._account_id : null })
+      if (w._account_id !== (Number(w.accountId || 0))) {
+        const response = await branchStore.updateBranch(w.id, { accountId: w._account_id && w._account_id > 0 ? w._account_id : null })
         if (response.status === 'success') {
-          w.account_id = w._account_id
+          w.accountId = w._account_id
           successCount++
         } else {
           errorCount++

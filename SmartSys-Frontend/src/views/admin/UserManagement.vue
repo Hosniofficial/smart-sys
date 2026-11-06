@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
 
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="إدارة الموظفين والصلاحيات"
@@ -21,7 +19,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPI Cards -->
       <section class="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <div v-for="kpi in [
           { label: 'إجمالي الموظفين', val: total, icon: 'fa-users', color: 'text-slate-600', bg: 'bg-slate-100' },
@@ -39,7 +36,6 @@
         </div>
       </section>
 
-      <!-- Search & Filters -->
       <section class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
         <div class="relative flex-grow group max-w-xl">
           <input 
@@ -65,7 +61,6 @@
         </div>
       </section>
 
-      <!-- Main User Table -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
@@ -81,14 +76,12 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 font-medium text-xs">
-              <!-- Loading Skeleton -->
               <template v-if="isLoading">
                 <tr v-for="n in 5" :key="n" class="animate-pulse">
                   <td v-for="m in 7" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                 </tr>
               </template>
 
-              <!-- Empty State -->
               <tr v-else-if="!users.length">
                 <td colspan="7" class="py-24 text-center text-slate-300">
                    <i class="fas fa-users-slash text-3xl mb-4 opacity-20"></i>
@@ -96,7 +89,6 @@
                 </td>
               </tr>
 
-              <!-- Data Rows -->
               <tr v-else v-for="u in users" :key="u.id" class="hover:bg-blue-50/20 transition-all group">
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex items-center gap-3">
@@ -111,7 +103,7 @@
                 </td>
                 <td class="px-4 py-4 text-slate-500 font-medium">{{ u.email || '—' }}</td>
                 <td class="px-4 py-4 text-center text-[10px] font-bold text-slate-500">
-                  {{ u.branch_name || 'بدون فرع' }}
+                  {{ u.branchName || 'بدون فرع' }}
                 </td>
                 <td class="px-4 py-4 text-center">
                   <div class="flex flex-wrap justify-center gap-1">
@@ -133,7 +125,7 @@
                   </button>
                 </td>
                 <td class="px-4 py-4 text-center text-[10px] font-mono font-bold text-slate-400">
-                  {{ u.last_login ? formatDate(u.last_login) : 'لم يسجل دخول' }}
+                  {{ u.lastLogin ? formatDate(u.lastLogin) : 'لم يسجل دخول' }}
                 </td>
                 <td class="px-6 py-4 text-center">
                   <div class="flex items-center justify-center gap-1.5">
@@ -141,7 +133,7 @@
                       <i class="fas fa-pen text-[10px]"></i>
                     </button>
                     <button
-                      v-if="canAssignPermissions && !u.is_owner"
+                      v-if="canAssignPermissions && !u.isOwner"
                       @click="openPermissionOverrides(u)"
                       title="تخصيص صلاحيات هذا المستخدم"
                       class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-violet-600 hover:border-violet-200 transition-all flex items-center justify-center shadow-sm"
@@ -158,7 +150,6 @@
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ page }}</span> من <span class="text-slate-900">{{ totalPages }}</span>
@@ -185,7 +176,6 @@
       </div>
     </div>
 
-    <!-- Create/Edit Modal -->
     <BaseModal
       :show="modal.open"
       @close="modal.open = false"
@@ -238,7 +228,7 @@
 
         <div class="space-y-1.5 pt-4 border-t border-slate-50">
           <label class="metadata-label">الفرع</label>
-          <select v-model="form.branch_id" class="filter-input-v2 h-10 appearance-none font-bold">
+          <select v-model="form.branchId" class="filter-input-v2 h-10 appearance-none font-bold">
             <option :value="null">بدون فرع محدد</option>
             <option v-for="branch in branches" :key="branch.id" :value="branch.id">{{ branch.name }}</option>
           </select>
@@ -331,10 +321,10 @@
               <div class="divide-y divide-slate-100">
                 <div v-for="permission in group.items" :key="permission.name" class="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div class="min-w-0">
-                    <p class="break-words text-[11px] font-bold text-slate-800">{{ permission.display_name || permission.description || permission.name }}</p>
+                    <p class="break-words text-[11px] font-bold text-slate-800">{{ permission.displayName || permission.description || permission.name }}</p>
                     <p class="mt-0.5 font-mono text-[9px] text-slate-400">{{ permission.name }}</p>
                     <p class="mt-1 text-[9px] text-slate-500">
-                      من الدور: {{ permission.role_granted ? 'ممنوحة' : 'غير ممنوحة' }}
+                      من الدور: {{ permission.roleGranted ? 'ممنوحة' : 'غير ممنوحة' }}
                       <span v-if="permission.override" class="mr-2 font-bold text-violet-700">
                         · استثناء حالي: {{ permission.override.effect === 'allow' ? 'منح' : 'منع' }}
                       </span>
@@ -375,7 +365,6 @@
       </template>
     </BaseModal>
 
-    <!-- Delete Confirmation Modal -->
     <BaseModal
       :show="deleteModal.open"
       @close="deleteModal.open = false"
@@ -410,7 +399,6 @@
       </template>
     </BaseModal>
 
-    <!-- Global Toast -->
     <transition name="slide-up">
       <div v-if="toast.show" :class="[toast.type === 'success' ? 'bg-slate-900 border-emerald-500' : 'bg-rose-600 border-white/20']"
            class="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-xl shadow-2xl text-white font-bold text-xs flex items-center gap-3 border transition-all">
@@ -434,6 +422,7 @@ import { useRbacStore } from '@/stores/rbac/rbacStore'
 import { useBreadcrumb } from '@/composables/useBreadcrumb'
 import PageHeader from '@/components/PageHeader.vue'
 import { getRoleDisplayName } from '@/utils/roleDisplay'
+import { formatDate as formatDateValue } from '@/utils/formatters/date'
 
 const { breadcrumb } = useBreadcrumb()
 const authStore = useAuthStore()
@@ -441,32 +430,31 @@ const rbacStore = useRbacStore()
 const roleStore = useRoleStore()
 const branchStore = useBranchStore()
 
-// ─── State ────────────────────────────────────────────────────────────────────
 const users = ref([])
 const roles = ref([])
 const branches = computed(() => branchStore.branches)
 const isLoading = ref(false)
 const savingId = ref(null)
 
-// ─── Pagination ───────────────────────────────────────────────────────────────
+// Pagination
 const page = ref(1)
 const perPage = ref(20)
 const total = ref(0)
 const totalPages = computed(() => Math.ceil(total.value / perPage.value) || 1)
 
-// ─── KPI Counts ───────────────────────────────────────────────────────────────
+// KPI Counts
 const activeCount = ref(0)
 const inactiveCount = ref(0)
 
-// ─── Filters ──────────────────────────────────────────────────────────────────
+// Filters
 const search = ref('')
 const filterRole = ref('')
 const filterStatus = ref('')
 let searchTimeout = null
 
-// ─── Modals ───────────────────────────────────────────────────────────────────
+// Modals
 const modal = reactive({ open: false, mode: 'create', saving: false, error: '', userId: null })
-const form = reactive({ name: '', username: '', email: '', password: '', roles: [], branch_id: null, status: 'active' })
+const form = reactive({ name: '', username: '', email: '', password: '', roles: [], branchId: null, status: 'active' })
 const deleteModal = reactive({ open: false, saving: false, user: null })
 const permissionModal = reactive({
   open: false,
@@ -479,16 +467,15 @@ const permissionModal = reactive({
 })
 const toast = reactive({ show: false, type: 'success', message: '' })
 
-// ─── Computed ─────────────────────────────────────────────────────────────────
 const canAssignPermissions = computed(() => authStore.user?.permissions?.includes('permission.assign') === true)
 const protectedPermissionNames = new Set([
   'role.view', 'role.edit', 'role.create', 'role.delete', 'permission.view', 'permission.assign',
 ])
 const permissionCategories = {
   rbac: 'إدارة الأدوار والصلاحيات',
-  sales_management: 'إدارة المبيعات',
-  purchase_management: 'إدارة المشتريات',
-  inventory_management: 'إدارة المخزون',
+  salesManagement: 'إدارة المبيعات',
+  purchaseManagement: 'إدارة المشتريات',
+  inventoryManagement: 'إدارة المخزون',
   pos: 'نقطة البيع',
   payments: 'المدفوعات',
   reports: 'التقارير',
@@ -506,17 +493,16 @@ const userPermissionGroups = computed(() => {
   return [...groups].map(([name, items]) => ({ name, items }))
 })
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 const permissionCategoryLabel = (name) => permissionCategories[name] || name
 const isProtectedPermission = (name) => protectedPermissionNames.has(name)
 const avatarColors = ['bg-blue-600', 'bg-violet-600', 'bg-emerald-600', 'bg-amber-600', 'bg-rose-600', 'bg-cyan-600', 'bg-indigo-600', 'bg-pink-600']
 const avatarColor = (id) => avatarColors[id % avatarColors.length]
 
 const assignedRoleIds = (user) => {
-  if (typeof user.role_ids === 'string' && user.role_ids) {
-    return user.role_ids.split(',').map(Number).filter(Number.isInteger)
+  if (typeof user.roleIds === 'string' && user.roleIds) {
+    return user.roleIds.split(',').map(Number).filter(Number.isInteger)
   }
-  return user.role_id ? [Number(user.role_id)] : []
+  return user.roleId ? [Number(user.roleId)] : []
 }
 const assignedRoles = (user) => {
   const roleIds = new Set(assignedRoleIds(user))
@@ -524,7 +510,7 @@ const assignedRoles = (user) => {
 }
 const formatDate = (dt) => {
   if (!dt) return ''
-  return new Date(dt).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+  return formatDateValue(dt, { day: '2-digit', month: 'short', year: 'numeric' })
 }
 const showToast = (message, type = 'success') => {
   toast.message = message
@@ -533,7 +519,7 @@ const showToast = (message, type = 'success') => {
   setTimeout(() => { toast.show = false }, 3000)
 }
 
-// ─── Debounced Search ─────────────────────────────────────────────────────────
+// Debounced Search
 const debouncedSearch = () => {
   clearTimeout(searchTimeout)
   searchTimeout = setTimeout(() => {
@@ -541,7 +527,7 @@ const debouncedSearch = () => {
   }, 500)
 }
 
-// ─── API ──────────────────────────────────────────────────────────────────────
+// API
 const loadUsers = async (nextPage = page.value) => {
   isLoading.value = true
   try {
@@ -549,7 +535,7 @@ const loadUsers = async (nextPage = page.value) => {
       page: nextPage,
       limit: perPage.value,
       search: search.value.trim(),
-      role_id: filterRole.value || '',
+      roleId: filterRole.value || '',
       status: filterStatus.value || '',
     }
 
@@ -601,7 +587,7 @@ const toggleStatus = async (user) => {
 }
 
 const openCreate = () => {
-  Object.assign(form, { name: '', username: '', email: '', password: '', roles: [], branch_id: null, status: 'active' })
+  Object.assign(form, { name: '', username: '', email: '', password: '', roles: [], branchId: null, status: 'active' })
   Object.assign(modal, { open: true, mode: 'create', saving: false, error: '', userId: null })
 }
 
@@ -612,7 +598,7 @@ const openEdit = (user) => {
     email: user.email || '',
     password: '',
     roles: assignedRoleIds(user),
-    branch_id: user.branch_id ? Number(user.branch_id) : null,
+    branchId: user.branchId ? Number(user.branchId) : null,
     status: user.status || 'active'
   })
   Object.assign(modal, { open: true, mode: 'edit', saving: false, error: '', userId: user.id })
@@ -639,7 +625,7 @@ const saveUser = async () => {
         email: form.email,
         password: form.password,
         roles: form.roles,
-        branch_id: form.branch_id,
+        branchId: form.branchId,
         status: form.status
       })
     } else {
@@ -648,7 +634,7 @@ const saveUser = async () => {
         username: form.username,
         email: form.email,
         roles: form.roles,
-        branch_id: form.branch_id,
+        branchId: form.branchId,
         status: form.status
       }
       if (form.password) payload.password = form.password
@@ -669,7 +655,7 @@ const saveUser = async () => {
     await loadUsers(page.value)
     showToast(modal.mode === 'create' ? 'تم إضافة الموظف بنجاح' : 'تم تحديث البيانات')
   } catch (e) {
-    modal.error = e?.response?.data?.message || e?.response?.data?.error || 'فشل الحفظ'
+    modal.error = e?.response?.data?.message || e?.response?.data?.errors?.error || 'فشل الحفظ'
   } finally {
     modal.saving = false
   }
@@ -727,7 +713,7 @@ const savePermissionOverrides = async () => {
     const overrides = permissionModal.permissions
       .filter(p => p.overrideMode !== 'inherit')
       .map(p => ({
-        permission_name: p.name,
+        permissionName: p.name,
         effect: p.overrideMode,
       }))
     await rbacStore.setUserPermissionOverrides(permissionModal.user.id, {
@@ -743,7 +729,7 @@ const savePermissionOverrides = async () => {
   }
 }
 
-// ─── Lifecycle ────────────────────────────────────────────────────────────────
+// Lifecycle
 onMounted(async () => {
   await Promise.all([
     branchStore.fetchBranches(),

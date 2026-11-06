@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading" />
     
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="قاعدة بيانات العملاء"
@@ -22,7 +20,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPIs Overview: Metric Grid -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div v-for="kpi in kpis" :key="kpi.title" class="bg-white border border-slate-200 p-5 rounded-xl flex items-center justify-between group hover:border-slate-300 transition-all shadow-sm">
           <div>
@@ -35,7 +32,6 @@
         </div>
       </section>
 
-      <!-- Toolbar: Search & View Toggle -->
       <section class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
         <div class="relative flex-grow group max-w-xl">
           <input type="text" v-model="search" class="h-9 w-full bg-white border border-slate-200 rounded-md pr-9 pl-4 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all" placeholder="ابحث باسم العميل أو رقم الهاتف..." />
@@ -52,15 +48,12 @@
         </div>
       </section>
 
-      <!-- Main Content States -->
       <div class="relative min-h-[400px]">
         
-        <!-- 1. Skeleton Loading -->
         <div v-if="isLoading" class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div v-for="i in 6" :key="i" class="h-48 bg-white border border-slate-200 rounded-xl animate-pulse"></div>
         </div>
 
-        <!-- 2. Empty State -->
         <div v-else-if="!filteredContacts.length" class="py-24 text-center bg-white border border-slate-200 rounded-xl">
           <div class="w-16 h-16 bg-slate-50 text-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
             <i class="fas fa-users-slash text-2xl"></i>
@@ -70,7 +63,6 @@
           <button @click="fetchContacts" class="mt-6 text-xs font-bold text-blue-600 hover:underline">إعادة تحميل البيانات</button>
         </div>
 
-        <!-- 3. View Mode: Cards -->
         <div v-else-if="viewMode === 'cards'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           <div v-for="contact in filteredContacts" :key="contact.id" class="bg-white border border-slate-200 rounded-xl p-6 hover:border-blue-500/30 hover:shadow-md transition-all group flex flex-col justify-between">
             <div class="space-y-4">
@@ -109,7 +101,6 @@
           </div>
         </div>
 
-        <!-- 4. View Mode: Table -->
         <div v-else-if="viewMode === 'table'" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
           <div class="overflow-x-auto">
             <table class="w-full text-right border-collapse">
@@ -149,7 +140,6 @@
             </table>
           </div>
 
-          <!-- Pagination Footer -->
           <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
               صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ filters.totalPages.value }}</span>
@@ -177,9 +167,6 @@
       </div>
     </div>
 
-    <!-- Modals: Minimal Standard Overlay -->
-    
-    <!-- Customer Form -->
     <Teleport to="body">
     <transition name="fade">
       <div v-if="showFormModal" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
@@ -218,11 +205,11 @@
             <div class="grid grid-cols-2 gap-4">
               <div class="space-y-1.5">
                 <label class="metadata-label">الرقم الضريبي</label>
-                <input type="text" dir="rtl" v-model.trim="selectedContact.tax_number" class="filter-input-v2 h-10 text-right font-sans font-bold leading-4 placeholder:text-[11px] placeholder:font-sans placeholder:font-bold placeholder:leading-4" placeholder="أدخل الرقم الضريبي" />
+                <input type="text" dir="rtl" v-model.trim="selectedContact.taxNumber" class="filter-input-v2 h-10 text-right font-sans font-bold leading-4 placeholder:text-[11px] placeholder:font-sans placeholder:font-bold placeholder:leading-4" placeholder="أدخل الرقم الضريبي" />
               </div>
               <div class="space-y-1.5">
                 <label class="metadata-label">حد الائتمان</label>
-                <input type="number" v-model.number="selectedContact.credit_limit" min="0" class="filter-input-v2 h-10 font-mono text-blue-600 placeholder:text-[11px] placeholder:font-bold" placeholder="0" />
+                <input type="number" v-model.number="selectedContact.creditLimit" min="0" class="filter-input-v2 h-10 font-mono text-blue-600 placeholder:text-[11px] placeholder:font-bold" placeholder="0" />
               </div>
             </div>
             <div class="space-y-1.5">
@@ -245,7 +232,6 @@
     </transition>
     </Teleport>
 
-    <!-- Payment Collection Modal — Teleported to body -->
     <Teleport to="body">
       <Transition name="fade">
         <div
@@ -255,7 +241,6 @@
           @keydown.esc="showPaymentModal = false"
         >
           <div class="bg-white w-full max-w-md max-h-[calc(100vh-6rem)] overflow-y-auto rounded-xl shadow-2xl border border-slate-200 animate-modalIn" dir="rtl">
-            <!-- Header -->
             <div class="px-8 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
               <div>
                 <h3 class="text-sm font-bold text-slate-900">تحصيل دفعة من</h3>
@@ -267,12 +252,10 @@
               </button>
             </div>
 
-            <!-- Form -->
             <form @submit.prevent="handlePaymentSubmit" class="px-8 py-6 space-y-4">
               <p v-if="hasPendingCustomerPayment" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-800">
                 توجد دفعة لم تُحسم نتيجتها. أعد المحاولة بالبيانات نفسها قبل بدء دفعة أخرى.
               </p>
-              <!-- المبلغ -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   المبلغ <span class="text-rose-500">*</span>
@@ -295,13 +278,12 @@
                 </button>
               </div>
 
-              <!-- تاريخ الدفع -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   تاريخ الدفع <span class="text-rose-500">*</span>
                 </label>
                 <input
-                  v-model="paymentData.payment_date"
+                  v-model="paymentData.paymentDate"
                   :disabled="hasPendingCustomerPayment"
                   type="date"
                   class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-mono"
@@ -309,13 +291,12 @@
                 />
               </div>
 
-              <!-- طريقة الدفع -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   طريقة الدفع <span class="text-rose-500">*</span>
                 </label>
                 <select
-                  v-model.number="paymentData.payment_method_id"
+                  v-model.number="paymentData.paymentMethodId"
                   :disabled="hasPendingCustomerPayment"
                   class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none"
                   required
@@ -325,23 +306,21 @@
                 </select>
               </div>
 
-              <!-- الفرع -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                   الفرع <span class="text-rose-500">*</span>
                 </label>
                 <select
-                  v-model="paymentData.branch_id"
+                  v-model="paymentData.branchId"
                   :disabled="hasPendingCustomerPayment"
                   class="h-9 w-full bg-white border border-slate-200 rounded-md px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none"
                   required
                 >
                   <option value="">اختر الفرع</option>
-                  <option v-for="w in branches" :key="w.id" :value="w.id">{{ w.name || w.branch_name }}</option>
+                  <option v-for="w in branches" :key="w.id" :value="w.id">{{ w.name || w.branchName }}</option>
                 </select>
               </div>
 
-              <!-- ملاحظات -->
               <div class="space-y-1.5">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">ملاحظات</label>
                 <textarea
@@ -353,7 +332,6 @@
                 ></textarea>
               </div>
 
-              <!-- أزرار -->
               <div class="pt-4 border-t border-slate-100 flex gap-3">
                 <button
                   type="button"
@@ -405,7 +383,7 @@ import LoadingButton from '@/components/ui/LoadingButton.vue';
 const { showToast } = useToast(); 
 const router = useRouter();
 
-// --- Logic Initialization ---
+// Logic Initialization
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const { ensureLoaded: ensureExemptionLoaded, isExempt } = useSessionExemption();
 const { breadcrumb } = useBreadcrumb();
@@ -445,7 +423,7 @@ const customerFormErrors = ref({ name: '', phone: '', email: '' });
 const viewMode = ref('cards'); 
 const showPaymentModal = ref(false);
 const isSubmittingCustomerPayment = ref(false);
-const paymentData = ref({ amount: null, payment_date: null, payment_method_id: null, branch_id: null, notes: '' });
+const paymentData = ref({ amount: null, paymentDate: null, paymentMethodId: null, branchId: null, notes: '' });
 const pendingCustomerPayment = usePendingIdempotentRequest('customer-payment');
 const hasPendingCustomerPayment = computed(() => !!pendingCustomerPayment.pending.value);
 
@@ -463,7 +441,7 @@ const filteredContacts = computed(() => {
   return contacts.value.filter(c => (c.name && c.name.toLowerCase().includes(q)) || (c.phone && c.phone.includes(q)));
 });
 
-// ─── Pagination (using useTableFilters composable)
+// Pagination (using useTableFilters composable)
 const filters = useTableFilters('customers_filters');
 
 const paginatedContacts = computed(() => {
@@ -492,14 +470,14 @@ const fetchContacts = async () => {
     if (!isExempt.value) {
       try {
         const wid = branchIsolation.getRequiredBranchId();
-        params.branch_id = String(wid);
+        params.branchId = String(wid);
       } catch (e) {
         contacts.value = [];
         showToast(e.message || 'لم يتم تعيين مخزن للمستخدم', 'warning');
         return;
       }
     } else if (selectedBranch.value) {
-      params.branch_id = String(selectedBranch.value);
+      params.branchId = String(selectedBranch.value);
     }
     // isExempt + no branch selected → no branch_id param → API returns all customers
     const res = await customerStore.fetchCustomers({ force: true, params });
@@ -521,12 +499,12 @@ const openAddModal = () => {
   } else {
     branchId = selectedBranch.value || null; // null when 'all' → admin must explicitly pick branch in form
   }
-  selectedContact.value = { name: '', phone: '', email: '', tax_number: '', address: '', credit_limit: 0, branch_id: branchId };
+  selectedContact.value = { name: '', phone: '', email: '', taxNumber: '', address: '', creditLimit: 0, branchId: branchId };
   customerFormErrors.value = { name: '', phone: '', email: '' };
   showFormModal.value = true;
 };
 const editContact = (c) => {
-  selectedContact.value = { ...c, credit_limit: Number(c.credit_limit) || 0 };
+  selectedContact.value = { ...c, creditLimit: Number(c.creditLimit) || 0 };
   customerFormErrors.value = { name: '', phone: '', email: '' };
   showFormModal.value = true;
 };
@@ -559,8 +537,8 @@ const validateCustomerForm = () => {
   validateCustomerField('name');
   validateCustomerField('phone');
   validateCustomerField('email');
-  if (Number(selectedContact.value?.credit_limit) < 0) {
-    selectedContact.value.credit_limit = 0;
+  if (Number(selectedContact.value?.creditLimit) < 0) {
+    selectedContact.value.creditLimit = 0;
   }
   return !Object.values(customerFormErrors.value).some(Boolean);
 };
@@ -604,9 +582,9 @@ const openPaymentModal = (c) => {
       ? { ...pending.payload }
       : {
           amount: Number(c.balance) > 0 ? Number(c.balance) : null,
-          payment_date: getLocalDateISO(),
-          payment_method_id: null,
-          branch_id: branchStore.selectedBranchId || null,
+          paymentDate: getLocalDateISO(),
+          paymentMethodId: null,
+          branchId: branchStore.selectedBranchId || null,
           notes: '',
         };
     showPaymentModal.value = true;
@@ -618,16 +596,16 @@ const openPaymentModal = (c) => {
 const handlePaymentSubmit = async () => {
   if (isSubmittingCustomerPayment.value) return;
   if (!paymentData.value.amount || paymentData.value.amount <= 0) return showToast('ادخل مبلغ صحيح', 'error');
-  if (!paymentData.value.payment_method_id) return showToast('اختر طريقة الدفع', 'error');
-  if (!paymentData.value.payment_date) { showToast('الرجاء تحديد تاريخ الدفع', 'error'); return; }
+  if (!paymentData.value.paymentMethodId) return showToast('اختر طريقة الدفع', 'error');
+  if (!paymentData.value.paymentDate) { showToast('الرجاء تحديد تاريخ الدفع', 'error'); return; }
   isSubmittingCustomerPayment.value = true;
   try {
     const customerId = selectedContact.value?.id;
     const payload = {
       amount: Number(paymentData.value.amount),
-      payment_date: paymentData.value.payment_date,
-      payment_method_id: Number(paymentData.value.payment_method_id),
-      branch_id: paymentData.value.branch_id ? Number(paymentData.value.branch_id) : undefined,
+      paymentDate: paymentData.value.paymentDate,
+      paymentMethodId: Number(paymentData.value.paymentMethodId),
+      branchId: paymentData.value.branchId ? Number(paymentData.value.branchId) : undefined,
       notes: paymentData.value.notes || '',
     };
     const pending = pendingCustomerPayment.prepare(customerId, payload);

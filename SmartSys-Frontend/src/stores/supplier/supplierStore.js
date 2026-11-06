@@ -12,12 +12,11 @@ const nowMs = () => Date.now();
 
 export const useSupplierStore = defineStore('supplier', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     suppliers: 10 * 60 * 1000, // 10 دقائق (نادراً ما يتغير)
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const suppliers          = ref([]);
   const suppliersFetchedAt = ref(0);
   const suppliersInFlight  = ref(null);
@@ -28,11 +27,10 @@ export const useSupplierStore = defineStore('supplier', () => {
   const detailsCache          = ref({});
   const detailsCacheFetchedAt = ref({});
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
-  // ─── fetchSuppliers ───────────────────────────────────────────────────────
+  // fetchSuppliers
   /**
    * يجيب كل الموردين مع دعم جلب مورد معين بالـ id
    * الـ component يستخدمها هكذا:
@@ -82,7 +80,7 @@ export const useSupplierStore = defineStore('supplier', () => {
 
       const promise = (async () => {
         try {
-          const list = await listSuppliers({ per_page: 1000, ...params });
+          const list = await listSuppliers({ perPage: 1000, ...params });
           suppliers.value  = Array.isArray(list) ? list : (list?.items || []);
           suppliersFetchedAt.value = nowMs();
 
@@ -120,7 +118,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     }
   };
 
-  // ─── searchSuppliers ──────────────────────────────────────────────────────
+  // searchSuppliers
   /**
    * يبحث في الموردين محلياً لو البيانات موجودة، وإلا يكلم الـ API
    * الـ component يستخدمها هكذا:
@@ -169,7 +167,7 @@ export const useSupplierStore = defineStore('supplier', () => {
 
       // وإلا ابحث عبر الـ API
       try {
-        const list    = await listSuppliers({ q, per_page: 50 });
+        const list    = await listSuppliers({ q, perPage: 50 });
         const results = Array.isArray(list) ? list : (list?.items || []);
         searchCache.value[cacheKey]          = results;
         searchCacheFetchedAt.value[cacheKey] = nowMs();
@@ -198,7 +196,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     }
   };
 
-  // ─── getSupplierById ──────────────────────────────────────────────────────
+  // getSupplierById
   /**
    * يرجع المورد من الـ cache المحلي مباشرة (sync)
    * لو محتاج تجيبه من الـ API استخدم fetchSuppliers({ id })
@@ -206,7 +204,7 @@ export const useSupplierStore = defineStore('supplier', () => {
   const getSupplierById = (id) =>
     suppliers.value.find(s => String(s.id) === String(id));
 
-  // ─── createSupplier ───────────────────────────────────────────────────────
+  // createSupplier
   /**
    * ينشئ مورد جديد ويضيفه للـ cache المحلي
    * الـ component يستخدمها هكذا:
@@ -216,7 +214,7 @@ export const useSupplierStore = defineStore('supplier', () => {
   const createSupplier = async (payload) => {
     try {
       const response    = await createSupplierRequest(payload);
-      const newSupplier = response?.data?.data || response?.data;
+      const newSupplier = response?.data?.data;
 
       if (newSupplier) {
         suppliers.value.push(newSupplier);
@@ -238,7 +236,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     }
   };
 
-  // ─── updateSupplier ───────────────────────────────────────────────────────
+  // updateSupplier
   /**
    * يعدّل مورد ويحدّث الـ cache المحلي
    * الـ component يستخدمها هكذا:
@@ -248,7 +246,7 @@ export const useSupplierStore = defineStore('supplier', () => {
   const updateSupplier = async (id, payload) => {
     try {
       const response = await updateSupplierRequest(id, payload);
-      const updated  = response?.data?.data || response?.data || {};
+      const updated  = response?.data?.data || {};
 
       const idx = suppliers.value.findIndex(s => String(s.id) === String(id));
       if (idx !== -1) suppliers.value[idx] = { ...suppliers.value[idx], ...updated };
@@ -271,7 +269,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     }
   };
 
-  // ─── deleteSupplier ───────────────────────────────────────────────────────
+  // deleteSupplier
   /**
    * يحذف مورد ويمسحه من الـ cache المحلي
    * الـ component يستخدمها هكذا:
@@ -308,7 +306,7 @@ export const useSupplierStore = defineStore('supplier', () => {
 
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
-        data: response?.data?.data || response?.data || {},
+        data: response?.data?.data || {},
         message: response?.data?.message || null,
         outcomeUnknown: false,
       };
@@ -323,7 +321,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     }
   };
 
-  // ─── Cache Clearers ───────────────────────────────────────────────────────
+  // Cache Clearers
   const clear = () => {
     suppliers.value          = [];
     suppliersFetchedAt.value = 0;
@@ -339,7 +337,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     searchCacheFetchedAt.value = {};
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     suppliers,
@@ -354,7 +352,6 @@ export const useSupplierStore = defineStore('supplier', () => {
     updateSupplier,
     deleteSupplier,
     paySupplierDebt,
-
 
     // Cache
     clear,

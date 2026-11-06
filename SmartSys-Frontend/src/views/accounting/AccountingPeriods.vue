@@ -1,7 +1,6 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-indigo-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
@@ -21,7 +20,6 @@
         </template>
       </PageHeader>
 
-      <!-- System Status Banner: Professional Alert Style -->
       <transition name="fade">
         <div v-if="openPeriods.length === 0 && periods.length > 0" class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-4 shadow-sm animate-pulse-subtle">
           <div class="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-amber-500 shadow-sm border border-amber-100">
@@ -34,16 +32,13 @@
         </div>
       </transition>
 
-      <!-- Main Data Table Card -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative min-h-[400px]">
         
-        <!-- Loading State -->
         <div v-if="loading && periods.length === 0" class="p-20 text-center flex flex-col items-center">
           <BaseSpinner :size="32" color="#4f46e5" />
           <p class="text-xs font-bold text-slate-400 mt-4 uppercase tracking-widest">جاري جلب السجلات المالية...</p>
         </div>
 
-        <!-- Empty State -->
         <div v-else-if="periods.length === 0" class="py-32 text-center text-slate-300 flex flex-col items-center">
           <div class="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
             <i class="fas fa-calendar-times text-3xl"></i>
@@ -51,7 +46,6 @@
           <p class="text-xs font-bold uppercase tracking-widest leading-loose">لا توجد دورات محاسبية مضافة.<br>يرجى إنشاء أول دورة للبدء في ترحيل العمليات.</p>
         </div>
 
-        <!-- Period List Table -->
         <div v-else class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
             <thead>
@@ -69,11 +63,11 @@
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-3">
                     <div :class="[p.status === 'open' ? 'text-emerald-500' : 'text-slate-300']" class="w-2 h-2 rounded-full bg-current shadow-sm"></div>
-                    <span class="text-xs font-bold text-slate-900">{{ p.period_name }}</span>
+                    <span class="text-xs font-bold text-slate-900">{{ p.periodName }}</span>
                   </div>
                 </td>
-                <td class="px-4 py-4 text-center text-[10px] font-mono font-bold text-slate-500">{{ p.start_date }}</td>
-                <td class="px-4 py-4 text-center text-[10px] font-mono font-bold text-slate-500">{{ p.end_date }}</td>
+                <td class="px-4 py-4 text-center text-[10px] font-mono font-bold text-slate-500">{{ p.startDate }}</td>
+                <td class="px-4 py-4 text-center text-[10px] font-mono font-bold text-slate-500">{{ p.endDate }}</td>
                 <td class="px-4 py-4 text-center">
                   <span :class="[p.status === 'open' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100']" 
                         class="px-2 py-0.5 rounded text-[9px] font-bold border uppercase tracking-tighter">
@@ -81,7 +75,7 @@
                   </span>
                 </td>
                 <td class="px-4 py-4 text-center text-[9px] font-mono text-slate-400">
-                  {{ p.updated_at ? p.updated_at.slice(0,10) : '—' }}
+                  {{ p.updatedAt ? p.updatedAt.slice(0,10) : '—' }}
                 </td>
                 <td class="px-6 py-4">
                   <div class="flex items-center justify-center gap-2">
@@ -109,7 +103,6 @@
       </div>
     </div>
 
-    <!-- Create Modal: Refined Form UI -->
     <Teleport to="body">
       <transition name="fade">
         <div v-if="showCreate" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md" @click.self="showCreate = false">
@@ -125,16 +118,16 @@
             <div class="p-8 space-y-6">
               <div class="space-y-1.5">
                 <label class="metadata-label">مُسمى الدورة <span class="text-rose-500">*</span></label>
-                <input v-model="form.period_name" type="text" placeholder="مثال: الربع الأول 2025" class="filter-input-v2 h-10 font-bold" />
+                <input v-model="form.periodName" type="text" placeholder="مثال: الربع الأول 2025" class="filter-input-v2 h-10 font-bold" />
               </div>
               <div class="grid grid-cols-2 gap-4">
                 <div class="space-y-1.5">
                   <label class="metadata-label">تاريخ البداية <span class="text-rose-500">*</span></label>
-                  <input v-model="form.start_date" type="date" class="filter-input-v2 h-10 font-mono" />
+                  <input v-model="form.startDate" type="date" class="filter-input-v2 h-10 font-mono" />
                 </div>
                 <div class="space-y-1.5">
                   <label class="metadata-label">تاريخ النهاية <span class="text-rose-500">*</span></label>
-                  <input v-model="form.end_date" type="date" class="filter-input-v2 h-10 font-mono" />
+                  <input v-model="form.endDate" type="date" class="filter-input-v2 h-10 font-mono" />
                 </div>
               </div>
             </div>
@@ -156,7 +149,6 @@
       </transition>
     </Teleport>
 
-    <!-- Confirm Close Modal -->
     <Teleport to="body">
       <transition name="fade">
         <div v-if="closeTarget" class="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md" @click.self="closeTarget = null">
@@ -167,7 +159,7 @@
             <div>
               <h3 class="text-base font-bold text-slate-900 uppercase">تأكيد إغلاق الفترة</h3>
               <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">
-                سيتم إغلاق <strong class="text-slate-700">{{ closeTarget?.period_name }}</strong> نهائياً.<br>
+                سيتم إغلاق <strong class="text-slate-700">{{ closeTarget?.periodName }}</strong> نهائياً.<br>
                 لن يُسمح بتعديل أو إضافة أي قيود مالية ضمن هذا النطاق الزمني.
               </p>
             </div>
@@ -188,7 +180,6 @@
       </transition>
     </Teleport>
 
-    <!-- Global Toast Notifications -->
     <Teleport to="body">
       <transition name="slide-up">
         <div v-if="toast.show" :class="[toast.type === 'success' ? 'bg-slate-900 border-emerald-500' : 'bg-rose-600 border-white/20']"
@@ -203,16 +194,13 @@
 </template>
 
 <script setup>
-// [SCRIPT SECTION REMAINS 100% IDENTICAL TO THE ORIGINAL AS PER BUSINESS LOGIC RULE]
 import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
-import { useAuthStore } from '@/stores/auth/authStore'
+import accountingPeriodsService from '@/services/accountingPeriods'
+import logger from '@/utils/services/logger'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue'
 import LoadingButton from '@/components/ui/LoadingButton.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import AlertService from '@/services/AlertService'
-
-const authStore = useAuthStore()
 
 const periods   = ref([])
 const loading   = ref(false)
@@ -220,7 +208,7 @@ const saving    = ref(false)
 const showCreate = ref(false)
 const closeTarget = ref(null)
 
-const form = ref({ period_name: '', start_date: '', end_date: '' })
+const form = ref({ periodName: '', startDate: '', endDate: '' })
 const toast = ref({ show: false, message: '', type: 'success' })
 
 const openPeriods = computed(() => periods.value.filter(p => p.status === 'open'))
@@ -230,22 +218,17 @@ const showToast = (message, type = 'success') => {
   setTimeout(() => { toast.value.show = false }, 3500)
 }
 
-const api = () => axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/smartsys/api/v1',
-  headers: { Authorization: `Bearer ${authStore.token}`, 'X-Tenant-ID': authStore.tenantId }
-})
-
 const load = async () => {
   loading.value = true
   try {
-    const res = await api().get('/accounting-periods')
+    const res = await accountingPeriodsService.list()
     let resData = res.data
     if (typeof resData === 'string') {
       try { resData = JSON.parse(resData) } catch { resData = {} }
     }
     const raw = resData?.data ?? resData ?? []
     periods.value = Array.isArray(raw) ? raw : []
-    if (!Array.isArray(raw)) console.error('Unexpected response format:', raw)
+    if (!Array.isArray(raw)) logger.error('Unexpected accounting periods response format')
   } catch (e) {
     periods.value = []
     showToast(e?.response?.data?.message || 'تعذر تحميل الدورات', 'error')
@@ -253,15 +236,15 @@ const load = async () => {
 }
 
 const doCreate = async () => {
-  if (!form.value.period_name || !form.value.start_date || !form.value.end_date) {
+  if (!form.value.periodName || !form.value.startDate || !form.value.endDate) {
     showToast('يرجى تعبئة جميع الحقول المطلوبة', 'error'); return
   }
   saving.value = true
   try {
-    await api().post('/accounting-periods', form.value)
+    await accountingPeriodsService.create(form.value)
     showToast('تم إنشاء الدورة المحاسبية بنجاح')
     showCreate.value = false
-    form.value = { period_name: '', start_date: '', end_date: '' }
+    form.value = { periodName: '', startDate: '', endDate: '' }
     await load()
   } catch (e) {
     showToast(e?.response?.data?.message || 'فشل الإنشاء', 'error')
@@ -273,7 +256,7 @@ const confirmClose = (p) => { closeTarget.value = p }
 const doClose = async (id) => {
   saving.value = true
   try {
-    await api().put(`/accounting-periods/${id}/close`)
+    await accountingPeriodsService.close(id)
     showToast('تم إغلاق الدورة المحاسبية')
     closeTarget.value = null
     await load()
@@ -290,7 +273,7 @@ const doReopen = async (id) => {
   )
   if (!confirmed) return
   try {
-    await api().put(`/accounting-periods/${id}/reopen`)
+    await accountingPeriodsService.reopen(id)
     showToast('تم إعادة فتح الدورة')
     await load()
   } catch (e) {
@@ -306,7 +289,7 @@ const doDelete = async (id) => {
   )
   if (!confirmed) return
   try {
-    await api().delete(`/accounting-periods/${id}`)
+    await accountingPeriodsService.delete(id)
     showToast('تم الحذف')
     await load()
   } catch (e) {

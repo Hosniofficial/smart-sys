@@ -21,13 +21,13 @@ export const returnsService = {
 
   getInvoiceItems(type, invoiceId) {
     return apiClient.get('/returns/invoice-items', {
-      params: { type, invoice_id: invoiceId },
+      params: { type, invoiceId: invoiceId },
     });
   },
 
   getReturnedQuantities(type, invoiceId) {
     return apiClient.get('/returns/returned-qty', {
-      params: { type, invoice_id: invoiceId },
+      params: { type, invoiceId: invoiceId },
     });
   },
 

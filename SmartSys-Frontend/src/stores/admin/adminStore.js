@@ -95,9 +95,9 @@ export const useAdminStore = defineStore('admin', () => {
     actionLoading.value = true;
     try {
       const body = {
-        new_plan: newPlan,
+        newPlan: newPlan,
         prorate,
-        extend_period: extendPeriod
+        extendPeriod: extendPeriod
       };
       const response = await adminService.changeSubscriptionPlan(id, body);
       return {
@@ -163,7 +163,7 @@ export const useAdminStore = defineStore('admin', () => {
       const response = await adminService.listPlans();
       // API returns { data: { items: [...] } }
       const plansList = response.data?.data?.items || response.data?.data || [];
-      const plans = Array.isArray(plansList) ? plansList.map(p => ({ ...p, is_active: Number(p.is_active) })) : [];
+      const plans = Array.isArray(plansList) ? plansList.map(p => ({ ...p, isActive: Number(p.isActive) })) : [];
       return {
         status: 'success',
         data: plans,

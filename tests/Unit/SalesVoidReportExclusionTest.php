@@ -111,21 +111,21 @@ final class SalesVoidReportExclusionTest extends TestCase
 
         self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
         self::assertSame('success', $body['status'] ?? null);
-        self::assertEquals(5200, $body['data']['revenue']['total_revenue']);
-        self::assertEquals(1000, $body['data']['revenue']['returns_cogs']);
-        self::assertEquals(4000, $body['data']['revenue']['net_cogs']);
+        self::assertEquals(5200, $body['data']['revenue']['totalRevenue']);
+        self::assertEquals(1000, $body['data']['revenue']['returnsCogs']);
+        self::assertEquals(4000, $body['data']['revenue']['netCogs']);
         self::assertEquals(4000, $body['data']['revenue']['cogs']);
-        self::assertEquals(1200, $body['data']['revenue']['gross_profit']);
-        self::assertEquals(1200, $body['data']['summary']['net_profit']);
-        self::assertSame('costing_engine_wac', $body['data']['revenue']['cogs_source']);
-        self::assertSame('2026-10-01', $body['data']['period']['start_date']);
-        self::assertSame('2026-10-09', $body['data']['period']['end_date']);
+        self::assertEquals(1200, $body['data']['revenue']['grossProfit']);
+        self::assertEquals(1200, $body['data']['summary']['netProfit']);
+        self::assertSame('costing_engine_wac', $body['data']['revenue']['cogsSource']);
+        self::assertSame('2026-10-01', $body['data']['period']['startDate']);
+        self::assertSame('2026-10-09', $body['data']['period']['endDate']);
 
         $db->exec('UPDATE journal_entry_lines SET credit_amount = 6000 WHERE id = 2');
         $zeroBalanceResponse = (new AdvancedReportsHandler($db))->getProfitLossReport($request, new Response());
         $zeroBalanceBody = json_decode((string) $zeroBalanceResponse->getBody(), true);
 
-        self::assertSame('costing_engine_wac', $zeroBalanceBody['data']['revenue']['cogs_source']);
+        self::assertSame('costing_engine_wac', $zeroBalanceBody['data']['revenue']['cogsSource']);
         self::assertEquals(4000, $zeroBalanceBody['data']['revenue']['cogs']);
     }
 
@@ -194,8 +194,8 @@ final class SalesVoidReportExclusionTest extends TestCase
 
         self::assertSame(200, $response->getStatusCode());
         self::assertSame('success', $body['status'] ?? null);
-        self::assertEquals(100, $body['data']['revenue']['total_revenue']);
+        self::assertEquals(100, $body['data']['revenue']['totalRevenue']);
         self::assertEquals(10, $body['data']['revenue']['cogs']);
-        self::assertEquals(90, $body['data']['summary']['net_profit']);
+        self::assertEquals(90, $body['data']['summary']['netProfit']);
     }
 }

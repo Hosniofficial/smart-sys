@@ -6,12 +6,11 @@ const nowMs = () => Date.now();
 
 export const usePaymentStore = defineStore('payment', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     paymentMethods: 10 * 60 * 1000, // 10 دقائق
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const paymentMethods          = ref([]);
   const paymentMethodsFetchedAt = ref(0);
   const paymentMethodsInFlight  = ref(null);
@@ -19,7 +18,6 @@ export const usePaymentStore = defineStore('payment', () => {
   const searchCache          = ref({});
   const searchCacheFetchedAt = ref({});
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
@@ -31,7 +29,7 @@ export const usePaymentStore = defineStore('payment', () => {
     return [];
   };
 
-  // ─── fetchPaymentMethods ──────────────────────────────────────────────────
+  // fetchPaymentMethods
   /**
    * يجيب طرق الدفع المتاحة مع caching
    * الـ component يستخدمها هكذا:
@@ -93,7 +91,7 @@ export const usePaymentStore = defineStore('payment', () => {
     }
   };
 
-  // ─── fetchPayments ────────────────────────────────────────────────────────
+  // fetchPayments
   /**
    * يجيب سجل الدفعات/المقبوضات لعميل أو مورد
    * الـ component يستخدمها هكذا:
@@ -112,11 +110,11 @@ export const usePaymentStore = defineStore('payment', () => {
     try {
       const isContactRequest = Boolean(contactId && contactType);
       const endpoint = contactType === 'customers' ? '/receipts' : '/payments';
-      const idKey = contactType === 'customers' ? 'customer_id' : 'supplier_id';
+      const idKey = contactType === 'customers' ? 'customerId' : 'supplierId';
       const params = {
         ...queryParams,
         page: String(queryParams.page ?? page),
-        per_page: String(queryParams.per_page ?? perPage),
+        perPage: String(queryParams.perPage ?? perPage),
       };
       if (isContactRequest) params[idKey] = String(contactId);
 
@@ -133,20 +131,19 @@ export const usePaymentStore = defineStore('payment', () => {
       }
 
       const response = await paymentService.getPayments(endpoint, params, signal);
-      const raw      = response?.data?.data ?? response?.data ?? {};
+      const raw      = response?.data?.data ?? {};
       const list     = Array.isArray(raw) ? raw : (raw.items || []);
+      const responseMeta = response?.data?.meta || {};
 
       const filteredList = isContactRequest
         ? list.filter(item => String(item[idKey]) === String(contactId))
         : list;
-      const responseMeta = raw.meta || {};
 
       const structuredResponse = {
         items:   filteredList,
-        total:   parseInt(responseMeta.total ?? raw.total ?? raw.count ?? list.length) || 0,
+        total:   parseInt(responseMeta.total ?? list.length) || 0,
         page:    parseInt(responseMeta.page ?? params.page) || 1,
-        per_page: parseInt(responseMeta.per_page ?? params.per_page) || 50,
-        perPage: parseInt(responseMeta.per_page ?? params.per_page) || 50,
+        perPage: parseInt(responseMeta.perPage ?? params.perPage) || 50,
         meta: responseMeta,
       };
 
@@ -168,7 +165,7 @@ export const usePaymentStore = defineStore('payment', () => {
     }
   };
 
-  // ─── createPaymentMethod ──────────────────────────────────────────────────
+  // createPaymentMethod
   /**
    * ينشئ طريقة دفع جديدة ويحدّث الـ cache
    * الـ component يستخدمها هكذا:
@@ -195,7 +192,7 @@ export const usePaymentStore = defineStore('payment', () => {
     }
   };
 
-  // ─── updatePaymentMethodKind ──────────────────────────────────────────────
+  // updatePaymentMethodKind
   /**
    * يحدّث نوع طريقة الدفع والحساب المحاسبي ويحدّث الـ cache
    * الـ component يستخدمها هكذا:
@@ -222,7 +219,7 @@ export const usePaymentStore = defineStore('payment', () => {
     }
   };
 
-  // ─── Computed Getters ─────────────────────────────────────────────────────
+  // Computed Getters
   const methodsByKind = computed(() => ({
     cash:   paymentMethods.value.filter(m => m.kind === 'cash'),
     credit: paymentMethods.value.filter(m => m.kind === 'credit'),
@@ -237,7 +234,7 @@ export const usePaymentStore = defineStore('payment', () => {
   const getPaymentMethodById = (id) =>
     computed(() => paymentMethods.value.find(m => String(m.id) === String(id)));
 
-  // ─── Cache Clearers ───────────────────────────────────────────────────────
+  // Cache Clearers
   const clear = () => {
     paymentMethods.value          = [];
     paymentMethodsFetchedAt.value = 0;
@@ -251,7 +248,7 @@ export const usePaymentStore = defineStore('payment', () => {
     searchCacheFetchedAt.value = {};
   };
 
-  // ─── Export to CSV ────────────────────────────────────────────────────────
+  // Export to CSV
   const exportToCsv = (filename, rows) => {
     const headers = Object.keys(rows[0] || {});
     const csv = [
@@ -277,7 +274,7 @@ export const usePaymentStore = defineStore('payment', () => {
     document.body.removeChild(link);
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     paymentMethods,

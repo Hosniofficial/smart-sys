@@ -4,7 +4,6 @@ import branchesService from '@/services/branches';
 
 export const useBranchStore = defineStore('branch', () => {
 
-  // ─── State ────────────────────────────────────────────────────────────────
   //
   // selectedBranchId semantics (IMPORTANT - read before modifying):
   //   null  → "All Branches" — no branch filter, admin sees all data
@@ -16,7 +15,7 @@ export const useBranchStore = defineStore('branch', () => {
   //   absent/null   → first-time user, auto-assign default branch
   //
   // Rules:
-  //   • Non-exempt users are ALWAYS locked to authStore.user.branch_id
+  //   • Non-exempt users are ALWAYS locked to authStore.user.branchId
   //   • Exempt (admin/manager) users can switch between specific or null
   //   • Pages that REQUIRE a branch (POS, ProductManagement) use setTemporaryBranch()
   //     so they don't override the global 'all' preference in localStorage
@@ -26,27 +25,25 @@ export const useBranchStore = defineStore('branch', () => {
   const error            = ref(null);
   let initialized        = false;
 
-  // ─── Cache Management ─────────────────────────────────────────────────────
+  // Cache Management
   let cacheTimestamp     = null;
   let ongoingFetchPromise = null;
   const CACHE_TTL_MS     = 5 * 60 * 1000; // 5 minutes
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const resolveDefaultBranchId = (list) => {
     if (!Array.isArray(list) || list.length === 0) return null;
     const active = list.find(b =>
       b?.active === 1    || b?.active === true ||
-      b?.is_active === 1 || b?.is_active === true
+      b?.isActive === 1 || b?.isActive === true
     );
     return (active || list[0])?.id ?? null;
   };
 
-  // ─── Computed ─────────────────────────────────────────────────────────────
   const selectedBranch = computed(() =>
     branches.value.find(b => String(b.id) === String(selectedBranchId.value))
   );
 
-  // ─── fetchBranches ────────────────────────────────────────────────────────
+  // fetchBranches
   /**
    * Fetches all available branches with caching, deduplication, and force refresh.
    * 
@@ -83,7 +80,7 @@ export const useBranchStore = defineStore('branch', () => {
     ongoingFetchPromise = (async () => {
       try {
         const response = await branchesService.list();
-        const raw      = response.data?.data ?? response.data ?? [];
+        const raw      = response.data?.data ?? [];
         branches.value = Array.isArray(raw) ? raw : (raw?.items || []);
         cacheTimestamp = Date.now(); // ✅ Update cache timestamp
 
@@ -129,21 +126,21 @@ export const useBranchStore = defineStore('branch', () => {
   const fetchBranchTransfers = async (branchId) => {
     if (!branchId) throw new Error('Branch ID is required');
     const response = await branchesService.listBranchTransfers(branchId);
-    const data = response?.data?.data ?? response?.data ?? [];
+    const data = response?.data?.data ?? [];
     return Array.isArray(data) ? data : (Array.isArray(data?.items) ? data.items : []);
   };
 
   const fetchStockTransfers = async (branchId) => {
     if (!branchId) throw new Error('Branch ID is required');
     const response = await branchesService.listStockTransfers(branchId);
-    const data = response?.data?.data ?? response?.data ?? [];
+    const data = response?.data?.data ?? [];
     return Array.isArray(data) ? data : (Array.isArray(data?.items) ? data.items : []);
   };
 
   const fetchStockTransfer = async (transferId) => {
     if (!transferId) throw new Error('Transfer ID is required');
     const response = await branchesService.getStockTransfer(transferId);
-    return response?.data?.data ?? response?.data ?? null;
+    return response?.data?.data ?? null;
   };
 
   /**
@@ -152,7 +149,7 @@ export const useBranchStore = defineStore('branch', () => {
    */
   const refreshBranches = () => fetchBranches(true);
 
-  // ─── setSelectedBranch ────────────────────────────────────────────────────
+  // setSelectedBranch
   /**
    * يختار فرع معين ويحفظه في localStorage
    * الـ component يستخدمها هكذا:
@@ -187,7 +184,7 @@ export const useBranchStore = defineStore('branch', () => {
     return true;
   };
 
-  // ─── loadFromStorage ──────────────────────────────────────────────────────
+  // loadFromStorage
   /**
    * يحمّل الفرع المختار من localStorage عند بدء التطبيق
    */
@@ -206,7 +203,7 @@ export const useBranchStore = defineStore('branch', () => {
     }
   };
 
-  // ─── setTemporaryBranch ──────────────────────────────────────────────────
+  // setTemporaryBranch
   /**
    * Sets a branch for the current session WITHOUT persisting to localStorage.
    * Use this in pages that REQUIRE a branch (POS, ProductManagement) to avoid
@@ -221,11 +218,11 @@ export const useBranchStore = defineStore('branch', () => {
     return false;
   };
 
-  // ─── hasAccessToBranch ────────────────────────────────────────────────────
+  // hasAccessToBranch
   const hasAccessToBranch = (branchId) =>
     branches.value.some(b => String(b.id) === String(branchId));
 
-  // ─── createBranch ─────────────────────────────────────────────────────────
+  // createBranch
   /**
    * ينشئ فرع جديد ويضيفه للـ cache المحلي
    * الـ component يستخدمها هكذا:
@@ -235,7 +232,7 @@ export const useBranchStore = defineStore('branch', () => {
   const createBranch = async (payload) => {
     try {
       const response = await branchesService.create(payload);
-      const responseData = response?.data?.data || response?.data;
+      const responseData = response?.data?.data;
 
       // Merge payload (has name/location/etc.) with response data (has id/account_id)
       // Backend only returns { id, account_id, account_code } — not the full branch
@@ -263,7 +260,7 @@ export const useBranchStore = defineStore('branch', () => {
     }
   };
 
-  // ─── updateBranch ─────────────────────────────────────────────────────────
+  // updateBranch
   /**
    * يعدّل فرع ويحدّث الـ cache المحلي
    * الـ component يستخدمها هكذا:
@@ -273,7 +270,7 @@ export const useBranchStore = defineStore('branch', () => {
   const updateBranch = async (id, payload) => {
     try {
       const response = await branchesService.update(id, payload);
-      const updated  = response?.data?.data || response?.data;
+      const updated  = response?.data?.data;
 
       const index = branches.value.findIndex(b => String(b.id) === String(id));
       if (index >= 0) {
@@ -296,7 +293,7 @@ export const useBranchStore = defineStore('branch', () => {
     }
   };
 
-  // ─── deleteBranch ─────────────────────────────────────────────────────────
+  // deleteBranch
   /**
    * يحذف فرع ويحدّث الـ cache المحلي + يعالج حالة الفرع المختار
    * الـ component يستخدمها هكذا:
@@ -333,7 +330,7 @@ export const useBranchStore = defineStore('branch', () => {
     }
   };
 
-  // ─── initialize ───────────────────────────────────────────────────────────
+  // initialize
   /**
    * يُشغَّل مرة واحدة عند إنشاء الـ store
    */
@@ -344,7 +341,7 @@ export const useBranchStore = defineStore('branch', () => {
     if (branches.value.length === 0) await fetchBranches();
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     branches,

@@ -5,7 +5,6 @@ import approvalsService from '@/services/approvals';
 const nowMs = () => Date.now();
 
 export const useApprovalsStore = defineStore('approvals', () => {
-  // ─── State ────────────────────────────────────────────────────────
   const pendingApprovals = ref([]);
   const approvalCache = ref(null);
   const approvalCacheTTL = 2 * 60 * 1000; // 2 minutes
@@ -15,7 +14,6 @@ export const useApprovalsStore = defineStore('approvals', () => {
   const loading = ref(false);
   const error = ref(null);
 
-  // ─── Computed ─────────────────────────────────────────────────────
   const totalApprovals = computed(() => pendingApprovals.value.length);
   const approvalsByStatus = computed(() => {
     return {
@@ -25,9 +23,9 @@ export const useApprovalsStore = defineStore('approvals', () => {
     };
   });
 
-  // ─── List Pending Approvals ───────────────────────────────────────
+  // List Pending Approvals
   const listPending = async (params = {}, options = {}) => {
-    const cacheKey = `pending_${params.page || 1}_${params.limit || 20}_${params.branch_id || 'all'}`;
+    const cacheKey = `pending_${params.page || 1}_${params.limit || 20}_${params.branchId || 'all'}`;
     
     if (inFlightRequests.value[cacheKey]) {
       return inFlightRequests.value[cacheKey];
@@ -38,7 +36,7 @@ export const useApprovalsStore = defineStore('approvals', () => {
         status: 'success',
         data: approvalCache.value.data,
         message: null,
-        pagination: approvalCache.value.pagination
+        meta: approvalCache.value.meta
       };
     }
 
@@ -52,22 +50,22 @@ export const useApprovalsStore = defineStore('approvals', () => {
         const items = Array.isArray(inner)
           ? inner
           : Array.isArray(inner?.items) ? inner.items : [];
-        const pagination = inner?.pagination || data?.pagination || {};
+        const pagination = data?.meta || {};
 
         const result = {
           status: 'success',
           data: items,
           message: null,
-          pagination
+          meta: pagination
         };
 
         pendingApprovals.value = result.data;
-        totalPages.value = pagination?.last_page || pagination?.total_pages || 1;
-        currentPage.value = pagination?.current_page || 1;
+        totalPages.value = pagination?.lastPage || pagination?.totalPages || 1;
+        currentPage.value = pagination?.currentPage || 1;
 
         approvalCache.value = {
           data: result.data,
-          pagination: result.pagination,
+          meta: result.meta,
           timestamp: nowMs()
         };
 
@@ -78,7 +76,7 @@ export const useApprovalsStore = defineStore('approvals', () => {
           status: 'error',
           data: null,
           message: error.value,
-          pagination: {}
+          meta: {}
         };
       } finally {
         loading.value = false;
@@ -90,12 +88,12 @@ export const useApprovalsStore = defineStore('approvals', () => {
     return promise;
   };
 
-  // ─── Approve ──────────────────────────────────────────────────────
+  // Approve
   const approve = async (approvalId, note = '', paymentOverride = {}) => {
     try {
       const payload = { note };
-      if (paymentOverride.payment_method_id) payload.payment_method_id = paymentOverride.payment_method_id;
-      if (paymentOverride.paid_amount != null) payload.paid_amount = paymentOverride.paid_amount;
+      if (paymentOverride.paymentMethodId) payload.paymentMethodId = paymentOverride.paymentMethodId;
+      if (paymentOverride.paidAmount != null) payload.paidAmount = paymentOverride.paidAmount;
 
       const { data } = await approvalsService.approve(approvalId, payload);
 
@@ -116,7 +114,7 @@ export const useApprovalsStore = defineStore('approvals', () => {
     }
   };
 
-  // ─── Reject ───────────────────────────────────────────────────────
+  // Reject
   const reject = async (approvalId, note = '') => {
     try {
       const { data } = await approvalsService.reject(approvalId, note);
@@ -138,7 +136,7 @@ export const useApprovalsStore = defineStore('approvals', () => {
     }
   };
 
-  // ─── Clear Cache ──────────────────────────────────────────────────
+  // Clear Cache
   const clearCache = () => {
     approvalCache.value = null;
     inFlightRequests.value = {};

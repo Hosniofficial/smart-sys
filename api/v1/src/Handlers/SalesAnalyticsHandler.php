@@ -675,7 +675,7 @@ class SalesAnalyticsHandler extends BaseHandler
             // This is an internal calculation; don't write its JSON body into the API response.
             $breakdownResp = $this->breakdownSalesPayments($breakdownReq, new \Slim\Psr7\Response());
             $breakdownData = json_decode($breakdownResp->getBody()->__toString(), true)['data'] ?? [];
-            $cashInDrawer  = (float) ($breakdownData['cash_drawer'] ?? 0);
+            $cashInDrawer  = (float) ($breakdownData['cashDrawer'] ?? 0);
 
             $stmt = $this->db->prepare("SELECT DATE(" . SaleWorkflowPolicy::REPORT_DATE_SQL . ") as date, COUNT(DISTINCT s.id) as total_orders, SUM(si.quantity) as total_items, SUM(COALESCE(si.net_total, si.quantity * si.sale_price)) as total_revenue FROM sales s JOIN sales_items si ON si.sale_id = s.id AND si.tenant_id = s.tenant_id JOIN products p ON p.id = si.product_id AND p.tenant_id = s.tenant_id {$clauseSales} GROUP BY DATE(" . SaleWorkflowPolicy::REPORT_DATE_SQL . ") ORDER BY DATE(" . SaleWorkflowPolicy::REPORT_DATE_SQL . ") DESC");
             $stmt->execute($paramsSales);

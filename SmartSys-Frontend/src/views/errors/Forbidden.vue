@@ -35,7 +35,6 @@ import { useRouter, useRoute } from 'vue-router'
 import { computed } from 'vue'
 import ErrorPageLayout from '@/components/errors/ErrorPageLayout.vue'
 
-// --- Logic (STRICTLY PRESERVED) ---
 const router = useRouter()
 const route = useRoute()
 

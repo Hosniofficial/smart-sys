@@ -23,7 +23,7 @@ return function (RouteCollectorProxy $group, Container $container): void {
 
     $group->group('/branches', function (RouteCollectorProxy $group) use ($handler, $reportH, $adjustH, $transferH, $db) {
 
-        // ── Static routes FIRST ───────────────────────────────────────────
+        // Static routes FIRST
         $group->get('', [$handler, 'listWithAggregates'])
             ->add(PermissionMiddleware::require(Permissions::BRANCH_VIEW, $db));
 
@@ -54,7 +54,7 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->post('/adjustments/bulk/csv', [$adjustH, 'bulkAdjustmentsCsv'])
             ->add(PermissionMiddleware::require(Permissions::INVENTORY_ADJUST, $db));
 
-        // ── Variable routes AFTER ─────────────────────────────────────────
+        // Variable routes AFTER
         $group->get('/{id}/stock', [$reportH, 'getBranchStock'])
             ->add(PermissionMiddleware::require(Permissions::INVENTORY_VIEW, $db));
 
@@ -68,7 +68,7 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->post('/{id}/adjustments', [$adjustH, 'adjustStockQuantity'])
             ->add(PermissionMiddleware::require(Permissions::INVENTORY_ADJUST, $db));
 
-        // ── Branch CRUD ───────────────────────────────────────────────────
+        // Branch CRUD
         $group->post('', [$handler, 'createBranch'])
             ->add(PermissionMiddleware::require(Permissions::BRANCH_CREATE, $db));
 

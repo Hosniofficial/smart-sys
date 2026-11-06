@@ -1089,7 +1089,6 @@ class PurchasesHandler extends BaseHandler
         }
     }
 
-
     /** Cancel an invoice through the purchase service while preserving its source record. */
     public function delete(Request $request, Response $response, array $args = []): Response
     {

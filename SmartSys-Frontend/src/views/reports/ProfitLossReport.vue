@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header Area -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="تقرير الأرباح والخسائر"
@@ -31,7 +29,6 @@
 
       <main class="space-y-8">
 
-      <!-- Smart Filters Panel: Utility Grid -->
       <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
         <div class="p-6 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
           
@@ -62,7 +59,6 @@
             </div>
           </div>
 
-          <!-- Comparison Toggle: High Contrast SaaS Pattern -->
           <div class="shrink-0 pb-1">
             <label class="flex items-center gap-3 px-5 h-11 bg-slate-900 text-white rounded-xl cursor-pointer hover:bg-black transition-all shadow-lg shadow-slate-200 border border-white/5 group">
               <div class="flex flex-col text-right">
@@ -107,7 +103,6 @@
         </p>
       </section>
 
-      <!-- Summary Performance KPIs: Metric Blocks -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div v-for="card in summaryCards" :key="card.title" class="bg-white border border-slate-200 p-6 rounded-xl flex items-center justify-between group hover:border-slate-300 transition-all shadow-sm border-r-4" :class="[card.value >= 0 || card.title.includes('المصروفات') ? 'border-r-slate-200' : 'border-r-rose-500']">
           <div class="space-y-3">
@@ -128,10 +123,8 @@
         </div>
       </section>
 
-      <!-- Analytics Visualizer -->
       <section class="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        <!-- Trend Chart (8/12) -->
         <div class="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden group">
           <div class="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full -translate-x-8 -translate-y-8 group-hover:scale-110 transition-transform duration-1000"></div>
           
@@ -154,7 +147,6 @@
           </div>
         </div>
 
-        <!-- Expense Composition (4/12) -->
         <div class="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden group">
           <div class="flex flex-col items-center justify-center mb-8 px-1">
               <h2 class="text-xs font-bold text-slate-900 uppercase tracking-widest self-start flex items-center gap-2">
@@ -167,7 +159,6 @@
         </div>
       </section>
 
-      <!-- Detailed P&L Statement: Professional Financial View -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative min-h-[500px]">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
            <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
@@ -182,7 +173,6 @@
 
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
-            <!-- 1. Revenue Section -->
             <thead class="bg-emerald-50/20 border-y border-emerald-100">
               <tr>
                 <th colspan="3" class="px-8 py-3 text-[11px] font-bold text-emerald-800 uppercase tracking-widest">
@@ -216,7 +206,6 @@
               </tr>
             </tfoot>
 
-            <!-- 2. COGS Section -->
             <thead class="bg-amber-50/20 border-y border-amber-100">
               <tr>
                 <th colspan="3" class="px-8 py-3 text-[11px] font-bold text-amber-800 uppercase tracking-widest">
@@ -247,7 +236,6 @@
               </tr>
             </tfoot>
 
-            <!-- 3. Expenses Section -->
             <thead class="bg-rose-50/20 border-y border-rose-100">
               <tr>
                 <th colspan="3" class="px-8 py-3 text-[11px] font-bold text-rose-800 uppercase tracking-widest">
@@ -278,7 +266,6 @@
               </tr>
             </tfoot>
 
-            <!-- 4. Final Bottom Line -->
             <tfoot class="bg-slate-900 text-white font-black">
               <tr>
                 <td class="px-8 py-8 text-base uppercase tracking-widest flex items-center gap-3">
@@ -406,21 +393,21 @@ const mapApiToPeriodData = (apiData) => {
     let data = apiData;
     if (data && data.data) data = data.data;
     if (data && data.data) data = data.data;
-    const expensesRaw = data?.account_transactions || data?.expenses || [];
-    const expenses = expensesRaw.map(e => ({ name: e.expense_category || e.name || 'مصروفات أخرى', amount: Number(e.total ?? e.amount ?? 0) }));
-    const totalRevenue = Number(data?.revenue?.total_revenue ?? data?.summary?.total_revenue ?? 0);
-    const grossProfit = Number(data?.revenue?.gross_profit ?? data?.summary?.gross_profit ?? 0);
+    const expensesRaw = data?.accountTransactions || data?.expenses || [];
+    const expenses = expensesRaw.map(e => ({ name: e.expenseCategory || e.name || 'مصروفات أخرى', amount: Number(e.total ?? e.amount ?? 0) }));
+    const totalRevenue = Number(data?.revenue?.totalRevenue ?? data?.summary?.totalRevenue ?? 0);
+    const grossProfit = Number(data?.revenue?.grossProfit ?? data?.summary?.grossProfit ?? 0);
     const cogs = Number(data?.revenue?.cogs ?? data?.summary?.cogs ?? 0);
-    const totalExpenses = Number(data?.summary?.total_expenses ?? 0);
-    const netProfit = Number(data?.summary?.net_profit ?? 0);
+    const totalExpenses = Number(data?.summary?.totalExpenses ?? 0);
+    const netProfit = Number(data?.summary?.netProfit ?? 0);
     const returnsCostUnresolvedLineCount = Number(
-        data?.revenue?.returns_cost_unresolved_line_count
-        ?? data?.summary?.returns_cost_unresolved_line_count
+        data?.revenue?.returnsCostUnresolvedLineCount
+        ?? data?.summary?.returnsCostUnresolvedLineCount
         ?? 0
     );
     const returnsCostUnresolvedQuantity = Number(
-        data?.revenue?.returns_cost_unresolved_quantity
-        ?? data?.summary?.returns_cost_unresolved_quantity
+        data?.revenue?.returnsCostUnresolvedQuantity
+        ?? data?.summary?.returnsCostUnresolvedQuantity
         ?? 0
     );
     const revenue = [{ name: 'إجمالي الإيرادات التشغيلية', amount: totalRevenue }];

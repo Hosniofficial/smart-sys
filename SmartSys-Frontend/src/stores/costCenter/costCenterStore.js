@@ -19,7 +19,7 @@ export const useCostCenterStore = defineStore('costCenter', () => {
     error.value = null;
     try {
       const response = await listCostCenters();
-      costCenters.value = response.data?.data || response.data || [];
+      costCenters.value = response.data?.data || [];
       
       // Auto-select first cost center if none selected
       if (costCenters.value.length > 0 && !selectedCostCenterId.value) {

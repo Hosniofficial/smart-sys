@@ -3,7 +3,6 @@
     
     <div class="max-w-4xl mx-auto space-y-12">
       
-      <!-- Header: Minimal & Professional -->
       <header class="text-center space-y-2 mb-12">
         <div class="w-16 h-16 bg-slate-900 rounded-xl flex items-center justify-center text-white mx-auto mb-6 shadow-xl shadow-slate-200 transform hover:scale-105 transition-transform duration-500">
           <i class="fas fa-rocket text-2xl"></i>
@@ -12,7 +11,6 @@
         <p class="text-slate-400 font-medium text-sm">لنقم بضبط القواعد الأساسية لنظامك المحاسبي في خطوات بسيطة.</p>
       </header>
 
-      <!-- Multi-step Progress Bar: Refined SaaS Style -->
       <nav class="relative flex justify-between items-center max-w-2xl mx-auto mb-16 px-4">
         <div class="absolute top-1/2 left-0 w-full h-0.5 bg-slate-200 -translate-y-1/2 z-0"></div>
         <div 
@@ -41,10 +39,8 @@
         </div>
       </nav>
 
-      <!-- Main Setup Content Container -->
       <div class="bg-white rounded-xl shadow-2xl shadow-slate-200/50 border border-slate-200 relative overflow-hidden">
         
-        <!-- Loading Overlay -->
         <Transition name="fade">
           <div v-if="loading" class="absolute inset-0 bg-white/80 backdrop-blur-md z-50 flex flex-col items-center justify-center p-12">
             <div class="flex items-center gap-1">
@@ -58,7 +54,6 @@
 
         <div class="p-8 md:p-12 min-h-[480px]">
           
-          <!-- Step 1: Company Information -->
           <div v-show="currentStep === 0" class="setup-step animate-fadeIn">
             <div class="flex items-center gap-3 mb-8">
               <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-sm border border-blue-100"><i class="fas fa-building"></i></div>
@@ -95,7 +90,6 @@
             </div>
           </div>
 
-          <!-- Step 2: Tax Settings -->
           <div v-show="currentStep === 1" class="setup-step animate-fadeIn">
             <div class="flex items-center gap-3 mb-8">
               <div class="w-10 h-10 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center text-sm border border-rose-100"><i class="fas fa-percent"></i></div>
@@ -103,7 +97,6 @@
             </div>
 
             <div class="space-y-8">
-              <!-- Toggle Card -->
               <label class="flex items-center justify-between p-5 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer transition-all hover:bg-white group has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50/30">
                 <div class="flex items-center gap-4">
                    <div class="w-10 h-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-300 group-hover:text-blue-600 transition-colors"><i class="fas fa-receipt"></i></div>
@@ -112,29 +105,28 @@
                      <p class="text-[10px] text-slate-400 font-medium mt-1">هل المنشأة مسجلة ضريبياً في الجهات الرسمية؟</p>
                    </div>
                 </div>
-                <input v-model="formData.tax.tax_enabled" type="checkbox" class="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer" />
+                <input v-model="formData.tax.taxEnabled" type="checkbox" class="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer" />
               </label>
 
               <transition name="slide-down">
-                <div v-if="formData.tax.tax_enabled" class="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 rounded-xl bg-slate-50 border border-slate-200 animate-fadeIn">
-                  <div class="space-y-1.5"><label class="metadata-label">مسمى الضريبة</label><input v-model="formData.tax.tax_name" type="text" class="setup-input" /></div>
+                <div v-if="formData.tax.taxEnabled" class="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 rounded-xl bg-slate-50 border border-slate-200 animate-fadeIn">
+                  <div class="space-y-1.5"><label class="metadata-label">مسمى الضريبة</label><input v-model="formData.tax.taxName" type="text" class="setup-input" /></div>
                   <div class="space-y-1.5">
                     <label class="metadata-label">النسبة المئوية (%)</label>
                     <div class="relative">
-                      <input v-model.number="formData.tax.tax_rate" type="number" min="0" max="100" step="0.01" class="setup-input font-mono font-bold text-lg" />
+                      <input v-model.number="formData.tax.taxRate" type="number" min="0" max="100" step="0.01" class="setup-input font-mono font-bold text-lg" />
                       <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-300">%</span>
                     </div>
                   </div>
                   <div class="md:col-span-2 space-y-1.5">
                     <label class="metadata-label">الرقم الضريبي (Tax ID)</label>
-                    <input v-model="formData.tax.tax_number" type="text" class="setup-input font-mono tracking-widest text-center" placeholder="3000XXXXX" />
+                    <input v-model="formData.tax.taxNumber" type="text" class="setup-input font-mono tracking-widest text-center" placeholder="3000XXXXX" />
                   </div>
                 </div>
               </transition>
             </div>
           </div>
 
-          <!-- Step 3: Branch / Warehouse -->
           <div v-show="currentStep === 2" class="setup-step animate-fadeIn">
             <div class="flex items-center gap-3 mb-8">
               <div class="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center text-sm border border-emerald-100"><i class="fas fa-warehouse"></i></div>
@@ -153,14 +145,13 @@
                          <p class="text-[9px] text-slate-400 font-medium truncate">{{ branch.location || 'غير محدد' }}</p>
                       </div>
                     </div>
-                    <span :class="(branch.active || branch.is_active) ? 'text-emerald-600 border-emerald-100 bg-emerald-50' : 'text-slate-400 bg-slate-50 border-slate-100'" class="px-2 py-0.5 rounded text-[8px] font-bold border uppercase tracking-tighter">
-                      {{ (branch.active || branch.is_active) ? 'نشط' : 'معطل' }}
+                    <span :class="(branch.active || branch.isActive) ? 'text-emerald-600 border-emerald-100 bg-emerald-50' : 'text-slate-400 bg-slate-50 border-slate-100'" class="px-2 py-0.5 rounded text-[8px] font-bold border uppercase tracking-tighter">
+                      {{ (branch.active || branch.isActive) ? 'نشط' : 'معطل' }}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <!-- Inline Quick Add Form -->
               <div class="p-6 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/30 space-y-6">
                <h3 class="text-xs font-bold text-slate-600 uppercase tracking-widest"><i class="fas fa-plus-circle ml-1"></i>إضافة فرع / مستودع</h3>                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div class="space-y-1.5"><label class="metadata-label">اسم الفرع</label><input v-model="formData.branch.name" type="text" class="setup-input h-9" placeholder="مثال: الفرع الرئيسي" /></div>
@@ -172,7 +163,6 @@
             </div>
           </div>
 
-          <!-- Step 4: POS Terminals -->
           <div v-show="currentStep === 3" class="setup-step animate-fadeIn">
             <div class="flex items-center gap-3 mb-8">
               <div class="w-10 h-10 bg-violet-50 text-violet-600 rounded-lg flex items-center justify-center text-sm border border-violet-100"><i class="fas fa-desktop"></i></div>
@@ -193,13 +183,12 @@
               <div class="p-6 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/30 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-1.5"><label class="metadata-label">كود الجهاز</label><input v-model="formData.terminal.code" type="text" class="setup-input h-9 font-mono uppercase" placeholder="POS-01" /></div>
                 <div class="space-y-1.5"><label class="metadata-label">اسم المحطة</label><input v-model="formData.terminal.name" type="text" class="setup-input h-9" placeholder="كاشير رئيسي" /></div>
-                <div class="space-y-1.5"><label class="metadata-label">الفرع المرتبط</label><select v-model="formData.terminal.branch_id" class="setup-input h-9"><option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option></select></div>
+                <div class="space-y-1.5"><label class="metadata-label">الفرع المرتبط</label><select v-model="formData.terminal.branchId" class="setup-input h-9"><option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option></select></div>
                 <div class="space-y-1.5"><label class="metadata-label">الموقع / الوصف</label><input v-model="formData.terminal.location" type="text" class="setup-input h-9" placeholder="مثال: الطابق الأول — الكاونتر الرئيسي" /></div>
               </div>
             </div>
           </div>
 
-          <!-- Step 5: Invoice Settings -->
           <div v-show="currentStep === 4" class="setup-step animate-fadeIn">
             <div class="flex items-center gap-3 mb-8">
               <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center text-sm border border-indigo-100"><i class="fas fa-file-invoice-dollar"></i></div>
@@ -209,15 +198,15 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div class="space-y-6">
                 <div class="space-y-1.5"><label class="metadata-label">بادئة رقم الفاتورة</label><input v-model="formData.invoice.prefix" type="text" class="setup-input font-mono font-bold uppercase" placeholder="INV-" /></div>
-                <div class="space-y-1.5"><label class="metadata-label">الرقم القادم</label><input v-model.number="formData.invoice.next_number" type="number" class="setup-input font-mono font-bold text-lg text-blue-600" /></div>
+                <div class="space-y-1.5"><label class="metadata-label">الرقم القادم</label><input v-model.number="formData.invoice.nextNumber" type="number" class="setup-input font-mono font-bold text-lg text-blue-600" /></div>
               </div>
 
               <div class="space-y-6">
-                <div class="space-y-1.5"><label class="metadata-label">نص تذييل الفاتورة</label><textarea v-model="formData.invoice.footer_text" class="setup-input h-auto py-3 italic" rows="3"></textarea></div>
+                <div class="space-y-1.5"><label class="metadata-label">نص تذييل الفاتورة</label><textarea v-model="formData.invoice.footerText" class="setup-input h-auto py-3 italic" rows="3"></textarea></div>
                 <div class="space-y-1">
                   <label class="setting-toggle-row bg-slate-50 border border-slate-200 px-4 h-11 rounded-lg">
                     <span class="text-[11px] font-bold text-slate-600 uppercase">أسعار البيع تشمل الضريبة</span>
-                    <input v-model="formData.invoice.show_tax_in_price" type="checkbox" class="w-4 h-4 rounded border-slate-300 text-blue-600" />
+                    <input v-model="formData.invoice.showTaxInPrice" type="checkbox" class="w-4 h-4 rounded border-slate-300 text-blue-600" />
                   </label>
                   <p class="text-[10px] leading-relaxed text-slate-500">
                     عند التفعيل تُستخرج الضريبة من السعر ولا تُضاف فوقه.
@@ -227,7 +216,6 @@
             </div>
           </div>
 
-          <!-- Step 6: Cashier Sessions -->
           <div v-show="currentStep === 5" class="setup-step animate-fadeIn">
             <div class="flex items-center gap-3 mb-8">
               <div class="w-10 h-10 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center text-sm border border-amber-100"><i class="fas fa-cash-register"></i></div>
@@ -253,7 +241,7 @@
                     <p class="text-[10px] text-slate-600 font-medium mt-1">يسمح بخروج نقدي يتجاوز رصيد الصندوق أثناء جلسة مفتوحة، ولا يعمل عند تعطيل إلزام جلسات الكاشير.</p>
                   </div>
                 </div>
-                <input v-model="formData.sessions.allow_negative_intraday" type="checkbox" class="w-5 h-5 rounded border-amber-300 text-amber-600 focus:ring-0 cursor-pointer" />
+                <input v-model="formData.sessions.allowNegativeIntraday" type="checkbox" class="w-5 h-5 rounded border-amber-300 text-amber-600 focus:ring-0 cursor-pointer" />
               </label>
               <p class="text-[11px] leading-6 text-slate-500">خيار السالب يشمل المدفوعات النقدية الخارجة مثل دفع المورد والمصروف ورد النقدية، ولا يسجل رأس مال أو تمويلًا تلقائيًا. لا ينطبق على الشراء الآجل، ولا يسمح بسالب البنك أو المحفظة. إذا كان إلزام الجلسات معطلاً، لن تُطلب جلسة، لكن سيظل الصندوق غير مسموح له بتجاوز رصيده إلى السالب.</p>
             </div>
@@ -261,7 +249,6 @@
 
         </div>
 
-        <!-- Sticky Operational Footer -->
         <footer class="px-8 md:px-10 py-6 bg-slate-900 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-6 shrink-0 relative overflow-hidden">
           <div class="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full translate-x-12 -translate-y-12"></div>
           
@@ -345,13 +332,13 @@ export default {
       ],
       existingTerminals: [],
       formData: {
-        company: { name: '', address: '', phone: '', email: '', currency: 'EGP', currency_code: 'EGP', currency_symbol: 'جنيه' },
-        tax: { tax_enabled: false, tax_name: 'ضريبة القيمة المضافة', tax_rate: 14, tax_number: '' },
+        company: { name: '', address: '', phone: '', email: '', currency: 'EGP', currencyCode: 'EGP', currencySymbol: 'جنيه' },
+        tax: { taxEnabled: false, taxName: 'ضريبة القيمة المضافة', taxRate: 14, taxNumber: '' },
         branch: { name: '', location: '', phone: '', email: '' },
-        terminal: { code: '', name: '', branch_id: '', location: '' },
-        invoice: { prefix: 'INV-', next_number: 1001, footer_text: 'شكراً لتعاملكم معنا', show_tax_in_price: true },
-        sessions: { enabled: false, allow_negative_intraday: false },
-        print: { header_text: '', footer_text: 'شكراً لتعاملكم معنا', terms_text: '' }
+        terminal: { code: '', name: '', branchId: '', location: '' },
+        invoice: { prefix: 'INV-', nextNumber: 1001, footerText: 'شكراً لتعاملكم معنا', showTaxInPrice: true },
+        sessions: { enabled: false, allowNegativeIntraday: false },
+        print: { headerText: '', footerText: 'شكراً لتعاملكم معنا', termsText: '' }
       },
       branches: []
     };
@@ -360,8 +347,8 @@ export default {
   methods: {
     updateCurrencyData() {
       const code = this.formData.company.currency;
-      this.formData.company.currency_code = code;
-      this.formData.company.currency_symbol = getCurrencySymbol(code);
+      this.formData.company.currencyCode = code;
+      this.formData.company.currencySymbol = getCurrencySymbol(code);
     },
     async loadTerminals() {
       try {
@@ -384,19 +371,19 @@ export default {
           this.formData.sessions.enabled = isSettingEnabled(sessionsEnabled);
           const allowNegative = setupSettings['pos.cash_session.allow_negative_intraday']
             ?? setupSettings.settings?.['pos.cash_session.allow_negative_intraday'];
-          this.formData.sessions.allow_negative_intraday = isSettingEnabled(allowNegative);
+          this.formData.sessions.allowNegativeIntraday = isSettingEnabled(allowNegative);
         }
         await this.loadTerminals();
         try {
           await this.branchStore.fetchBranches();
           if (this.branchStore.branches.length > 0) {
             this.branches = [...this.branchStore.branches];
-            if (!this.formData.terminal.branch_id) this.formData.terminal.branch_id = this.branches[0].id;
+            if (!this.formData.terminal.branchId) this.formData.terminal.branchId = this.branches[0].id;
           }
         } catch { /* ... */ }
         const statusResponse = await this.setupStore.loadSetupStatus();
         const tenant = statusResponse?.data?.data?.tenant ?? statusResponse?.data?.tenant ?? null;
-        if (tenant?.is_setup_complete && this.$route.query.force !== 'true') {
+        if (tenant?.isSetupComplete && this.$route.query.force !== 'true') {
           this.$router.push('/cashier');
         }
       } catch (error) {
@@ -417,9 +404,9 @@ export default {
             phone: this.formData.branch.phone || undefined,
             email: this.formData.branch.email || undefined,
           });
-          if (res?.status === 'success' && res?.data?.id) {
+          if (res?.status === 'success' && res?.data?.data?.id) {
             this.branches = [...this.branchStore.branches];
-            this.formData.terminal.branch_id = res.data.id;
+            this.formData.terminal.branchId = res.data.data.id;
           } else if (res?.status === 'error') {
             AlertService.warning(res.message || 'فشل إنشاء الفرع', 'تنبيه');
           }
@@ -432,7 +419,7 @@ export default {
       if (this.currentStep === 3 && this.formData.terminal.code && this.formData.terminal.name) {
         try {
           const { default: terminalsService } = await import('@/services/terminals');
-          await terminalsService.create({ code: this.formData.terminal.code, name: this.formData.terminal.name, branch_id: this.formData.terminal.branch_id || undefined, location: this.formData.terminal.location || undefined, status: 'active' });
+          await terminalsService.create({ code: this.formData.terminal.code, name: this.formData.terminal.name, branchId: this.formData.terminal.branchId || undefined, location: this.formData.terminal.location || undefined, status: 'active' });
           await this.loadTerminals();
         } catch (e) {
           const msg = e?.response?.data?.message || e?.message || '';
@@ -445,7 +432,7 @@ export default {
       try {
         await this.branchStore.fetchBranches();
         this.branches = [...this.branchStore.branches];
-        if (this.branches.length > 0 && !this.formData.terminal.branch_id) this.formData.terminal.branch_id = this.branches[0].id;
+        if (this.branches.length > 0 && !this.formData.terminal.branchId) this.formData.terminal.branchId = this.branches[0].id;
       } catch { /* ... */ }
     },
     previousStep() { this.currentStep--; },
@@ -460,13 +447,13 @@ export default {
       if (!this.validateCurrentStep()) return;
       this.saving = true;
       try {
-        const payload = { ...this.formData, branch: this.branches.length > 0 ? null : this.formData.branch, current_step: 'complete' };
+        const payload = { ...this.formData, branch: this.branches.length > 0 ? null : this.formData.branch, currentStep: 'complete' };
         const response = await this.setupStore.saveSetup(payload);
         if (response.status === 'success') {
           this.settingsStore.clearCache();
           useCompanyCurrency().clearCache();
           if (this.authStore.user) {
-            this.authStore.user.is_setup_complete = 1;
+            this.authStore.user.isSetupComplete = 1;
             localStorage.setItem('user', JSON.stringify(this.authStore.user));
           }
           AlertService.success('تم إعداد النظام بنجاح!', 'تم بنجاح');
@@ -489,7 +476,7 @@ export default {
         const response = await this.setupStore.skipSetup();
         if (response.status === 'success') {
           if (this.authStore.user) {
-            this.authStore.user.is_setup_complete = 1;
+            this.authStore.user.isSetupComplete = 1;
             localStorage.setItem('user', JSON.stringify(this.authStore.user));
           }
           this.$router.push('/cashier').catch(err => {
@@ -518,11 +505,9 @@ export default {
 
 .setting-toggle-row { @apply flex items-center justify-between transition-all; }
 
-/* Custom Scrollbar */
 .custom-scroll::-webkit-scrollbar { width: 4px; }
 .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
 
-/* Animations */
 .animate-fadeIn { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 

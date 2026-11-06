@@ -3,10 +3,10 @@ import apiClient from '@/config/axios';
 // Terminals Service
 // Multi-tenant aware: tenant_id comes from JWT / backend context.
 export const terminalsService = {
-  async list({ branch_id = undefined, status = 'active' } = {}) {
+  async list({ branchId: branch_id = undefined, status = 'active' } = {}) {
     const params = {};
     if (branch_id !== undefined && branch_id !== null && `${branch_id}` !== '') {
-      params.branch_id = branch_id;
+      params.branchId = branch_id;
     }
     if (status) params.status = status;
     const res = await apiClient.get('/terminals', { params });

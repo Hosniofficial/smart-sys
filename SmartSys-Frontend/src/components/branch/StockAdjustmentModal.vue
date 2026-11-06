@@ -11,7 +11,6 @@
         @click.stop
       >
       
-      <!-- Modal Header -->
       <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
         <div class="flex items-center gap-3">
           <div class="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center text-white text-xs shadow-sm">
@@ -31,10 +30,8 @@
         </button>
       </div>
 
-      <!-- Modal Body -->
       <form @submit.prevent="handleSubmit" class="flex-1 min-h-0 p-6 space-y-5 overflow-y-auto custom-scroll">
         
-        <!-- Product Summary Profile -->
         <div v-if="product" class="bg-slate-900 text-white p-4 rounded-xl shadow-sm space-y-3 relative overflow-hidden">
           <div class="flex items-center gap-3">
             <div class="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center text-blue-400 text-xs shrink-0">
@@ -42,11 +39,11 @@
             </div>
             <div class="space-y-0.5 overflow-hidden">
               <p class="text-[9px] font-bold text-blue-400 uppercase tracking-widest">المنتج المستهدف</p>
-              <h4 class="text-xs font-bold truncate">{{ product.name || product.product_name }}</h4>
+              <h4 class="text-xs font-bold truncate">{{ product.name || product.productName }}</h4>
               <div class="flex items-center gap-2 text-[10px] font-mono text-slate-400">
                 <span v-if="product.barcode">BAR: {{ product.barcode }}</span>
                 <span v-if="product.barcode" class="text-slate-700">|</span>
-                <span>CODE: {{ product.product_code || product.code }}</span>
+                <span>CODE: {{ product.productCode || product.code }}</span>
               </div>
             </div>
           </div>
@@ -64,7 +61,6 @@
           <span>تعذر تحميل بيانات المنتج المطلوبة.</span>
         </div>
 
-        <!-- Adjustment Type Selector (Pills) -->
         <div class="space-y-1.5">
           <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">نوع التسوية (الإجراء)</label>
           <div class="grid grid-cols-2 gap-2">
@@ -88,7 +84,6 @@
           </div>
         </div>
 
-        <!-- Quantity Field -->
         <div class="space-y-1.5">
           <label for="quantity" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">الكمية المراد تعديلها</label>
           <div class="relative">
@@ -109,7 +104,6 @@
           <p v-if="errors.quantity" class="text-[10px] text-rose-600 font-bold px-1">{{ errors.quantity }}</p>
         </div>
 
-        <!-- New Quantity Preview (Result Card) -->
         <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex items-center justify-between">
           <div>
             <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">الرصيد النهائي المتوقع</p>
@@ -120,7 +114,6 @@
           </div>
         </div>
 
-        <!-- Reason Selection -->
         <div class="space-y-1.5">
           <label for="reason" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
             سبب التسوية <span class="text-rose-500">*</span>
@@ -135,7 +128,6 @@
           </select>
         </div>
 
-        <!-- Notes Field -->
         <div class="space-y-1.5">
           <label for="notes" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">ملاحظات إضافية</label>
           <textarea 
@@ -148,7 +140,6 @@
         </div>
       </form>
 
-      <!-- Modal Footer -->
       <div class="px-6 py-3.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0">
         <button
           type="button"
@@ -179,7 +170,6 @@ import { useToast } from '@/composables/useToast';
 import { adjustStock } from '@/services/branchInventoryService';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 
-// --- Logic Initialization (STRICTLY PRESERVED) ---
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   branchId: { type: [Number, String], required: true },
@@ -196,14 +186,13 @@ const closeModal = () => {
 const { showToast } = useToast();
 
 const form = ref({
-  product_id: null, quantity: 1, adjustment: 'add', reason: 'other', notes: '', reference: '', reference_type: 'adjustment', cost_price: null, sale_price: null
+  productId: null, quantity: 1, adjustment: 'add', reason: 'other', notes: '', reference: '', referenceType: 'adjustment', costPrice: null, salePrice: null
 });
 
 const adjustmentType = ref('add');
 const isSubmitting = ref(false);
 const errors = ref({});
 
-// Logic: New Quantity Preview (Preserved)
 const newQuantity = computed(() => {
   if (!props.product) return 0;
   const currentQty = parseFloat(props.product.quantity) || 0;
@@ -211,7 +200,6 @@ const newQuantity = computed(() => {
   return adjustmentType.value === 'add' ? currentQty + adjustmentQty : Math.max(0, currentQty - adjustmentQty);
 });
 
-// Logic: Methods (Preserved)
 const calculateNewQuantity = () => {
   const qty = parseFloat(form.value.quantity);
   form.value.quantity = isNaN(qty) ? 0 : Math.abs(qty);
@@ -230,19 +218,19 @@ const handleSubmit = async () => {
   if (!validate()) return;
   isSubmitting.value = true;
   try {
-    if (!form.value.product_id && props.product) form.value.product_id = props.product.product_id || props.product.id || null;
+    if (!form.value.productId && props.product) form.value.productId = props.product.productId || props.product.id || null;
     
-    if (!form.value.product_id) { showToast('تعذر تحديد المنتج', 'error'); return; }
+    if (!form.value.productId) { showToast('تعذر تحديد المنتج', 'error'); return; }
 
     const adjustmentData = {
-      product_id: form.value.product_id,
+      productId: form.value.productId,
       quantity: adjustmentType.value === 'remove' ? -Math.abs(Number(form.value.quantity)) : Math.abs(Number(form.value.quantity)),
       type: adjustmentType.value === 'add' ? 'in' : 'out',
       reason: form.value.reason,
       notes: form.value.notes || null,
-      reference_type: form.value.reference_type,
-      cost_price: form.value.cost_price ? Number(form.value.cost_price) : null,
-      sale_price: form.value.sale_price ? Number(form.value.sale_price) : null
+      referenceType: form.value.referenceType,
+      costPrice: form.value.costPrice ? Number(form.value.costPrice) : null,
+      salePrice: form.value.salePrice ? Number(form.value.salePrice) : null
     };
 
     const success = await adjustStock(props.branchId, adjustmentData);
@@ -260,12 +248,12 @@ const handleSubmit = async () => {
 
 onMounted(() => {
   if (props.product) {
-    form.value = { ...form.value, product_id: props.product.product_id || props.product.id, cost_price: props.product.cost_price || null, sale_price: props.product.sale_price || null };
+    form.value = { ...form.value, productId: props.product.productId || props.product.id, costPrice: props.product.costPrice || null, salePrice: props.product.salePrice || null };
   }
   if (!form.value.reason) form.value.reason = 'other';
 });
 
-watch(() => props.product, (p) => { if (p) form.value.product_id = p.product_id || p.id || null; });
+watch(() => props.product, (p) => { if (p) form.value.productId = p.productId || p.id || null; });
 </script>
 
 <style scoped>

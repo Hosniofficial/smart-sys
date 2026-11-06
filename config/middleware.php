@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Middleware\CorsMiddleware;
+use App\Middleware\ApiRequestFieldMiddleware;
+use App\Middleware\ApiResponseContractMiddleware;
 use App\Middleware\HttpsEnforcementMiddleware;
 use App\Middleware\RequestRateLimiter;
 use App\Middleware\SecurityHeadersMiddleware;
@@ -36,6 +38,8 @@ return function (App $app, Container $container): void {
 
     // CORS Middleware MUST be first (added last in Slim order)
     $app->add(new CorsMiddleware($corsConfig ?? []));
+
+    $app->add(new ApiRequestFieldMiddleware());
     
     // Body parsing must be early to handle JSON before other middleware
     $app->addBodyParsingMiddleware();
@@ -150,4 +154,7 @@ return function (App $app, Container $container): void {
 
         return $response->withStatus($statusCode);
     });
+
+    // Keep this outermost so handled exceptions and middleware responses share the same contract.
+    $app->add(new ApiResponseContractMiddleware());
 };

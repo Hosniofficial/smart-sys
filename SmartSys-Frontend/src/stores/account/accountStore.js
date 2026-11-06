@@ -6,12 +6,11 @@ const nowMs = () => Date.now();
 
 export const useAccountStore = defineStore('account', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     accounts: 30 * 60 * 1000, // 30 دقيقة (نادراً ما يتغير)
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const accounts = ref({
     tenant: [],
     global: [],
@@ -22,11 +21,10 @@ export const useAccountStore = defineStore('account', () => {
   const searchCache          = ref({});
   const searchCacheFetchedAt = ref({});
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
-  // ─── fetchGroupedAccounts ─────────────────────────────────────────────────
+  // fetchGroupedAccounts
   /**
    * يجيب الحسابات مقسّمة إلى tenant + global
    * الـ component يستخدمها هكذا:
@@ -59,11 +57,11 @@ export const useAccountStore = defineStore('account', () => {
       const promise = (async () => {
         try {
           const response = await accountsService.listGrouped();
-          const payload  = response?.data?.data || response?.data || {};
+          const payload  = response?.data?.data || {};
 
           accounts.value = {
-            tenant: payload.tenant_accounts || [],
-            global: payload.global_accounts || [],
+            tenant: payload.tenantAccounts || [],
+            global: payload.globalAccounts || [],
           };
           accountsFetchedAt.value = nowMs();
 
@@ -91,7 +89,7 @@ export const useAccountStore = defineStore('account', () => {
     }
   };
 
-  // ─── fetchAccounts ────────────────────────────────────────────────────────
+  // fetchAccounts
   /**
    * يجيب كل الحسابات كـ flat list
    * الـ component يستخدمها هكذا:
@@ -119,7 +117,7 @@ export const useAccountStore = defineStore('account', () => {
     }
   };
 
-  // ─── searchAccounts ───────────────────────────────────────────────────────
+  // searchAccounts
   /**
    * يبحث في الحسابات محلياً لو البيانات موجودة، وإلا يكلم الـ API
    * الـ component يستخدمها هكذا:
@@ -170,7 +168,7 @@ export const useAccountStore = defineStore('account', () => {
       // وإلا ابحث عبر الـ API مع fallback للفلتر المحلي
       try {
         const response = await accountsService.search(q);
-        const results  = response?.data?.data || response?.data || [];
+        const results  = response?.data?.data || [];
         const list     = Array.isArray(results) ? results : (results?.items || []);
 
         searchCache.value[cacheKey]          = list;
@@ -207,7 +205,7 @@ export const useAccountStore = defineStore('account', () => {
     }
   };
 
-  // ─── Computed Getters ─────────────────────────────────────────────────────
+  // Computed Getters
   const getAccountById = (id) =>
     computed(() => {
       const all = [...accounts.value.tenant, ...accounts.value.global];
@@ -218,7 +216,7 @@ export const useAccountStore = defineStore('account', () => {
   const globalAccounts = computed(() => accounts.value.global);
   const allAccounts    = computed(() => [...accounts.value.tenant, ...accounts.value.global]);
 
-  // ─── Cache Clearers ───────────────────────────────────────────────────────
+  // Cache Clearers
   const clear = () => {
     accounts.value          = { tenant: [], global: [] };
     accountsFetchedAt.value = 0;
@@ -232,7 +230,7 @@ export const useAccountStore = defineStore('account', () => {
     searchCacheFetchedAt.value = {};
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     accounts,

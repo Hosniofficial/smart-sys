@@ -13,7 +13,7 @@ export function useBranchIsolation() {
   const authStore = useAuthStore();
   const branchStore = useBranchStore();
 
-  // ─── isExempt: computed مباشر من authStore بدلاً من useSessionExemption() instance منفصل
+  // isExempt: computed مباشر من authStore بدلاً من useSessionExemption() instance منفصل
   // نفس المعيار بالضبط — بدون async ولا ref(false) ينتظر ensureLoaded()
   const isExempt = computed(() => {
     const role = String(authStore.user?.role || '').toLowerCase();
@@ -38,7 +38,7 @@ export function useBranchIsolation() {
   const getRequiredBranchId = () => {
     if (!isExempt.value) {
       // المستخدم العادي - استخدم فرعه المعين
-      const userbranchId = authStore?.user?.branch_id;
+      const userbranchId = authStore?.user?.branchId;
       if (!userbranchId) {
         throw new Error('لم يتم تعيين مخزن لحسابك. يرجى التواصل مع الإدارة.');
       }
@@ -61,7 +61,7 @@ export function useBranchIsolation() {
     const branchId = getRequiredBranchId();
     return {
       ...params,
-      branch_id: branchId
+      branchId: branchId
     };
   };
   
@@ -89,7 +89,7 @@ export function useBranchIsolation() {
   const filterByCurrentBranch = (items = []) => {
     try {
       const currentBranchId = getRequiredBranchId();
-      return items.filter(item => String(item.branch_id) === String(currentBranchId));
+      return items.filter(item => String(item.branchId) === String(currentBranchId));
     } catch {
       return [];
     }

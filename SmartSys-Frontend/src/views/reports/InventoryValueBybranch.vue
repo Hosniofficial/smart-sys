@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="{ parent: { label: 'التقارير', path: '/reports/sales-analytics' }, current: 'توزيع قيمة المخزون' }"
         title="توزيع قيمة المخزون"
@@ -17,7 +15,6 @@
         @branch-changed="selectedBranch = $event === null ? 'all' : $event"
       >
         <template #controls>
-          <!-- Valuation Switcher -->
           <div class="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-md border border-slate-200">
             <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">أساس التقييم:</span>
             <select v-model="valuation" class="bg-transparent border-none text-[11px] font-bold text-slate-900 focus:ring-0 cursor-pointer outline-none">
@@ -30,13 +27,12 @@
 
       <main class="space-y-8">
 
-      <!-- KPI Summary Section: Refined Metric Grid -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div v-for="kpi in [
-          { label: 'القيمة الإجمالية للمخزون', val: formatCurrency(totals.total_value || 0), icon: 'fa-chart-line', color: 'text-indigo-600', bg: 'bg-indigo-50' },
-          { label: 'إجمالي عدد الأصناف', val: totals.total_products || 0, icon: 'fa-boxes-stacked', color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'منتجات منخفضة (Low)', val: totals.low_stock_count || 0, icon: 'fa-exclamation-triangle', color: 'text-amber-600', bg: 'bg-amber-50' },
-          { label: 'أصناف نافذة (Out)', val: totals.out_of_stock_count || 0, icon: 'fa-exclamation-circle', color: 'text-rose-600', bg: 'bg-rose-50' }
+          { label: 'القيمة الإجمالية للمخزون', val: formatCurrency(totals.totalValue || 0), icon: 'fa-chart-line', color: 'text-indigo-600', bg: 'bg-indigo-50' },
+          { label: 'إجمالي عدد الأصناف', val: totals.totalProducts || 0, icon: 'fa-boxes-stacked', color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'منتجات منخفضة (Low)', val: totals.lowStockCount || 0, icon: 'fa-exclamation-triangle', color: 'text-amber-600', bg: 'bg-amber-50' },
+          { label: 'أصناف نافذة (Out)', val: totals.outOfStockCount || 0, icon: 'fa-exclamation-circle', color: 'text-rose-600', bg: 'bg-rose-50' }
         ]" :key="kpi.label" class="bg-white border border-slate-200 p-5 rounded-xl flex items-center justify-between group hover:border-slate-300 transition-all shadow-sm">
           <div>
             <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{{ kpi.label }}</p>
@@ -48,10 +44,8 @@
         </div>
       </section>
 
-      <!-- Visual Analytics Row -->
       <section class="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        <!-- Chart Visualization (8/12) -->
         <div class="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden group">
           <div class="absolute top-0 left-0 w-40 h-40 bg-blue-500/5 rounded-full -translate-x-12 -translate-y-12 group-hover:scale-110 transition-transform duration-1000"></div>
           
@@ -72,7 +66,6 @@
           </div>
         </div>
 
-        <!-- Valuation Info (4/12) -->
         <div class="lg:col-span-4 bg-slate-900 rounded-xl p-8 text-white shadow-xl flex flex-col justify-center relative overflow-hidden">
           <div class="absolute bottom-0 right-0 w-32 h-32 bg-white/5 rounded-full translate-x-12 translate-y-12"></div>
           <div class="relative z-10 space-y-6 text-center">
@@ -86,7 +79,6 @@
         </div>
       </section>
       
-      <!-- Detailed Branch Breakdown Table -->
       <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative min-h-[400px]">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
            <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
@@ -110,14 +102,12 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 font-medium text-xs">
-              <!-- Loading Skeleton -->
               <template v-if="loading && !rows.length">
                 <tr v-for="n in 5" :key="n" class="animate-pulse">
                   <td v-for="m in 6" :key="m" class="px-6 py-4"><div class="h-3 bg-slate-100 rounded w-full"></div></td>
                 </tr>
               </template>
               
-              <!-- Empty State -->
               <tr v-else-if="rows.length === 0">
                 <td colspan="6" class="py-24 text-center text-slate-300">
                    <i class="fas fa-warehouse text-3xl mb-4 opacity-20"></i>
@@ -125,35 +115,34 @@
                 </td>
               </tr>
 
-              <!-- Data Rows -->
-              <tr v-for="r in rows" :key="r.branch_name" class="hover:bg-blue-50/20 transition-all group border-r-4 border-r-transparent hover:border-r-blue-600">
+              <tr v-for="r in rows" :key="r.branchName" class="hover:bg-blue-50/20 transition-all group border-r-4 border-r-transparent hover:border-r-blue-600">
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex items-center gap-3">
                     <div class="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 group-hover:text-blue-600 transition-colors border border-slate-100 group-hover:border-blue-100">
                       <i class="fas fa-store text-xs"></i>
                     </div>
-                    <span class="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{{ r.branch_name }}</span>
+                    <span class="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{{ r.branchName }}</span>
                   </div>
                 </td>
                 <td class="px-4 py-4 text-center">
-                  <span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-600 font-mono">{{ r.items_count }}</span>
+                  <span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-600 font-mono">{{ r.itemsCount }}</span>
                 </td>
                 <td class="px-4 py-4 text-center">
-                  <span v-if="r.low_stock_count > 0" class="px-2 py-0.5 bg-amber-50 text-amber-600 border border-amber-100 rounded text-[9px] font-bold">
-                    {{ r.low_stock_count }} صنف
+                  <span v-if="r.lowStockCount > 0" class="px-2 py-0.5 bg-amber-50 text-amber-600 border border-amber-100 rounded text-[9px] font-bold">
+                    {{ r.lowStockCount }} صنف
                   </span>
                   <span v-else class="text-slate-200">—</span>
                 </td>
                 <td class="px-4 py-4 text-center">
-                  <span v-if="r.out_of_stock_count > 0" class="px-2 py-0.5 bg-rose-50 text-rose-600 border border-rose-100 rounded text-[9px] font-bold">
-                    {{ r.out_of_stock_count }} صنف
+                  <span v-if="r.outOfStockCount > 0" class="px-2 py-0.5 bg-rose-50 text-rose-600 border border-rose-100 rounded text-[9px] font-bold">
+                    {{ r.outOfStockCount }} صنف
                   </span>
                   <span v-else class="text-slate-200">—</span>
                 </td>
-                <td class="px-4 py-4 text-center font-mono font-bold text-slate-400 group-hover:text-slate-900 transition-colors">{{ r.total_qty }}</td>
+                <td class="px-4 py-4 text-center font-mono font-bold text-slate-400 group-hover:text-slate-900 transition-colors">{{ r.totalQty }}</td>
                 <td class="px-6 py-4 text-left">
                   <span class="text-sm font-bold font-mono tracking-tighter text-blue-600">
-                    {{ formatCurrency(r.total_value) }}
+                    {{ formatCurrency(r.totalValue) }}
                   </span>
                 </td>
               </tr>
@@ -214,13 +203,13 @@ const loadData = async () => {
                     : [])))
       rows.value = list.map(row => ({
         ...row,
-        branch_id: row.branch_id ?? row.branchId,
-        branch_name: row.branch_name ?? row.branchName ?? '—',
-        items_count: Number(row.items_count ?? row.itemsCount ?? 0),
-        low_stock_count: Number(row.low_stock_count ?? row.lowStockCount ?? 0),
-        out_of_stock_count: Number(row.out_of_stock_count ?? row.outOfStockCount ?? 0),
-        total_qty: Number(row.total_qty ?? row.totalQty ?? 0),
-        total_value: Number(row.total_value ?? row.totalValue ?? 0)
+        branchId: row.branchId ?? row.branchId,
+        branchName: row.branchName ?? row.branchName ?? '—',
+        itemsCount: Number(row.itemsCount ?? row.itemsCount ?? 0),
+        lowStockCount: Number(row.lowStockCount ?? row.lowStockCount ?? 0),
+        outOfStockCount: Number(row.outOfStockCount ?? row.outOfStockCount ?? 0),
+        totalQty: Number(row.totalQty ?? row.totalQty ?? 0),
+        totalValue: Number(row.totalValue ?? row.totalValue ?? 0)
       }))
       totals.value = apiResponse?.totals || payload?.totals || {}
     } else {
@@ -237,8 +226,8 @@ const loadData = async () => {
 }
 
 const chartData = computed(() => {
-  const labels = rows.value.map(r => r.branch_name)
-  const values = rows.value.map(r => Number(r.total_value) || 0)
+  const labels = rows.value.map(r => r.branchName)
+  const values = rows.value.map(r => Number(r.totalValue) || 0)
   return {
     labels,
     datasets: [

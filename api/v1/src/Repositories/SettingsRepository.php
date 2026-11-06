@@ -39,9 +39,7 @@ class SettingsRepository
         $this->db = $db;
     }
 
-    // -------------------------------------------------------------------------
     // Core read methods
-    // -------------------------------------------------------------------------
 
     /**
      * Get a setting value as string.
@@ -138,9 +136,7 @@ class SettingsRepository
         return $val !== null ? (float) $val : $default;
     }
 
-    // -------------------------------------------------------------------------
     // Write methods
-    // -------------------------------------------------------------------------
 
     /**
      * Upsert a setting value for a tenant.
@@ -165,9 +161,7 @@ class SettingsRepository
         }
     }
 
-    // -------------------------------------------------------------------------
     // Cache management
-    // -------------------------------------------------------------------------
 
     /**
      * Clear the in-memory cache (useful in tests or after bulk updates).

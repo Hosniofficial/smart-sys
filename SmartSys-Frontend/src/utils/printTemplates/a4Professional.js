@@ -7,21 +7,21 @@ export const buildA4ProfessionalHtml = (sale, options = {}) => {
   const company = getCompanyData(sale);
   const taxInclusive = isSaleTaxInclusive(sale);
 
-  const qrRaw = `INV:${sale.invoice_number || sale.id}|TOTAL:${fmt(saleGrandTotal(sale))}|DATE:${sale.sale_date || getLocalDateISO()}`;
+  const qrRaw = `INV:${sale.invoiceNumber || sale.id}|TOTAL:${fmt(saleGrandTotal(sale))}|DATE:${sale.saleDate || getLocalDateISO()}`;
 
   const rows = (sale.items || []).map((it, idx) => `
     <tr>
       <td style='border:1px solid #ddd; padding:6px'>${idx + 1}</td>
-      <td style='border:1px solid #ddd; padding:6px'>${esc(it.product_name || it.name)}</td>
+      <td style='border:1px solid #ddd; padding:6px'>${esc(it.productName || it.name)}</td>
       <td style='border:1px solid #ddd; padding:6px; text-align:center'>${fmt(it.quantity)}</td>
-      <td style='border:1px solid #ddd; padding:6px; text-align:right'>${fmt(it.sale_price || it.net_price)}</td>
+      <td style='border:1px solid #ddd; padding:6px; text-align:right'>${fmt(it.salePrice || it.netPrice)}</td>
       <td style='border:1px solid #ddd; padding:6px; text-align:right'>${fmt(itemTotal(it))}</td>
     </tr>`).join('');
 
-  const saleDate = sale.sale_date || getLocalDateISO();
+  const saleDate = sale.saleDate || getLocalDateISO();
 
   return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"/>
-  <title>فاتورة ${esc(sale.invoice_number || '')}</title>
+  <title>فاتورة ${esc(sale.invoiceNumber || '')}</title>
 
   <!-- QRCode.js (davidshimjs — MIT) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
@@ -48,7 +48,7 @@ export const buildA4ProfessionalHtml = (sale, options = {}) => {
       ${company.logo ? `<img src="${esc(company.logo)}" alt="logo"/>` : ''}
       <div class="company">
         <h2>${esc(company.name) || 'فاتورة مبيعات'}</h2>
-          ${company.branch_name ? `<div style="font-size:12px; color:#666; margin-top:2px;">${esc(company.branch_name)}</div>` : ''}
+          ${company.branchName ? `<div style="font-size:12px; color:#666; margin-top:2px;">${esc(company.branchName)}</div>` : ''}
         <div class="sub">
           ${company.phone   ? `<div>هاتف: ${esc(company.phone)}</div>`               : ''}
           ${company.address ? `<div>${esc(company.address)}</div>`                   : ''}
@@ -62,9 +62,9 @@ export const buildA4ProfessionalHtml = (sale, options = {}) => {
   </div>
 
   <div class="meta">
-    <div>رقم الفاتورة: <strong>#${esc(sale.invoice_number || sale.id)}</strong></div>
+    <div>رقم الفاتورة: <strong>#${esc(sale.invoiceNumber || sale.id)}</strong></div>
     <div>تاريخ: ${new Date(saleDate).toLocaleString('en-US')}</div>
-    <div>العميل: ${esc(sale.customer_name || 'عميل نقدي')}</div>
+    <div>العميل: ${esc(sale.customerName || 'عميل نقدي')}</div>
   </div>
 
   ${cfg.headerEnabled && cfg.headerText
@@ -85,11 +85,11 @@ export const buildA4ProfessionalHtml = (sale, options = {}) => {
   </table>
 
   <div class="totals">
-    <div><strong>إجمالي الأصناف:</strong> ${fmt(sale.total_amount)}</div>
-    <div><strong>الخصم:</strong> ${fmt(sale.discount_value)}</div>
-    <div><strong>الضريبة${taxInclusive ? ' (ضمن الإجمالي)' : ''}:</strong> ${fmt(sale.tax_amount)}</div>
+    <div><strong>إجمالي الأصناف:</strong> ${fmt(sale.totalAmount)}</div>
+    <div><strong>الخصم:</strong> ${fmt(sale.discountValue)}</div>
+    <div><strong>الضريبة${taxInclusive ? ' (ضمن الإجمالي)' : ''}:</strong> ${fmt(sale.taxAmount)}</div>
     <div><strong>الإجمالي المستحق:</strong> ${fmt(saleGrandTotal(sale))}</div>
-    <div><strong>المدفوع:</strong> ${fmt(sale.paid_amount)}</div>
+    <div><strong>المدفوع:</strong> ${fmt(sale.paidAmount)}</div>
   </div>
 
   ${cfg.footerEnabled && cfg.footerText

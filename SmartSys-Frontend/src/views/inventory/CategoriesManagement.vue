@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
 
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
 
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="إدارة التصنيفات"
@@ -30,7 +28,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPI Cards -->
       <section class="grid grid-cols-1 sm:grid-cols-3 gap-6">
         <div v-for="kpi in [
           { label: 'تصنيفات الفرع',   val: categories.length,  icon: 'fa-tags',        color: 'text-blue-600',    bg: 'bg-blue-50' },
@@ -48,7 +45,6 @@
         </div>
       </section>
 
-      <!-- Search Bar -->
       <transition name="slide-down">
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div class="p-4">
@@ -81,7 +77,6 @@
         </div>
       </transition>
 
-      <!-- Active Search Chip -->
       <div v-if="search" class="flex flex-wrap gap-2">
         <div class="inline-flex items-center gap-2 px-2.5 py-1 bg-blue-50 border border-blue-100 rounded-md text-[10px] font-bold text-blue-700">
           {{ search }}
@@ -89,10 +84,8 @@
         </div>
       </div>
 
-      <!-- Main Data Table -->
       <div class="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-200">
 
-        <!-- Error Banner -->
         <div v-if="error" class="m-4 p-3 rounded-lg border-l-4 border-rose-400 bg-rose-50 flex items-center gap-3">
           <i class="fas fa-exclamation-circle text-rose-500"></i>
           <p class="text-sm text-rose-700 flex-1">{{ error }}</p>
@@ -115,7 +108,6 @@
             </thead>
             <tbody class="divide-y divide-slate-100">
 
-              <!-- Loading Skeleton -->
               <template v-if="loading">
                 <tr v-for="n in 5" :key="n" class="animate-pulse">
                   <td v-for="m in (canEdit || canDelete ? 6 : 5)" :key="m" class="px-5 py-4">
@@ -124,7 +116,6 @@
                 </tr>
               </template>
 
-              <!-- No Branch Selected -->
               <tr v-else-if="!selectedBranch">
                 <td :colspan="(canEdit || canDelete) ? 6 : 5" class="py-20 text-center">
                   <i class="fas fa-building text-3xl mb-4 text-slate-200"></i>
@@ -132,7 +123,6 @@
                 </td>
               </tr>
 
-              <!-- Empty State -->
               <tr v-else-if="!filteredCategories.length">
                 <td :colspan="(canEdit || canDelete) ? 6 : 5" class="py-20 text-center">
                   <i class="fas fa-tags text-3xl mb-4 text-slate-200"></i>
@@ -146,7 +136,6 @@
                 </td>
               </tr>
 
-              <!-- Data Rows -->
               <tr v-else v-for="category in filteredCategories" :key="category.id"
                 class="hover:bg-blue-50/20 transition-all group">
                 <td class="px-5 py-3">
@@ -160,7 +149,7 @@
                 <td class="px-5 py-3 text-[10px] font-bold text-slate-500">
                   <div class="flex items-center gap-1.5">
                     <i class="fas fa-building text-[9px] text-slate-300"></i>
-                    {{ getBranchName(category.branch_id) }}
+                    {{ getBranchName(category.branchId) }}
                   </div>
                 </td>
                 <td class="px-5 py-3 text-[10px] text-slate-500 max-w-[200px] truncate hidden md:table-cell">
@@ -168,7 +157,7 @@
                 </td>
                 <td class="px-5 py-3 text-center">
                   <span class="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-500">
-                    {{ Number(category.product_count || 0) }}
+                    {{ Number(category.productCount || 0) }}
                   </span>
                 </td>
                 <td class="px-5 py-3 text-center">
@@ -192,8 +181,8 @@
                     <button
                       v-if="canDelete"
                       @click="deleteCategory(category)"
-                      :disabled="hasReferences(category) || Number(category.child_count || 0) > 0 || deletingId === category.id"
-                      :title="Number(category.child_count || 0) > 0
+                      :disabled="hasReferences(category) || Number(category.childCount || 0) > 0 || deletingId === category.id"
+                      :title="Number(category.childCount || 0) > 0
                         ? 'احذف التصنيفات الفرعية أولاً'
                         : hasReferences(category) ? 'انقل المنتجات المرتبطة قبل الحذف' : 'حذف'"
                       class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-all flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
@@ -209,7 +198,6 @@
           </table>
         </div>
 
-        <!-- Table Footer -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             إجمالي <span class="text-slate-900">{{ filteredCategories.length }}</span> تصنيف
@@ -307,7 +295,7 @@ import { useAuthStore } from '@/stores/auth/authStore';
 import { useBranchStore } from '@/stores/branch/branchStore';
 import { useCatalogStore } from '@/stores/catalog/catalogStore';
 
-// ─── Stores & Composables ─────────────────────────────────────────────────────
+// Stores & Composables
 const { breadcrumb }                        = useBreadcrumb();
 const { showToast }                         = useToast();
 const authStore                             = useAuthStore();
@@ -316,12 +304,11 @@ const catalogStore                          = useCatalogStore();
 const branchIsolation                       = useBranchIsolation();
 const { ensureBranchSelected, setRequiredBranch } = useRequiredBranch();
 
-// ─── Computed ─────────────────────────────────────────────────────────────────
 const branches       = computed(() => branchStore.branches);
 const selectedBranch = computed(() =>
   branchIsolation.isExempt.value
     ? branchStore.selectedBranchId
-    : authStore.user?.branch_id ?? null
+    : authStore.user?.branchId ?? null
 );
 const categories = computed(() =>
   selectedBranch.value ? catalogStore.getCategoriesForBranch(selectedBranch.value) : []
@@ -332,7 +319,7 @@ const canEdit      = computed(() => authStore.isSuperAdmin || permissions.value.
 const canDelete    = computed(() => authStore.isSuperAdmin || permissions.value.includes('category.delete'));
 const activeCount  = computed(() => categories.value.filter(isActive).length);
 const productsCount = computed(() =>
-  categories.value.reduce((total, c) => total + Number(c.product_count || 0), 0)
+  categories.value.reduce((total, c) => total + Number(c.productCount || 0), 0)
 );
 const filteredCategories = computed(() => {
   const q = search.value.trim().toLocaleLowerCase();
@@ -342,7 +329,6 @@ const filteredCategories = computed(() => {
   );
 });
 
-// ─── State ────────────────────────────────────────────────────────────────────
 const search           = ref('');
 const loading          = ref(false);
 const error            = ref('');
@@ -353,25 +339,24 @@ const deletingId       = ref(null);
 const branchContextReady = ref(false);
 const form             = reactive({ name: '', description: '' });
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function isActive(category) {
   return category.active !== 0 && category.active !== '0' && category.active !== false;
 }
 function hasReferences(category) {
-  return Number(category.product_count || 0) > 0 || Number(category.purchase_count || 0) > 0;
+  return Number(category.productCount || 0) > 0 || Number(category.purchaseCount || 0) > 0;
 }
 function getBranchName(branchId) {
   const branch = branches.value.find(b => String(b.id) === String(branchId));
   return branch?.name || `فرع #${branchId}`;
 }
 
-// ─── Branch ───────────────────────────────────────────────────────────────────
+// Branch
 function handleBranchChange(branchId) {
   if (!setRequiredBranch(branchId)) return;
   search.value = '';
 }
 
-// ─── API ──────────────────────────────────────────────────────────────────────
+// API
 async function loadCategories() {
   if (!selectedBranch.value) { error.value = 'يرجى تحديد فرع لعرض تصنيفاته.'; return; }
   loading.value = true;
@@ -386,7 +371,7 @@ async function loadCategories() {
   }
 }
 
-// ─── Modal ────────────────────────────────────────────────────────────────────
+// Modal
 function resetForm() { form.name = ''; form.description = ''; }
 
 function openCreate() {
@@ -415,7 +400,7 @@ async function saveCategory() {
     const payload = {
       name: form.name.trim(),
       description: form.description.trim(),
-      branch_id: selectedBranch.value,
+      branchId: selectedBranch.value,
     };
     if (editingCategory.value) {
       await catalogStore.updateCategory(editingCategory.value.id, payload);
@@ -435,7 +420,7 @@ async function saveCategory() {
 }
 
 async function deleteCategory(category) {
-  if (hasReferences(category) || Number(category.child_count || 0) > 0) {
+  if (hasReferences(category) || Number(category.childCount || 0) > 0) {
     showToast('لا يمكن حذف تصنيف مرتبط بمنتجات أو مشتريات أو تصنيفات فرعية.', 'warning');
     return;
   }
@@ -456,7 +441,7 @@ async function deleteCategory(category) {
   }
 }
 
-// ─── Watchers & Mount ─────────────────────────────────────────────────────────
+// Watchers & Mount
 watch(selectedBranch, async (newBranch, oldBranch) => {
   if (!branchContextReady.value || String(newBranch || '') === String(oldBranch || '')) return;
   search.value = '';
@@ -467,8 +452,8 @@ onMounted(async () => {
   await branchStore.initialize();
   if (branchIsolation.isExempt.value) {
     await ensureBranchSelected();
-  } else if (authStore.user?.branch_id) {
-    setRequiredBranch(authStore.user.branch_id);
+  } else if (authStore.user?.branchId) {
+    setRequiredBranch(authStore.user.branchId);
   }
   branchContextReady.value = true;
   await loadCategories();

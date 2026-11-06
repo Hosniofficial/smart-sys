@@ -19,7 +19,7 @@ final class PurchaseCreateIdempotencyResponseTest extends TestCase
         $body = json_decode((string) $result->getBody(), true);
         self::assertSame('success', $body['status']);
         self::assertSame(41, $body['data']['id']);
-        self::assertSame('PUR-TEST-041', $body['data']['invoice_number']);
+        self::assertSame('PUR-TEST-041', $body['data']['invoiceNumber']);
     }
 
     public function testSameKeyWithDifferentPayloadReturnsConflict(): void
@@ -71,7 +71,7 @@ final class PurchaseCreateIdempotencyResponseTest extends TestCase
         self::assertSame(200, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
         self::assertSame('success', $body['status']);
-        self::assertSame(72, $body['data']['payment_id']);
+        self::assertSame(72, $body['data']['paymentId']);
         self::assertArrayNotHasKey('_request_fingerprint', $body);
     }
 

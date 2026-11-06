@@ -1,15 +1,12 @@
 <template>
   <div class="flex flex-col h-screen bg-white overflow-hidden text-slate-900 antialiased" dir="rtl">
 
-    <!-- Top Header - Full Width -->
     <header
       class="h-14 md:h-16 bg-white border-b border-slate-200 sticky top-0 z-40 shrink-0 px-2 sm:px-4 lg:px-6 transition-all duration-200 w-full overflow-visible"
     >
       <div class="h-full max-w-full mx-auto flex justify-between items-center">
 
-        <!-- Right side: Branding + Mobile Toggle -->
         <div class="flex items-center gap-2 sm:gap-3 min-w-0">
-          <!-- Mobile Menu Toggle -->
           <button
             @click="mobileMenuOpen = true"
             class="md:hidden w-8 h-8 flex items-center justify-center text-slate-500 hover:bg-slate-50 rounded-md transition-colors shrink-0"
@@ -18,7 +15,6 @@
             <Menu :size="20" class="shrink-0" />
           </button>
 
-          <!-- Branding -->
           <div
             class="flex items-center group cursor-pointer shrink-0"
             @click="router.push('/cashier')"
@@ -31,10 +27,8 @@
           </div>
         </div>
 
-        <!-- Left side: Notification & Profile -->
         <div class="flex items-center gap-1 sm:gap-2 md:gap-3 shrink-0">
 
-          <!-- Notifications -->
           <div class="relative" ref="notificationsRef">
             <button
               @click="toggleNotifications"
@@ -54,7 +48,6 @@
               </span>
             </button>
 
-            <!-- Notifications Panel -->
             <Teleport to="body">
               <Transition name="dropdown-v2">
                 <div
@@ -83,7 +76,7 @@
                       class="p-3 sm:p-4 hover:bg-slate-50 transition-colors group flex items-start justify-between gap-2 sm:gap-3"
                     >
                       <div class="flex items-start gap-2 sm:gap-3 flex-1 min-w-0 cursor-pointer" @click="markNotificationAsRead(note)">
-                        <div v-if="!note.is_read" class="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-blue-600 mt-1.5 shrink-0"></div>
+                        <div v-if="!note.isRead" class="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-blue-600 mt-1.5 shrink-0"></div>
                         <div class="flex-1 min-w-0">
                           <div class="flex items-center gap-1.5 sm:gap-2 mb-0.5">
                             <span v-if="note.icon" class="text-xs sm:text-sm">{{ note.icon }}</span>
@@ -103,7 +96,7 @@
                             </router-link>
                           </div>
 
-                          <p class="text-[8px] sm:text-[9px] text-slate-400 mt-1 sm:mt-1.5 font-mono">{{ formatRelativeTime(note.created_at) }}</p>
+                          <p class="text-[8px] sm:text-[9px] text-slate-400 mt-1 sm:mt-1.5 font-mono">{{ formatRelativeTime(note.createdAt) }}</p>
                         </div>
                       </div>
                       <button
@@ -125,7 +118,6 @@
 
           <div class="h-6 w-px bg-slate-200 mx-0.5 sm:mx-1 hidden md:block"></div>
 
-          <!-- Profile Menu -->
           <div class="relative" ref="profileRef">
             <button
               @click="showProfileMenu = !showProfileMenu"
@@ -179,9 +171,7 @@
       </div>
     </header>
 
-    <!-- Sidebar + Content Wrapper - starts below header -->
     <div class="flex flex-1 overflow-hidden relative z-10 pt-0">
-      <!-- Sidebar -->
       <AppSidebar
         :menu-items="menuItems"
         :collapsed="sidebarCollapsed"
@@ -190,7 +180,6 @@
         @toggle="toggleSidebar"
       />
 
-      <!-- Section Panel -->
       <Transition name="dropdown-v2">
         <SectionPanel
           v-if="activeSection"
@@ -202,7 +191,6 @@
         />
       </Transition>
 
-      <!-- Main Content -->
       <main 
         class="flex-1 overflow-x-hidden overflow-y-auto custom-scroll relative z-0 bg-slate-50"
         :class="{ 'md:mr-[72px]': sidebarCollapsed, 'md:mr-[256px]': !sidebarCollapsed }"
@@ -212,12 +200,10 @@
       </main>
     </div>
 
-    <!-- Mobile Navigation Drawer (Only on Mobile) -->
     <Transition name="fade">
        <div v-if="mobileMenuOpen" class="fixed inset-0 z-50 md:hidden" @click.self="mobileMenuOpen = false">
           <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity"></div>
           <aside class="absolute top-0 right-0 w-[min(280px,80vw)] h-full bg-white flex flex-col shadow-2xl overflow-hidden animate-slide-in">
-             <!-- Header -->
              <div class="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between shrink-0 bg-gradient-to-r from-slate-50 to-white">
                 <div class="flex items-center gap-2.5">
                   <img src="/favicons/logo-smartsys.png" alt="SmartSys" class="w-7 h-7 object-contain" />
@@ -228,10 +214,8 @@
                 </button>
              </div>
 
-             <!-- Menu Items -->
              <div class="flex-1 overflow-y-auto p-2 sm:p-3 space-y-0.5 custom-scroll overscroll-contain">
                 <template v-for="item in menuItems" :key="item.key || item.path">
-                  <!-- Direct Link -->
                   <router-link
                     v-if="!item.items"
                     :to="item.path"
@@ -243,7 +227,6 @@
                     <span class="flex-1">{{ item.name }}</span>
                   </router-link>
 
-                  <!-- Parent with Children -->
                   <div v-else class="space-y-0.5">
                     <button
                       @click="toggleMobileItem(item.key)"
@@ -256,7 +239,6 @@
                       <ChevronDown :size="12" class="sm:w-[14px] sm:h-[14px] transition-transform duration-200 shrink-0" :class="{ 'rotate-180': expandedMobileItems.has(item.key) }" />
                     </button>
 
-                    <!-- Children -->
                     <Transition name="expand">
                       <div v-if="expandedMobileItems.has(item.key)" class="mr-3 sm:mr-4 mt-0.5 border-r-2 border-slate-100 space-y-0.5">
                         <router-link
@@ -276,7 +258,6 @@
                 </template>
              </div>
 
-             <!-- Footer -->
              <div class="p-3 sm:p-4 border-t border-slate-100 bg-slate-50/50 shrink-0">
                <div class="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 mb-2">
                  <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 shrink-0">
@@ -320,6 +301,7 @@ import { useToast } from '@/composables/useToast'
 import { useActiveRoute } from '@/composables/useActiveRoute'
 import { getMenuItems } from '@/config/menuConfig'
 import notificationsService from '@/services/notifications'
+import logger from '@/utils/services/logger'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import SectionPanel from '@/components/layout/SectionPanel.vue'
@@ -349,7 +331,7 @@ const previousUnreadCount = ref(-1)
 const notificationsRef = ref(null)
 const profileRef = ref(null)
 
-const isUnread = (notification) => Number(notification.is_read) === 0
+const isUnread = (notification) => Number(notification.isRead) === 0
 
 // Calculate dropdown right position so it aligns with button's right edge
 // and never clips off the left side of the viewport
@@ -385,10 +367,10 @@ const profilePosition       = computed(() => calcDropdownRight(profileRef, 208))
 
 const userRoleDisplay = computed(() => {
   const user = authStore.user || {}
-  if (Number(user.tenant_id) > 0 && user.role === 'super_admin') {
-    return user.role_display_name || (authStore.isOwner ? 'مسؤول المنشأة' : 'موظف')
+  if (Number(user.tenantId) > 0 && user.role === 'super_admin') {
+    return user.roleDisplayName || (authStore.isOwner ? 'مسؤول المنشأة' : 'موظف')
   }
-  return user.role_display_name || user.role || user.role_code || 'موظف'
+  return user.roleDisplayName || user.role || user.roleCode || 'موظف'
 })
 
 const menuItems = computed(() => {
@@ -448,7 +430,7 @@ async function loadNotifications() {
   loadingNotifications.value = true
   try {
     const response = await notificationsService.list(
-      { page: 1, per_page: 10 },
+      { page: 1, perPage: 10 },
       { skipLoader: true }
     )
     if (response.data.status === 'success') {
@@ -467,7 +449,7 @@ async function loadNotifications() {
   } catch (error) {
     // Only log timeout errors in development
     if (import.meta.env.DEV && error.code !== 'ECONNABORTED') {
-      console.error('Error loading notifications', error)
+      logger.error('Error loading notifications', { message: error?.message })
     }
   } finally {
     loadingNotifications.value = false
@@ -476,20 +458,20 @@ async function loadNotifications() {
 
 async function markNotificationAsRead(notification) {
   try {
-    if (notification.is_read) return
+    if (notification.isRead) return
     const result = await notificationsService.markAsRead(notification.id)
     if (result.data?.status === 'success') {
-      notification.is_read = 1
+      notification.isRead = 1
       unreadCount.value = notifications.value.filter(isUnread).length
     }
   } catch (error) {
-    if (import.meta.env.DEV) console.error('Error marking notification read', error)
+    logger.error('Error marking notification read', { message: error?.message })
   }
 }
 
 async function markAllAsRead() {
   for (const note of notifications.value) {
-    if (!note.is_read) {
+    if (!note.isRead) {
       await markNotificationAsRead(note)
     }
   }

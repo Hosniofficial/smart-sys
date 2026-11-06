@@ -1,7 +1,6 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Global Loading Overlay: Refined Glassmorphism -->
     <Transition name="fade">
       <div v-if="isLoading" class="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-[110]">
         <div class="bg-white p-8 rounded-xl shadow-2xl flex flex-col items-center border border-slate-200">
@@ -15,7 +14,6 @@
       </div>
     </Transition>
 
-    <!-- Sticky Floating Save Bar: The "Stripe" Action Anchor -->
     <Transition name="slide-up">
       <div v-if="isDirty" class="fixed bottom-8 inset-x-0 flex justify-center z-[100] px-4">
         <div class="bg-slate-900 border border-white/10 shadow-2xl rounded-2xl sm:rounded-full px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-8 max-w-2xl w-full backdrop-blur-md bg-opacity-95">
@@ -47,7 +45,6 @@
       </div>
     </Transition>
 
-    <!-- Success/Error Alerts: Minimalist SaaS Toasts -->
     <div class="fixed top-20 left-6 z-[100] space-y-3 max-w-sm">
       <Transition name="slide-left">
         <div v-if="errorMessage" class="bg-rose-600 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 border border-rose-500">
@@ -60,7 +57,6 @@
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="تكوين المنشأة"
@@ -69,7 +65,6 @@
         :selectedBranch="null"
       />
 
-      <!-- Access Denied State -->
       <div v-if="!hasSettingsAccess" class="py-32 text-center animate-fadeIn bg-white border border-slate-200 rounded-xl shadow-sm">
         <div class="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
           <i class="fas fa-lock text-2xl"></i>
@@ -79,10 +74,8 @@
         <router-link to="/dashboard" class="mt-8 inline-flex px-6 py-2 bg-slate-900 text-white rounded-md text-[10px] font-bold uppercase tracking-widest shadow-sm">العودة للرئيسية</router-link>
       </div>
 
-      <!-- Main Layout: Sidebar + Main Area -->
       <div v-else class="flex flex-col lg:flex-row gap-10 items-start">
         
-        <!-- Sidebar Navigation: Linear-style -->
         <nav class="w-full lg:w-72 space-y-6 lg:sticky lg:top-24">
           <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
             <div class="relative group">
@@ -102,18 +95,13 @@
               <div v-if="activeTab === tab.id" class="absolute right-0 top-0 bottom-0 w-1 bg-blue-600"></div>
               <i :class="[tab.icon, activeTab === tab.id ? 'text-blue-600' : 'text-slate-300 group-hover:text-slate-500']" class="text-xs"></i>
               <span class="flex-grow text-right text-[11px] font-bold tracking-tight">{{ tab.label }}</span>
-              <!-- Dirty Indicator -->
               <div v-if="isSectionDirty(sectionKeyFromTab(tab.id))" class="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse shadow-sm"></div>
             </button>
           </div>
         </nav>
 
-        <!-- Main Content Area -->
         <main class="flex-1 w-full space-y-10">
 
-          <!-- ════════════════════════════════════════════════════════════ -->
-          <!-- 1. GENERAL SETTINGS                                         -->
-          <!-- ════════════════════════════════════════════════════════════ -->
           <section v-if="activeTab === 'general-settings'" class="animate-fadeIn space-y-8">
             <div class="rounded-xl border border-emerald-100 bg-gradient-to-l from-emerald-50 via-white to-white px-6 py-5 shadow-sm">
               <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -131,7 +119,6 @@
             <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
               <div class="p-8 grid grid-cols-1 md:grid-cols-12 gap-10">
                 
-                <!-- Business Info -->
                 <div class="md:col-span-7 space-y-6">
                   <h3 class="metadata-label text-blue-600"><i class="fas fa-building ml-2"></i> البيانات الرسمية</h3>
                   <div class="space-y-4">
@@ -148,7 +135,6 @@
                   </div>
                 </div>
 
-                <!-- Logo Section -->
                 <div class="md:col-span-5 flex flex-col items-center justify-center border-r border-slate-100 pr-10">
                    <h3 class="metadata-label self-start mb-6 text-purple-600"><i class="fas fa-image ml-2"></i> الهوية البصرية</h3>
                    <div class="w-40 h-40 rounded-xl bg-slate-50 border border-slate-200 relative overflow-hidden group shadow-inner">
@@ -167,7 +153,6 @@
                 </div>
               </div>
 
-              <!-- Localization -->
               <div class="p-8 border-t border-slate-100 bg-slate-50/30">
                 <h3 class="metadata-label mb-6 text-emerald-600"><i class="fas fa-globe ml-2"></i> الإعدادات الإقليمية</h3>
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -180,7 +165,7 @@
                   <div class="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h4 class="text-xs font-bold text-slate-800">أسعار الصرف المرجعية</h4>
-                      <p class="mt-1 text-[10px] text-slate-500">مقابل العملة الأساسية {{ exchangeRates.base_currency_code || general.currency }}.</p>
+                      <p class="mt-1 text-[10px] text-slate-500">مقابل العملة الأساسية {{ exchangeRates.baseCurrencyCode || general.currency }}.</p>
                     </div>
                     <LoadingButton
                       text="تحديث الأسعار"
@@ -194,21 +179,18 @@
                   </div>
                   <p v-if="currencyRatesError" class="mt-3 text-[10px] font-bold text-rose-600">{{ currencyRatesError }}</p>
                   <div v-else-if="exchangeRates.rates?.length" class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                    <div v-for="rate in exchangeRates.rates" :key="rate.quote_currency_code" class="rounded-md bg-slate-50 px-3 py-2">
-                      <div class="text-[9px] font-bold text-slate-500">{{ rate.quote_currency_code }}</div>
+                    <div v-for="rate in exchangeRates.rates" :key="rate.quoteCurrencyCode" class="rounded-md bg-slate-50 px-3 py-2">
+                      <div class="text-[9px] font-bold text-slate-500">{{ rate.quoteCurrencyCode }}</div>
                       <div class="mt-1 text-xs font-bold text-slate-900">{{ Number(rate.rate).toLocaleString('en-US', { maximumFractionDigits: 6 }) }}</div>
                     </div>
                   </div>
                   <p v-else class="mt-3 text-[10px] text-slate-500">لا توجد أسعار محفوظة حالياً؛ اضغط تحديث الأسعار لجلبها.</p>
-                  <p v-if="exchangeRates.rates?.length" class="mt-3 text-[9px] text-slate-400">آخر تحديث: {{ exchangeRates.rates[0]?.fetched_at || exchangeRates.rates[0]?.rate_date }}</p>
+                  <p v-if="exchangeRates.rates?.length" class="mt-3 text-[9px] text-slate-400">آخر تحديث: {{ exchangeRates.rates[0]?.fetchedAt || exchangeRates.rates[0]?.rateDate }}</p>
                 </div>
               </div>
             </div>
           </section>
 
-          <!-- ════════════════════════════════════════════════════════════ -->
-          <!-- 2. POS SETTINGS                                             -->
-          <!-- ════════════════════════════════════════════════════════════ -->
           <section v-if="activeTab === 'pos-settings'" class="animate-fadeIn space-y-8">
             <div class="rounded-xl border border-blue-100 bg-gradient-to-l from-blue-50 via-white to-white px-6 py-5 shadow-sm">
               <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -231,10 +213,8 @@
               </div>
             </div>
 
-            <!-- Configuration Grid -->
             <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm p-8 space-y-10">
 
-              <!-- Session and shift controls -->
               <div class="space-y-5">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
@@ -274,7 +254,6 @@
                 </div>
               </div>
 
-              <!-- Role Restrictions -->
               <div class="space-y-6">
                 <div class="flex items-center justify-between border-b border-slate-50 pb-3">
                   <h3 class="metadata-label text-slate-900"><i class="fas fa-user-lock ml-2 text-rose-500"></i> تقييد صلاحيات البيع</h3>
@@ -286,12 +265,11 @@
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <label v-for="role in filteredPosRoleOptions" :key="role.id" class="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100 cursor-pointer hover:bg-white hover:border-blue-500 transition-all has-[:checked]:bg-blue-50 has-[:checked]:border-blue-200">
                     <input type="checkbox" :value="Number(role.id)" v-model="posSession.enforceForRoles" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-0" />
-                    <span class="text-[11px] font-bold text-slate-700 truncate">{{ role.display_name || role.name || role.role_code }}</span>
+                    <span class="text-[11px] font-bold text-slate-700 truncate">{{ role.displayName || role.name || role.roleCode }}</span>
                   </label>
                 </div>
               </div>
 
-              <!-- Shift policy and approvals -->
               <div class="grid grid-cols-1 gap-8 border-t border-slate-100 pt-6 lg:grid-cols-2">
                 <div class="space-y-4">
                   <div>
@@ -344,7 +322,6 @@
                 </div>
               </div>
 
-              <!-- Morning/evening cutoff -->
               <div v-if="posSession.sessionTypeMode === 'morning'" class="rounded-xl border border-violet-100 bg-violet-50/60 p-5">
                 <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -382,9 +359,6 @@
             </div>
           </section>
 
-          <!-- ════════════════════════════════════════════════════════════ -->
-          <!-- 3. INVOICE & TAX SETTINGS                                   -->
-          <!-- ════════════════════════════════════════════════════════════ -->
           <section v-if="activeTab === 'invoice-settings'" class="animate-fadeIn space-y-8">
             <div class="rounded-xl border border-rose-100 bg-gradient-to-l from-rose-50 via-white to-white px-6 py-5 shadow-sm">
               <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -401,7 +375,6 @@
 
             <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm p-8">
               <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
-                <!-- Tax Config -->
                 <div class="space-y-8">
                   <h3 class="metadata-label text-rose-600"><i class="fas fa-percent ml-2"></i> تهيئة الضرائب (VAT)</h3>
                   <div class="space-y-4 p-6 bg-slate-50 border border-slate-100 rounded-xl">
@@ -428,7 +401,6 @@
                   </div>
                 </div>
 
-                <!-- Sequencing -->
                 <div class="space-y-8">
                   <h3 class="metadata-label text-blue-600"><i class="fas fa-hashtag ml-2"></i> أرقام الفواتير والتذييل</h3>
                   <div class="space-y-6">
@@ -443,9 +415,6 @@
             </div>
           </section>
 
-          <!-- ════════════════════════════════════════════════════════════ -->
-          <!-- 4. ACCOUNTING SETTINGS                                      -->
-          <!-- ════════════════════════════════════════════════════════════ -->
           <section v-if="activeTab === 'accounting-settings'" class="animate-fadeIn space-y-8">
             <div class="rounded-xl border border-violet-100 bg-gradient-to-l from-violet-50 via-white to-white px-6 py-5 shadow-sm">
              <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -484,7 +453,6 @@
                 </p>
               </div>
 
-              <!-- Integration Mapping -->
               <div class="space-y-6">
                 <h3 class="metadata-label text-slate-900"><i class="fas fa-map-marked-alt ml-2 text-indigo-500"></i> ربط حسابات دفتر الأستاذ (GL Mapping)</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -532,9 +500,6 @@
             </div>
           </section>
 
-          <!-- ════════════════════════════════════════════════════════════ -->
-          <!-- 5. PRINTING                                                 -->
-          <!-- ════════════════════════════════════════════════════════════ -->
           <section v-if="activeTab === 'printers-settings'" class="animate-fadeIn space-y-8">
             <div class="rounded-xl border border-amber-100 bg-gradient-to-l from-amber-50 via-white to-white px-6 py-5 shadow-sm">
               <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -550,7 +515,6 @@
             </div>
 
             <div class="grid grid-cols-1 xl:grid-cols-12 gap-10">
-              <!-- Design Config -->
               <div class="xl:col-span-7 space-y-8">
                 <div class="bg-white border border-slate-200 rounded-xl p-8 space-y-8 shadow-sm">
                   <div class="space-y-2">
@@ -602,7 +566,6 @@
                 </div>
               </div>
 
-              <!-- Live Preview: The Professional Terminal Style -->
               <div class="xl:col-span-5">
                 <div class="bg-slate-900 rounded-xl p-8 shadow-2xl relative overflow-hidden border border-white/5">
                    <div class="flex items-center justify-between mb-6">
@@ -626,7 +589,6 @@
 
   </div>
 </template>
-
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
@@ -654,7 +616,7 @@ import PageHeader from '@/components/PageHeader.vue';
 import { isSettingEnabled } from '@/utils';
 import { currencyService } from '@/services/currencies';
 
-// ─── Core Setup ───────────────────────────────────────────────────────────────
+// Core Setup
 const route = useRoute();
 const { breadcrumb } = useBreadcrumb();
 const router = useRouter();
@@ -673,11 +635,11 @@ const logoFile = ref(null)
 const activeTab = ref(route.query.tab === 'users-settings' ? 'general-settings' : route.query.tab || 'general-settings')
 const errors = ref({})
 const searchTerm = ref('')
-const exchangeRates = ref({ base_currency_code: '', supported_currencies: [], rates: [] })
+const exchangeRates = ref({ baseCurrencyCode: '', supportedCurrencies: [], rates: [] })
 const currencyRatesLoading = ref(false)
 const currencyRatesError = ref('')
 
-// ─── Tabs ─────────────────────────────────────────────────────────────────────
+// Tabs
 const tabs = [
   { id: 'general-settings',  label: 'الإعدادات العامة',     icon: 'fas fa-cog' },
   { id: 'invoice-settings',  label: 'الفواتير والضرائب',     icon: 'fas fa-file-invoice' },
@@ -704,7 +666,7 @@ const filteredTabs = computed(() => {
   return tabs.filter(t => t.label.includes(q) || t.id.includes(q))
 })
 
-// ─── Settings State ───────────────────────────────────────────────────────────
+// Settings State
 const general = ref({
   businessName: '', email: '', phone: '', address: '',
   currency: 'EGP', timezone: 'Asia/Riyadh',
@@ -753,7 +715,7 @@ const printTexts = ref({
   termsText:  localStorage.getItem('pos_print_terms_text')  || '',
 })
 
-// ─── Accounting ───────────────────────────────────────────────────────────────
+// Accounting
 const accounting = ref({
   cogsAccountId: null,
   inventoryAccountId: null,
@@ -775,9 +737,9 @@ const accountingMissingKeys = computed(() => {
 })
 
 const accountingKeyLabels = {
-  cogs_account_id: 'حساب تكلفة البضاعة المباعة (COGS)',
-  inventory_account_id: 'حساب المخزون',
-  inventory_adjustment_account_id: 'حساب تسويات/فروق المخزون',
+  cogsAccountId: 'حساب تكلفة البضاعة المباعة (COGS)',
+  inventoryAccountId: 'حساب المخزون',
+  inventoryAdjustmentAccountId: 'حساب تسويات/فروق المخزون',
 }
 
 const rolesLoading = ref(false);
@@ -787,15 +749,15 @@ const branchOptions = computed(() => {
   const canManageAllBranches = authStore.isSuperAdmin
     || role === 'super_admin'
     || role === 'admin'
-    || Number(user.is_owner) === 1
-  const branchId = Number(user.branch_id || 0)
+    || Number(user.isOwner) === 1
+  const branchId = Number(user.branchId || 0)
   return branchStore.branches
     .filter(branch => canManageAllBranches || (branchId > 0 && Number(branch.id) === branchId))
     .map(branch => ({ id: branch.id, name: branch.name }))
 })
 const branchesLoading = ref(false)
 
-// ─── Dirty Tracking ───────────────────────────────────────────────────────────
+// Dirty Tracking
 const printerSettingsForTracking = computed({
   get: () => ({
     ...printers.value,
@@ -820,7 +782,7 @@ const dirtySectionSummary = computed(() => dirtySections.value
   .map(key => sectionLabels[key])
   .join('، '))
 
-// ─── Role Filters ─────────────────────────────────────────────────────────────
+// Role Filters
 const excludedPosRoleNames = ['super_admin', 'مدير النظام']
 
 const filteredPosRoleOptions = computed(() => {
@@ -837,7 +799,7 @@ watch(() => posSession.value.enforceForRoles, (vals) => {
   try {
     const excludedIds = new Set(
       (roleOptions.value || [])
-        .filter(r => excludedPosRoleNames.map(x => x.toLowerCase()).includes(String(r.role_code || r.name || '').trim().toLowerCase()))
+        .filter(r => excludedPosRoleNames.map(x => x.toLowerCase()).includes(String(r.roleCode || r.name || '').trim().toLowerCase()))
         .map(r => Number(r.id))
     )
     const cleaned = (vals || []).filter(v => !excludedIds.has(Number(v)))
@@ -845,7 +807,7 @@ watch(() => posSession.value.enforceForRoles, (vals) => {
   } catch (_) { /* ignore */ }
 }, { deep: true })
 
-// ─── Tab Navigation ───────────────────────────────────────────────────────────
+// Tab Navigation
 function sectionKeyFromTab(tabId) {
   return {
     'general-settings':    'general',
@@ -886,7 +848,7 @@ watch(activeTab, (tab) => {
   }
 });
 
-// ─── Save Bar Handlers ────────────────────────────────────────────────────────
+// Save Bar Handlers
 async function saveActiveTab() {
   const key = sectionKeyFromTab(activeTab.value)
   if (!key) { showToast('لا يوجد ما يتم حفظه في هذا التبويب', 'info'); return }
@@ -924,7 +886,7 @@ function goToFirstDirtySection() {
   if (tab) void setActiveTab(tab)
 }
 
-// ─── Toast Helpers ────────────────────────────────────────────────────────────
+// Toast Helpers
 const showError = (message) => {
   errorMessage.value = message
   showToast(message, 'error', 5000)
@@ -935,7 +897,7 @@ const showSuccess = (message) => {
   showToast(message, 'success', 3000)
 }
 
-// ─── Logo Handling ────────────────────────────────────────────────────────────
+// Logo Handling
 const handleLogoUpload = (event) => {
   const file = event.target.files[0]
   if (!file) return
@@ -965,7 +927,7 @@ const removeLogo = () => {
   } catch (e) { /* ignore */ }
 }
 
-// ─── Reset Form ───────────────────────────────────────────────────────────────
+// Reset Form
 const resetForm = () => {
   general.value = {
     businessName: general.value.businessName,
@@ -978,7 +940,7 @@ const resetForm = () => {
   errors.value = {}
 }
 
-// ─── Computed: Access Control ─────────────────────────────────────────────────
+// Computed: Access Control
 const hasSettingsAccess = computed(() => {
   if (!authStore.user) return false
 
@@ -996,11 +958,11 @@ const hasSettingsAccess = computed(() => {
   const role = (userData?.role || '').toLowerCase()
 
   return authStore.isSuperAdmin ||
-    (Number(userData?.tenant_id) > 0 &&
+    (Number(userData?.tenantId) > 0 &&
       (role === 'admin' || role === 'manager'))
 })
 
-// ─── Data Fetching: Roles / Branches ────────────────────────────────────────
+// Data Fetching: Roles / Branches
 async function fetchRoleOptions() {
   if (!hasSettingsAccess.value) return
   try {
@@ -1032,7 +994,7 @@ function applyBranchPrintPayload(payload) {
   const settings = payload?.settings || {}
   const hasBranchTemplate = Array.isArray(payload?.overrides)
     && payload.overrides.includes('print.template')
-  const template = hasBranchTemplate || payload?.tenant_template_configured
+  const template = hasBranchTemplate || payload?.tenantTemplateConfigured
     ? settings['print.template']
     : tenantPrinterSettings.value?.printers?.template
   printers.value = {
@@ -1070,7 +1032,7 @@ async function handlePrintBranchChange(nextBranchId) {
       branchPrintOverrides.value = []
     } else {
       const response = await settingsService.getBranchPrintSettings(Number(nextBranchId))
-      const payload = response?.data?.data ?? response?.data
+      const payload = response?.data?.data
       if (response?.data?.status !== 'success' || !payload?.settings) {
         throw new Error(response?.data?.message || 'تعذر تحميل إعدادات الطباعة للفرع.')
       }
@@ -1119,18 +1081,18 @@ async function resetBranchPrinterSettings() {
   }
 }
 
-// ─── Settings Fetch ───────────────────────────────────────────────────────────
+// Settings Fetch
 async function fetchSettings() {
   if (!hasSettingsAccess.value) return
   isLoading.value = true
   errorMessage.value = ''
   try {
     const response = await settingsStore.fetchSettings();
-    if (response.status === 'success' && response.data && response.data.settings) {
+    if (response.status === 'success' && response.data?.settings) {
       const s = response.data;
 
       general.value = {
-        businessName: s['company.name'] || s['company_name'] || '',
+        businessName: s['company.name'] || s['companyName'] || '',
         email:        s['company.email'] || '',
         phone:        s['company.phone'] || '',
         address:      s['company.address'] || '',
@@ -1193,9 +1155,9 @@ async function fetchSettings() {
       } catch (_) { posSession.value.branchApprovals = {} }
 
       accounting.value = {
-        cogsAccountId:                   s['cogs_account_id'] || null,
-        inventoryAccountId:              s['inventory_account_id'] || null,
-        inventoryAdjustmentAccountId:    s['inventory_adjustment_account_id'] || null,
+        cogsAccountId:                   s['cogsAccountId'] || null,
+        inventoryAccountId:              s['inventoryAccountId'] || null,
+        inventoryAdjustmentAccountId:    s['inventoryAdjustmentAccountId'] || null,
       }
 
       printTexts.value = {
@@ -1219,6 +1181,8 @@ async function fetchSettings() {
       } catch (e) { /* ignore quota errors */ }
 
       setSnapshotsFromCurrent()
+    } else {
+      showError(response?.message || 'فشل تحميل الإعدادات. يرجى المحاولة مرة أخرى.')
     }
   } catch (error) {
     console.error('Error fetching settings:', error)
@@ -1252,7 +1216,7 @@ async function refreshCurrencyRates() {
   await fetchCurrencyRates(true)
 }
 
-// ─── Save Methods ─────────────────────────────────────────────────────────────
+// Save Methods
 async function saveGeneralSettings() {
   errors.value = {}
   if (!general.value.businessName?.trim()) {
@@ -1449,9 +1413,9 @@ async function saveAccountingSettings() {
   isSaving.value = true
   try {
     const settings = {
-      cogs_account_id:                    accounting.value.cogsAccountId,
-      inventory_account_id:               accounting.value.inventoryAccountId,
-      inventory_adjustment_account_id:    accounting.value.inventoryAdjustmentAccountId,
+      cogsAccountId:                    accounting.value.cogsAccountId,
+      inventoryAccountId:               accounting.value.inventoryAccountId,
+      inventoryAdjustmentAccountId:    accounting.value.inventoryAdjustmentAccountId,
     }
     const response = await settingsStore.updateSettings(settings)
     if (response.status === 'success') {
@@ -1469,7 +1433,7 @@ async function saveAccountingSettings() {
   }
 }
 
-// ─── Accounting Accounts Loader ───────────────────────────────────────────────
+// Accounting Accounts Loader
 async function loadAccountingAccounts() {
   try {
     await accountStore.fetchGroupedAccounts();
@@ -1480,7 +1444,7 @@ async function loadAccountingAccounts() {
   }
 }
 
-// ─── Temporarily sync form values → localStorage → call fn → restore ─────────
+// Temporarily sync form values → localStorage → call fn → restore
 function withFormLS(fn) {
   const KEYS = [
     'pos_print_header_enabled', 'pos_print_footer_enabled',
@@ -1491,16 +1455,16 @@ function withFormLS(fn) {
     'pos_company_address',
   ]
   const prev = Object.fromEntries(KEYS.map(k => [k, localStorage.getItem(k)]))
-  const logo = getImageUrl(general.value.logo || prev['pos_company_logo']) || ''
+  const logo = getImageUrl(general.value.logo || prev['posCompanyLogo']) || ''
   localStorage.setItem('pos_print_header_enabled', printers.value.printHeader ? '1' : '0')
   localStorage.setItem('pos_print_footer_enabled', printers.value.printFooter ? '1' : '0')
   localStorage.setItem('pos_print_header_text',    printTexts.value.headerText || '')
   localStorage.setItem('pos_print_footer_text',    printTexts.value.footerText || '')
   localStorage.setItem('pos_print_terms_text',     printTexts.value.termsText  || '')
-  localStorage.setItem('pos_company_name',         general.value.businessName  || prev['pos_company_name'] || 'اسم المتجر')
-  localStorage.setItem('pos_company_phone',        general.value.phone         || prev['pos_company_phone'] || '')
-  localStorage.setItem('pos_company_tax_number',   invoice.value.taxNumber     || prev['pos_company_tax_number'] || '')
-  localStorage.setItem('pos_company_address',      general.value.address       || prev['pos_company_address'] || '')
+  localStorage.setItem('pos_company_name',         general.value.businessName  || prev['posCompanyName'] || 'اسم المتجر')
+  localStorage.setItem('pos_company_phone',        general.value.phone         || prev['posCompanyPhone'] || '')
+  localStorage.setItem('pos_company_tax_number',   invoice.value.taxNumber     || prev['posCompanyTaxNumber'] || '')
+  localStorage.setItem('pos_company_address',      general.value.address       || prev['posCompanyAddress'] || '')
   localStorage.setItem('pos_company_logo',         logo)
   clearPrintConfigCache()
   const result = fn()
@@ -1509,7 +1473,7 @@ function withFormLS(fn) {
   return result
 }
 
-// ─── Print Test ───────────────────────────────────────────────────────────────
+// Print Test
 function getPreviewPrintOptions() {
   return {
     template: printTemplate.value,
@@ -1527,7 +1491,7 @@ async function testPrint() {
   await printDocument(buildPreviewHtml())
 }
 
-// ─── Live Print Preview ───────────────────────────────────────────────────────
+// Live Print Preview
 function buildPreviewHtml(type = previewType.value) {
   const taxR = Number(invoice.value.taxRate || 15)
   const sub  = 50
@@ -1537,55 +1501,55 @@ function buildPreviewHtml(type = previewType.value) {
     let html
     if (type === 'return') {
       html = buildReturnHtml({
-        return_number:  'RET-001',
-        return_date:    '2025-08-20T15:30:00',
+        returnNumber:  'RET-001',
+        returnDate:    '2025-08-20T15:30:00',
         ...(selectedPrintBranchName.value
-          ? { branch_id: printSettingsBranchId.value, branch_name: selectedPrintBranchName.value }
+          ? { branchId: printSettingsBranchId.value, branchName: selectedPrintBranchName.value }
           : {}),
-        customer_name:  'أحمد محمد',
-        return_reason:  'منتج تالف',
-        grand_total:    80,
-        total_amount:   80,
+        customerName:  'أحمد محمد',
+        returnReason:  'منتج تالف',
+        grandTotal:    80,
+        totalAmount:   80,
         items: [
-          { product_name: 'منتج مرتجع أ', quantity: 1, unit_price: 50, net_total: 50 },
-          { product_name: 'منتج مرتجع ب', quantity: 2, unit_price: 15, net_total: 30 },
+          { productName: 'منتج مرتجع أ', quantity: 1, unitPrice: 50, netTotal: 50 },
+          { productName: 'منتج مرتجع ب', quantity: 2, unitPrice: 15, netTotal: 30 },
         ],
       }, getPreviewPrintOptions())
     } else if (type === 'purchase') {
       html = buildPurchaseHtml({
-        invoice_number: 'PUR-001',
-        invoice_date:   '2025-08-20T15:30:00',
-        branch_id:      printSettingsBranchId.value || null,
-        branch_name:    selectedPrintBranchName.value || '-',
-        supplier_name:  'المورد الرئيسي',
+        invoiceNumber: 'PUR-001',
+        invoiceDate:   '2025-08-20T15:30:00',
+        branchId:      printSettingsBranchId.value || null,
+        branchName:    selectedPrintBranchName.value || '-',
+        supplierName:  'المورد الرئيسي',
         status:         'partial',
-        total_amount:   350,
-        paid_amount:    200,
+        totalAmount:   350,
+        paidAmount:    200,
         items: [
-          { product_name: 'مادة خام أ', quantity: 10, price: 20, unit_price: 20 },
-          { product_name: 'مادة خام ب', quantity: 5,  price: 30, unit_price: 30 },
+          { productName: 'مادة خام أ', quantity: 10, price: 20, unitPrice: 20 },
+          { productName: 'مادة خام ب', quantity: 5,  price: 30, unitPrice: 30 },
         ],
       }, getPreviewPrintOptions())
     } else {
       html = getBuilderByTemplate(printTemplate.value || 'thermal-compact')({
-        invoice_number:    `${invoice.value.invoicePrefix || 'INV-'}12345`,
+        invoiceNumber:    `${invoice.value.invoicePrefix || 'INV-'}12345`,
         ...(selectedPrintBranchName.value
-          ? { branch_id: printSettingsBranchId.value, branch_name: selectedPrintBranchName.value }
+          ? { branchId: printSettingsBranchId.value, branchName: selectedPrintBranchName.value }
           : {}),
-        sale_date:         '2025-08-20T15:30:00',
-        customer_name:     'أحمد محمد',
-        payment_method:    'نقداً',
-        discount_type:     'fixed',
-        discount_value:    5,
-        tax_rate:          taxR,
-        tax_amount:        tax,
-        total_amount:      sub,
-        net_total_amount:  +(sub - 5 + tax).toFixed(2),
-        paid_amount:       +(sub - 5 + tax).toFixed(2),
-        change_amount:     0,
+        saleDate:         '2025-08-20T15:30:00',
+        customerName:     'أحمد محمد',
+        paymentMethod:    'نقداً',
+        discountType:     'fixed',
+        discountValue:    5,
+        taxRate:          taxR,
+        taxAmount:        tax,
+        totalAmount:      sub,
+        netTotalAmount:  +(sub - 5 + tax).toFixed(2),
+        paidAmount:       +(sub - 5 + tax).toFixed(2),
+        changeAmount:     0,
         items: [
-          { product_name: 'منتج أ', quantity: 1, sale_price: 25,   net_price: 25,   net_total: 25 },
-          { product_name: 'منتج ب', quantity: 2, sale_price: 12.5, net_price: 12.5, net_total: 25 },
+          { productName: 'منتج أ', quantity: 1, salePrice: 25,   netPrice: 25,   netTotal: 25 },
+          { productName: 'منتج ب', quantity: 2, salePrice: 12.5, netPrice: 12.5, netTotal: 25 },
         ],
       }, getPreviewPrintOptions())
     }
@@ -1595,7 +1559,7 @@ function buildPreviewHtml(type = previewType.value) {
 
 const previewHtml = computed(() => buildPreviewHtml().replace(/<script[\s\S]*?<\/script>/gi, ''))
 
-// ─── Lifecycle ────────────────────────────────────────────────────────────────
+// Lifecycle
 onBeforeRouteLeave(async () => {
   if (isDirty.value) {
     return await AlertService.confirm(

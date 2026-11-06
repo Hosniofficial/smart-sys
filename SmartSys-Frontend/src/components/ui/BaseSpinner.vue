@@ -39,7 +39,7 @@
 <script setup>
 import { computed } from 'vue'
 
-// --- Props (SAP Fiori inspired) ---
+// Props (SAP Fiori inspired)
 const props = defineProps({
   size:   { type: [Number, String], default: 40 },
   color:  { type: String, default: '#2563eb' },
@@ -50,7 +50,6 @@ const props = defineProps({
   text:    { type: String, default: '' } // Optional text
 })
 
-// --- Logic: Formatting (STRICTLY PRESERVED from original) ---
 const normalized = (v) => typeof v === 'number' ? `${v}px` : v
 
 // Size presets for consistent sizing across the app

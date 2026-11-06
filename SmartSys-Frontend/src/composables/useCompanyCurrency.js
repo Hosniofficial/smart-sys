@@ -41,7 +41,7 @@ export function useCompanyCurrency() {
       
       if (Array.isArray(response.data)) {
         // If data is an array of {key, value} objects
-        response.data.forEach(item => {
+        response.data.data.forEach(item => {
           parsedSettings[item.key] = item.value;
         });
       } else if (typeof response.data === 'object') {
@@ -74,8 +74,8 @@ export function useCompanyCurrency() {
    * Get the company currency code (e.g., 'EGP', 'USD', 'SAR')
    */
   const currencyCode = computed(() => {
-    return settings.value?.['company.currency_code'] || 
-           settings.value?.currency_code || 
+    return settings.value?.['company.currency_code'] ||
+           settings.value?.currencyCode ||
            'EGP';
   });
 
@@ -85,7 +85,7 @@ export function useCompanyCurrency() {
    */
   const currencySymbol = computed(() => {
     const settingSymbol = settings.value?.['company.currency_symbol'] || 
-                         settings.value?.currency_symbol;
+                         settings.value?.currencySymbol;
     
     if (settingSymbol) {
       return settingSymbol;

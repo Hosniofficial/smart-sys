@@ -57,9 +57,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
     private const SESSION_OPEN   = 100;
     private const SESSION_CLOSED = 101;
 
-    // =========================================================================
     // Setup
-    // =========================================================================
 
     protected function setUp(): void
     {
@@ -259,9 +257,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         $this->setSetting('pos.cash_session.allow_negative_intraday', '0');
     }
 
-    // =========================================================================
     // Helpers
-    // =========================================================================
 
     private function setSetting(string $key, string $value): void
     {
@@ -329,9 +325,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         }
     }
 
-    // =========================================================================
     // T01 — Sufficient cash balance → allowed
-    // =========================================================================
 
     public function testT01_SufficientCashBalance_Allowed(): void
     {
@@ -403,9 +397,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         $this->assertEqualsWithDelta(4100.00, $result['current_balance'], 0.01);
     }
 
-    // =========================================================================
     // T02 — Insufficient cash balance → rejected (HTTP 402)
-    // =========================================================================
 
     public function testT02_InsufficientCashBalance_Rejected(): void
     {
@@ -427,9 +419,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         $this->assertSame('Insufficient', $e->getMessage());
     }
 
-    // =========================================================================
     // T03 — Cash negative: setting enabled + open session → allowed
-    // =========================================================================
 
     public function testT03_CashNegative_SettingEnabled_OpenSession_Allowed(): void
     {
@@ -443,9 +433,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         $this->assertStringContainsString('session', strtolower($result['reason']));
     }
 
-    // =========================================================================
     // T04 — Cash negative: setting enabled + closed session → rejected
-    // =========================================================================
 
     public function testT04_CashNegative_SettingEnabled_ClosedSession_Rejected(): void
     {
@@ -474,9 +462,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         );
     }
 
-    // =========================================================================
     // T05 — Cash negative: setting disabled (default) → rejected even with open session
-    // =========================================================================
 
     public function testT05_CashNegative_SettingDisabled_Rejected(): void
     {
@@ -515,9 +501,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         );
     }
 
-    // =========================================================================
     // T06 — Bank overdraft: within limit → allowed
-    // =========================================================================
 
     public function testT06_BankOverdraft_WithinLimit_Allowed(): void
     {
@@ -530,9 +514,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         $this->assertStringContainsString('overdraft', strtolower($result['reason']));
     }
 
-    // =========================================================================
     // T07 — Bank overdraft: exceeded → rejected
-    // =========================================================================
 
     public function testT07_BankOverdraft_Exceeded_Rejected(): void
     {
@@ -559,9 +541,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         $this->assertFalse($exceed['allowed'], 'Exceeding limit should be rejected');
     }
 
-    // =========================================================================
     // T08 — Prepaid wallet → rejected when balance goes negative
-    // =========================================================================
 
     public function testT08_PrepaidWallet_Rejected_WhenNegative(): void
     {
@@ -579,9 +559,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         $this->assertStringContainsString('prepaid', strtolower($result['reason']));
     }
 
-    // =========================================================================
     // T09 — Postpaid wallet: within credit limit → allowed
-    // =========================================================================
 
     public function testT09_PostpaidWallet_WithinCreditLimit_Allowed(): void
     {
@@ -599,9 +577,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         $this->assertStringContainsString('credit limit', strtolower($result['reason']));
     }
 
-    // =========================================================================
     // T10 — Postpaid wallet: credit limit exceeded → rejected
-    // =========================================================================
 
     public function testT10_PostpaidWallet_CreditLimitExceeded_Rejected(): void
     {
@@ -629,9 +605,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         $this->assertFalse($exceed['allowed'],  'One unit over credit limit should be rejected');
     }
 
-    // =========================================================================
     // T11 — Sale return with cash refund + insufficient balance → rejected (402)
-    // =========================================================================
 
     public function testT11_SaleReturnCashRefund_InsufficientBalance_Rejected(): void
     {
@@ -659,9 +633,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
             'Zero-amount debit must always be allowed (no cash outflow)');
     }
 
-    // =========================================================================
     // T12 — OwnerContribution: invalid targetAccountId type → rejected
-    // =========================================================================
 
     public function testT12_OwnerContribution_InvalidTargetAccountType_Rejected(): void
     {
@@ -706,9 +678,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         }
     }
 
-    // =========================================================================
     // T13 — OwnerContribution: invalid relatedGlAccountId for owner_loan → rejected
-    // =========================================================================
 
     public function testT13_OwnerContribution_OwnerLoan_NonLiabilityRelated_Rejected(): void
     {
@@ -759,7 +729,6 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         );
     }
 
-    // =========================================================================
     // T14 — Concurrent payments: FOR UPDATE prevents double-spend
     //
     // True multi-process concurrency cannot be tested in PHPUnit.
@@ -771,14 +740,13 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
     //
     // We simulate this by running two validations against the same account,
     // committing the JE from the first between them.
-    // =========================================================================
 
     public function testT14_ConcurrentPayments_OnlyOneApproved(): void
     {
         $this->setAccountBalance(self::CASH_ACCT, 1000.00);
         $this->setSetting('pos.cash_session.allow_negative_intraday', '0');
 
-        // ── Transaction A: validate 800, "commit" by updating balance ──────────
+        // Transaction A: validate 800, "commit" by updating balance
         $this->db->beginTransaction();
         $resultA = $this->getService()->validateLiquidityBalance(
             tenantId: self::TENANT_ID,
@@ -792,7 +760,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         $this->db->exec("UPDATE accounts SET debit_balance = 200, credit_balance = 0 WHERE id = " . self::CASH_ACCT);
         $this->db->commit();
 
-        // ── Transaction B: validate 800 after A's commit ──────────────────────
+        // Transaction B: validate 800 after A's commit
         $this->db->beginTransaction();
         $resultB = $this->getService()->validateLiquidityBalance(
             tenantId: self::TENANT_ID,
@@ -807,9 +775,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
             'Transaction B must see updated balance of 200');
     }
 
-    // =========================================================================
     // T15 — Rollback: liquidity rejection leaves no payments/JE in DB
-    // =========================================================================
 
     public function testT15_Rollback_OnLiquidityRejection_LeavesNoRecords(): void
     {
@@ -854,9 +820,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
         $this->assertSame($jeBefore, $jeAfter, 'No journal entry must be created after rollback');
     }
 
-    // =========================================================================
     // T16 — Monetary tolerance: floating-point edge cases
-    // =========================================================================
 
     public function testT16_FloatingPointTolerance_ExactBalance_Allowed(): void
     {
@@ -880,9 +844,7 @@ final class LiquidityFrameworkIntegrationTest extends TestCase
             'Balance difference beyond 0.001 tolerance must be rejected');
     }
 
-    // =========================================================================
     // T17 — allow_negative is metadata only: does NOT bypass policy
-    // =========================================================================
 
     public function testT17_AllowNegativeMetadata_DoesNotBypassCashPolicy(): void
     {

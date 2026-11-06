@@ -6,7 +6,7 @@ export function usePendingIdempotentRequest(namespace) {
   const pending = ref(null);
 
   const getStorageKey = (scopeId) =>
-    `pending_${namespace}:${authStore.user?.tenant_id || 'platform'}:${authStore.user?.id || 'current'}:${scopeId}`;
+    `pending_${namespace}:${authStore.user?.tenantId || 'platform'}:${authStore.user?.id || 'current'}:${scopeId}`;
 
   const fingerprint = (payload) => JSON.stringify(payload);
 

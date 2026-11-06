@@ -8,13 +8,12 @@ const nowMs = () => Date.now();
 
 export const usePurchaseStore = defineStore('purchase', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     purchasesList:   3 * 60 * 1000, // 3 دقائق
     purchaseDetails: 5 * 60 * 1000, // 5 دقائق
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const purchasesList          = ref({});
   const purchasesListFetchedAt = ref({});
   const purchasesListInFlight  = ref({});
@@ -25,7 +24,6 @@ export const usePurchaseStore = defineStore('purchase', () => {
   const searchCache          = ref({});
   const searchCacheFetchedAt = ref({});
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
@@ -34,7 +32,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
       .map(v => (v == null ? null : parseFloat(v)))
       .find(v => typeof v === 'number' && !isNaN(v)) ?? null;
 
-  // ─── fetchPurchasesList ───────────────────────────────────────────────────
+  // fetchPurchasesList
   const fetchPurchasesList = async ({
     branchId   = null,
     page       = 1,
@@ -74,27 +72,28 @@ export const usePurchaseStore = defineStore('purchase', () => {
 
       const promise = (async () => {
         try {
-          const params = { page: String(page), per_page: String(perPage) };
-          if (branchId) params.branch_id = String(branchId);
+          const params = { page: String(page), perPage: String(perPage) };
+          if (branchId) params.branchId = String(branchId);
           if (status)     params.status      = status;
-          if (supplierId) params.supplier_id = String(supplierId);
+          if (supplierId) params.supplierId = String(supplierId);
           if (search)     params.search      = String(search);
-          if (dateFrom)   params.date_from   = dateFrom;
-          if (dateTo)     params.date_to     = dateTo;
+          if (dateFrom)   params.dateFrom   = dateFrom;
+          if (dateTo)     params.dateTo     = dateTo;
 
           const response = await purchasesService.list(params);
-          const data     = response?.data?.data || response?.data || [];
+          const data     = response?.data?.data || [];
           const list     = Array.isArray(data) ? data : (data?.items || []);
+          const meta     = response?.data?.meta || {};
           const summary  = data.summary || {};
           const kpiSum   = pick([data.sum, data.total, summary.sum, summary.total]);
-          const kpiTax   = pick([data.sum_tax, data.total_tax, summary.sum_tax, summary.tax_total, summary.tax]);
-          const kpiDiscount = pick([data.sum_discount, data.total_discount, summary.sum_discount, summary.discount_total, summary.discount]);
+          const kpiTax   = pick([data.sumTax, data.totalTax, summary.sumTax, summary.taxTotal, summary.tax]);
+          const kpiDiscount = pick([data.sumDiscount, data.totalDiscount, summary.sumDiscount, summary.discountTotal, summary.discount]);
 
           const fullResponse = {
             items:      list,
-            page:       parseInt(data.page || page),
-            perPage:    parseInt(data.per_page || perPage),
-            total:      parseInt(data.total || data.count || list.length),
+            page:       parseInt(data.page || meta.page || meta.currentPage || page),
+            perPage:    parseInt(data.perPage || meta.perPage || perPage),
+            total:      parseInt(data.total || meta.total || data.count || list.length),
             summary,
             kpiSum,
             kpiTax,
@@ -130,7 +129,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
     }
   };
 
-  // ─── fetchPurchases ───────────────────────────────────────────────────────
+  // fetchPurchases
   /**
    * Alias بسيط لـ fetchPurchasesList بدون فلاتر
    * الـ component يستخدمها هكذا:
@@ -138,28 +137,10 @@ export const usePurchaseStore = defineStore('purchase', () => {
    *   purchases.value = purRes.items || [];
    */
   const fetchPurchases = async (options = {}) => {
-    const {
-      branch_id,
-      per_page,
-      supplier_id,
-      date_from,
-      date_to,
-      q,
-      ...filters
-    } = options;
-
-    return await fetchPurchasesList({
-      ...filters,
-      branchId: filters.branchId ?? branch_id ?? null,
-      perPage: filters.perPage ?? per_page ?? 50,
-      supplierId: filters.supplierId ?? supplier_id ?? null,
-      dateFrom: filters.dateFrom ?? date_from ?? null,
-      dateTo: filters.dateTo ?? date_to ?? null,
-      search: filters.search ?? q ?? null,
-    });
+    return await fetchPurchasesList(options);
   };
 
-  // ─── fetchPurchaseDetails ─────────────────────────────────────────────────
+  // fetchPurchaseDetails
   const fetchPurchaseDetails = async (purchaseId, { force = false, signal } = {}) => {
     if (!purchaseId) throw new Error('Purchase ID is required');
 
@@ -170,14 +151,14 @@ export const usePurchaseStore = defineStore('purchase', () => {
     if (!force && cached && isFresh(cachedAt, TTL.purchaseDetails)) return cached;
 
     const response = await purchasesService.get(purchaseId, signal);
-    const data     = response?.data?.data || response?.data;
+    const data     = response?.data?.data;
 
     detailsCache.value[cacheKey]          = data;
     detailsCacheFetchedAt.value[cacheKey] = nowMs();
     return data;
   };
 
-  // ─── getPurchaseById ──────────────────────────────────────────────────────
+  // getPurchaseById
   /**
    * returns standardized response like settingsStore
    */
@@ -219,7 +200,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
     }
   };
 
-  // ─── searchPurchases ──────────────────────────────────────────────────────
+  // searchPurchases
   const searchPurchases = async ({ query, branchId, limit = 50, force = false } = {}) => {
     try {
       if (!query || query.trim().length < 2) {
@@ -244,10 +225,10 @@ export const usePurchaseStore = defineStore('purchase', () => {
       }
 
       const params = { q, limit: String(limit) };
-      if (branchId) params.branch_id = String(branchId);
+      if (branchId) params.branchId = String(branchId);
 
       const response = await purchasesService.list(params);
-      const data     = response?.data?.data || response?.data || [];
+      const data     = response?.data?.data || [];
       const list     = Array.isArray(data) ? data : (data?.items || []);
 
       searchCache.value[cacheKey]          = list;
@@ -268,15 +249,15 @@ export const usePurchaseStore = defineStore('purchase', () => {
     }
   };
 
-  // ─── createPurchase ───────────────────────────────────────────────────────
+  // createPurchase
   const createPurchase = async (payload, idempotencyKey) => {
     try {
       const response = await purchasesService.create(payload, idempotencyKey);
 
       // ✅ تحديث تلقائي للكميات — امسح cache المنتجات في المستودع المتأثر
       const productStore = useProductStore();
-      if (payload?.branch_id) {
-        productStore.invalidateCacheForBranch(payload.branch_id);
+      if (payload?.branchId) {
+        productStore.invalidateCacheForBranch(payload.branchId);
       }
 
       clearPurchasesListCache();
@@ -285,7 +266,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
       
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
-        data: response?.data?.data || response?.data || {},
+        data: response?.data?.data || {},
         message: response?.data?.message
       };
     } catch (error) {
@@ -300,7 +281,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
     }
   };
 
-  // ─── updatePurchase ───────────────────────────────────────────────────────
+  // updatePurchase
   const updatePurchase = async (purchaseId, payload) => {
     try {
       if (!purchaseId) throw new Error('Purchase ID is required');
@@ -308,7 +289,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
       const response = await purchasesService.update(purchaseId, payload);
 
     // حدّث الـ details cache
-      const updated  = response?.data?.data || response?.data || {};
+      const updated  = response?.data?.data || {};
       const cacheKey = String(purchaseId);
       if (Object.keys(updated).length) {
         detailsCache.value[cacheKey]          = updated;
@@ -337,7 +318,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
     }
   };
 
-  // ─── deletePurchase ───────────────────────────────────────────────────────
+  // deletePurchase
   const deletePurchase = async (purchaseId) => {
     try {
       if (!purchaseId) throw new Error('Purchase ID is required');
@@ -366,7 +347,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
     }
   };
 
-  // ─── getNextInvoiceNumber ─────────────────────────────────────────────────
+  // getNextInvoiceNumber
   /**
    * returns standardized response like settingsStore
    */
@@ -377,7 +358,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
         data: {
-          invoice_number: response?.data?.data?.invoice_number || response?.data?.invoice_number || ''
+          invoiceNumber: response?.data?.data?.invoiceNumber || response?.data?.data?.invoiceNumber || ''
         },
         message: response?.data?.message
       };
@@ -385,13 +366,13 @@ export const usePurchaseStore = defineStore('purchase', () => {
       console.error('getNextInvoiceNumber failed:', error);
       return {
         status: 'error',
-        data: { invoice_number: '' },
+        data: { invoiceNumber: '' },
         message: error.response?.data?.message || error.message
       };
     }
   };
 
-  // ─── addPayment ───────────────────────────────────────────────────────────
+  // addPayment
   /**
    * يضيف دفعة على فاتورة مشتريات
    * الـ component يستخدمها هكذا:
@@ -427,7 +408,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
     }
   };
 
-  // ─── Cache Clearers ───────────────────────────────────────────────────────
+  // Cache Clearers
   const clear = () => {
     purchasesList.value          = {};
     purchasesListFetchedAt.value = {};
@@ -454,7 +435,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
     searchCacheFetchedAt.value = {};
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     purchasesList,

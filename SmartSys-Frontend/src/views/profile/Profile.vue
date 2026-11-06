@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="profileLoading || passwordLoading" />
 
     <div class="max-w-[1440px] mx-auto p-4 sm:p-6 lg:p-10 space-y-8 animate-fadeIn">
       
-      <!-- Profile Hero Banner -->
       <div class="profile-hero relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div class="absolute inset-x-0 top-0 h-1 bg-gradient-to-l from-blue-600 via-indigo-500 to-cyan-400"></div>
         <div class="relative p-6 sm:p-8">
@@ -24,8 +22,8 @@
                   <span class="identity-chip"><i class="fas fa-at"></i>{{ authUser?.username || 'بدون اسم مستخدم' }}</span>
                   <span class="identity-chip"><i class="fas fa-calendar-check"></i>ملف مستخدم موثّق</span>
                 </div>
-                <p v-if="authUser?.role_description" class="text-xs text-slate-500">
-                  {{ authUser.role_description }}
+                <p v-if="authUser?.roleDescription" class="text-xs text-slate-500">
+                  {{ authUser.roleDescription }}
                 </p>
               </div>
             </div>
@@ -43,13 +41,10 @@
         </div>
       </div>
 
-      <!-- Main Content Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
-        <!-- Main Forms Column -->
         <div class="lg:col-span-8 space-y-6">
           
-          <!-- Personal Information Card -->
           <section class="profile-card bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
             <div class="flex items-center gap-3 pb-4 border-b border-slate-100">
               <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xs">
@@ -145,7 +140,6 @@
             </div>
 
             <form @submit.prevent="changePassword" class="space-y-4">
-              <!-- Hidden username field for accessibility (browser password managers) -->
               <input type="text" :value="authUser?.username" autocomplete="username" class="hidden" readonly />
               
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -154,11 +148,11 @@
                     كلمة المرور الحالية <span class="text-rose-500">*</span>
                   </label>
                   <div class="relative">
-                    <input 
-                      v-model="passwordForm.current_password" 
-                      type="password" 
-                      class="filter-input pr-8 font-mono" 
-                      autocomplete="current-password" 
+                    <input
+                      v-model="passwordForm.currentPassword"
+                      type="password"
+                      class="filter-input pr-8 font-mono"
+                      autocomplete="current-password"
                     />
                     <i class="fas fa-key absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px]"></i>
                   </div>
@@ -167,11 +161,11 @@
                 <div class="space-y-1.5">
                   <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">كلمة المرور الجديدة</label>
                   <div class="relative">
-                    <input 
-                      v-model="passwordForm.new_password" 
-                      type="password" 
-                      class="filter-input pr-8 font-mono" 
-                      autocomplete="new-password" 
+                    <input
+                      v-model="passwordForm.newPassword"
+                      type="password"
+                      class="filter-input pr-8 font-mono"
+                      autocomplete="new-password"
                     />
                     <i class="fas fa-lock absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px]"></i>
                   </div>
@@ -180,10 +174,10 @@
                 <div class="space-y-1.5">
                   <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">تأكيد كلمة المرور</label>
                   <div class="relative">
-                    <input 
-                      v-model="passwordForm.confirm_password" 
-                      type="password" 
-                      class="filter-input pr-8 font-mono" 
+                    <input
+                      v-model="passwordForm.confirmPassword"
+                      type="password"
+                      class="filter-input pr-8 font-mono"
                       autocomplete="new-password" 
                     />
                     <i class="fas fa-lock-open absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px]"></i>
@@ -216,10 +210,8 @@
           </section>
         </div>
 
-        <!-- Sidebar Info -->
         <div class="lg:col-span-4 space-y-6">
           
-          <!-- Account Meta Card -->
           <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
             <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
               <i class="fas fa-circle-info text-blue-500"></i>
@@ -265,7 +257,6 @@ import { useAuthStore } from '@/stores/auth/authStore'
 import { useUserStore } from '@/stores/user/userStore'
 import LoadingButton from '@/components/ui/LoadingButton.vue'
 
-// --- State & Stores (Strictly Preserved) ---
 const authStore = useAuthStore()
 const userStore = useUserStore()
 
@@ -278,7 +269,7 @@ const passwordMessage = ref('')
 const passwordMessageType = ref('success')
 
 const profileForm = reactive({ name: '', email: '', phone: '' })
-const passwordForm = reactive({ current_password: '', new_password: '', confirm_password: '' })
+const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
 
 const authUser = computed(() => {
   const fromPinia = authStore?.user || null
@@ -301,7 +292,7 @@ const userInitials = computed(() => {
 })
 
 const roleLabel = computed(() => {
-  const role = authUser.value?.role_display_name || authUser.value?.role_name || authUser.value?.role || authUser.value?.role_code
+  const role = authUser.value?.roleDisplayName || authUser.value?.roleName || authUser.value?.role || authUser.value?.roleCode
   return role || 'مستخدم النظام'
 })
 
@@ -357,12 +348,12 @@ async function updateProfile() {
 async function changePassword() {
   passwordMessage.value = ''
   passwordMessageType.value = 'success'
-  if (!passwordForm.current_password || !passwordForm.new_password) {
+  if (!passwordForm.currentPassword || !passwordForm.newPassword) {
     passwordMessageType.value = 'error'
     passwordMessage.value = 'يرجى إدخال كلمات المرور'
     return
   }
-  if (passwordForm.new_password !== passwordForm.confirm_password) {
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
     passwordMessageType.value = 'error'
     passwordMessage.value = 'كلمتا المرور غير متطابقتين'
     return
@@ -370,13 +361,13 @@ async function changePassword() {
   passwordLoading.value = true
   try {
     const res = await userStore.changeCurrentUserPassword({
-      current_password: passwordForm.current_password,
-      new_password: passwordForm.new_password
+      currentPassword: passwordForm.currentPassword,
+      newPassword: passwordForm.newPassword
     })
     passwordMessage.value = res?.message || 'تم تغيير كلمة المرور'
-    passwordForm.current_password = ''
-    passwordForm.new_password = ''
-    passwordForm.confirm_password = ''
+    passwordForm.currentPassword = ''
+    passwordForm.newPassword = ''
+    passwordForm.confirmPassword = ''
     window.setTimeout(() => {
       authStore.clearAuthData()
       window.location.replace('/')

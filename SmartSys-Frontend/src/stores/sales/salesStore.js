@@ -7,7 +7,7 @@ const nowMs = () => Date.now();
 
 export const useSalesStore = defineStore('sales', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     salesList:      2 * 60 * 1000, // 2 دقيقة
     saleDetails:    5 * 60 * 1000, // 5 دقائق
@@ -16,13 +16,14 @@ export const useSalesStore = defineStore('sales', () => {
 
   const fetchQuotations = async ({ page = 1, perPage = 50, query = '', status = '' } = {}) => {
     try {
-      const params = { page: String(page), per_page: String(perPage) };
+      const params = { page: String(page), perPage: String(perPage) };
       if (query.trim()) params.q = query.trim();
       if (status) params.status = status;
       const response = await salesService.listQuotations(params);
       return {
         status: response?.data?.status || 'success',
-        data: response?.data?.data ?? response?.data,
+        data: response?.data?.data,
+        meta: response?.data?.meta || {},
         message: response?.data?.message || null,
       };
     } catch (error) {
@@ -40,7 +41,7 @@ export const useSalesStore = defineStore('sales', () => {
       const response = await salesService.getQuotation(quotationId);
       return {
         status: response?.data?.status || 'success',
-        data: response?.data?.data ?? response?.data,
+        data: response?.data?.data,
         message: response?.data?.message || null,
       };
     } catch (error) {
@@ -58,7 +59,7 @@ export const useSalesStore = defineStore('sales', () => {
       const response = await salesService.createQuotation(payload);
       return {
         status: response?.data?.status || 'success',
-        data: response?.data?.data ?? response?.data,
+        data: response?.data?.data,
         message: response?.data?.message || null,
       };
     } catch (error) {
@@ -73,13 +74,14 @@ export const useSalesStore = defineStore('sales', () => {
 
   const fetchPriceCampaigns = async ({ page = 1, perPage = 20, query = '', status = '' } = {}) => {
     try {
-      const params = { page: String(page), per_page: String(perPage) };
+      const params = { page: String(page), perPage: String(perPage) };
       if (query.trim()) params.q = query.trim();
       if (status) params.status = status;
       const response = await salesService.listPriceCampaigns(params);
       return {
         status: response?.data?.status || 'success',
-        data: response?.data?.data ?? response?.data,
+        data: response?.data?.data,
+        meta: response?.data?.meta || {},
         message: response?.data?.message || null,
       };
     } catch (error) {
@@ -97,7 +99,7 @@ export const useSalesStore = defineStore('sales', () => {
       const response = await salesService.createPriceCampaign(payload);
       return {
         status: response?.data?.status || 'success',
-        data: response?.data?.data ?? response?.data,
+        data: response?.data?.data,
         message: response?.data?.message || null,
       };
     } catch (error) {
@@ -115,7 +117,7 @@ export const useSalesStore = defineStore('sales', () => {
       const response = await salesService.updatePriceCampaignStatus(campaignId, status);
       return {
         status: response?.data?.status || 'success',
-        data: response?.data?.data ?? response?.data,
+        data: response?.data?.data,
         message: response?.data?.message || null,
       };
     } catch (error) {
@@ -128,7 +130,6 @@ export const useSalesStore = defineStore('sales', () => {
     }
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const salesList          = ref({});
   const salesListFetchedAt = ref({});
   const salesListInFlight  = ref({});
@@ -142,7 +143,6 @@ export const useSalesStore = defineStore('sales', () => {
   const searchCache          = ref({});
   const searchCacheFetchedAt = ref({});
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
@@ -151,7 +151,7 @@ export const useSalesStore = defineStore('sales', () => {
       .map(v => (v == null ? null : parseFloat(v)))
       .find(v => typeof v === 'number' && !isNaN(v)) ?? null;
 
-  // ─── fetchSalesList ───────────────────────────────────────────────────────
+  // fetchSalesList
   const fetchSalesList = async ({
     branchId,
     page = 1,
@@ -190,34 +190,35 @@ export const useSalesStore = defineStore('sales', () => {
 
       const promise = (async () => {
         try {
-          const params = { page: String(page), per_page: String(perPage) };
-          if (branchId)      params.branch_id      = String(branchId);
+          const params = { page: String(page), perPage: String(perPage) };
+          if (branchId)      params.branchId      = String(branchId);
           if (status)        params.status         = status;
-          if (customerId)    params.customer_id    = String(customerId);
-          if (dateFrom)      params.date_from      = dateFrom;
-          if (dateTo)        params.date_to        = dateTo;
+          if (customerId)    params.customerId    = String(customerId);
+          if (dateFrom)      params.dateFrom      = dateFrom;
+          if (dateTo)        params.dateTo        = dateTo;
           if (search)        params.q              = search;
           if (sort)          params.sort           = sort;
           if (order)         params.order          = order;
-          if (includeTotals) params.include_totals = '1';
+          if (includeTotals) params.includeTotals = '1';
 
           const response = await salesService.list(params);
-          const data     = response?.data?.data || response?.data || [];
+          const data     = response?.data?.data || [];
           const list     = Array.isArray(data) ? data : (data?.items || []);
+          const meta     = response?.data?.meta || {};
           const summary  = data.summary || {};
           const kpiSum = pick([
-  data.sum_gross_total,
-  summary.sum_gross_total,
+  data.sumGrossTotal,
+  summary.sumGrossTotal,
 ]) ?? list.reduce((s, v) => s
-  + parseFloat(v.total_amount || 0), 0);
-          const kpiTax   = pick([data.sum_tax, data.total_tax, summary.sum_tax, summary.tax_total, summary.tax]);
-          const kpiDiscount = pick([data.sum_discount, data.total_discount, summary.sum_discount, summary.discount_total, summary.discount]);
+  + parseFloat(v.totalAmount || 0), 0);
+          const kpiTax   = pick([data.sumTax, data.totalTax, summary.sumTax, summary.taxTotal, summary.tax]);
+          const kpiDiscount = pick([data.sumDiscount, data.totalDiscount, summary.sumDiscount, summary.discountTotal, summary.discount]);
 
           const fullResponse = {
             items:       list,
-            page:        parseInt(data.page || page),
-            perPage:     parseInt(data.per_page || perPage),
-            total:       parseInt(data.total || data.count || list.length),
+            page:        parseInt(data.page || meta.page || meta.currentPage || page),
+            perPage:     parseInt(data.perPage || meta.perPage || perPage),
+            total:       parseInt(data.total || meta.total || data.count || list.length),
             summary,
             kpiSum,
             kpiTax,
@@ -253,7 +254,7 @@ export const useSalesStore = defineStore('sales', () => {
     }
   };
 
-  // ─── fetchSaleDetails ─────────────────────────────────────────────────────
+  // fetchSaleDetails
   const fetchSaleDetails = async (saleId, { force = false } = {}) => {
     try {
       if (!saleId) {
@@ -277,7 +278,7 @@ export const useSalesStore = defineStore('sales', () => {
       }
 
       const response = await salesService.get(saleId);
-      const data     = response?.data?.data || response?.data;
+      const data     = response?.data?.data;
 
       detailsCache.value[cacheKey]          = data;
       detailsCacheFetchedAt.value[cacheKey] = nowMs();
@@ -297,7 +298,7 @@ export const useSalesStore = defineStore('sales', () => {
     }
   };
 
-  // ─── searchSales ──────────────────────────────────────────────────────────
+  // searchSales
   const searchSales = async ({ query, branchId, limit = 50, force = false } = {}) => {
     try {
       if (!query || query.trim().length < 2) {
@@ -322,10 +323,10 @@ export const useSalesStore = defineStore('sales', () => {
       }
 
       const params = { q, limit: String(limit) };
-      if (branchId) params.branch_id = String(branchId);
+      if (branchId) params.branchId = String(branchId);
 
       const response = await salesService.list(params);
-      const data     = response?.data?.data || response?.data || [];
+      const data     = response?.data?.data || [];
       const list     = Array.isArray(data) ? data : (data?.items || []);
 
       searchCache.value[cacheKey]          = list;
@@ -346,7 +347,7 @@ export const useSalesStore = defineStore('sales', () => {
     }
   };
 
-  // ─── createSale ───────────────────────────────────────────────────────────
+  // createSale
   /**
    * creates a new sales invoice - critical action requiring strict error handling
    * returns standardized response like settingsStore
@@ -362,7 +363,7 @@ export const useSalesStore = defineStore('sales', () => {
 
       return {
         status: response?.data?.status || 'success',
-        data: response?.data?.data ?? response?.data
+        data: response?.data?.data
       };
     } catch (error) {
       console.error('createSale failed:', error);
@@ -374,7 +375,7 @@ export const useSalesStore = defineStore('sales', () => {
     }
   };
 
-  // ─── payDebt ──────────────────────────────────────────────────────────────
+  // payDebt
   /**
    * pays debt on invoice - critical action requiring strict error handling
    * returns standardized response like settingsStore
@@ -384,8 +385,8 @@ export const useSalesStore = defineStore('sales', () => {
       const response = await salesService.payDebt(payload);
 
       // clear details cache for this invoice + list
-      if (payload?.sale_id) {
-        const cacheKey = String(payload.sale_id);
+      if (payload?.saleId) {
+        const cacheKey = String(payload.saleId);
         delete detailsCache.value[cacheKey];
         delete detailsCacheFetchedAt.value[cacheKey];
       }
@@ -394,7 +395,7 @@ export const useSalesStore = defineStore('sales', () => {
 
       return {
         status: response?.data?.status || 'success',
-        data: response?.data?.data ?? response?.data
+        data: response?.data?.data
       };
     } catch (error) {
       console.error('payDebt failed:', error);
@@ -410,8 +411,8 @@ export const useSalesStore = defineStore('sales', () => {
     try {
       const response = await salesService.addPayment(payload, idempotencyKey);
 
-      if (payload?.sale_id) {
-        const cacheKey = String(payload.sale_id);
+      if (payload?.saleId) {
+        const cacheKey = String(payload.saleId);
         delete detailsCache.value[cacheKey];
         delete detailsCacheFetchedAt.value[cacheKey];
       }
@@ -420,7 +421,7 @@ export const useSalesStore = defineStore('sales', () => {
 
       return {
         status: response?.data?.status || 'success',
-        data: response?.data?.data ?? response?.data,
+        data: response?.data?.data,
       };
     } catch (error) {
       console.error('addSalePayment failed:', error);
@@ -444,7 +445,7 @@ export const useSalesStore = defineStore('sales', () => {
 
       return {
         status: response?.data?.status || 'success',
-        data: response?.data?.data ?? response?.data,
+        data: response?.data?.data,
       };
     } catch (error) {
       return {
@@ -465,7 +466,7 @@ export const useSalesStore = defineStore('sales', () => {
 
       return {
         status: response?.data?.status || 'success',
-        data: response?.data?.data ?? response?.data,
+        data: response?.data?.data,
       };
     } catch (error) {
       return {
@@ -476,11 +477,11 @@ export const useSalesStore = defineStore('sales', () => {
     }
   };
 
-  // ─── getSaleById ──────────────────────────────────────────────────────────
+  // getSaleById
   const getSaleById = (saleId) =>
     computed(() => detailsCache.value[String(saleId)]);
 
-  // ─── Cache Clearers ───────────────────────────────────────────────────────
+  // Cache Clearers
   const clear = () => {
     salesList.value          = {};
     salesListFetchedAt.value = {};
@@ -514,7 +515,7 @@ export const useSalesStore = defineStore('sales', () => {
     searchCacheFetchedAt.value = {};
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     salesList,

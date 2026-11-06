@@ -29,9 +29,9 @@ export const clearBranchPrintSettingsCache = (branchId = null) => {
 };
 
 export const resolvePrintOptions = async (document, fallbackBranchId = null) => {
-  const documentBranchId = document?.branch_id
-    ?? document?.sale?.branch_id
-    ?? document?.purchase?.branch_id;
+  const documentBranchId = document?.branchId
+    ?? document?.sale?.branchId
+    ?? document?.purchase?.branchId;
   const branchId = documentBranchId !== null && documentBranchId !== undefined && documentBranchId !== ''
     ? documentBranchId
     : fallbackBranchId;
@@ -45,7 +45,7 @@ export const resolvePrintOptions = async (document, fallbackBranchId = null) => 
   }
 
   const response = await settingsService.getBranchPrintSettings(branchId);
-  const payload = response?.data?.data ?? response?.data ?? {};
+  const payload = response?.data?.data ?? {};
   const settings = payload.settings;
   if (response?.data?.status !== 'success' || !settings || typeof settings !== 'object') {
     throw new Error(response?.data?.message || 'تعذر تحميل إعدادات الطباعة لهذا الفرع.');
@@ -53,7 +53,7 @@ export const resolvePrintOptions = async (document, fallbackBranchId = null) => 
 
   const hasBranchTemplate = Array.isArray(payload.overrides)
     && payload.overrides.includes('print.template');
-  const template = hasBranchTemplate || payload.tenant_template_configured
+  const template = hasBranchTemplate || payload.tenantTemplateConfigured
     ? settings['print.template']
     : localStorage.getItem('pos_print_template');
   const options = {

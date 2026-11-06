@@ -15,7 +15,7 @@ return function (RouteCollectorProxy $group, Container $container): void {
 
     $group->group('/rbac', function (RouteCollectorProxy $group) use ($handler, $db) {
 
-        // ── Users (via RBAC) — delegate to UsersHandler for actual user ops ──
+        // Users (via RBAC) — delegate to UsersHandler for actual user ops
         // These endpoints are admin-facing user management via RBAC panel.
         $group->get('/users', [$handler, 'getUsers'])
             ->add(PermissionMiddleware::require(Permissions::USER_VIEW, $db));
@@ -29,7 +29,7 @@ return function (RouteCollectorProxy $group, Container $container): void {
         $group->delete('/users/{id}', [$handler, 'deleteUser'])
             ->add(PermissionMiddleware::require(Permissions::USER_DELETE, $db));
 
-        // ── Roles ─────────────────────────────────────────────────────────────
+        // Roles
         $group->get('/roles', [$handler, 'getRoles'])
             ->add(PermissionMiddleware::require(Permissions::ROLE_VIEW, $db));
 

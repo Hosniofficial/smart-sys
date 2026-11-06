@@ -587,8 +587,6 @@ class StrictSubscriptionMiddleware implements MiddlewareInterface
         ]);
     }
 
-
-
     /**
      * Check if endpoint is subscription-related
      */

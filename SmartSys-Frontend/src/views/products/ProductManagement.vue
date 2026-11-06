@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="إدارة المنتجات"
@@ -28,7 +26,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPI Section: Refined Stats -->
       <section class="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div v-for="kpi in [
           { label: 'إجمالي الأصناف', val: (Array.isArray(products) ? products : []).length, icon: 'fa-box', color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -44,10 +41,8 @@
         </div>
       </section>
 
-      <!-- Filters & Content -->
       <div class="space-y-6">
         
-        <!-- Filter Bar -->
         <div class="bg-white border border-slate-200 rounded-xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-6 shadow-sm">
           <div class="flex-grow space-y-2">
             <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">تصفية حسب التصنيف</label>
@@ -57,7 +52,7 @@
               </button>
               <button v-for="cat in categories" :key="cat.id" @click="selectedCategory = cat.id" :class="[selectedCategory === cat.id ? 'bg-blue-600 text-white shadow-md shadow-blue-900/10' : 'bg-slate-50 text-slate-500 hover:bg-slate-100']" class="px-3 py-1.5 rounded-md text-[11px] font-bold transition-all flex items-center gap-2">
                 {{ cat.name }}
-                <span class="opacity-50 font-mono">{{ (Array.isArray(products) ? products : []).filter(p => p.category_id == cat.id).length }}</span>
+                <span class="opacity-50 font-mono">{{ (Array.isArray(products) ? products : []).filter(p => p.categoryId == cat.id).length }}</span>
               </button>
             </div>
           </div>
@@ -71,10 +66,8 @@
           </div>
         </div>
 
-        <!-- Table Card -->
         <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
           
-          <!-- Loading State -->
           <div v-if="isLoading" class="p-8 space-y-4">
             <div v-for="i in 6" :key="i" class="flex gap-4 items-center py-4 border-b border-slate-50 animate-pulse">
               <div class="w-10 h-10 bg-slate-100 rounded-lg"></div>
@@ -88,7 +81,6 @@
             </div>
           </div>
 
-          <!-- Error State -->
           <div v-else-if="error" class="py-24 text-center px-6">
             <div class="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
               <i class="fas fa-exclamation-triangle text-xl"></i>
@@ -97,7 +89,6 @@
             <button @click="fetchAllData" class="mt-4 px-6 py-2 bg-slate-900 text-white rounded-md font-bold text-xs hover:bg-black transition-all">إعادة المحاولة</button>
           </div>
 
-          <!-- Data Table -->
           <template v-else>
             <div class="overflow-x-auto">
               <table class="w-full text-right border-collapse">
@@ -131,13 +122,13 @@
                       </div>
                     </td>
                     <td class="px-4 py-4">
-                      <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 font-mono">{{ product.product_code || '--' }}</span>
+                      <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 font-mono">{{ product.productCode || '--' }}</span>
                     </td>
                     <td class="px-4 py-4">
-                      <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{{ product.category_name || 'بدون تصنيف' }}</span>
+                      <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{{ product.categoryName || 'بدون تصنيف' }}</span>
                     </td>
                     <td class="px-4 py-4 text-left">
-                      <span class="text-sm font-bold font-mono tracking-tighter text-blue-600">{{ formatCurrencyLocale(product.sale_price, 2) }}</span>
+                      <span class="text-sm font-bold font-mono tracking-tighter text-blue-600">{{ formatCurrencyLocale(product.salePrice, 2) }}</span>
                     </td>
                     <td class="px-4 py-4 text-center">
                       <div :class="[product.active === 1 ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-slate-400 bg-slate-50 border-slate-100']" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-bold border">
@@ -156,7 +147,6 @@
               </table>
             </div>
 
-            <!-- Pagination Footer (Unified Standard) -->
             <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
               <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                 صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ filters.totalPages.value }}</span>
@@ -185,7 +175,6 @@
       </div>
     </div>
 
-    <!-- Teleported Modal -->
     <BaseModal :show="showFormModal" @close="showFormModal = false" maxWidth="4xl">
       <template #header>
         <div class="flex items-center gap-3">
@@ -269,14 +258,14 @@ const selectedProduct = ref(null);
 const productFormRef = ref(null);
 const selectedBranch = computed(() => branchIsolation.isExempt.value
   ? branchStore.selectedBranchId
-  : authStore.user?.branch_id ?? null);
+  : authStore.user?.branchId ?? null);
 const isLoading = ref(true);
 const branchContextReady = ref(false);
 const error = ref(null);
 const searchQuery = ref('');
 const selectedCategory = ref('');
 
-// ─── Pagination (using useTableFilters composable)
+// Pagination (using useTableFilters composable)
 const filters = useTableFilters('products_filters');
 
 const handleBranchChange = (branchId) => {
@@ -312,8 +301,8 @@ const exportProducts = () => {
   if (!productList.length) { showToast('لا توجد منتجات للتصدير', 'warning'); return; }
   const rows = [['ID', 'الاسم', 'الباركود', 'التصنيف', 'سعر البيع', 'الحالة']];
   productList.forEach(p => {
-    const cat = categories.value.find(c => c.id === p.category_id)?.name || 'بدون تصنيف';
-    rows.push([p.id, p.name, p.barcode || '', cat, p.sale_price, p.active === 1 ? 'نشط' : 'غير نشط']);
+    const cat = categories.value.find(c => c.id === p.categoryId)?.name || 'بدون تصنيف';
+    rows.push([p.id, p.name, p.barcode || '', cat, p.salePrice, p.active === 1 ? 'نشط' : 'غير نشط']);
   });
   const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -325,14 +314,13 @@ const exportProducts = () => {
 const filteredProducts = computed(() => {
   const productList = Array.isArray(products.value) ? products.value : Object.values(products.value).flat();
   let result = [...productList];
-  if (selectedCategory.value) result = result.filter(p => p.category_id == selectedCategory.value);
+  if (selectedCategory.value) result = result.filter(p => p.categoryId == selectedCategory.value);
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase();
     result = result.filter(p => p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.toLowerCase().includes(q)));
   }
   return result;
 });
-
 
 const paginatedProducts = computed(() => {
   filters.totalCount.value = filteredProducts.value.length;
@@ -370,23 +358,23 @@ const openEditModal = async (p) => {
       const fullData = response.data;
       selectedProduct.value = {
         ...fullData,
-        sale_price: fullData.pricing?.sale_price ?? fullData.sale_price,
-        purchase_price: fullData.pricing?.purchase_price ?? fullData.purchase_price,
-        min_sale_price: fullData.pricing?.min_sale_price ?? fullData.min_sale_price ?? 0,
-        fixed_discount_percentage: fullData.pricing?.fixed_discount_percentage ?? fullData.fixed_discount_percentage ?? 0,
-        current_quantity: fullData.inventory?.current_quantity ?? fullData.current_quantity ?? 0,
-        unit_id: fullData.inventory?.unit_id ?? fullData.unit_id,
-        unit_name: fullData.inventory?.unit_name ?? fullData.unit_name,
-        min_quantity: fullData.inventory?.min_quantity ?? fullData.min_quantity ?? 0,
-        max_quantity: fullData.inventory?.max_quantity ?? fullData.maximum_quantity ?? 0,
-        product_type: fullData.configuration?.product_type ?? fullData.product_type ?? 'stock',
+        salePrice: fullData.pricing?.salePrice ?? fullData.salePrice,
+        purchasePrice: fullData.pricing?.purchasePrice ?? fullData.purchasePrice,
+        minSalePrice: fullData.pricing?.minSalePrice ?? fullData.minSalePrice ?? 0,
+        fixedDiscountPercentage: fullData.pricing?.fixedDiscountPercentage ?? fullData.fixedDiscountPercentage ?? 0,
+        currentQuantity: fullData.inventory?.currentQuantity ?? fullData.currentQuantity ?? 0,
+        unitId: fullData.inventory?.unitId ?? fullData.unitId,
+        unitName: fullData.inventory?.unitName ?? fullData.unitName,
+        minQuantity: fullData.inventory?.minQuantity ?? fullData.minQuantity ?? 0,
+        maxQuantity: fullData.inventory?.maxQuantity ?? fullData.maximumQuantity ?? 0,
+        productType: fullData.configuration?.productType ?? fullData.productType ?? 'stock',
         active: fullData.configuration?.active ?? fullData.active ?? 1,
-        has_expiry_date: fullData.configuration?.has_expiry_date ?? fullData.has_expiry_date ?? false,
-        has_batch_number: fullData.configuration?.has_batch_number ?? fullData.has_batch_number ?? false,
-        has_serial_number: fullData.configuration?.has_serial_number ?? fullData.has_serial_number ?? false,
-        expiry_date: fullData.configuration?.expiry_date ?? fullData.expiry_date ?? '',
-        batch_number: fullData.configuration?.batch_number ?? fullData.batch_number ?? '',
-        serial_number: fullData.configuration?.serial_number ?? fullData.serial_number ?? '',
+        hasExpiryDate: fullData.configuration?.hasExpiryDate ?? fullData.hasExpiryDate ?? false,
+        hasBatchNumber: fullData.configuration?.hasBatchNumber ?? fullData.hasBatchNumber ?? false,
+        hasSerialNumber: fullData.configuration?.hasSerialNumber ?? fullData.hasSerialNumber ?? false,
+        expiryDate: fullData.configuration?.expiryDate ?? fullData.expiryDate ?? '',
+        batchNumber: fullData.configuration?.batchNumber ?? fullData.batchNumber ?? '',
+        serialNumber: fullData.configuration?.serialNumber ?? fullData.serialNumber ?? '',
       };
       showFormModal.value = true;
     } else { showToast('فشل في جلب بيانات المنتج', 'error'); }
@@ -430,7 +418,7 @@ onMounted(async () => {
   if (branchIsolation.isExempt.value) {
     await ensureBranchSelected();
   } else {
-    const assignedBranchId = authStore.user?.branch_id;
+    const assignedBranchId = authStore.user?.branchId;
     if (assignedBranchId) setRequiredBranch(assignedBranchId);
   }
   branchContextReady.value = true;

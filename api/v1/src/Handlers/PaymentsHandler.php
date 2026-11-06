@@ -265,14 +265,16 @@ class PaymentsHandler extends BaseHandler
             }
             unset($p);
 
-            return $this->successResponse($response, [
-                'items' => $items,
+            return $this->jsonResponse($response, [
+                'status' => 'success',
+                'message' => '',
+                'data' => ['items' => $items],
                 'meta' => [
                     'total' => $total,
                     'page' => $page,
                     'per_page' => $perPage
                 ]
-            ], 200);
+            ], 200, false);
         } catch (\Throwable $e) {
             $this->logger->error('Error listing payments', [
                 'error' => $e->getMessage(),
@@ -370,14 +372,16 @@ class PaymentsHandler extends BaseHandler
             $stmt->execute();
             $items = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            return $this->successResponse($response, [
-                'items' => $items,
+            return $this->jsonResponse($response, [
+                'status' => 'success',
+                'message' => '',
+                'data' => ['items' => $items],
                 'meta' => [
                     'total' => $total,
                     'page' => $page,
                     'per_page' => $perPage
                 ]
-            ], 200);
+            ], 200, false);
         } catch (\Throwable $e) {
             $this->logger->error('Error listing receipts', [
                 'error' => $e->getMessage(),

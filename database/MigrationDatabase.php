@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-
 /** Builds the application's PDO connection using canonical DB_* names with legacy aliases. */
 final class MigrationDatabase
 {

@@ -20,7 +20,8 @@ final class SalesAnalyticsPaymentBreakdownTest extends TestCase
             id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, created_at TEXT NOT NULL,
             session_id INTEGER NULL, payment_method_id INTEGER NOT NULL,
             total_amount REAL NOT NULL, net_total_amount REAL NOT NULL,
-            tax_amount REAL NOT NULL DEFAULT 0, status TEXT NOT NULL, branch_id INTEGER
+            tax_amount REAL NOT NULL DEFAULT 0, status TEXT NOT NULL, branch_id INTEGER,
+            approved_at TEXT NULL
         )');
         $db->exec('CREATE TABLE payments (
             id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, sale_id INTEGER,
@@ -43,11 +44,11 @@ final class SalesAnalyticsPaymentBreakdownTest extends TestCase
         $db->exec("INSERT INTO payment_methods VALUES
             (1, 3, 'cash'), (2, 3, 'bank'), (3, 3, 'card'), (4, 3, 'wallet')");
         $db->exec("INSERT INTO sales VALUES
-            (1, 3, '2026-09-28 10:00:00', NULL, 1, 1500, 1500, 0, 'paid', 5),
-            (2, 3, '2026-09-28 11:00:00', NULL, 2, 1500, 1500, 0, 'paid', 5),
-            (3, 3, '2026-09-28 12:00:00', NULL, 3, 1500, 1500, 0, 'paid', 5),
-            (4, 3, '2026-09-28 13:00:00', NULL, 4, 1500, 1500, 0, 'paid', 5),
-            (5, 3, '2026-09-28 14:00:00', NULL, 1, 1500, 1500, 0, 'partial', 5)");
+            (1, 3, '2026-09-28 10:00:00', NULL, 1, 1500, 1500, 0, 'paid', 5, NULL),
+            (2, 3, '2026-09-28 11:00:00', NULL, 2, 1500, 1500, 0, 'paid', 5, NULL),
+            (3, 3, '2026-09-28 12:00:00', NULL, 3, 1500, 1500, 0, 'paid', 5, NULL),
+            (4, 3, '2026-09-28 13:00:00', NULL, 4, 1500, 1500, 0, 'paid', 5, NULL),
+            (5, 3, '2026-09-28 14:00:00', NULL, 1, 1500, 1500, 0, 'partial', 5, NULL)");
         $db->exec("INSERT INTO payments VALUES
             (1, 3, 1, NULL, 1500, 1, 'sale', '2026-09-28 10:00:00', NULL, 4, 0, 'completed'),
             (2, 3, 2, NULL, 1500, 2, 'sale', '2026-09-28 11:00:00', NULL, 4, 0, 'completed'),
@@ -78,7 +79,7 @@ final class SalesAnalyticsPaymentBreakdownTest extends TestCase
         self::assertEquals(1500, $body['data']['bank']);
         self::assertEquals(1500, $body['data']['card']);
         self::assertEquals(1500, $body['data']['wallet']);
-        self::assertEquals(1000, $body['data']['cash_drawer']);
+        self::assertEquals(1000, $body['data']['cashDrawer']);
         self::assertEquals(1800, $body['data']['returns']);
         self::assertEquals(1100, $body['data']['credit']);
 

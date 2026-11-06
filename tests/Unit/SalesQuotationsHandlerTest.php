@@ -70,12 +70,12 @@ final class SalesQuotationsHandlerTest extends TestCase
 
         self::assertSame(201, $response->getStatusCode());
         $data = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR)['data'];
-        self::assertStringStartsWith('QT-', $data['quote_number']);
+        self::assertStringStartsWith('QT-', $data['quoteNumber']);
         self::assertSame(251.0, (float) $data['subtotal']);
-        self::assertSame(25.1, (float) $data['discount_amount']);
-        self::assertSame(31.63, (float) $data['tax_amount']);
-        self::assertSame(257.53, (float) $data['total_amount']);
-        self::assertSame('Test Product', $data['items'][0]['product_name']);
+        self::assertSame(25.1, (float) $data['discountAmount']);
+        self::assertSame(31.63, (float) $data['taxAmount']);
+        self::assertSame(257.53, (float) $data['totalAmount']);
+        self::assertSame('Test Product', $data['items'][0]['productName']);
         self::assertSame(1, (int) $this->db->query('SELECT COUNT(*) FROM sales_quotations')->fetchColumn());
         self::assertSame(0, (int) $this->db->query('SELECT COUNT(*) FROM sales')->fetchColumn());
     }
@@ -120,15 +120,17 @@ final class SalesQuotationsHandlerTest extends TestCase
 
         $listResponse = $this->invokeRead('list', '/api/v1/sales/quotations');
         self::assertSame(200, $listResponse->getStatusCode());
-        $listData = json_decode((string) $listResponse->getBody(), true, 512, JSON_THROW_ON_ERROR)['data'];
-        self::assertSame(1, $listData['total']);
-        self::assertSame('Test Customer', $listData['items'][0]['customer_name']);
+        $listEnvelope = json_decode((string) $listResponse->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        $listData = $listEnvelope['data'];
+        self::assertSame(1, $listEnvelope['meta']['total']);
+        self::assertSame(1, $listEnvelope['meta']['page']);
+        self::assertSame('Test Customer', $listData['items'][0]['customerName']);
         self::assertSame('active', $listData['items'][0]['status']);
 
         $detailResponse = $this->invokeRead('get', '/api/v1/sales/quotations/' . $created['id'], [], ['id' => $created['id']]);
         self::assertSame(200, $detailResponse->getStatusCode());
         $detail = json_decode((string) $detailResponse->getBody(), true, 512, JSON_THROW_ON_ERROR)['data'];
-        self::assertSame($created['quote_number'], $detail['quote_number']);
+        self::assertSame($created['quoteNumber'], $detail['quoteNumber']);
         self::assertSame(3.0, (float) $detail['items'][0]['quantity']);
     }
 
@@ -149,9 +151,9 @@ final class SalesQuotationsHandlerTest extends TestCase
 
         self::assertSame(201, $response->getStatusCode());
         $data = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR)['data'];
-        self::assertSame(14.0, (float) $data['tax_amount']);
-        self::assertSame(114.0, (float) $data['total_amount']);
-        self::assertTrue($data['tax_inclusive']);
+        self::assertSame(14.0, (float) $data['taxAmount']);
+        self::assertSame(114.0, (float) $data['totalAmount']);
+        self::assertTrue($data['taxInclusive']);
     }
 
     private function invoke(string $method, array $body): Response

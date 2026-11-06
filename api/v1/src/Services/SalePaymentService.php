@@ -36,8 +36,6 @@ class SalePaymentService
         $this->logger       = MonologHandler::getInstance('sales');
     }
 
-    // -------------------------------------------------------------------------
-
     private function findOpenCashierSession(int $tenantId, int $branchId, ?int $cashierId = null): ?int
     {
         $sql    = "SELECT id FROM cashier_sessions WHERE tenant_id = ? AND branch_id = ? AND status = 'open'";
@@ -110,9 +108,7 @@ class SalePaymentService
         }
     }
 
-    // -------------------------------------------------------------------------
     // addSalePayment — real logic extracted from SalesService
-    // -------------------------------------------------------------------------
 
     public function addSalePayment(
         int $tenantId,
@@ -308,7 +304,7 @@ class SalePaymentService
                 throw new \RuntimeException('تعذر ربط دفعة البيع بقيدها المحاسبي.');
             }
 
-            // ── AUDIT FIX #4 (CRITICAL), superseded by AUDIT SELF-REVIEW FIX 15-A ──
+            // AUDIT FIX #4 (CRITICAL), superseded by AUDIT SELF-REVIEW FIX 15-A
             // Previously (Fix #4): `paid_amount = paid_amount + ?` (accumulation)
             // and status only ever flipped to 'paid', never to 'partial'. Fix #4
             // corrected that by recomputing paid_amount from SUM(payments), but
@@ -362,9 +358,7 @@ class SalePaymentService
         }
     }
 
-    // -------------------------------------------------------------------------
     // payCustomerDebt — real logic extracted from SalesService
-    // -------------------------------------------------------------------------
 
     public function payCustomerDebt(
         int $tenantId,

@@ -7,7 +7,7 @@ export const reportsService = {
   async getInventoryAnalytics(branchId, signal) {
     const params = {}
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
+      params.branchId = branchId
     }
     return await apiClient.get('/analytics/inventory', { params, signal })
   },
@@ -28,13 +28,13 @@ export const reportsService = {
   // تقرير الأرباح والخسائر (مع branch_id اختياري)
   async getProfitLossReport(startDate, endDate, branchId, mode = 'cogs', expenseSource = 'vouchers') {
     const params = {
-      start_date: startDate,
-      end_date: endDate,
+      startDate: startDate,
+      endDate: endDate,
       mode,
-      expense_source: expenseSource
+      expenseSource: expenseSource
     }
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
+      params.branchId = branchId
     }
     return await apiClient.get('/reports/profit-loss', { params, timeout: REPORT_TIMEOUT })
   },
@@ -42,12 +42,12 @@ export const reportsService = {
   // حركات المخزون (مع branch_id اختياري)
   async getInventoryMovements(startDate, endDate, productId, branchId, type) {
     const params = {
-      start_date: startDate,
-      end_date: endDate,
-      product_id: productId
+      startDate: startDate,
+      endDate: endDate,
+      productId: productId
     }
     if (branchId !== undefined && branchId !== null && branchId !== '' && branchId !== 'all') {
-      params.branch_id = branchId
+      params.branchId = branchId
     }
     if (type && type !== 'all') {
       params.type = type
@@ -59,7 +59,7 @@ export const reportsService = {
   async getInventoryValue(branchId, params = {}) {
     const queryParams = { ...params }
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      queryParams.branch_id = branchId
+      queryParams.branchId = branchId
     }
     return await apiClient.get('/branches/reports/inventory-value', { params: queryParams, timeout: REPORT_TIMEOUT })
   },
@@ -73,7 +73,7 @@ export const reportsService = {
   async getDailySalesSummary(date, branchId, extraParams = {}) {
     const params = { date, ...extraParams }
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
+      params.branchId = branchId
     }
     return await apiClient.get('/reports/sales/daily-summary', { params })
   },
@@ -82,47 +82,47 @@ export const reportsService = {
   async getPosList(branchId, params = {}) {
     const queryParams = { ...params }
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      queryParams.branch_id = branchId
+      queryParams.branchId = branchId
     }
     return await apiClient.get('/reports/pos', { params: queryParams })
   },
  
-  // ================= Accounting Reports =================
+  // Accounting Reports
   async getTrialBalance(startDate, endDate, branchId) {
     const params = {}
-    if (startDate) params.start_date = startDate
-    if (endDate) params.end_date = endDate
+    if (startDate) params.startDate = startDate
+    if (endDate) params.endDate = endDate
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
+      params.branchId = branchId
     }
     return await apiClient.get('/reports/accounting/trial-balance', { params, timeout: REPORT_TIMEOUT })
   },
 
   async getLedger(accountId, startDate, endDate, branchId) {
     const params = {}
-    if (startDate) params.start_date = startDate
-    if (endDate) params.end_date = endDate
+    if (startDate) params.startDate = startDate
+    if (endDate) params.endDate = endDate
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
+      params.branchId = branchId
     }
     return await apiClient.get(`/reports/accounting/ledger/${accountId}`, { params, timeout: REPORT_TIMEOUT })
   },
 
   async getIncomeStatement(startDate, endDate, branchId) {
     const params = {}
-    if (startDate) params.start_date = startDate
-    if (endDate) params.end_date = endDate
+    if (startDate) params.startDate = startDate
+    if (endDate) params.endDate = endDate
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
+      params.branchId = branchId
     }
     return await apiClient.get('/reports/accounting/income-statement', { params, timeout: REPORT_TIMEOUT })
   },
 
   async getBalanceSheet(asOfDate, branchId) {
     const params = {}
-    if (asOfDate) params.as_of_date = asOfDate
+    if (asOfDate) params.asOfDate = asOfDate
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
+      params.branchId = branchId
     }
     return await apiClient.get('/reports/accounting/balance-sheet', { params, timeout: REPORT_TIMEOUT })
   },
@@ -130,7 +130,7 @@ export const reportsService = {
   async getBranchAccountCoverage(branchId) {
     const params = {}
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
+      params.branchId = branchId
     }
     return await apiClient.get('/branches/reports/account-coverage', { params, timeout: REPORT_TIMEOUT })
   },
@@ -138,51 +138,51 @@ export const reportsService = {
   // أداء نقاط البيع (POS Performance)
   async getPosPerformance(startDate, endDate, branchId, sessionId = null, signal = null) {
     const params = {
-      start_date: startDate,
-      end_date: endDate
+      startDate: startDate,
+      endDate: endDate
     }
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
+      params.branchId = branchId
     }
     if (sessionId) {
-      params.session_id = sessionId
+      params.sessionId = sessionId
     }
     return await apiClient.get('/analytics/pos-performance', { params, signal })
   },
 
   async getArAging(asOf = null, branchId = null) {
     const params = {}
-    if (asOf) params.as_of = asOf
+    if (asOf) params.asOf = asOf
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
+      params.branchId = branchId
     }
     return await apiClient.get('/reports/accounting/ar-aging', { params })
   },
 
   async postBadDebtProvision(amount, asOf = null) {
     const body = { amount }
-    if (asOf) body.as_of = asOf
+    if (asOf) body.asOf = asOf
     return await apiClient.post('/reports/accounting/ar-aging/post-provision', body)
   },
 
   async getCashFlow(startDate, endDate, branchId) {
     const params = {}
-    if (startDate) params.start_date = startDate
-    if (endDate)   params.end_date   = endDate
+    if (startDate) params.startDate = startDate
+    if (endDate)   params.endDate   = endDate
     if (branchId !== undefined && branchId !== null && branchId !== '') {
-      params.branch_id = branchId
+      params.branchId = branchId
     }
     return await apiClient.get('/reports/accounting/cash-flow', { params })
   },
 
   async getNrvReport(branchId = null) {
     const params = {}
-    if (branchId) params.branch_id = branchId
+    if (branchId) params.branchId = branchId
     return await apiClient.get('/reports/accounting/nrv', { params })
   },
 
   async postNrvWriteDown(branchId = null) {
-    const body = branchId ? { branch_id: branchId } : {}
+    const body = branchId ? { branchId: branchId } : {}
     return await apiClient.post('/reports/accounting/nrv/post-writedown', body)
   }
 }

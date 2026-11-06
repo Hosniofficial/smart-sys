@@ -34,9 +34,7 @@ class CashVoucherService
         $this->logger     = MonologHandler::getInstance('cash_vouchers');
     }
 
-    // =========================================================================
     // Public API
-    // =========================================================================
 
     /**
      * Persist the voucher, journal entry, cash transaction, and any linked payment in one transaction.
@@ -123,7 +121,7 @@ class CashVoucherService
 
             $this->recordCashTransaction($voucherId, $journalEntryId, $sessionId, $data, $notes);
 
-            // ── ربط بالفاتورة داخل نفس الـ transaction لضمان الـ atomicity ──
+            // ربط بالفاتورة داخل نفس الـ transaction لضمان الـ atomicity
             // إذا فشل linkToSale/linkToPurchase يتم rollback للكل
             if ($saleId !== null && !empty($data['customer_id'])) {
                 $this->linkToSale((int) $saleId, $data, $voucherReference, (int) $journalEntryId);
@@ -160,9 +158,7 @@ class CashVoucherService
         }
     }
 
-    // =========================================================================
     // Validation & Normalization
-    // =========================================================================
 
     /** Merge update data and normalize voucher field types and defaults. */
     public function normalizeVoucherPayload(array $data, bool $isUpdate = false, array $existing = []): array
@@ -450,9 +446,7 @@ class CashVoucherService
         }
     }
 
-    // =========================================================================
     // Private helpers
-    // =========================================================================
 
     private function linkToSale(int $saleId, array $data, string $voucherReference, int $journalEntryId): void
     {

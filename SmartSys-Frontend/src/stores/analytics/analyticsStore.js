@@ -7,13 +7,12 @@ const nowMs = () => Date.now();
 
 export const useAnalyticsStore = defineStore('analytics', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     sales:     2  * 60 * 1000, // دقيقتان
     dashboard: 1  * 60 * 1000, // دقيقة واحدة
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const salesData           = ref(null);
   const dashboardSummary    = ref({});
   const salesDataCache      = ref({});
@@ -26,7 +25,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
 
   const isFresh = (ts, ttl) => !!ts && (nowMs() - ts) < ttl;
 
-  // ─── fetchSalesAnalytics ──────────────────────────────────────────────────
+  // fetchSalesAnalytics
   /**
    * يقبل object أو positional args:
    *   fetchSalesAnalytics({ startDate, endDate, sessionId, branchId })
@@ -63,7 +62,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         sessionId || undefined,
         signal
       );
-      const data     = response?.data?.data ?? response?.data ?? response;
+      const data     = response?.data?.data;
 
       salesData.value          = data;
       salesDataCache.value[cacheKey] = data;
@@ -78,7 +77,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     }
   };
 
-  // ─── fetchDashboardSummary ────────────────────────────────────────────────
+  // fetchDashboardSummary
   /**
    * يجيب ملخص لوحة التحكم للكاشير
    * الـ component يستخدمها هكذا:
@@ -104,13 +103,13 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     loading.value = true;
     try {
       const params = {};
-      if (branchId)  params.branch_id  = String(branchId);
-      if (sessionId) params.session_id = String(sessionId);
-      if (startDate) params.start_date = startDate;
-      if (endDate)   params.end_date   = endDate;
+      if (branchId)  params.branchId  = String(branchId);
+      if (sessionId) params.sessionId = String(sessionId);
+      if (startDate) params.startDate = startDate;
+      if (endDate)   params.endDate   = endDate;
 
       const response = await analyticsService.getCashierDashboardSummary(params, signal);
-      const data = response?.data?.data ?? response?.data ?? response;
+      const data = response?.data?.data;
 
       dashboardSummary.value[cacheKey]  = data;
       dashboardCacheAt.value[cacheKey]  = nowMs();
@@ -124,7 +123,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     }
   };
 
-  // ─── clearState ───────────────────────────────────────────────────────────
+  // clearState
   const clearState = () => {
     salesData.value          = null;
     salesDataCache.value     = {};

@@ -48,19 +48,20 @@ export const useReportsStore = defineStore('reports', () => {
       const { startDate, endDate, actionType, userId, branchId, page = 1 } = filters
       // Send local dates directly without UTC conversion (database stores local times)
       const response = await reportsService.getAuditLogs({
-        start_date: startDate,
-        end_date: endDate,
-        action_type: actionType !== 'all' ? actionType : undefined,
-        user_id: userId !== 'all' ? userId : undefined,
-        branch_id: branchId || undefined,
+        startDate: startDate,
+        endDate: endDate,
+        actionType: actionType !== 'all' ? actionType : undefined,
+        userId: userId !== 'all' ? userId : undefined,
+        branchId: branchId || undefined,
         page,
-        per_page: 50  // Add per_page
+        perPage: 50
       })
       
       // Return the full response including pagination data
       return {
         status: 'success',
         data: response.data,
+        meta: response.data?.meta || {},
         message: ''
       }
     } catch (err) {
@@ -69,6 +70,7 @@ export const useReportsStore = defineStore('reports', () => {
       return {
         status: 'error',
         data: null,
+        meta: {},
         message: err?.message || 'فشل تحميل سجلات النظام'
       }
     } finally {
@@ -130,7 +132,7 @@ export const useReportsStore = defineStore('reports', () => {
     try {
       const { branchId, ...filters } = params
       const response = await reportsService.getInventoryValue(branchId, filters)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       inventoryValue.value = data
       return {
         status: 'success',
@@ -155,7 +157,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.getInventoryValueByBranch(params)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       inventoryValue.value = data
       return {
         status: 'success',
@@ -182,7 +184,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.getDailySalesSummary(date, branchId, extraParams)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       return {
         status: 'success',
         data,
@@ -205,7 +207,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.getPosList(branchId)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       return {
         status: 'success',
         data,
@@ -270,7 +272,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.getTrialBalance(startDate, endDate, branchId)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       return {
         status: 'success',
         data,
@@ -294,7 +296,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.getIncomeStatement(startDate, endDate, branchId)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       return {
         status: 'success',
         data,
@@ -318,7 +320,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.getBalanceSheet(asOfDate, branchId)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       return {
         status: 'success',
         data,
@@ -341,7 +343,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.getLedger(accountId, startDate, endDate, branchId)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       return { status: 'success', data, message: '' }
     } catch (err) {
       error.value = 'حدث خطأ في تحميل دفتر الأستاذ'
@@ -357,7 +359,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.getBranchAccountCoverage(branchId)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       return {
         status: 'success',
         data,
@@ -381,7 +383,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.getArAging(asOf, branchId)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       return { status: 'success', data, message: '' }
     } catch (err) {
       error.value = 'حدث خطأ في تحميل تقرير تقادم الذمم'
@@ -394,7 +396,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.postBadDebtProvision(amount, asOf)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       return { status: 'success', data, message: data?.message || '' }
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'فشل تسجيل المخصص'
@@ -409,7 +411,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.getCashFlow(startDate, endDate, branchId)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       return { status: 'success', data, message: '' }
     } catch (err) {
       error.value = 'حدث خطأ في تحميل قائمة التدفقات'
@@ -425,7 +427,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.postNrvWriteDown(branchId)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       return { status: 'success', data, message: data?.message || '' }
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'فشل تسجيل قيد NRV'
@@ -442,7 +444,7 @@ export const useReportsStore = defineStore('reports', () => {
     error.value = null
     try {
       const response = await reportsService.getNrvReport(branchId)
-      const data = response?.data?.data ?? response?.data ?? response
+      const data = response?.data?.data
       return { status: 'success', data, message: '' }
     } catch (err) {
       error.value = 'حدث خطأ في تحميل تقرير NRV'
@@ -468,7 +470,6 @@ export const useReportsStore = defineStore('reports', () => {
     inventoryMovements,
     inventoryValue,
     
-
     // Actions
     fetchInventoryAnalytics,
     fetchAuditLogs,

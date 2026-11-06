@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
 
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading || isSearching" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
 
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="{ parent: { label: 'المبيعات', path: '/sales/pos' }, current: { label: 'حملات الأسعار', path: '/sales/price-campaigns' } }"
         title="حملات الأسعار"
@@ -25,7 +23,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPI Summary: Campaign Stats -->
       <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
         <div v-for="kpi in [
           { label: 'إجمالي الحملات', val: total, icon: 'fa-chart-line', color: 'text-blue-600', bg: 'bg-blue-50', show: true },
@@ -43,7 +40,6 @@
         </div>
       </section>
 
-      <!-- Create Campaign Modal -->
       <HistoryDetailsModal
         :show="showForm"
         @close="showForm = false"
@@ -60,7 +56,7 @@
                 </label>
                 <label class="space-y-1.5">
                   <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">نوع الحملة</span>
-                  <select v-model="form.campaign_type" class="filter-input">
+                  <select v-model="form.campaignType" class="filter-input">
                     <option value="opening">افتتاح</option>
                     <option value="clearance">تصفية مخزون</option>
                     <option value="launch">إطلاق منتج</option>
@@ -69,7 +65,7 @@
                 </label>
                 <label class="space-y-1.5">
                   <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">الفرع</span>
-                  <select v-model="form.branch_id" class="filter-input">
+                  <select v-model="form.branchId" class="filter-input">
                     <option value="">كل الفروع</option>
                     <option v-for="branch in branches" :key="branch.id" :value="String(branch.id)">{{ branch.name }}</option>
                   </select>
@@ -98,15 +94,14 @@
                 </label>
                 <label class="space-y-1.5">
                   <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">تاريخ البداية</span>
-                  <input v-model="form.start_date" type="date" required class="filter-input" />
+                  <input v-model="form.startDate" type="date" required class="filter-input" />
                 </label>
                 <label class="space-y-1.5">
                   <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">تاريخ النهاية</span>
-                  <input v-model="form.end_date" type="date" required :min="form.start_date" class="filter-input" />
+                  <input v-model="form.endDate" type="date" required :min="form.startDate" class="filter-input" />
                 </label>
               </div>
 
-              <!-- Product Search Section -->
               <div class="rounded-lg border border-slate-100 bg-slate-50 p-4 space-y-4">
                 <div class="mb-3 flex flex-col gap-2 sm:flex-row">
                   <input
@@ -132,13 +127,12 @@
                   >
                     <span class="min-w-0">
                       <span class="block truncate text-sm font-bold text-slate-800">{{ product.name }}</span>
-                      <span class="text-[10px] text-slate-500">{{ product.product_code || product.barcode || 'بدون كود' }} · {{ product.unit_name || 'قطعة' }}</span>
+                      <span class="text-[10px] text-slate-500">{{ product.productCode || product.barcode || 'بدون كود' }} · {{ product.unitName || 'قطعة' }}</span>
                     </span>
-                    <span class="shrink-0 text-xs font-bold text-slate-600">{{ formatPrice(product.sale_price) }}</span>
+                    <span class="shrink-0 text-xs font-bold text-slate-600">{{ formatPrice(product.salePrice) }}</span>
                   </button>
                 </div>
 
-                <!-- Items Table -->
                 <div v-if="!form.items.length" class="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-center text-xs text-slate-500">
                   ابحث عن المنتجات وأضفها إلى الحملة.
                 </div>
@@ -153,14 +147,14 @@
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
-                      <tr v-for="item in form.items" :key="`${item.product_id}:${item.unit_id}`">
-                        <td class="px-3 py-2 font-bold text-slate-800">{{ item.name }} <span class="font-normal text-slate-400">({{ item.unit_name }})</span></td>
-                        <td class="px-3 py-2 font-mono text-slate-500">{{ formatPrice(item.regular_price) }}</td>
+                      <tr v-for="item in form.items" :key="`${item.productId}:${item.unitId}`">
+                        <td class="px-3 py-2 font-bold text-slate-800">{{ item.name }} <span class="font-normal text-slate-400">({{ item.unitName }})</span></td>
+                        <td class="px-3 py-2 font-mono text-slate-500">{{ formatPrice(item.regularPrice) }}</td>
                         <td class="px-3 py-2">
-                          <input v-model.number="item.campaign_price" type="number" min="0.01" step="0.01" :max="item.regular_price" required class="h-8 w-28 rounded border border-slate-200 px-2 font-mono text-sm focus:border-blue-400" />
+                          <input v-model.number="item.campaignPrice" type="number" min="0.01" step="0.01" :max="item.regularPrice" required class="h-8 w-28 rounded border border-slate-200 px-2 font-mono text-sm focus:border-blue-400" />
                         </td>
                         <td class="px-3 py-2">
-                          <button type="button" class="rounded p-2 text-rose-600 hover:bg-rose-50" title="إزالة المنتج" @click="removeProduct(item.product_id)">
+                          <button type="button" class="rounded p-2 text-rose-600 hover:bg-rose-50" title="إزالة المنتج" @click="removeProduct(item.productId)">
                             <i class="fas fa-trash"></i>
                           </button>
                         </td>
@@ -196,7 +190,6 @@
             </template>
       </HistoryDetailsModal>
 
-      <!-- Search & Filter Controls -->
       <div class="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row">
         <input v-model="search" class="h-10 flex-1 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-400" placeholder="ابحث باسم الحملة..." @keydown.enter="loadCampaigns(1)" />
         <select v-model="statusFilter" class="h-9 rounded-md border border-slate-200 px-3 text-[11px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500" @change="loadCampaigns(1)">
@@ -219,7 +212,6 @@
 
       <div v-if="error" role="alert" class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{{ error }}</div>
 
-      <!-- Main Data Table -->
       <div class="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-200">
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
@@ -249,11 +241,11 @@
               </tr>
               <tr v-for="campaign in campaigns" :key="campaign.id" class="hover:bg-blue-50/20 transition-all group">
                 <td class="px-5 py-3 font-bold text-slate-900 text-[11px]">{{ campaign.name }}</td>
-                <td class="px-5 py-3 text-slate-600 text-[11px]">{{ typeLabels[campaign.campaign_type] || campaign.campaign_type }}</td>
-                <td class="px-5 py-3 text-slate-600 text-[11px]">{{ campaign.branch_name || 'كل الفروع' }}</td>
-                <td class="px-5 py-3 font-mono text-[10px] text-slate-500">{{ formatDate(campaign.start_date) }} — {{ formatDate(campaign.end_date) }}</td>
+                <td class="px-5 py-3 text-slate-600 text-[11px]">{{ typeLabels[campaign.campaignType] || campaign.campaignType }}</td>
+                <td class="px-5 py-3 text-slate-600 text-[11px]">{{ campaign.branchName || 'كل الفروع' }}</td>
+                <td class="px-5 py-3 font-mono text-[10px] text-slate-500">{{ formatDate(campaign.startDate) }} — {{ formatDate(campaign.endDate) }}</td>
                 <td class="px-5 py-3">
-                  <span class="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-500">{{ Number(campaign.product_count) || 0 }}</span>
+                  <span class="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-500">{{ Number(campaign.productCount) || 0 }}</span>
                 </td>
                 <td class="px-5 py-3 text-center">
                   <span
@@ -281,7 +273,6 @@
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="px-5 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ page }}</span> من <span class="text-slate-900">{{ totalPages }}</span>
@@ -357,11 +348,11 @@ const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000).
 const endDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000 + 7 * 86400000).toISOString().slice(0, 10);
 const form = ref({
   name: '',
-  campaign_type: 'custom',
-  branch_id: '',
+  campaignType: 'custom',
+  branchId: '',
   priority: 0,
-  start_date: localDate,
-  end_date: endDate,
+  startDate: localDate,
+  endDate: endDate,
   items: [],
 });
 const priorityPreset = computed({
@@ -387,24 +378,24 @@ async function loadCampaigns(nextPage = page.value) {
     if (result.status !== 'success') throw new Error(result.message || 'تعذر تحميل الحملات السعرية');
     const data = result.data || {};
     campaigns.value = Array.isArray(data.items) ? data.items : [];
-    page.value = Number(data.page) || nextPage;
-    total.value = Number(data.total) || 0;
+    page.value = Number(result.meta?.page || result.meta?.currentPage) || nextPage;
+    total.value = Number(result.meta?.total) || 0;
 
-    // ── KPI: طلبات منفصلة للحصول على أعداد دقيقة بغض النظر عن الصفحة الحالية
+    // KPI: طلبات منفصلة للحصول على أعداد دقيقة بغض النظر عن الصفحة الحالية
     const [resActive, resPaused, resAll] = await Promise.allSettled([
       salesStore.fetchPriceCampaigns({ page: 1, perPage: 1,    query: search.value, status: 'active' }),
       salesStore.fetchPriceCampaigns({ page: 1, perPage: 1,    query: search.value, status: 'paused' }),
       salesStore.fetchPriceCampaigns({ page: 1, perPage: 1000, query: search.value, status: '' }),
     ]);
-    const activeTotal = resActive.status === 'fulfilled' ? Number(resActive.value?.data?.total ?? 0) : 0;
-    const pausedTotal = resPaused.status === 'fulfilled' ? Number(resPaused.value?.data?.total ?? 0) : 0;
+    const activeTotal = resActive.status === 'fulfilled' ? Number(resActive.value?.meta?.total ?? 0) : 0;
+    const pausedTotal = resPaused.status === 'fulfilled' ? Number(resPaused.value?.meta?.total ?? 0) : 0;
     const allItems    = resAll.status    === 'fulfilled' && Array.isArray(resAll.value?.data?.items)
       ? resAll.value.data.items : [];
 
     kpiCounts.value = {
       active:        activeTotal,
       paused:        pausedTotal,
-      totalProducts: allItems.reduce((sum, c) => sum + (Number(c.product_count) || 0), 0),
+      totalProducts: allItems.reduce((sum, c) => sum + (Number(c.productCount) || 0), 0),
     };
   } catch (loadError) {
     error.value = loadError.message || 'تعذر تحميل الحملات السعرية';
@@ -420,7 +411,7 @@ async function searchProducts() {
   try {
     const result = await productStore.searchProducts({
       query: productQuery.value,
-      branchId: form.value.branch_id || undefined,
+      branchId: form.value.branchId || undefined,
       limit: 100,
       force: true,
     });
@@ -434,28 +425,28 @@ async function searchProducts() {
 }
 
 function isSelected(productId) {
-  return form.value.items.some(item => Number(item.product_id) === Number(productId));
+  return form.value.items.some(item => Number(item.productId) === Number(productId));
 }
 
 function addProduct(product) {
-  const regularPrice = Number(product.regular_sale_price ?? product.sale_price);
-  const campaignPrice = Number(product.campaign_price ?? regularPrice * 0.9);
-  if (!product.unit_id || !Number.isFinite(regularPrice) || regularPrice <= 0) {
+  const regularPrice = Number(product.regularSalePrice ?? product.salePrice);
+  const campaignPrice = Number(product.campaignPrice ?? regularPrice * 0.9);
+  if (!product.unitId || !Number.isFinite(regularPrice) || regularPrice <= 0) {
     productError.value = 'تعذر إضافة المنتج لعدم توفر وحدته أو سعره.';
     return;
   }
   form.value.items.push({
-    product_id: Number(product.id),
-    unit_id: Number(product.unit_id),
+    productId: Number(product.id),
+    unitId: Number(product.unitId),
     name: product.name,
-    unit_name: product.unit_name || 'قطعة',
-    regular_price: regularPrice,
-    campaign_price: Math.min(campaignPrice, regularPrice - 0.01),
+    unitName: product.unitName || 'قطعة',
+    regularPrice: regularPrice,
+    campaignPrice: Math.min(campaignPrice, regularPrice - 0.01),
   });
 }
 
 function removeProduct(productId) {
-  form.value.items = form.value.items.filter(item => Number(item.product_id) !== Number(productId));
+  form.value.items = form.value.items.filter(item => Number(item.productId) !== Number(productId));
 }
 
 async function createCampaign() {
@@ -464,7 +455,7 @@ async function createCampaign() {
     formError.value = 'أضف منتجاً واحداً على الأقل.';
     return;
   }
-  if (form.value.items.some(item => !Number.isFinite(Number(item.campaign_price)) || Number(item.campaign_price) <= 0 || Number(item.campaign_price) >= item.regular_price)) {
+  if (form.value.items.some(item => !Number.isFinite(Number(item.campaignPrice)) || Number(item.campaignPrice) <= 0 || Number(item.campaignPrice) >= item.regularPrice)) {
     formError.value = 'يجب أن يكون سعر الحملة موجباً وأقل من السعر الحالي لكل منتج.';
     return;
   }
@@ -472,15 +463,15 @@ async function createCampaign() {
   try {
     const result = await salesStore.createPriceCampaign({
       name: form.value.name,
-      campaign_type: form.value.campaign_type,
-      branch_id: form.value.branch_id || null,
+      campaignType: form.value.campaignType,
+      branchId: form.value.branchId || null,
       priority: Number(form.value.priority) || 0,
-      start_date: form.value.start_date,
-      end_date: form.value.end_date,
+      startDate: form.value.startDate,
+      endDate: form.value.endDate,
       items: form.value.items.map(item => ({
-        product_id: item.product_id,
-        unit_id: item.unit_id,
-        campaign_price: Number(item.campaign_price),
+        productId: item.productId,
+        unitId: item.unitId,
+        campaignPrice: Number(item.campaignPrice),
       })),
     });
     if (result.status !== 'success') throw new Error(result.message || 'تعذر إنشاء الحملة السعرية');
@@ -488,11 +479,11 @@ async function createCampaign() {
     showForm.value = false;
     form.value = {
       name: '',
-      campaign_type: 'custom',
-      branch_id: '',
+      campaignType: 'custom',
+      branchId: '',
       priority: 0,
-      start_date: localDate,
-      end_date: endDate,
+      startDate: localDate,
+      endDate: endDate,
       items: [],
     };
     productResults.value = [];
@@ -553,12 +544,12 @@ function priorityIcon(value) {
 
 onMounted(async () => {
   await Promise.all([branchStore.fetchBranches(), loadCampaigns()]);
-  if (!form.value.branch_id && branchStore.selectedBranchId) {
-    form.value.branch_id = String(branchStore.selectedBranchId);
+  if (!form.value.branchId && branchStore.selectedBranchId) {
+    form.value.branchId = String(branchStore.selectedBranchId);
   }
 });
 
-watch(() => form.value.branch_id, () => {
+watch(() => form.value.branchId, () => {
   productResults.value = [];
   productError.value = '';
 });

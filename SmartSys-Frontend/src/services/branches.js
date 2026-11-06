@@ -11,7 +11,7 @@ export const branchesService = {
 
   listStockTransfers(branchId) {
     return apiClient.get('/branches/transfers', {
-      params: { branch_id: branchId },
+      params: { branchId: branchId },
     });
   },
 

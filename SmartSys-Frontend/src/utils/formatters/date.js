@@ -1,10 +1,10 @@
-// ─── Configurable locale for date formatting ───────────────────────────────
+// Configurable locale for date formatting
 const LOCALE = 'en-US';
 
-// ─── Internal helper ────────────────────────────────────────────────────────
+// Internal helper
 const pad = n => String(n).padStart(2, '0');
 
-// ─── Local date/time formatting ─────────────────────────────────────────────
+// Local date/time formatting
 
 // Returns local date in YYYY-MM-DD format (avoids UTC toISOString date shift)
 export function getLocalDateISO(d = new Date()) {
@@ -24,7 +24,7 @@ export function getLocalTimestamp(d = new Date()) {
 
 export default getLocalDateISO;
 
-// ─── Local → UTC conversion ──────────────────────────────────────────────────
+// Local → UTC conversion
 
 // Thin wrapper kept for naming clarity and future extensibility
 export function toUTCISOString(d) {
@@ -56,7 +56,7 @@ export function localDateRangeToUTC(startDateStr, endDateStr) {
   };
 }
 
-// ─── Display formatting ──────────────────────────────────────────────────────
+// Display formatting
 
 // Format date and time for display
 export function formatDateTime(dateString, options = {}) {
@@ -79,6 +79,10 @@ export function formatDateTime(dateString, options = {}) {
 
 // Format date only for display
 export function formatDate(dateString, options = {}) {
+  return formatDateForLocale(dateString, LOCALE, options);
+}
+
+export function formatDateForLocale(dateString, locale = LOCALE, options = {}) {
   if (!dateString) return '';
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return dateString;
@@ -89,5 +93,5 @@ export function formatDate(dateString, options = {}) {
     day:   '2-digit',
   };
 
-  return new Intl.DateTimeFormat(LOCALE, { ...defaultOptions, ...options }).format(date);
+  return new Intl.DateTimeFormat(locale, { ...defaultOptions, ...options }).format(date);
 }

@@ -13,7 +13,7 @@ echo "=== Group J: BalanceCalculationService fixes (ownership review) ===\n\n";
 
 $bcs = new BalanceCalculationService($pdo);
 
-// ── J1: purchase tax double-counting bug ────────────────────────────────────
+// J1: purchase tax double-counting bug
 // purchases.total_amount is ALREADY tax-inclusive at creation time (confirmed
 // from the real PurchasesHandler::create() code). Before the fix, amount_due
 // added tax_amount AGAIN on top -> 1140 + 140 = 1280 (wrong). Fixed: 1140.
@@ -34,7 +34,7 @@ $pdo->exec("INSERT INTO sales (id,tenant_id,net_total_amount,tax_amount,status,p
 $dueSale = $bcs->getAmountDueBalance('sale', 801, 1);
 check8(assert_close($dueSale, 1140.0, 'J2 sale amount-due = 1140 (net 1000 + tax 140, correctly ADDED since net excludes tax for sales)'));
 
-// ── J3: refund-netting convention now consistent everywhere ────────────────
+// J3: refund-netting convention now consistent everywhere
 echo "\n--- J3: refund-netting convention aligned (BalanceCalculationService, AccountStatementHandler, SalesHandler, recalculateSaleStatus) ---\n";
 $pdo->exec("INSERT INTO sales (id,tenant_id,net_total_amount,tax_amount,status,paid_amount,customer_id) VALUES (802,1,500,0,'paid',500,1)");
 $pdo->exec("INSERT INTO customers (id,tenant_id,name) VALUES (1,1,'Test Customer')");

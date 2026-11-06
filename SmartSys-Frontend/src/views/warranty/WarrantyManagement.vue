@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading || detailsLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="{ parent: { label: 'العمليات', path: '/repairs' }, current: 'طلبات الضمان' }"
         title="إدارة الضمان"
@@ -24,7 +22,6 @@
         </template>
       </PageHeader>
 
-      <!-- Status Filter Tabs: Segmented Control Style -->
       <section class="flex items-center justify-center">
         <div class="flex bg-slate-100 p-1 rounded-lg border border-slate-200/50">
           <button
@@ -39,7 +36,6 @@
         </div>
       </section>
 
-      <!-- Search & Advanced Filters Utility Bar -->
       <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="p-6 bg-slate-50/30 border-b border-slate-100 space-y-6">
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
@@ -95,7 +91,6 @@
         </div>
       </section>
 
-      <!-- Main Data Table -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
@@ -128,10 +123,10 @@
                     <div class="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 border border-slate-100">
                       <i class="fas fa-user text-[10px]"></i>
                     </div>
-                    <span class="font-bold text-slate-900">{{ r.customer_name || r.customer_id }}</span>
+                    <span class="font-bold text-slate-900">{{ r.customerName || r.customerId }}</span>
                   </div>
                 </td>
-                <td class="px-4 py-4 font-mono text-slate-500 uppercase tracking-tight">{{ r.product_serial || '—' }}</td>
+                <td class="px-4 py-4 font-mono text-slate-500 uppercase tracking-tight">{{ r.productSerial || '—' }}</td>
                 <td class="px-4 py-4 text-center">
                   <span :class="[priorityClass(r.priority)]" class="px-2 py-0.5 rounded text-[9px] font-bold border">
                     {{ priorityLabel(r.priority) }}
@@ -152,7 +147,6 @@
           </table>
         </div>
 
-        <!-- Pagination Footer -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ filters.totalPages.value }}</span>
@@ -179,7 +173,6 @@
       </div>
     </div>
 
-    <!-- Create Warranty Modal -->
     <HistoryDetailsModal
       :show="showCreate"
       @close="showCreate = false; resetForm()"
@@ -189,9 +182,7 @@
       maxWidth="4xl"
     >
 
-      <!-- Content -->
       <div class="space-y-5">
-        <!-- Step 1: Customer & Invoice Info -->
         <div class="grid grid-cols-1 gap-4 rounded-xl border border-slate-100 bg-slate-50/40 p-4 sm:grid-cols-2">
           <div class="space-y-4">
             <div class="space-y-1.5 relative">
@@ -211,17 +202,17 @@
                   </li>
                 </div>
               </div>
-              <p v-if="errors.customer_id" class="text-[9px] text-rose-500 font-bold px-1">{{ errors.customer_id }}</p>
+              <p v-if="errors.customerId" class="text-[9px] text-rose-500 font-bold px-1">{{ errors.customerId }}</p>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
               <div class="space-y-1.5">
                 <label class="metadata-label h-8 flex items-center">الرقم التسلسلي (SN)</label>
-                <input v-model="form.product_serial" type="text" class="filter-input-v2 h-10 text-[11px] font-bold leading-4 placeholder:text-[11px] placeholder:font-bold placeholder:leading-4 uppercase" placeholder="أدخل الرقم التسلسلي..." />
+                <input v-model="form.productSerial" type="text" class="filter-input-v2 h-10 text-[11px] font-bold leading-4 placeholder:text-[11px] placeholder:font-bold placeholder:leading-4 uppercase" placeholder="أدخل الرقم التسلسلي..." />
               </div>
               <div class="space-y-1.5">
                 <label class="metadata-label h-8 flex items-center">تاريخ الشراء</label>
-                <input ref="purchaseDateRef" v-model="form.purchase_date" type="date" class="filter-input-v2 h-10 text-[11px] font-medium font-mono" />
+                <input ref="purchaseDateRef" v-model="form.purchaseDate" type="date" class="filter-input-v2 h-10 text-[11px] font-medium font-mono" />
               </div>
             </div>
           </div>
@@ -240,15 +231,15 @@
                 v-model="invoiceQuery"
                 type="text"
                 class="filter-input-v2 h-10 text-[11px] font-bold leading-4 placeholder:text-[11px] placeholder:font-bold placeholder:leading-4"
-                :class="{ 'border-rose-300': errors.invoice_id }"
-                :disabled="!form.customer_id"
+                :class="{ 'border-rose-300': errors.invoiceId }"
+                :disabled="!form.customerId"
                 role="combobox"
                 aria-autocomplete="list"
                 aria-controls="warranty-sale-dropdown"
                 :aria-expanded="showInvoiceDropdown.toString()"
                 placeholder="ابحث برقم الفاتورة بعد اختيار العميل..."
                 @input="handleInvoiceInput"
-                @focus="showInvoiceDropdown = Boolean(form.customer_id); debouncedInvoiceSearch(invoiceQuery)"
+                @focus="showInvoiceDropdown = Boolean(form.customerId); debouncedInvoiceSearch(invoiceQuery)"
                 @blur="scheduleHideInvoiceDropdown"
                 @keydown.down.prevent="moveInvoiceActive(1)"
                 @keydown.up.prevent="moveInvoiceActive(-1)"
@@ -259,7 +250,7 @@
                 <i class="fas fa-times-circle text-xs"></i>
               </button>
               <div
-                v-if="showInvoiceDropdown && form.customer_id"
+                v-if="showInvoiceDropdown && form.customerId"
                 id="warranty-sale-dropdown"
                 role="listbox"
                 :aria-busy="invoiceSearchLoading"
@@ -278,24 +269,22 @@
                   :class="idx === invoiceActiveIndex ? 'bg-blue-50' : 'hover:bg-blue-50'"
                   class="w-full px-4 py-2.5 text-right cursor-pointer border-b border-slate-50 last:border-0 transition-colors"
                 >
-                  <span class="block text-xs font-bold text-slate-800">{{ sale.invoice_number || `فاتورة #${sale.id}` }}</span>
-                  <span class="block text-[9px] text-slate-400 font-mono mt-1">#{{ sale.id }} · {{ formatDateTime(sale.created_at) }}</span>
+                  <span class="block text-xs font-bold text-slate-800">{{ sale.invoiceNumber || `فاتورة #${sale.id}` }}</span>
+                  <span class="block text-[9px] text-slate-400 font-mono mt-1">#{{ sale.id }} · {{ formatDateTime(sale.createdAt) }}</span>
                 </button>
               </div>
-              <p v-if="errors.invoice_id" class="text-[9px] text-rose-500 font-bold px-1">{{ errors.invoice_id }}</p>
-              <p v-if="invoiceQuery && form.invoice_id" class="text-[9px] text-emerald-600 font-bold px-1">تم ربط الطلب بفاتورة البيع المحددة.</p>
+              <p v-if="errors.invoiceId" class="text-[9px] text-rose-500 font-bold px-1">{{ errors.invoiceId }}</p>
+              <p v-if="invoiceQuery && form.invoiceId" class="text-[9px] text-emerald-600 font-bold px-1">تم ربط الطلب بفاتورة البيع المحددة.</p>
             </div>
           </div>
         </div>
 
-        <!-- Step 2: Description -->
         <div class="space-y-1.5 rounded-xl border border-slate-100 bg-white">
           <label class="metadata-label">تفاصيل المشكلة والعطل <span class="text-rose-500">*</span></label>
-          <textarea v-model="form.issue_description" rows="3" class="w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-[11px] font-bold text-slate-700 placeholder:text-[11px] placeholder:font-bold outline-none transition-all focus:bg-white" placeholder="اكتب وصف العطل أو المشكلة بالتفصيل..."></textarea>
-          <p v-if="errors.issue_description" class="text-[9px] text-rose-500 font-bold px-1">{{ errors.issue_description }}</p>
+          <textarea v-model="form.issueDescription" rows="3" class="w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-[11px] font-bold text-slate-700 placeholder:text-[11px] placeholder:font-bold outline-none transition-all focus:bg-white" placeholder="اكتب وصف العطل أو المشكلة بالتفصيل..."></textarea>
+          <p v-if="errors.issueDescription" class="text-[9px] text-rose-500 font-bold px-1">{{ errors.issueDescription }}</p>
         </div>
 
-        <!-- Step 3: Dynamic Items -->
         <div class="space-y-4 rounded-xl border border-slate-100 bg-slate-50/40 p-4">
           <div class="flex items-center justify-between">
             <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">العناصر المشمولة في الطلب</h4>
@@ -307,20 +296,20 @@
               <button v-if="form.items.length > 1" @click="removeItem(idx)" class="absolute -left-2 -top-2 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-lg"><i class="fas fa-times text-[8px]"></i></button>
               <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
                 <div class="md:col-span-6 relative">
-                  <input v-model="it._productQuery" type="text" class="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 placeholder:text-[11px] placeholder:font-bold" :class="{'border-rose-300': itemErrors[idx]?.product_id}" placeholder="ابحث عن المنتج..." @input="it._productActiveIndex = 0; debouncedProductSearch(idx, it._productQuery)" @focus="it._showProductDropdown = true; if (it._productQuery) debouncedProductSearch(idx, it._productQuery)" @blur="scheduleHideProductDropdown(it)" @keydown.down.prevent="moveProductActive(it, 1)" @keydown.up.prevent="moveProductActive(it, -1)" @keydown.enter.prevent="selectActiveProduct(idx, it)" @keydown.esc.prevent="it._showProductDropdown = false" />
+                  <input v-model="it._productQuery" type="text" class="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 placeholder:text-[11px] placeholder:font-bold" :class="{'border-rose-300': itemErrors[idx]?.productId}" placeholder="ابحث عن المنتج..." @input="it._productActiveIndex = 0; debouncedProductSearch(idx, it._productQuery)" @focus="it._showProductDropdown = true; if (it._productQuery) debouncedProductSearch(idx, it._productQuery)" @blur="scheduleHideProductDropdown(it)" @keydown.down.prevent="moveProductActive(it, 1)" @keydown.up.prevent="moveProductActive(it, -1)" @keydown.enter.prevent="selectActiveProduct(idx, it)" @keydown.esc.prevent="it._showProductDropdown = false" />
                   <div v-if="it._showProductDropdown" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-40 overflow-auto py-1">
                     <div v-if="it._productSearchError" role="alert" class="px-3 py-2 text-[10px] text-rose-600 font-bold">{{ it._productSearchError }}</div>
                     <div v-else-if="(it._productResults || []).length === 0" class="px-3 py-2 text-[10px] text-slate-400 font-bold">{{ (it._productQuery || '').length < 2 ? 'اكتب حرفين على الأقل للبحث...' : 'لا توجد نتائج...' }}</div>
                     <li v-for="(p, productIdx) in it._productResults" :key="p.id" @mousedown.prevent="selectProduct(idx, p)" :class="productIdx === (it._productActiveIndex || 0) ? 'bg-blue-50' : 'hover:bg-blue-50'" class="px-3 py-1.5 cursor-pointer text-[10px] font-bold border-b border-slate-50 last:border-0 list-none">{{ p.name }}</li>
                   </div>
-                  <p v-if="itemErrors[idx]?.product_id" class="text-[9px] text-rose-500 font-bold mt-1 px-1">{{ itemErrors[idx].product_id }}</p>
+                  <p v-if="itemErrors[idx]?.productId" class="text-[9px] text-rose-500 font-bold mt-1 px-1">{{ itemErrors[idx].productId }}</p>
                 </div>
                 <div class="md:col-span-2">
                   <input v-model.number="it.quantity" type="number" class="h-9 w-full bg-white border border-slate-200 rounded-md text-center font-bold text-[11px]" :class="{'border-rose-300': itemErrors[idx]?.quantity}" min="1" @change="validateItem(idx)" />
                   <p v-if="itemErrors[idx]?.quantity" class="text-[9px] text-rose-500 font-bold mt-1 px-1">{{ itemErrors[idx].quantity }}</p>
                 </div>
                 <div class="md:col-span-4">
-                  <input v-model="it.issue_notes" type="text" class="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 placeholder:text-[11px] placeholder:font-bold" placeholder="أضف ملاحظات المنتج..." />
+                  <input v-model="it.issueNotes" type="text" class="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 placeholder:text-[11px] placeholder:font-bold" placeholder="أضف ملاحظات المنتج..." />
                 </div>
               </div>
             </div>
@@ -351,18 +340,17 @@
       :show="showDetails && !!details"
       @close="closeDetails"
       :title="`ملف التذكرة الفنية #${details?.id || ''}`"
-      :subtitle="details?.product_serial || ''"
+      :subtitle="details?.productSerial || ''"
       icon="fas fa-shield-halved"
       maxWidth="5xl"
     >
           <div class="space-y-6">
-            <!-- Header Identity Row -->
             <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
               <div v-for="info in [
-                { l: 'العميل', v: customerName || details.customer_id, c: 'text-slate-900' },
+                { l: 'العميل', v: customerName || details.customerId, c: 'text-slate-900' },
                 { l: 'الأولوية', v: priorityLabel(details.priority), b: priorityClass(details.priority) },
                 { l: 'الحالة الحالية', v: statusLabel(details.status), b: statusClass(details.status) },
-                { l: 'الرقم التسلسلي', v: details.product_serial || '—', c: 'text-indigo-600 font-mono' }
+                { l: 'الرقم التسلسلي', v: details.productSerial || '—', c: 'text-indigo-600 font-mono' }
               ]" :key="info.l" class="rounded-lg border border-slate-100 bg-slate-50/60 p-3 flex flex-col justify-center">
                 <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{{ info.l }}</p>
                 <span v-if="info.b" :class="[info.b]" class="px-2 py-0.5 rounded text-[9px] font-bold border w-fit">{{ info.v }}</span>
@@ -370,17 +358,15 @@
               </div>
             </div>
 
-            <!-- Problem Description Box -->
             <div class="relative overflow-hidden rounded-xl bg-blue-600 p-5 text-white shadow-lg">
                <div class="absolute top-0 left-0 w-24 h-24 bg-white/10 rounded-full -translate-x-6 -translate-y-6"></div>
                <div class="relative z-10 space-y-3">
                   <p class="text-[10px] font-bold text-blue-200 uppercase tracking-widest">وصف العطل المبلّغ عنه</p>
-                  <p class="text-sm font-bold leading-relaxed">{{ details.issue_description }}</p>
+                  <p class="text-sm font-bold leading-relaxed">{{ details.issueDescription }}</p>
                </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-10">
-              <!-- Activities & Actions -->
               <div class="lg:col-span-7 space-y-6">
                 <div class="space-y-4">
                   <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">سجل التحديثات (Timeline)</h4>
@@ -393,8 +379,8 @@
                            تغيير الحالة: {{ statusLabel(e.from) }} <i class="fas fa-arrow-left-long mx-2 opacity-30"></i> {{ statusLabel(e.to) }}
                            <p v-if="e.note" class="mt-1.5 text-[10px] italic font-medium opacity-70">{{ e.note }}</p>
                         </div>
-                        <div v-else :class="[e.is_internal ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-white text-slate-700 border-slate-100 shadow-sm']" class="p-4 rounded-xl border text-[11px] font-bold leading-relaxed relative">
-                          <span v-if="e.is_internal" class="absolute left-3 top-3 text-[8px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-black uppercase">داخلية</span>
+                        <div v-else :class="[e.isInternal ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-white text-slate-700 border-slate-100 shadow-sm']" class="p-4 rounded-xl border text-[11px] font-bold leading-relaxed relative">
+                          <span v-if="e.isInternal" class="absolute left-3 top-3 text-[8px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-black uppercase">داخلية</span>
                           {{ e.content }}
                         </div>
                       </div>
@@ -402,7 +388,6 @@
                   </div>
                 </div>
 
-                <!-- Control Panel: Integrated Actions -->
                 <section class="p-6 bg-slate-50 border border-slate-200 rounded-xl space-y-6">
                   <div class="grid grid-cols-2 gap-4">
                     <div class="space-y-1.5"><label class="metadata-label">تحديث الحالة</label><select v-model="statusChange.value" class="filter-input-v2 h-9 font-bold"><option value="open">مفتوح</option><option value="in_progress">قيد المعالجة</option><option value="pending_customer">بانتظار العميل</option><option value="resolved">تم الحل</option><option value="closed">مغلق</option></select></div>
@@ -435,15 +420,14 @@
                 </section>
               </div>
 
-              <!-- Attachments & Components Grid -->
               <div class="lg:col-span-5 space-y-6">
                 <div class="space-y-4">
                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">القطع المشمولة</h4>
                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-50 shadow-sm">
                       <div v-for="it in (details.items || [])" :key="it.id" class="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
                         <div>
-                          <p class="text-xs font-bold text-slate-800">{{ productDisplayName(it.product_id) }}</p>
-                          <p class="text-[9px] text-slate-400 mt-1 font-medium italic">{{ it.issue_notes || 'بدون ملاحظات فنية' }}</p>
+                          <p class="text-xs font-bold text-slate-800">{{ productDisplayName(it.productId) }}</p>
+                          <p class="text-[9px] text-slate-400 mt-1 font-medium italic">{{ it.issueNotes || 'بدون ملاحظات فنية' }}</p>
                         </div>
                         <span class="px-2 py-1 bg-slate-100 rounded font-mono font-bold text-[10px] text-slate-500">x{{ formatQty(it.quantity) }}</span>
                       </div>
@@ -458,7 +442,7 @@
                            <img :src="fileUrl(a.filename)" class="w-full h-full object-cover transition-transform group-hover:scale-105" />
                         </div>
                         <div v-else class="aspect-video rounded-md bg-slate-100 flex items-center justify-center text-slate-300 mb-3"><i class="fas fa-file-pdf text-3xl"></i></div>
-                        <p class="text-[9px] font-bold text-slate-600 truncate uppercase">{{ a.original_name }}</p>
+                        <p class="text-[9px] font-bold text-slate-600 truncate uppercase">{{ a.originalName }}</p>
                         <div class="flex justify-between mt-3 pt-2 border-t border-slate-50">
                            <a :href="fileUrl(a.filename)" target="_blank" class="text-[9px] font-bold text-blue-600 uppercase hover:underline">تحميل</a>
                            <button @click="removeAttachment(a.id)" class="text-[9px] font-bold text-rose-500 uppercase hover:underline">حذف</button>
@@ -480,7 +464,6 @@
       </template>
     </HistoryDetailsModal>
 
-    <!-- Lightbox -->
     <transition name="fade">
       <div v-if="lightboxOpen" class="fixed inset-0 z-[200] bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-8" @click.self="closeLightbox">
         <img :src="lightboxSrc" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-modalIn" />
@@ -519,7 +502,6 @@ const branchStore = useBranchStore();
 const { showToast } = useToast();
 const { validateDateRange } = useDateValidation();
 
-// State and Filters
 const items = computed(() => warrantyStore.warranties);
 const isLoading = computed(() => warrantyStore.isLoading);
 const error = computed(() => warrantyStore.error);
@@ -560,13 +542,13 @@ const statusTabs = [
 const showCreate = ref(false);
 const creating = ref(false);
 const form = ref({
-  customer_id: null,
-  invoice_id: null,
-  product_serial: '',
-  purchase_date: '',
+  customerId: null,
+  invoiceId: null,
+  productSerial: '',
+  purchaseDate: '',
   priority: 'medium',
-  issue_description: '',
-  items: [{ product_id: null, quantity: 1, issue_notes: '', _productQuery: '', _productResults: [], _productSearchError: '', _showProductDropdown: false, _productActiveIndex: 0, _productName: '' }]
+  issueDescription: '',
+  items: [{ productId: null, quantity: 1, issueNotes: '', _productQuery: '', _productResults: [], _productSearchError: '', _showProductDropdown: false, _productActiveIndex: 0, _productName: '' }]
 });
 
 // Customer autocomplete
@@ -619,7 +601,7 @@ onUnmounted(() => {
   pendingTimeouts.clear();
 });
 
-// ─── Debounce helper ──────────────────────────────────────────────────────────
+// Debounce helper
 
 function debounce(fn, delay = 300) {
   let t;
@@ -679,14 +661,14 @@ async function fetchProductNameById(id) {
 async function enrichDetailsNames() {
   const d = details.value;
   if (!d) return;
-  customerName.value = d.customer_name || '';
-  if (!customerName.value && d.customer_id) await fetchCustomerNameById(d.customer_id);
+  customerName.value = d.customerName || '';
+  if (!customerName.value && d.customerId) await fetchCustomerNameById(d.customerId);
   const arr = Array.isArray(d.items) ? d.items : [];
   for (const it of arr) {
-    if (it.product_name) {
-      productNameMap.value = { ...productNameMap.value, [it.product_id]: it.product_name };
-    } else if (it.product_id) {
-      fetchProductNameById(it.product_id);
+    if (it.productName) {
+      productNameMap.value = { ...productNameMap.value, [it.productId]: it.productName };
+    } else if (it.productId) {
+      fetchProductNameById(it.productId);
     }
   }
 }
@@ -713,7 +695,7 @@ const debouncedCustomerSearch = debounce((q) => {
 }, 300);
 
 function clearSelectedInvoice() {
-  form.value.invoice_id = null;
+  form.value.invoiceId = null;
   invoiceQuery.value = '';
   invoiceResults.value = [];
   invoiceSearchError.value = '';
@@ -722,8 +704,8 @@ function clearSelectedInvoice() {
 }
 
 function handleCustomerInput(query) {
-  if (form.value.customer_id && query !== customerSelectionLabel.value) {
-    form.value.customer_id = null;
+  if (form.value.customerId && query !== customerSelectionLabel.value) {
+    form.value.customerId = null;
     customerSelectionLabel.value = '';
     clearSelectedInvoice();
   }
@@ -753,17 +735,17 @@ function handleInvoiceInput() {
   invoiceActiveIndex.value = 0;
   invoiceResults.value = [];
   invoiceSearchLoading.value = false;
-  if (form.value.invoice_id) {
-    form.value.invoice_id = null;
+  if (form.value.invoiceId) {
+    form.value.invoiceId = null;
   }
-  errors.value.invoice_id = invoiceQuery.value.trim() ? 'اختر فاتورة بيع من النتائج أو امسح نص البحث.' : '';
+  errors.value.invoiceId = invoiceQuery.value.trim() ? 'اختر فاتورة بيع من النتائج أو امسح نص البحث.' : '';
   invoiceSearchError.value = '';
-  showInvoiceDropdown.value = Boolean(form.value.customer_id);
+  showInvoiceDropdown.value = Boolean(form.value.customerId);
   debouncedInvoiceSearch(invoiceQuery.value);
 }
 
 const searchCustomerSales = async (query) => {
-  const customerId = form.value.customer_id;
+  const customerId = form.value.customerId;
   const requestId = ++invoiceSearchRequestId;
   if (!customerId || (query.trim().length > 0 && query.trim().length < 2)) {
     invoiceResults.value = [];
@@ -780,7 +762,7 @@ const searchCustomerSales = async (query) => {
       perPage: 20,
       force: true,
     });
-    if (requestId !== invoiceSearchRequestId || String(customerId) !== String(form.value.customer_id)) return;
+    if (requestId !== invoiceSearchRequestId || String(customerId) !== String(form.value.customerId)) return;
     if (result.status !== 'success') {
       invoiceResults.value = [];
       invoiceSearchError.value = result.message || 'تعذر تحميل فواتير البيع.';
@@ -808,10 +790,10 @@ function scheduleHideInvoiceDropdown() {
 }
 
 function selectInvoice(sale) {
-  form.value.invoice_id = Number(sale.id);
-  invoiceQuery.value = sale.invoice_number || `فاتورة #${sale.id}`;
+  form.value.invoiceId = Number(sale.id);
+  invoiceQuery.value = sale.invoiceNumber || `فاتورة #${sale.id}`;
   invoiceSearchError.value = '';
-  errors.value.invoice_id = '';
+  errors.value.invoiceId = '';
   showInvoiceDropdown.value = false;
 }
 
@@ -831,7 +813,7 @@ const selectCustomer = (c) => {
     console.warn('selectCustomer called with invalid customer:', c);
     return;
   }
-  form.value.customer_id = c.id;
+  form.value.customerId = c.id;
   customerQuery.value = c.name || c.phone || String(c.id);
   customerSelectionLabel.value = customerQuery.value;
   showCustomerDropdown.value = false;
@@ -886,7 +868,7 @@ function selectActiveProduct(idx, item) {
 const selectProduct = (idx, p) => {
   const it = form.value.items[idx];
   if (!it) return;
-  it.product_id = p.id;
+  it.productId = p.id;
   it._productName = p.name;
   it._productQuery = `${p.name}${p.barcode ? ' - ' + p.barcode : ''}`;
   it._showProductDropdown = false;
@@ -906,13 +888,13 @@ const noteInternal = ref(false);
 const timelineEvents = computed(() => {
   const evts = [];
   const d = details.value || {};
-  const statusHist = Array.isArray(d.status_history) ? d.status_history : [];
+  const statusHist = Array.isArray(d.statusHistory) ? d.statusHistory : [];
   for (const h of statusHist) {
     evts.push({
       type: 'status',
-      id: `st_${h.id || h.created_at || Math.random()}`,
-      at: h.created_at || h.date || h.at || null,
-      by: h.created_by || h.user || null,
+      id: `st_${h.id || h.createdAt || Math.random()}`,
+      at: h.createdAt || h.date || h.at || null,
+      by: h.createdBy || h.user || null,
       from: h.from,
       to: h.to,
       note: h.note || '',
@@ -922,11 +904,11 @@ const timelineEvents = computed(() => {
   for (const n of notes) {
     evts.push({
       type: 'note',
-      id: `nt_${n.id || n.created_at}`,
-      at: n.created_at || null,
-      by: n.created_by_name || n.created_by || null,
+      id: `nt_${n.id || n.createdAt}`,
+      at: n.createdAt || null,
+      by: n.createdByName || n.createdBy || null,
       content: n.note || '',
-      is_internal: !!n.is_internal,
+      isInternal: !!n.isInternal,
     });
   }
   evts.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
@@ -966,11 +948,11 @@ async function fetchList(forceRefresh = false) {
     search: search.value || undefined,
     status: statusFilter.value || undefined,
     priority: priorityFilter.value || undefined,
-    date_from: dateFrom.value || undefined,
-    date_to: dateTo.value || undefined,
+    dateFrom: dateFrom.value || undefined,
+    dateTo: dateTo.value || undefined,
     page: filters.page.value,
-    per_page: filters.perPage.value,
-    branch_id: Number.isInteger(Number(selectedBranch.value)) && Number(selectedBranch.value) > 0
+    perPage: filters.perPage.value,
+    branchId: Number.isInteger(Number(selectedBranch.value)) && Number(selectedBranch.value) > 0
       ? String(selectedBranch.value)
       : undefined
   };
@@ -1002,20 +984,20 @@ function changePage(page) {
 
 function resetForm() {
   form.value = {
-    customer_id: null, invoice_id: null, product_serial: '', purchase_date: '',
-    priority: 'medium', issue_description: '',
-    items: [{ product_id: null, quantity: 1, issue_notes: '', _productQuery: '', _productResults: [], _productSearchError: '', _showProductDropdown: false, _productActiveIndex: 0, _productName: '' }]
+    customerId: null, invoiceId: null, productSerial: '', purchaseDate: '',
+    priority: 'medium', issueDescription: '',
+    items: [{ productId: null, quantity: 1, issueNotes: '', _productQuery: '', _productResults: [], _productSearchError: '', _showProductDropdown: false, _productActiveIndex: 0, _productName: '' }]
   };
   customerQuery.value = '';
   customerSelectionLabel.value = '';
   showCustomerDropdown.value = false;
   clearSelectedInvoice();
-  errors.value = { customer_id: '', invoice_id: '', priority: '', issue_description: '', items: '' };
+  errors.value = { customerId: '', invoiceId: '', priority: '', issueDescription: '', items: '' };
   itemErrors.value = [];
 }
 
 function addItem() {
-  form.value.items.push({ product_id: null, quantity: 1, issue_notes: '', _productQuery: '', _productResults: [], _productSearchError: '', _showProductDropdown: false, _productActiveIndex: 0, _productName: '' });
+  form.value.items.push({ productId: null, quantity: 1, issueNotes: '', _productQuery: '', _productResults: [], _productSearchError: '', _showProductDropdown: false, _productActiveIndex: 0, _productName: '' });
 }
 
 function removeItem(idx) {
@@ -1023,50 +1005,50 @@ function removeItem(idx) {
   form.value.items.splice(idx, 1);
 }
 
-const errors = ref({ customer_id: '', invoice_id: '', priority: '', issue_description: '', items: '' });
+const errors = ref({ customerId: '', invoiceId: '', priority: '', issueDescription: '', items: '' });
 const itemErrors = ref([]);
 
 function ensureItemErrorsSize() {
-  while (itemErrors.value.length < form.value.items.length) itemErrors.value.push({ product_id: '', quantity: '' });
+  while (itemErrors.value.length < form.value.items.length) itemErrors.value.push({ productId: '', quantity: '' });
   while (itemErrors.value.length > form.value.items.length) itemErrors.value.pop();
 }
-function validateCustomer() { errors.value.customer_id = form.value.customer_id ? '' : 'العميل مطلوب'; }
+function validateCustomer() { errors.value.customerId = form.value.customerId ? '' : 'العميل مطلوب'; }
 function validatePriority() { errors.value.priority = form.value.priority ? '' : 'الرجاء اختيار أولوية'; }
 function validateIssueDescription() {
-  const v = (form.value.issue_description || '').trim();
-  errors.value.issue_description = v.length >= 5 ? '' : 'وصف المشكلة مطلوب (5 أحرف على الأقل)';
+  const v = (form.value.issueDescription || '').trim();
+  errors.value.issueDescription = v.length >= 5 ? '' : 'وصف المشكلة مطلوب (5 أحرف على الأقل)';
 }
 function validateItem(idx) {
   ensureItemErrorsSize();
   const it = form.value.items[idx];
   if (!it) return;
   const e = itemErrors.value[idx];
-  e.product_id = it.product_id ? '' : 'اختر منتجاً';
+  e.productId = it.productId ? '' : 'اختر منتجاً';
   e.quantity = it.quantity && Number(it.quantity) >= 1 ? '' : 'يجب ألا تقل الكمية عن 1.';
 }
 function validateItemsSummary() {
-  const hasAny = form.value.items.some(i => i.product_id);
+  const hasAny = form.value.items.some(i => i.productId);
   errors.value.items = hasAny ? '' : 'أضف عنصرًا واحدًا على الأقل';
 }
 
 const isFormValid = computed(() => {
   const noFieldErrors =
-    !errors.value.customer_id &&
-    !errors.value.invoice_id &&
+    !errors.value.customerId &&
+    !errors.value.invoiceId &&
     !errors.value.priority &&
-    !errors.value.issue_description &&
+    !errors.value.issueDescription &&
     !errors.value.items;
-  const noItemErrors = itemErrors.value.every(e => !e.product_id && !e.quantity);
+  const noItemErrors = itemErrors.value.every(e => !e.productId && !e.quantity);
   return noFieldErrors && noItemErrors;
 });
 
 // Watcher drives validation whenever form data changes (no side effects in computed)
 watch(
   () => ({
-    customer_id: form.value.customer_id,
+    customerId: form.value.customerId,
     priority: form.value.priority,
-    issue_description: form.value.issue_description,
-    items: form.value.items.map(i => ({ product_id: i.product_id, quantity: i.quantity }))
+    issueDescription: form.value.issueDescription,
+    items: form.value.items.map(i => ({ productId: i.productId, quantity: i.quantity }))
   }),
   () => {
     validateCustomer();
@@ -1084,7 +1066,7 @@ watch(() => form.value.items.length, ensureItemErrorsSize);
 async function createWarranty() {
   // Run a final validation pass before submit
   validateCustomer(); validatePriority(); validateIssueDescription();
-  errors.value.invoice_id = invoiceQuery.value.trim() && !form.value.invoice_id
+  errors.value.invoiceId = invoiceQuery.value.trim() && !form.value.invoiceId
     ? 'اختر فاتورة بيع من النتائج أو امسح نص البحث.'
     : '';
   ensureItemErrorsSize();
@@ -1099,15 +1081,15 @@ async function createWarranty() {
   creating.value = true;
   try {
     const payload = {
-      customer_id: form.value.customer_id,
-      invoice_id: form.value.invoice_id,
-      product_serial: form.value.product_serial,
-      purchase_date: form.value.purchase_date,
+      customerId: form.value.customerId,
+      invoiceId: form.value.invoiceId,
+      productSerial: form.value.productSerial,
+      purchaseDate: form.value.purchaseDate,
       priority: form.value.priority,
-      issue_description: form.value.issue_description,
+      issueDescription: form.value.issueDescription,
       items: form.value.items
-        .filter(i => i.product_id)
-        .map(i => ({ product_id: i.product_id, quantity: i.quantity, issue_notes: i.issue_notes }))
+        .filter(i => i.productId)
+        .map(i => ({ productId: i.productId, quantity: i.quantity, issueNotes: i.issueNotes }))
     };
     const result = await warrantyStore.createWarranty(payload);
     if (result.status === 'success') {
@@ -1252,10 +1234,10 @@ watch([search, statusFilter, priorityFilter], () => {
 });
 
 function statusLabel(s) {
-  return ({ open: 'مفتوح', in_progress: 'قيد المعالجة', pending_customer: 'بانتظار العميل', resolved: 'تم الحل', closed: 'مغلق' }[s] || s || '-');
+  return ({ open: 'مفتوح', inProgress: 'قيد المعالجة', pendingCustomer: 'بانتظار العميل', resolved: 'تم الحل', closed: 'مغلق' }[s] || s || '-');
 }
 function statusClass(s) {
-  return ({ open: 'bg-blue-50 text-blue-700', in_progress: 'bg-yellow-50 text-yellow-800', pending_customer: 'bg-amber-50 text-amber-800', resolved: 'bg-green-50 text-green-800', closed: 'bg-gray-100 text-gray-800' }[s] || 'bg-gray-100 text-gray-800');
+  return ({ open: 'bg-blue-50 text-blue-700', inProgress: 'bg-yellow-50 text-yellow-800', pendingCustomer: 'bg-amber-50 text-amber-800', resolved: 'bg-green-50 text-green-800', closed: 'bg-gray-100 text-gray-800' }[s] || 'bg-gray-100 text-gray-800');
 }
 function priorityLabel(p) {
   return ({ low: 'منخفض', medium: 'متوسط', high: 'عالٍ', urgent: 'عاجل' }[p] || p || '-');

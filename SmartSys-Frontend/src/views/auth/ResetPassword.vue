@@ -194,7 +194,7 @@ const submit = async () => {
   try {
     const response = await authStore.resetPassword({
       token: token.value,
-      new_password: newPassword.value,
+      newPassword: newPassword.value,
     })
 
     ok.value = true

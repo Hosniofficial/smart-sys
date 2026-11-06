@@ -48,7 +48,7 @@
       <form v-else class="space-y-4" novalidate @submit.prevent="submit">
         <AuthField
           id="full_name"
-          v-model="form.full_name"
+          v-model="form.fullName"
           label="اسم صاحب النشاط"
           placeholder="اكتب اسمك بالكامل"
           autocomplete="name"
@@ -138,7 +138,7 @@ const success = ref('')
 const registered = ref(false)
 const resendLoading = ref(false)
 
-const form = ref({ full_name: '', username: '', email: '', password: '' })
+const form = ref({ fullName: '', username: '', email: '', password: '' })
 
 function validate() {
   if (!form.value.username.trim() || !form.value.email.trim() || !form.value.password) {
@@ -175,7 +175,7 @@ async function submit() {
   success.value = ''
   try {
     const result = await authStore.register({
-      full_name: form.value.full_name.trim(),
+      fullName: form.value.fullName.trim(),
       username: form.value.username.trim(),
       email: form.value.email.trim(),
       password: form.value.password,

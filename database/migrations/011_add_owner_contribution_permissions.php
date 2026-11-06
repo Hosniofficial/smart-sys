@@ -32,9 +32,7 @@ class AddOwnerContributionPermissions
         echo "📌 Migration: 011_add_owner_contribution_permissions\n\n";
 
         try {
-            // ─────────────────────────────────────────────────────────────────────
             // 1. Verify permissions table exists
-            // ─────────────────────────────────────────────────────────────────────
             echo "   • التحقق من وجود جدول permissions...\n";
 
             $stmtTableCheck = $this->pdo->prepare(
@@ -48,9 +46,7 @@ class AddOwnerContributionPermissions
             }
             echo "      ✅ جدول permissions موجود\n\n";
 
-            // ─────────────────────────────────────────────────────────────────────
             // 2. Define owner contribution permissions
-            // ─────────────────────────────────────────────────────────────────────
             $permissions = [
                 [
                     'name' => 'accounting.owner_contribution.create',
@@ -69,9 +65,7 @@ class AddOwnerContributionPermissions
                 ],
             ];
 
-            // ─────────────────────────────────────────────────────────────────────
             // 3. Insert permissions (skip if already exist)
-            // ─────────────────────────────────────────────────────────────────────
             echo "   • إضافة صلاحيات مساهمات المالك...\n\n";
 
             $stmtInsert = $this->pdo->prepare("
@@ -113,9 +107,7 @@ class AddOwnerContributionPermissions
             echo "      • تم التخطي: {$skippedCount}\n";
             echo "      • الإجمالي: " . count($permissions) . "\n\n";
 
-            // ─────────────────────────────────────────────────────────────────────
             // 4. Verification
-            // ─────────────────────────────────────────────────────────────────────
             echo "   • التحقق من الإضافة...\n";
 
             $stmtVerify = $this->pdo->prepare(
@@ -134,9 +126,7 @@ class AddOwnerContributionPermissions
 
             echo "      ✅ التحقق ناجح: {$actualCount} صلاحية موجودة\n\n";
 
-            // ─────────────────────────────────────────────────────────────────────
             // 5. Display created permissions
-            // ─────────────────────────────────────────────────────────────────────
             $stmtList = $this->pdo->prepare(
                 "SELECT id, name, description
                  FROM permissions

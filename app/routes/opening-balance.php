@@ -20,12 +20,12 @@ return function (RouteCollectorProxy $group, Container $container): void {
         // NOTE: GET /template was removed — no Frontend consumer found.
         // The handler method template() was also deleted from OpeningBalanceHandler.
 
-        // ── Preview (dry-run, no data written — view permission) ─────────────
+        // Preview (dry-run, no data written — view permission)
         $group->post('/preview', function (Request $request, Response $response) use ($handler) {
             return $handler->preview($request, $response);
         })->add(PermissionMiddleware::require(Permissions::ACCOUNTING_OPENING_BALANCE, $db));
 
-        // ── Commit (irreversible write — requires dedicated permission) ───────
+        // Commit (irreversible write — requires dedicated permission)
         $group->post('/commit', function (Request $request, Response $response) use ($handler) {
             return $handler->commit($request, $response);
         })->add(PermissionMiddleware::require(Permissions::ACCOUNTING_OPENING_BALANCE, $db));

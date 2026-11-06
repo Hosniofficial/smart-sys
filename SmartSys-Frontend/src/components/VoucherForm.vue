@@ -9,14 +9,13 @@
         <div>
           <h3 class="text-sm font-bold text-slate-900 uppercase tracking-tight">{{ editMode ? 'تعديل سند مالي' : 'إصدار سند جديد' }}</h3>
 
-            <p class="text-[10px] text-slate-400 font-mono mt-1">{{ localForm.reference_number || 'سند مالي معتمد' }}</p>
+            <p class="text-[10px] text-slate-400 font-mono mt-1">{{ localForm.referenceNumber || 'سند مالي معتمد' }}</p>
 
           </div>
 
         </div>
       </template>
 
-      <!-- Body -->
       <form @submit.prevent="handleSave" class="space-y-8" dir="rtl">
 
         <div v-if="listsLoading" class="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 text-sm font-black text-center flex items-center justify-center gap-2">
@@ -32,8 +31,6 @@
           <i class="fas fa-exclamation-triangle ml-2"></i>{{ displayError }}
 
         </div>
-
-        <!-- Step 1: Core Info -->
 
         <div class="grid grid-cols-2 gap-6 bg-slate-50/50 p-6 rounded-xl border border-slate-200">
 
@@ -69,7 +66,7 @@
 
             <label class="metadata-label">الفرع المرتبط</label>
 
-            <select v-model="localForm.branch_id" class="form-input-v3" :required="!isExempt">
+            <select v-model="localForm.branchId" class="form-input-v3" :required="!isExempt">
 
               <option value="" disabled>-- اختر الفرع --</option>
 
@@ -80,8 +77,6 @@
           </div>
 
         </div>
-
-        <!-- Step 2: Financials -->
 
         <div class="grid grid-cols-2 gap-6">
 
@@ -103,7 +98,7 @@
 
             <label class="metadata-label">طريقة الدفع</label>
 
-            <select v-model="localForm.payment_method_id" @change="updateAccount" class="form-input-v3 h-14 font-bold" required>
+            <select v-model="localForm.paymentMethodId" @change="updateAccount" class="form-input-v3 h-14 font-bold" required>
 
               <option value="">-- اختر الطريقة --</option>
 
@@ -111,17 +106,15 @@
 
             </select>
 
-            <div v-if="localForm.account_id" class="text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100">
+            <div v-if="localForm.accountId" class="text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100">
 
-               <i class="fas fa-link ml-1"></i> الحساب المرتبط: {{ getAccountName(localForm.account_id) }}
+               <i class="fas fa-link ml-1"></i> الحساب المرتبط: {{ getAccountName(localForm.accountId) }}
 
             </div>
 
           </div>
 
         </div>
-
-        <!-- Step 3: Counterparty -->
 
         <div class="space-y-6">
 
@@ -133,7 +126,7 @@
 
               <label class="metadata-label">العميل</label>
 
-              <select v-model="localForm.customer_id" class="form-input-v3 font-bold">
+              <select v-model="localForm.customerId" class="form-input-v3 font-bold">
 
                 <option :value="null">-- إيراد عام (بدون عميل) --</option>
 
@@ -143,7 +136,7 @@
 
             </div>
 
-            <div v-if="localForm.customer_id" class="space-y-1.5">
+            <div v-if="localForm.customerId" class="space-y-1.5">
 
               <label class="metadata-label">ربط بفاتورة مبيعات <span class="text-slate-400 font-normal normal-case">(اختياري)</span></label>
 
@@ -151,7 +144,7 @@
 
               <p v-else-if="customerSalesError" class="text-xs text-rose-600 font-bold py-2">{{ customerSalesError }}</p>
 
-              <select v-else v-model="localForm.sale_id" class="form-input-v3 h-14 font-bold">
+              <select v-else v-model="localForm.saleId" class="form-input-v3 h-14 font-bold">
 
                 <option :value="null">— بدون ربط —</option>
 
@@ -159,7 +152,7 @@
 
                 <option v-for="s in customerPendingSales" :key="s.id" :value="s.id">
 
-                  {{ s.invoice_number }} — {{ formatPrice(s.net_total_amount) }} (متبقي: {{ formatPrice(s.remaining_balance ?? (s.net_total_amount - (s.actual_paid_amount || s.paid_amount || 0))) }})
+                  {{ s.invoiceNumber }} — {{ formatPrice(s.netTotalAmount) }} (متبقي: {{ formatPrice(s.remainingBalance ?? (s.netTotalAmount - (s.actualPaidAmount || s.paidAmount || 0))) }})
 
                 </option>
 
@@ -167,7 +160,7 @@
 
             </div>
 
-            <div v-if="localForm.customer_id" class="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-3">
+            <div v-if="localForm.customerId" class="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-3">
 
               <i class="fas fa-circle-exclamation text-amber-500 mt-0.5"></i>
 
@@ -183,7 +176,7 @@
 
               <label class="flex items-center gap-2 cursor-pointer group">
 
-                <input type="radio" v-model="localForm.payment_to_type" value="supplier" class="text-blue-600 focus:ring-0" />
+                <input type="radio" v-model="localForm.paymentToType" value="supplier" class="text-blue-600 focus:ring-0" />
 
                 <span class="text-xs font-bold text-slate-600 group-hover:text-slate-900">مورد</span>
 
@@ -191,7 +184,7 @@
 
               <label class="flex items-center gap-2 cursor-pointer group">
 
-                <input type="radio" v-model="localForm.payment_to_type" value="expense" class="text-blue-600 focus:ring-0" />
+                <input type="radio" v-model="localForm.paymentToType" value="expense" class="text-blue-600 focus:ring-0" />
 
                 <span class="text-xs font-bold text-slate-600 group-hover:text-slate-900">مصروف</span>
 
@@ -199,13 +192,13 @@
 
             </div>
 
-            <div v-if="localForm.payment_to_type === 'supplier'" class="space-y-4 animate-fadeIn">
+            <div v-if="localForm.paymentToType === 'supplier'" class="space-y-4 animate-fadeIn">
 
               <div class="space-y-1.5">
 
                 <label class="metadata-label">المورد</label>
 
-                <select v-model="localForm.supplier_id" class="form-input-v3 font-bold">
+                <select v-model="localForm.supplierId" class="form-input-v3 font-bold">
 
                   <option value="">-- اختر المورد --</option>
 
@@ -215,13 +208,13 @@
 
               </div>
 
-              <div v-if="localForm.supplier_id" class="space-y-1.5">
+              <div v-if="localForm.supplierId" class="space-y-1.5">
 
                 <label class="metadata-label">ربط بفاتورة شراء <span class="text-slate-400 font-normal normal-case">(اختياري)</span></label>
 
                 <div v-if="supplierPurchasesLoading" class="text-xs text-slate-400 font-bold py-2">جاري تحميل الفواتير...</div>
 
-                <select v-else v-model="localForm.purchase_id" class="form-input-v3 font-bold">
+                <select v-else v-model="localForm.purchaseId" class="form-input-v3 font-bold">
 
                   <option :value="null">— بدون ربط بفاتورة —</option>
 
@@ -229,7 +222,7 @@
 
                   <option v-for="p in supplierPendingPurchases" :key="p.id" :value="p.id">
 
-                    {{ p.invoice_number }} — {{ formatPrice(p.total_amount) }} (متبقي: {{ formatPrice(p.remaining_balance ?? (p.total_amount - (p.actual_paid_amount || p.paid_amount || 0))) }})
+                    {{ p.invoiceNumber }} — {{ formatPrice(p.totalAmount) }} (متبقي: {{ formatPrice(p.remainingBalance ?? (p.totalAmount - (p.actualPaidAmount || p.paidAmount || 0))) }})
 
                   </option>
 
@@ -243,7 +236,7 @@
 
               <label class="metadata-label">حساب المصروف</label>
 
-              <select v-model="localForm.expense_account_id" class="form-input-v3 font-bold">
+              <select v-model="localForm.expenseAccountId" class="form-input-v3 font-bold">
 
                 <option value="">-- اختر المصروف --</option>
 
@@ -264,8 +257,6 @@
           <textarea v-model="localForm.description" rows="2" class="form-input-v3 h-auto p-3 italic text-slate-500 font-medium" placeholder="اكتب تفاصيل إضافية للعملية..."></textarea>
 
         </div>
-
-        <!-- Footer -->
 
         <div class="pt-4 border-t border-slate-100 flex justify-end gap-3 shrink-0">
 
@@ -340,9 +331,9 @@ const formatPrice = (amount) => {
 
 const updateAccount = () => {
 
-  const pm = props.paymentMethods.find(m => m.id === localForm.value.payment_method_id);
+  const pm = props.paymentMethods.find(m => m.id === localForm.value.paymentMethodId);
 
-  if (pm?.account_id) localForm.value.account_id = pm.account_id;
+  if (pm?.accountId) localForm.value.accountId = pm.accountId;
 
 };
 
@@ -364,11 +355,11 @@ const customerPendingSales = computed(() =>
 
   customerSales.value.filter(s => {
 
-    const remaining = s.remaining_balance ?? (s.net_total_amount - (s.actual_paid_amount || s.paid_amount || 0));
+    const remaining = s.remainingBalance ?? (s.netTotalAmount - (s.actualPaidAmount || s.paidAmount || 0));
 
     const allowedStatuses = ['pending_payment', 'partial', 'due'];
     const status = String(s.status || '').toLowerCase();
-    const dynamicStatus = String(s.dynamic_status || s.status || '').toLowerCase();
+    const dynamicStatus = String(s.dynamicStatus || s.status || '').toLowerCase();
 
     return remaining > 0
       && allowedStatuses.includes(status)
@@ -391,14 +382,14 @@ const loadCustomerSales = async (customerId) => {
 
     const res = await salesStore.fetchSalesList({
       customerId,
-      branchId: localForm.value.branch_id || undefined,
+      branchId: localForm.value.branchId || undefined,
       perPage: 100,
       force: true
     });
     if (res?.status !== 'success') {
       throw new Error(res?.message || 'تعذر تحميل فواتير العميل.');
     }
-    customerSales.value = res?.data?.items || [];
+    customerSales.value = res?.data?.data?.items || [];
 
   } catch (error) {
     customerSales.value = [];
@@ -411,13 +402,13 @@ const loadCustomerSales = async (customerId) => {
 
 watch(
 
-  [() => localForm.value.customer_id, () => localForm.value.type, () => localForm.value.branch_id],
+  [() => localForm.value.customerId, () => localForm.value.type, () => localForm.value.branchId],
 
   ([custId, type]) => {
 
     if (custId && type === 'receipt') loadCustomerSales(custId);
 
-    else { customerSales.value = []; localForm.value.sale_id = null; }
+    else { customerSales.value = []; localForm.value.saleId = null; }
 
   }
 
@@ -431,9 +422,9 @@ const supplierPendingPurchases = computed(() =>
 
   supplierPurchases.value.filter(p => {
 
-    const remaining = p.remaining_balance ?? (p.total_amount - (p.actual_paid_amount || p.paid_amount || 0));
+    const remaining = p.remainingBalance ?? (p.totalAmount - (p.actualPaidAmount || p.paidAmount || 0));
 
-    const status = p.dynamic_status || p.status;
+    const status = p.dynamicStatus || p.status;
 
     return remaining > 0 && !['paid', 'settled', 'closed_by_return', 'returned', 'settled_by_return'].includes(status);
 
@@ -453,17 +444,17 @@ const loadSupplierPurchases = async (supplierId) => {
 
     const res = await purchaseStore.fetchPurchasesList({ supplierId, perPage: 100, force: true });
 
-    supplierPurchases.value = res?.data?.items || [];
+    supplierPurchases.value = res?.data?.data?.items || [];
 
     const pending = supplierPendingPurchases.value;
 
-    if (pending.length === 1 && !localForm.value.purchase_id) {
+    if (pending.length === 1 && !localForm.value.purchaseId) {
 
-      localForm.value.purchase_id = pending[0].id;
+      localForm.value.purchaseId = pending[0].id;
 
-      showToast(`تم ربط الفاتورة "${pending[0].invoice_number}" تلقائياً`, 'info');
+      showToast(`تم ربط الفاتورة "${pending[0].invoiceNumber}" تلقائياً`, 'info');
 
-    } else if (pending.length > 1 && !localForm.value.purchase_id) {
+    } else if (pending.length > 1 && !localForm.value.purchaseId) {
 
       showToast(`يوجد ${pending.length} فاتورة مستحقة - اختر الفاتورة المراد ربطها`, 'warning');
 
@@ -477,11 +468,11 @@ const loadSupplierPurchases = async (supplierId) => {
 
 watch(
 
-  [() => localForm.value.supplier_id, () => localForm.value.payment_to_type],
+  [() => localForm.value.supplierId, () => localForm.value.paymentToType],
 
   ([suppId, payToType]) => {
 
-    localForm.value.purchase_id = null;
+    localForm.value.purchaseId = null;
 
     if (suppId && payToType === 'supplier') loadSupplierPurchases(suppId);
 
@@ -491,39 +482,39 @@ watch(
 
 );
 
-if (localForm.value.customer_id && localForm.value.type === 'receipt') loadCustomerSales(localForm.value.customer_id);
+if (localForm.value.customerId && localForm.value.type === 'receipt') loadCustomerSales(localForm.value.customerId);
 
-if (localForm.value.supplier_id && localForm.value.payment_to_type === 'supplier') loadSupplierPurchases(localForm.value.supplier_id);
+if (localForm.value.supplierId && localForm.value.paymentToType === 'supplier') loadSupplierPurchases(localForm.value.supplierId);
 
 const validateForm = () => {
 
-  if (!props.isExempt && !localForm.value.branch_id) { localError.value = 'يجب اختيار المخزن.'; return false; }
+  if (!props.isExempt && !localForm.value.branchId) { localError.value = 'يجب اختيار المخزن.'; return false; }
 
-  if (localForm.value.type === 'receipt' && !localForm.value.customer_id) {
+  if (localForm.value.type === 'receipt' && !localForm.value.customerId) {
 
     localError.value = 'يجب اختيار العميل لسند القبض.'; return false;
 
   }
 
-  if (localForm.value.type === 'payment' && localForm.value.payment_to_type === 'supplier' && !localForm.value.supplier_id) {
+  if (localForm.value.type === 'payment' && localForm.value.paymentToType === 'supplier' && !localForm.value.supplierId) {
 
     localError.value = 'يجب اختيار المورد لسند الصرف.'; return false;
 
   }
 
-  if (localForm.value.type === 'payment' && localForm.value.payment_to_type === 'expense' && !localForm.value.expense_account_id) {
+  if (localForm.value.type === 'payment' && localForm.value.paymentToType === 'expense' && !localForm.value.expenseAccountId) {
 
     localError.value = 'يجب اختيار حساب المصروف لسند الصرف.'; return false;
 
   }
 
-  if (!localForm.value.payment_method_id) {
+  if (!localForm.value.paymentMethodId) {
 
     localError.value = 'يجب تحديد طريقة الدفع.'; return false;
 
   }
 
-  if (!localForm.value.account_id) {
+  if (!localForm.value.accountId) {
 
     localError.value = 'طريقة الدفع المختارة ليس لها حساب مرتبط. يرجى اختيار طريقة دفع أخرى.'; return false;
 
@@ -549,17 +540,17 @@ const handleSave = () => {
 
   if (payload.type === 'receipt') {
 
-    payload.supplier_id = null; payload.expense_account_id = null; payload.purchase_id = null;
+    payload.supplierId = null; payload.expenseAccountId = null; payload.purchaseId = null;
 
-    if (!payload.sale_id) delete payload.sale_id;
+    if (!payload.saleId) delete payload.saleId;
 
   } else {
 
-    payload.customer_id = null; payload.sale_id = null;
+    payload.customerId = null; payload.saleId = null;
 
-    if (payload.payment_to_type === 'supplier') { payload.expense_account_id = null; if (!payload.purchase_id) delete payload.purchase_id; }
+    if (payload.paymentToType === 'supplier') { payload.expenseAccountId = null; if (!payload.purchaseId) delete payload.purchaseId; }
 
-    else { payload.supplier_id = null; payload.purchase_id = null; }
+    else { payload.supplierId = null; payload.purchaseId = null; }
 
   }
 

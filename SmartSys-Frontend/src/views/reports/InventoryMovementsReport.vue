@@ -3,7 +3,6 @@
     
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="{ parent: { label: 'التقارير', path: '/reports/sales-analytics' }, current: 'تقرير حركة المخزون' }"
         title="تقرير حركة المخزون"
@@ -22,7 +21,6 @@
 
       <main class="space-y-8">
 
-      <!-- Analytical Filters Panel: Professional Utility Bar -->
       <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
         <div class="p-6 space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
@@ -60,7 +58,6 @@
             </div>
           </div>
 
-          <!-- Product Autocomplete: Command Palette Style -->
           <div class="pt-6 border-t border-slate-100 space-y-3">
             <label class="metadata-label">تصفية حسب صنف محدد</label>
             <div class="relative max-w-2xl group">
@@ -78,7 +75,6 @@
                 <i class="fas fa-times-circle"></i>
               </button>
 
-              <!-- Dropdown Panel -->
               <transition name="dropdown">
                 <div v-if="showProductDropdown && productResults.length" class="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-2xl max-h-64 overflow-auto py-1">
                   <div v-for="p in productResults" :key="p.id" @click="selectProduct(p)" class="px-4 py-2.5 hover:bg-blue-50 cursor-pointer flex items-center justify-between border-b border-slate-50 last:border-0 group transition-colors">
@@ -99,10 +95,8 @@
         </div>
       </section>
 
-      <!-- Analytics Dashboard Grid -->
       <section class="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        <!-- Summary Stats (4/12) -->
         <div class="lg:col-span-4 space-y-4">
           <div v-for="summary in summaryData" :key="summary.title" class="bg-white border border-slate-200 p-6 rounded-xl flex items-center gap-5 hover:border-slate-300 transition-all shadow-sm group">
             <div :class="[summary.iconClass, 'w-12 h-12 rounded-lg flex items-center justify-center text-lg opacity-80 group-hover:opacity-100 transition-all shadow-inner']">
@@ -117,7 +111,6 @@
           </div>
         </div>
 
-        <!-- Trend Visualization (8/12) -->
         <div class="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden group">
           <div class="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full -translate-x-8 -translate-y-8 group-hover:scale-110 transition-transform duration-1000"></div>
           
@@ -145,7 +138,6 @@
         </div>
       </section>
 
-      <!-- Detailed Audit Ledger Table -->
       <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
            <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
@@ -213,7 +205,6 @@
           </table>
         </div>
 
-        <!-- Pagination Footer (Unified Standard) -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ filters.totalPages.value }}</span>
@@ -279,7 +270,7 @@ let debounceTimer = null;
 
 const movements = ref([]);
 
-// ─── Pagination (using useTableFilters composable)
+// Pagination (using useTableFilters composable)
 const filters = useTableFilters('inventory_movements_filters');
 
 const openingBalance = ref(0);
@@ -355,8 +346,8 @@ const fetchReport = async () => {
         balance: Number(item.balance) || 0,
         cost: Number(item.cost) || 0
       }));
-      openingBalance.value = Number(apiData?.opening_balance) || 0;
-      finalBalance.value = Number(apiData?.final_balance) || movements.value.at(-1)?.balance || openingBalance.value;
+      openingBalance.value = Number(apiData?.openingBalance) || 0;
+      finalBalance.value = Number(apiData?.finalBalance) || movements.value.at(-1)?.balance || openingBalance.value;
       currentValuation.value = Number(apiData?.valuation) || 0;
     }
   } catch (err) {
@@ -400,18 +391,18 @@ const formatCurrency = (v) => formatCurrencyLocale(v, 2);
 const formatNumber = (v) => (Number(v) || 0).toLocaleString('en-US');
 const formatDate = (v, o = {}) => v ? new Date(v).toLocaleDateString('en-US', o) : '';
 const movementValue = (mv) => (Number(mv.in || 0) - Number(mv.out || 0)) * Number(mv.cost || 0);
-const getMovementTypeClass = (t) => ({ purchase: 'text-emerald-600 border-emerald-100 bg-emerald-50', sale: 'text-blue-600 border-blue-100 bg-blue-50', sale_cancel: 'text-rose-600 border-rose-100 bg-rose-50', opening_balance_reversal: 'text-rose-600 border-rose-100 bg-rose-50', return: 'text-amber-600 border-amber-100 bg-amber-50', adjustment: 'text-purple-600 border-purple-100 bg-purple-50' }[t] || 'text-slate-400 bg-slate-50 border-slate-100');
+const getMovementTypeClass = (t) => ({ purchase: 'text-emerald-600 border-emerald-100 bg-emerald-50', sale: 'text-blue-600 border-blue-100 bg-blue-50', saleCancel: 'text-rose-600 border-rose-100 bg-rose-50', openingBalanceReversal: 'text-rose-600 border-rose-100 bg-rose-50', return: 'text-amber-600 border-amber-100 bg-amber-50', adjustment: 'text-purple-600 border-purple-100 bg-purple-50' }[t] || 'text-slate-400 bg-slate-50 border-slate-100');
 const getMovementTypeLabel = (t) => ({
   purchase: 'مشتريات',
   sale: 'مبيعات',
-  sale_cancel: 'إلغاء بيع',
+  saleCancel: 'إلغاء بيع',
   return: 'مرتجع',
   adjustment: 'تسوية',
-  initial_stock: 'إدخال مخزون أولي',
-  opening_balance: 'رصيد افتتاحي',
-  opening_balance_manual: 'رصيد افتتاحي يدوي',
-  opening_balance_bulk: 'رصيد افتتاحي دفعي',
-  opening_balance_reversal: 'عكس رصيد افتتاحي'
+  initialStock: 'إدخال مخزون أولي',
+  openingBalance: 'رصيد افتتاحي',
+  openingBalanceManual: 'رصيد افتتاحي يدوي',
+  openingBalanceBulk: 'رصيد افتتاحي دفعي',
+  openingBalanceReversal: 'عكس رصيد افتتاحي'
 }[t] || 'حركة أخرى');
 const getReferenceLabel = (reference) => {
   if (!reference) return '—';
@@ -420,11 +411,11 @@ const getReferenceLabel = (reference) => {
     sale: 'فاتورة مبيعات',
     purchase: 'فاتورة مشتريات',
     return: 'مرتجع',
-    initial_stock: 'إدخال مخزون أولي',
-    opening_balance: 'رصيد افتتاحي',
-    opening_balance_manual: 'رصيد افتتاحي يدوي',
-    opening_balance_bulk: 'رصيد افتتاحي دفعي',
-    opening_balance_reversal: 'عكس رصيد افتتاحي'
+    initialStock: 'إدخال مخزون أولي',
+    openingBalance: 'رصيد افتتاحي',
+    openingBalanceManual: 'رصيد افتتاحي يدوي',
+    openingBalanceBulk: 'رصيد افتتاحي دفعي',
+    openingBalanceReversal: 'عكس رصيد افتتاحي'
   };
   const label = labels[kind] || 'مستند';
   return idParts.length ? `${label} #${idParts.join('#')}` : label;

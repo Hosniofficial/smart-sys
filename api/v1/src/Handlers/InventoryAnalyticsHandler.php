@@ -132,5 +132,4 @@ class InventoryAnalyticsHandler extends BaseHandler
         ], 200);
     }
 
-
 }

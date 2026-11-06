@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar: High-precision indicator -->
     <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="سجل التدقيق والمراقبة"
@@ -47,7 +45,6 @@
         </div>
       </section>
 
-      <!-- Advanced Filters: Linear-style Utility Bar -->
       <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
           <div class="space-y-1.5">
@@ -92,7 +89,6 @@
         </div>
       </section>
       
-      <!-- Analytics Visualization -->
       <section class="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div class="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
                <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2 mb-8">
@@ -120,7 +116,6 @@
           </div>
       </section>
 
-      <!-- Main Audit Ledger: GitHub Style -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
            <h3 class="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
@@ -189,7 +184,6 @@
           </table>
         </div>
 
-        <!-- Pagination Footer -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ filters.totalPages.value }}</span>
@@ -216,7 +210,6 @@
       </div>
     </div>
 
-    <!-- Log Details Modal: Investigation Terminal Style -->
     <BaseModal :show="showModal && !!selectedLog" @close="showModal = false" maxWidth="4xl" variant="modern">
       <template #header>
         <div class="flex items-center gap-4">
@@ -229,7 +222,6 @@
       </template>
 
       <div class="space-y-10">
-        <!-- Identity Summary Grid -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div v-for="info in [
             { l: 'المستخدم المسئول', v: selectedLog?.userName || 'النظام' },
@@ -243,7 +235,6 @@
           </div>
         </div>
 
-        <!-- Update Changes Diff: GitHub/Linear pattern -->
         <div v-if="selectedLog?.action === 'update' && selectedLog?.details?.changes" class="space-y-4">
           <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1 flex items-center gap-2">
             <i class="fas fa-shuffle text-blue-500"></i> تحليل التغييرات (Diff View)
@@ -268,7 +259,6 @@
           </div>
         </div>
 
-        <!-- Raw Data Inspector -->
         <div v-else class="space-y-4">
           <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1 flex items-center gap-2">
             <i class="fas fa-database text-indigo-500"></i> بيانات السجل الخام (Raw JSON)
@@ -277,13 +267,11 @@
             <div class="absolute top-0 left-0 w-32 h-32 bg-white/5 rounded-full -translate-x-12 -translate-y-12"></div>
             <div class="relative z-10">
               <template v-for="(value, key) in formatDetails(selectedLog?.details)" :key="key">
-                <!-- Simple key-value pairs -->
                 <div v-if="typeof value !== 'object'" class="flex items-baseline gap-3 pb-3 border-b border-slate-700/50 last:border-0">
                   <span class="text-pink-300 font-bold min-w-fit text-[11px]">{{ key }}:</span>
                   <span class="text-blue-200 text-[11px] font-mono flex-1 break-words">{{ value }}</span>
                 </div>
 
-                <!-- Nested objects (changes, settings, etc.) -->
                 <div v-else class="pb-4 border-b border-slate-700/50 last:border-0">
                   <p class="text-pink-300 font-bold text-[11px] mb-2">{{ key }}:</p>
                   <div class="ml-4 space-y-2">
@@ -322,8 +310,6 @@
 </template>
 
 <script setup>
-// [SCRIPT SECTION REMAINS 100% IDENTICAL TO THE ORIGINAL AS PER BUSINESS LOGIC RULE]
-// (All imports, refs, computed properties, methods, and lifecycle hooks preserved exactly as provided)
 import { ref, computed, onMounted, watch } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
 import { useAuthStore } from '@/stores/auth/authStore';
@@ -341,10 +327,12 @@ import PaginationControls from '@/components/ui/PaginationControls.vue';
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement } from 'chart.js';
 import BaseSkeleton from '@/components/ui/BaseSkeleton.vue';;
 import { getLocalDateISO } from '@/utils';
+import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement);
 
 const reportsStore = useReportsStore();
+const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const authStore = useAuthStore();
 const { breadcrumb } = useBreadcrumb();
 const branchStore = useBranchStore();
@@ -353,7 +341,8 @@ const selectedBranch = computed({
   get: () => branchStore.selectedBranchId || 'all',
   set: (val) => branchStore.setSelectedBranch(val === 'all' ? null : val)
 });
-onMounted(() => {
+onMounted(async () => {
+  await fetchSettings();
   branchStore.fetchBranches().catch(() => {});
 });
 const paymentStore = usePaymentStore();
@@ -374,7 +363,7 @@ const logs = ref([]);
 const total = computed(() => logs.value.length);
 const users = ref([]);
 
-// ─── Pagination (using useTableFilters composable)
+// Pagination (using useTableFilters composable)
 const filters = useTableFilters('audit_logs_filters');
 const paginatedLogs = computed(() => {
   filters.totalCount.value = sortedLogs.value.length;
@@ -418,50 +407,50 @@ const formatDateTime = (ts) => new Date(ts).toLocaleString('en-US', { dateStyle:
 const fieldLabels = {
   // General fields
   'id': 'المعرف',
-  'tenant_id': 'معرف المستأجر',
-  'user_id': 'المستخدم',
-  'supplier_id': 'المورد',
-  'branch_id': 'المخزن',
-  'invoice_number': 'رقم الفاتورة',
-  'invoice_date': 'تاريخ الفاتورة',
-  'total_amount': 'إجمالي المبلغ',
-  'tax_amount': 'قيمة الضريبة',
-  'discount_value': 'قيمة الخصم',
-  'paid_amount': 'المبلغ المدفوع',
-  'payment_method_id': 'طريقة الدفع',
-  'total_items': 'إجمالي الأصناف',
+  'tenantId': 'معرف المستأجر',
+  'userId': 'المستخدم',
+  'supplierId': 'المورد',
+  'branchId': 'المخزن',
+  'invoiceNumber': 'رقم الفاتورة',
+  'invoiceDate': 'تاريخ الفاتورة',
+  'totalAmount': 'إجمالي المبلغ',
+  'taxAmount': 'قيمة الضريبة',
+  'discountValue': 'قيمة الخصم',
+  'paidAmount': 'المبلغ المدفوع',
+  'paymentMethodId': 'طريقة الدفع',
+  'totalItems': 'إجمالي الأصناف',
   'status': 'الحالة',
-  'created_at': 'تاريخ الإنشاء',
-  'updated_at': 'تاريخ التحديث',
+  'createdAt': 'تاريخ الإنشاء',
+  'updatedAt': 'تاريخ التحديث',
   'notes': 'ملاحظات',
   
   // Purchase specific
-  'purchase_id': 'رقم المشتريات',
-  'payment_id': 'رقم الدفعة',
+  'purchaseId': 'رقم المشتريات',
+  'paymentId': 'رقم الدفعة',
   'amount': 'المبلغ',
-  'payment_date': 'تاريخ الدفعة',
-  'paid_amount_total': 'إجمالي المدفوع',
-  'session_id': 'رقم الجلسة',
+  'paymentDate': 'تاريخ الدفعة',
+  'paidAmountTotal': 'إجمالي المدفوع',
+  'sessionId': 'رقم الجلسة',
   
   // Sale specific
-  'sale_id': 'رقم المبيعات',
-  'customer_id': 'العميل',
+  'saleId': 'رقم المبيعات',
+  'customerId': 'العميل',
   
   // Inventory specific
-  'product_id': 'المنتج',
+  'productId': 'المنتج',
   'quantity': 'الكمية',
-  'unit_price': 'سعر الوحدة',
+  'unitPrice': 'سعر الوحدة',
   'subtotal': 'المجموع الفرعي',
   'reference': 'المرجع',
   'type': 'النوع',
   'adjustment': 'التعديل',
   'reason': 'السبب',
-  'from_branch': 'من مخزن',
-  'to_branch': 'إلى مخزن',
-  'transfer_date': 'تاريخ النقل',
-  'counted_quantity': 'الكمية المعدودة',
+  'fromBranch': 'من مخزن',
+  'toBranch': 'إلى مخزن',
+  'transferDate': 'تاريخ النقل',
+  'countedQuantity': 'الكمية المعدودة',
   'difference': 'الفرق',
-  'count_date': 'تاريخ الجرد'
+  'countDate': 'تاريخ الجرد'
 };
 
 const getActionTypeLabel = (action) => ({
@@ -473,49 +462,49 @@ const getActionTypeLabel = (action) => ({
   'logout': 'خروج',
 
   // Purchase
-  'purchase_created': 'إنشاء فاتورة مشتريات',
-  'purchase_updated': 'تعديل فاتورة مشتريات',
-  'purchase_deleted': 'حذف فاتورة مشتريات',
-  'purchase_payment_added': 'إضافة دفعة مشتريات',
-  'purchase_payment_updated': 'تعديل دفعة مشتريات',
-  'purchase_payment_deleted': 'حذف دفعة مشتريات',
-  'purchase_cancelled': 'إلغاء فاتورة مشتريات',
+  'purchaseCreated': 'إنشاء فاتورة مشتريات',
+  'purchaseUpdated': 'تعديل فاتورة مشتريات',
+  'purchaseDeleted': 'حذف فاتورة مشتريات',
+  'purchasePaymentAdded': 'إضافة دفعة مشتريات',
+  'purchasePaymentUpdated': 'تعديل دفعة مشتريات',
+  'purchasePaymentDeleted': 'حذف دفعة مشتريات',
+  'purchaseCancelled': 'إلغاء فاتورة مشتريات',
 
   // Sales
-  'sale_created': 'إنشاء فاتورة مبيعات',
-  'sale_updated': 'تعديل فاتورة مبيعات',
-  'sale_deleted': 'حذف فاتورة مبيعات',
-  'sale_payment_added': 'إضافة دفعة مبيعات',
-  'sale_payment_updated': 'تعديل دفعة مبيعات',
-  'sale_payment_deleted': 'حذف دفعة مبيعات',
-  'sale_status_updated': 'تحديث حالة فاتورة مبيعات',
-  'sale_approved': 'اعتماد فاتورة مبيعات',
-  'sale_rejected': 'رفض فاتورة مبيعات',
-  'sale_payment_duplicate_retry_blocked': 'منع تكرار دفعة مبيعات',
+  'saleCreated': 'إنشاء فاتورة مبيعات',
+  'saleUpdated': 'تعديل فاتورة مبيعات',
+  'saleDeleted': 'حذف فاتورة مبيعات',
+  'salePaymentAdded': 'إضافة دفعة مبيعات',
+  'salePaymentUpdated': 'تعديل دفعة مبيعات',
+  'salePaymentDeleted': 'حذف دفعة مبيعات',
+  'saleStatusUpdated': 'تحديث حالة فاتورة مبيعات',
+  'saleApproved': 'اعتماد فاتورة مبيعات',
+  'saleRejected': 'رفض فاتورة مبيعات',
+  'salePaymentDuplicateRetryBlocked': 'منع تكرار دفعة مبيعات',
 
   // Returns, contacts, and products
-  'return_created': 'إنشاء مرتجع',
-  'customer_created': 'إضافة عميل',
-  'customer_updated': 'تعديل بيانات عميل',
-  'customer_deleted': 'حذف عميل',
-  'supplier_created': 'إضافة مورد',
-  'supplier_updated': 'تعديل بيانات مورد',
-  'supplier_deleted': 'حذف مورد',
-  'create_cash_supplier': 'إنشاء مورد نقدي',
-  'supplier_payment_recorded': 'تسجيل دفعة مورد',
-  'product_created': 'إضافة منتج',
-  'product_updated': 'تعديل منتج',
-  'product_deleted': 'حذف منتج',
+  'returnCreated': 'إنشاء مرتجع',
+  'customerCreated': 'إضافة عميل',
+  'customerUpdated': 'تعديل بيانات عميل',
+  'customerDeleted': 'حذف عميل',
+  'supplierCreated': 'إضافة مورد',
+  'supplierUpdated': 'تعديل بيانات مورد',
+  'supplierDeleted': 'حذف مورد',
+  'createCashSupplier': 'إنشاء مورد نقدي',
+  'supplierPaymentRecorded': 'تسجيل دفعة مورد',
+  'productCreated': 'إضافة منتج',
+  'productUpdated': 'تعديل منتج',
+  'productDeleted': 'حذف منتج',
 
   // Inventory
-  'stock_adjusted': 'تعديل المخزون',
-  'stock_transferred': 'تحويل مخزون',
-  'stock_counted': 'جرد مخزون',
-  'pos_session_opened': 'فتح وردية نقطة بيع',
-  'pos_session_closed': 'إغلاق وردية نقطة بيع',
-  'owner_contribution_recorded': 'تسجيل مساهمة مالك',
-  'owner_contribution_updated': 'تعديل مساهمة مالك',
-  'owner_contribution_voided': 'إلغاء مساهمة مالك'
+  'stockAdjusted': 'تعديل المخزون',
+  'stockTransferred': 'تحويل مخزون',
+  'stockCounted': 'جرد مخزون',
+  'posSessionOpened': 'فتح وردية نقطة بيع',
+  'posSessionClosed': 'إغلاق وردية نقطة بيع',
+  'ownerContributionRecorded': 'تسجيل مساهمة مالك',
+  'ownerContributionUpdated': 'تعديل مساهمة مالك',
+  'ownerContributionVoided': 'إلغاء مساهمة مالك'
 }[action] || getGenericActionLabel(action));
 
 const getGenericActionLabel = (action) => {
@@ -551,9 +540,9 @@ const getModuleLabel = (module) => ({
   inventory: 'المخزون',
   branches: 'الفروع',
   branch: 'الفروع',
-  cashier_sessions: 'ورديات الكاشير',
-  cash_voucher: 'سندات الصرف والقبض',
-  cash_vouchers: 'سندات الصرف والقبض',
+  cashierSessions: 'ورديات الكاشير',
+  cashVoucher: 'سندات الصرف والقبض',
+  cashVouchers: 'سندات الصرف والقبض',
   settings: 'الإعدادات',
   users: 'المستخدمون',
   user: 'المستخدمون'
@@ -571,23 +560,23 @@ const fetchLogs = async () => {
     try {
         const payload = await reportsStore.fetchAuditLogs({ startDate: startDate.value, endDate: endDate.value, actionType: actionType.value, userId: userId.value, branchId: selectedBranch.value === 'all' ? null : selectedBranch.value, page: filters.page.value });
 
-        // Response structure: payload.data = { data: [...], pagination: {...}, meta: {...} }
+        // The API envelope keeps filters with the records and pagination in its top-level meta.
         const responseData = payload?.data?.data;
         const items = Array.isArray(responseData?.data) ? responseData.data : [];
 
         logs.value = items.map(it => ({
             id: it.id,
-            timestamp: it.timestamp || it.created_at,
-            userName: it.user_name || it.userName || null,
+            timestamp: it.timestamp || it.createdAt,
+            userName: it.userName || it.userName || null,
             action: it.action,
             module: it.module || it.entity,
-            recordId: it.record_id || it.recordId || it.entity_id || null,
-            ipAddress: it.ip_address || it.ipAddress || null,
+            recordId: it.recordId || it.recordId || it.entityId || null,
+            ipAddress: it.ipAddress || it.ipAddress || null,
             details: it.details || {}
         }));
 
         // Pagination
-        const pagination = responseData?.pagination || {};
+        const pagination = payload?.data?.meta || {};
         filters.totalCount.value = pagination.total || logs.value.length;
 
         // Users filter from meta
@@ -605,7 +594,7 @@ const showDetailsModal = (log) => { selectedLog.value = log; showModal.value = t
 const formatFieldValue = (k, v) => {
   if (v == null) return 'غير محدد';
   if (k.includes('_date') || k.includes('_at')) return new Date(v).toLocaleString('en-US');
-  if (typeof v === 'number' && (k.includes('amount') || k.includes('price'))) return v.toLocaleString('en-US', { style: 'currency', currency: 'EGP' });
+  if (typeof v === 'number' && (k.includes('amount') || k.includes('price'))) return formatCurrencyLocale(v, 2);
 
   // Handle account IDs
   if (typeof v === 'number' && (k.includes('account') || k.includes('_account_id'))) {

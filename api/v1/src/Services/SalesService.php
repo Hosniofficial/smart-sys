@@ -40,9 +40,7 @@ class SalesService
         $this->financialCalcService = new FinancialCalculationService();
     }
 
-    // -------------------------------------------------------------------------
     // Audit helper
-    // -------------------------------------------------------------------------
 
     protected function logAudit(
         string $action,
@@ -71,9 +69,7 @@ class SalesService
         }
     }
 
-    // -------------------------------------------------------------------------
     // updateSale — تحديث بيانات فاتورة غير معتمدة
-    // -------------------------------------------------------------------------
 
     public function updateSale(int $tenantId, int $saleId, array $data, ?int $allowedBranchId = null): array
     {
@@ -725,9 +721,7 @@ class SalesService
         return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
     }
 
-    // -------------------------------------------------------------------------
     // deleteSale — إلغاء فاتورة (canceled) مع عكس المخزون والقيد
-    // -------------------------------------------------------------------------
 
     public function deleteSale(int $tenantId, int $saleId, ?string $note = null): array
     {

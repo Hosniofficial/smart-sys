@@ -1,18 +1,21 @@
 import { defineStore } from 'pinia';
 import { rbacService } from '@/services/rbac';
 
-const getData = (response) => response?.data?.data ?? response?.data;
+const getData = (response) => response?.data?.data;
 
 export const useRbacStore = defineStore('rbac', () => {
   const listUsers = async (params = {}) => {
-    const data = getData(await rbacService.listUsers(params));
-    // إذا كان الـ response يحتوي على items (pagination response)
+    const response = await rbacService.listUsers(params);
+    const data = getData(response);
     if (data && typeof data === 'object' && Array.isArray(data.items)) {
-      return data; // {items, total, page, limit, total_pages}
-    }
-    // للتوافق مع الإصدارات القديمة (array مباشرة)
-    if (Array.isArray(data)) {
-      return { items: data, total: data.length, page: 1, limit: data.length, total_pages: 1 };
+      const meta = response?.data?.meta || {};
+      return {
+        items: data.items,
+        total: Number(meta.total) || data.items.length,
+        page: Number(meta.page) || Number(params.page) || 1,
+        limit: Number(meta.limit) || Number(params.limit) || data.items.length,
+        totalPages: Number(meta.totalPages) || 1,
+      };
     }
     throw new Error('استجابة قائمة المستخدمين غير صالحة.');
   };
@@ -40,7 +43,7 @@ export const useRbacStore = defineStore('rbac', () => {
 
   const getRolePermissions = async (roleId) => {
     const data = getData(await rbacService.getRolePermissions(roleId));
-    if (!Array.isArray(data?.permissions) || !Array.isArray(data?.base_permissions)) {
+    if (!Array.isArray(data?.permissions) || !Array.isArray(data?.basePermissions)) {
       throw new Error('استجابة صلاحيات الدور غير صالحة.');
     }
     return data;

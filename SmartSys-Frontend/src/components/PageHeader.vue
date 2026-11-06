@@ -1,8 +1,6 @@
 <template>
-  <!-- Page Header Area -->
   <header class="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-200">
     <div class="space-y-1">
-      <!-- Breadcrumb Navigation -->
       <div class="flex items-center gap-2 text-slate-500 text-xs font-medium uppercase tracking-wider">
         <template v-for="(item, index) in breadcrumbItems" :key="`${item.label}-${index}`">
           <RouterLink v-if="item.path && index < breadcrumbItems.length - 1" :to="item.path" class="hover:text-slate-700 transition-colors">
@@ -13,14 +11,11 @@
         </template>
       </div>
       
-      <!-- Page Title -->
       <h1 class="text-2xl font-bold tracking-tight text-slate-900" v-html="title"></h1>
       
-      <!-- Page Description -->
       <p class="text-sm text-slate-500 font-medium" v-html="description"></p>
     </div>
 
-    <!-- Right Side Controls (Slots) -->
     <div class="flex flex-wrap items-center gap-3">
       <!-- Branch Selector — يظهر فقط للـ exempt users (branches غير فارغة) -->
       <div v-if="canSelectBranch && branches && branches.length > 0" class="relative">
@@ -43,7 +38,6 @@
 
       <div v-if="canSelectBranch && branches && branches.length > 0" class="h-6 w-px bg-slate-200 mx-1 hidden sm:block"></div>
 
-      <!-- Slot for Additional Controls -->
       <slot name="controls"></slot>
     </div>
   </header>

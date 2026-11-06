@@ -15,7 +15,7 @@ return function (RouteCollectorProxy $group, Container $container): void {
 
     $group->group('/users', function (RouteCollectorProxy $group) use ($handler, $db) {
 
-        // ── Self-service (no permission required beyond being authenticated) ──
+        // Self-service (no permission required beyond being authenticated)
         // Any logged-in user can read their own profile and change their password.
         $group->get('/me', [$handler, 'getMe']);
         $group->post('/update-profile', [$handler, 'updateProfile']);

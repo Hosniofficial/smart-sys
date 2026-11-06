@@ -1,12 +1,8 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar: High-precision indicator -->
-
-
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="{ parent: { label: 'التقارير', path: '/reports/sales-analytics' }, current: 'التقارير المالية والمحاسبية' }"
         title="التقارير المالية والمحاسبية"
@@ -31,7 +27,6 @@
 
       <main class="space-y-8">
 
-      <!-- Analytical Filters Utility Bar -->
       <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6 items-end">
           
@@ -85,7 +80,6 @@
         </div>
       </section>
 
-      <!-- Primary Reports Row -->
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
         <!-- Trial Balance: High-Density Audit Grid -->
@@ -109,21 +103,19 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 font-medium text-xs">
-                <tr v-for="row in trialBalance" :key="row.account_id" class="hover:bg-slate-50 transition-colors group">
+                <tr v-for="row in trialBalance" :key="row.accountId" class="hover:bg-slate-50 transition-colors group">
                   <td class="px-6 py-3 font-mono font-bold text-blue-600">{{ row.code }}</td>
                   <td class="px-4 py-3 text-slate-700 font-bold">{{ row.name }}</td>
                   <td class="px-4 py-3 text-slate-400 text-[10px]">{{ row.type || '—' }}</td>
-                  <td class="px-4 py-3 text-center font-mono font-bold text-rose-600">{{ fmt(row.total_debit) }}</td>
-                  <td class="px-6 py-3 text-center font-mono font-bold text-emerald-600">{{ fmt(row.total_credit) }}</td>
+                  <td class="px-4 py-3 text-center font-mono font-bold text-rose-600">{{ fmt(row.totalDebit) }}</td>
+                  <td class="px-6 py-3 text-center font-mono font-bold text-emerald-600">{{ fmt(row.totalCredit) }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </section>
 
-        <!-- Sidebar Summary Area -->
         <aside class="lg:col-span-5 space-y-8">
-          <!-- Income Statement: High-Contrast SaaS Accent -->
           <div class="bg-slate-900 rounded-xl p-8 text-white shadow-2xl relative overflow-hidden group border border-white/5">
             <div class="absolute top-0 left-0 w-32 h-32 bg-blue-600/10 rounded-full -translate-x-12 -translate-y-12"></div>
             
@@ -145,12 +137,11 @@
                   <span class="text-xs font-bold uppercase tracking-widest text-blue-400">صافي الأرباح</span>
                   <span class="text-[8px] font-bold text-white/20 uppercase tracking-tighter mt-1 leading-none">Net Comprehensive Income</span>
                 </div>
-                <span class="text-3xl font-bold font-mono tracking-tighter" :class="incomeStatement.net_income >= 0 ? 'text-emerald-500' : 'text-rose-500'">{{ fmt(incomeStatement.net_income) }}</span>
+                <span class="text-3xl font-bold font-mono tracking-tighter" :class="incomeStatement.netIncome >= 0 ? 'text-emerald-500' : 'text-rose-500'">{{ fmt(incomeStatement.netIncome) }}</span>
               </div>
             </div>
           </div>
 
-          <!-- Branch Audit Coverage -->
           <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
             <div class="flex items-center justify-between mb-8 px-1">
               <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">سلامة ربط الفروع</h3>
@@ -171,18 +162,18 @@
               <div class="grid grid-cols-2 gap-4">
                  <div class="p-4 bg-slate-50 border border-slate-100 rounded-lg text-center">
                     <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">المواقع</p>
-                    <p class="text-xl font-bold text-slate-900">{{ coverage.total_branches }}</p>
+                    <p class="text-xl font-bold text-slate-900">{{ coverage.totalBranches }}</p>
                  </div>
-                 <div :class="[coverage.missing_count > 0 ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-emerald-50 border-emerald-100 text-emerald-600']" class="p-4 border rounded-lg text-center">
+                 <div :class="[coverage.missingCount > 0 ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-emerald-50 border-emerald-100 text-emerald-600']" class="p-4 border rounded-lg text-center">
                     <p class="text-[9px] font-bold uppercase tracking-widest mb-1">غير مرتبطة</p>
-                    <p class="text-xl font-bold font-mono">{{ coverage.missing_count }}</p>
+                    <p class="text-xl font-bold font-mono">{{ coverage.missingCount }}</p>
                  </div>
               </div>
 
-              <div v-if="(coverage.missing_branches || []).length" class="border border-slate-100 rounded-lg overflow-hidden">
+              <div v-if="(coverage.missingBranches || []).length" class="border border-slate-100 rounded-lg overflow-hidden">
                 <table class="w-full text-right text-[10px]">
                    <tbody class="divide-y divide-slate-50">
-                     <tr v-for="w in coverage.missing_branches" :key="w.id" class="hover:bg-rose-50 transition-colors">
+                     <tr v-for="w in coverage.missingBranches" :key="w.id" class="hover:bg-rose-50 transition-colors">
                        <td class="px-4 py-2.5 font-bold text-slate-700">{{ w.name }}</td>
                        <td class="px-4 py-2.5 text-left"><span class="text-rose-500 font-bold uppercase tracking-tighter">Unlinked</span></td>
                      </tr>
@@ -206,7 +197,6 @@
         </div>
         
         <div class="p-8 grid grid-cols-1 md:grid-cols-3 gap-12 divide-x divide-slate-100 divide-x-reverse">
-          <!-- Column Template -->
           <div v-for="category in [
             { id: 'asset', label: 'الأصول (Assets)', icon: 'fa-vault', color: 'text-blue-600', border: 'border-blue-100' },
             { id: 'liability', label: 'الخصوم (Liabilities)', icon: 'fa-hand-holding-dollar', color: 'text-rose-600', border: 'border-rose-100' },
@@ -226,7 +216,6 @@
         </div>
       </section>
 
-      <!-- Advanced Compliance Reports -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
         <!-- NRV Report: Warning Style -->
@@ -257,25 +246,24 @@
             <div v-else class="space-y-4">
                <div class="flex justify-between items-center p-3 bg-amber-50 border border-amber-100 rounded-lg">
                  <span class="text-[10px] font-bold text-amber-800 uppercase">إجمالي مخصص التخفيض المطلوب:</span>
-                 <span class="text-sm font-bold font-mono text-rose-600">{{ fmt(nrvData.total_impairment) }}</span>
+                 <span class="text-sm font-bold font-mono text-rose-600">{{ fmt(nrvData.totalImpairment) }}</span>
                </div>
-               <!-- writeDownResult -->
                <div v-if="writeDownResult" :class="writeDownResult.status === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'" class="p-3 rounded-lg border text-[10px] font-bold flex items-center justify-between">
                  <span><i :class="writeDownResult.status === 'success' ? 'fas fa-check-circle' : 'fas fa-times-circle'" class="ml-2"></i>{{ writeDownResult.status === 'success' ? 'تم تسجيل قيد التخفيض بنجاح' : (writeDownResult.message || 'فشل تسجيل القيد') }}</span>
-                 <span v-if="writeDownResult.status === 'success' && writeDownResult.data?.total_amount" class="font-mono">{{ fmt(writeDownResult.data.total_amount) }}</span>
+                 <span v-if="writeDownResult.status === 'success' && writeDownResult.data?.totalAmount" class="font-mono">{{ fmt(writeDownResult.data.totalAmount) }}</span>
                </div>
                <div class="overflow-x-auto max-h-48 custom-scroll">
                   <table class="w-full text-right text-[10px] font-medium border-collapse">
                     <thead class="bg-slate-50 sticky top-0"><tr class="text-slate-400 font-bold uppercase border-b border-slate-100"><th class="py-2 px-3">المنتج</th><th class="py-2 px-3">الفرع</th><th class="py-2 px-3 text-center">الكمية</th><th class="py-2 px-3 text-center">متوسط التكلفة</th><th class="py-2 px-3 text-center">سعر البيع</th><th class="py-2 px-3 text-center">فرق الوحدة</th><th class="py-2 px-3 text-left">إجمالي الفرق</th></tr></thead>
                     <tbody class="divide-y divide-slate-50">
-                      <tr v-for="item in nrvData.items" :key="`${item.product_id}-${item.branch_id}`" class="hover:bg-slate-50">
-                        <td class="py-2 px-3 font-bold text-slate-700">{{ item.product_name }}</td>
-                        <td class="py-2 px-3 text-slate-500">{{ item.branch_name || '—' }}</td>
-                        <td class="py-2 px-3 text-center font-mono">{{ item.qty_on_hand }}</td>
-                        <td class="py-2 px-3 text-center font-mono text-slate-600">{{ fmt(item.avg_cost ?? item.unit_cost) }}</td>
-                        <td class="py-2 px-3 text-center font-mono text-slate-600">{{ fmt(item.nrv ?? item.sale_price) }}</td>
-                        <td class="py-2 px-3 text-center font-mono" :class="(item.unit_diff ?? item.margin_per_unit ?? ((item.nrv ?? item.sale_price) - (item.avg_cost ?? item.unit_cost))) < 0 ? 'text-rose-600' : 'text-emerald-600'">{{ fmt(item.unit_diff ?? item.margin_per_unit ?? ((item.nrv ?? item.sale_price) - (item.avg_cost ?? item.unit_cost))) }}</td>
-                        <td class="py-2 px-3 text-left font-bold font-mono text-rose-600">{{ fmt(item.impairment_amount) }}</td>
+                      <tr v-for="item in nrvData.items" :key="`${item.productId}-${item.branchId}`" class="hover:bg-slate-50">
+                        <td class="py-2 px-3 font-bold text-slate-700">{{ item.productName }}</td>
+                        <td class="py-2 px-3 text-slate-500">{{ item.branchName || '—' }}</td>
+                        <td class="py-2 px-3 text-center font-mono">{{ item.qtyOnHand }}</td>
+                        <td class="py-2 px-3 text-center font-mono text-slate-600">{{ fmt(item.avgCost ?? item.unitCost) }}</td>
+                        <td class="py-2 px-3 text-center font-mono text-slate-600">{{ fmt(item.nrv ?? item.salePrice) }}</td>
+                        <td class="py-2 px-3 text-center font-mono" :class="(item.unitDiff ?? item.marginPerUnit ?? ((item.nrv ?? item.salePrice) - (item.avgCost ?? item.unitCost))) < 0 ? 'text-rose-600' : 'text-emerald-600'">{{ fmt(item.unitDiff ?? item.marginPerUnit ?? ((item.nrv ?? item.salePrice) - (item.avgCost ?? item.unitCost))) }}</td>
+                        <td class="py-2 px-3 text-left font-bold font-mono text-rose-600">{{ fmt(item.impairmentAmount) }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -284,7 +272,6 @@
           </div>
         </section>
 
-        <!-- AR Aging: Risk Indicator Style -->
         <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div class="px-6 py-4 bg-rose-50/50 border-b border-rose-100 flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -312,41 +299,39 @@
                <div class="grid grid-cols-2 gap-4">
                   <div class="p-4 bg-slate-900 rounded-lg text-white">
                     <p class="text-[8px] font-bold uppercase text-blue-400 tracking-widest mb-1">إجمالي الذمم</p>
-                    <p class="text-lg font-bold font-mono tracking-tighter">{{ fmt(arAgingData.total_outstanding) }}</p>
+                    <p class="text-lg font-bold font-mono tracking-tighter">{{ fmt(arAgingData.totalOutstanding) }}</p>
                   </div>
                   <div class="p-4 bg-rose-50 border border-rose-100 rounded-lg">
                     <p class="text-[8px] font-bold uppercase text-rose-400 tracking-widest mb-1">مخصص ECL (IFRS 9)</p>
-                    <p class="text-lg font-bold font-mono tracking-tighter text-rose-600">{{ fmt(arAgingData.total_provision) }}</p>
+                    <p class="text-lg font-bold font-mono tracking-tighter text-rose-600">{{ fmt(arAgingData.totalProvision) }}</p>
                   </div>
                </div>
 
-               <!-- Buckets: progress bars + ECL rate + detail table -->
                <div class="space-y-6">
                  <div v-for="(bucket, k) in arAgingData.buckets" :key="k" class="space-y-2">
                    <div class="flex justify-between items-end">
                      <span class="text-[9px] font-bold text-slate-500 uppercase">{{ bucket.label }}</span>
                      <div class="flex items-center gap-3">
                        <span v-if="bucket.rate != null" class="text-[9px] font-bold text-slate-400">معدل ECL: {{ (bucket.rate * 100).toFixed(0) }}%</span>
-                       <span class="text-[10px] font-bold font-mono text-slate-900">{{ fmt(bucket.total_outstanding) }}</span>
+                       <span class="text-[10px] font-bold font-mono text-slate-900">{{ fmt(bucket.totalOutstanding) }}</span>
                      </div>
                    </div>
                    <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                     <div class="h-full bg-rose-500 transition-all duration-1000" :style="{ width: Math.min(100, (bucket.total_outstanding / arAgingData.total_outstanding) * 100) + '%' }"></div>
+                     <div class="h-full bg-rose-500 transition-all duration-1000" :style="{ width: Math.min(100, (bucket.totalOutstanding / arAgingData.totalOutstanding) * 100) + '%' }"></div>
                    </div>
-                   <!-- Invoices detail table per bucket -->
                    <div v-if="bucket.invoices && bucket.invoices.length > 0" class="overflow-x-auto mt-2">
                      <table class="w-full text-right text-[9px] font-medium border-collapse">
                        <thead><tr class="text-slate-400 font-bold uppercase border-b border-slate-100 bg-slate-50"><th class="px-3 py-1.5">رقم الفاتورة</th><th class="px-3 py-1.5">العميل</th><th class="px-3 py-1.5">التاريخ</th><th class="px-3 py-1.5 text-center">أيام التقادم</th><th class="px-3 py-1.5 text-center">الإجمالي</th><th class="px-3 py-1.5 text-center">المدفوع</th><th class="px-3 py-1.5 text-center">المتبقي</th><th class="px-3 py-1.5 text-center">المخصص</th></tr></thead>
                        <tbody class="divide-y divide-slate-50">
-                         <tr v-for="inv in bucket.invoices" :key="inv.id ?? inv.sale_id" class="hover:bg-rose-50/30">
-                           <td class="px-3 py-1.5 font-mono font-bold text-blue-600">#{{ inv.id ?? inv.sale_id }}</td>
-                           <td class="px-3 py-1.5 text-slate-700">{{ inv.customer_name }}</td>
-                           <td class="px-3 py-1.5 font-mono text-slate-400">{{ inv.invoice_date ?? inv.sale_date }}</td>
-                           <td class="px-3 py-1.5 text-center font-mono font-bold text-rose-600">{{ inv.days_overdue ?? inv.days_outstanding }}</td>
-                           <td class="px-3 py-1.5 text-center font-mono">{{ fmt(inv.total ?? inv.net_total) }}</td>
+                         <tr v-for="inv in bucket.invoices" :key="inv.id ?? inv.saleId" class="hover:bg-rose-50/30">
+                           <td class="px-3 py-1.5 font-mono font-bold text-blue-600">#{{ inv.id ?? inv.saleId }}</td>
+                           <td class="px-3 py-1.5 text-slate-700">{{ inv.customerName }}</td>
+                           <td class="px-3 py-1.5 font-mono text-slate-400">{{ inv.invoiceDate ?? inv.saleDate }}</td>
+                           <td class="px-3 py-1.5 text-center font-mono font-bold text-rose-600">{{ inv.daysOverdue ?? inv.daysOutstanding }}</td>
+                           <td class="px-3 py-1.5 text-center font-mono">{{ fmt(inv.total ?? inv.netTotal) }}</td>
                            <td class="px-3 py-1.5 text-center font-mono text-emerald-600">{{ fmt(inv.paid) }}</td>
                            <td class="px-3 py-1.5 text-center font-mono font-bold">{{ fmt(inv.outstanding) }}</td>
-                           <td class="px-3 py-1.5 text-center font-mono text-rose-600">{{ fmt(inv.provision ?? inv.ecl_provision) }}</td>
+                           <td class="px-3 py-1.5 text-center font-mono text-rose-600">{{ fmt(inv.provision ?? inv.eclProvision) }}</td>
                          </tr>
                        </tbody>
                      </table>
@@ -356,13 +341,13 @@
 
                <!-- postProvision button + result -->
                <div class="pt-4 border-t border-slate-100 space-y-3">
-                 <button v-if="arAgingData.total_provision > 0" @click="postProvision" :disabled="postingProvision" class="h-8 px-4 bg-rose-600 text-white text-[9px] font-bold uppercase tracking-widest rounded shadow-sm hover:bg-rose-700 disabled:opacity-50 flex items-center gap-2">
+                 <button v-if="arAgingData.totalProvision > 0" @click="postProvision" :disabled="postingProvision" class="h-8 px-4 bg-rose-600 text-white text-[9px] font-bold uppercase tracking-widest rounded shadow-sm hover:bg-rose-700 disabled:opacity-50 flex items-center gap-2">
                    <i class="fas fa-book text-[9px]"></i>
                    {{ postingProvision ? 'جارٍ التسجيل...' : 'تسجيل قيد المخصص (IFRS 9)' }}
                  </button>
                  <div v-if="provisionResult" :class="provisionResult.status === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'" class="p-3 rounded-lg border text-[10px] font-bold flex items-center justify-between">
                    <span><i :class="provisionResult.status === 'success' ? 'fas fa-check-circle' : 'fas fa-times-circle'" class="ml-2"></i>{{ provisionResult.status === 'success' ? 'تم تسجيل قيد المخصص بنجاح' : (provisionResult.message || 'فشل تسجيل القيد') }}</span>
-                   <span v-if="provisionResult.status === 'success' && provisionResult.data?.entry_id" class="font-mono text-[9px]">قيد #{{ provisionResult.data.entry_id }}</span>
+                   <span v-if="provisionResult.status === 'success' && provisionResult.data?.entryId" class="font-mono text-[9px]">قيد #{{ provisionResult.data.entryId }}</span>
                  </div>
                </div>
             </template>
@@ -370,7 +355,6 @@
         </section>
       </div>
 
-      <!-- Cash Flow Statement: IAS 7 -->
       <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <h2 class="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
@@ -409,7 +393,7 @@
               </div>
               <table class="w-full text-right text-[10px] font-medium border-collapse">
                 <tbody class="divide-y divide-slate-50">
-                  <tr v-for="line in (section.items || section.lines || [])" :key="`${line.reference_type}-${line.account_code}-${line.label}`" class="hover:bg-slate-50">
+                  <tr v-for="line in (section.items || section.lines || [])" :key="`${line.referenceType}-${line.accountCode}-${line.label}`" class="hover:bg-slate-50">
                     <td class="py-1.5 px-3 text-slate-600">{{ line.label }}</td>
                     <td class="py-1.5 px-3 text-left font-mono font-bold" :class="(line.net ?? line.amount) >= 0 ? 'text-emerald-600' : 'text-rose-600'">{{ fmt(line.net ?? line.amount) }}</td>
                   </tr>
@@ -418,13 +402,12 @@
             </div>
             <div class="flex justify-between items-center p-4 bg-slate-900 rounded-xl text-white">
               <span class="text-[10px] font-bold uppercase tracking-widest text-blue-400">صافي التغير في النقدية</span>
-              <span class="text-xl font-bold font-mono tracking-tighter" :class="cashFlowData.net_change >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmt(cashFlowData.net_change) }}</span>
+              <span class="text-xl font-bold font-mono tracking-tighter" :class="cashFlowData.netChange >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmt(cashFlowData.netChange) }}</span>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- General Ledger Detail: Full Audit Log (Bottom Fixed Context) -->
       <section v-if="filters.ledgerAccountId" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm animate-fadeIn">
         <div class="px-8 py-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
            <h2 class="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
@@ -432,7 +415,7 @@
            </h2>
            <div class="bg-slate-900 px-4 py-1.5 rounded text-white flex items-center gap-4">
               <span class="text-[8px] font-bold uppercase tracking-[0.2em] text-blue-400">الرصيد الافتتاحي</span>
-              <span class="text-sm font-bold font-mono tracking-tighter">{{ fmt(ledger.opening_balance) }}</span>
+              <span class="text-sm font-bold font-mono tracking-tighter">{{ fmt(ledger.openingBalance) }}</span>
            </div>
         </div>
         <div class="overflow-x-auto max-h-[500px] custom-scroll">
@@ -447,10 +430,10 @@
             </thead>
             <tbody class="divide-y divide-slate-50">
               <tr v-for="(line, idx) in ledger.lines" :key="idx" class="hover:bg-blue-50/10 transition-colors">
-                <td class="px-8 py-3 text-slate-400 font-mono">{{ line.entry_date }}</td>
+                <td class="px-8 py-3 text-slate-400 font-mono">{{ line.entryDate }}</td>
                 <td class="px-4 py-3 font-bold text-slate-800">{{ line.description }}</td>
-                <td class="px-4 py-3 text-center font-mono font-bold text-rose-600">{{ line.debit_amount > 0 ? fmt(line.debit_amount) : '—' }}</td>
-                <td class="px-8 py-3 text-center font-mono font-bold text-emerald-600">{{ line.credit_amount > 0 ? fmt(line.credit_amount) : '—' }}</td>
+                <td class="px-4 py-3 text-center font-mono font-bold text-rose-600">{{ line.debitAmount > 0 ? fmt(line.debitAmount) : '—' }}</td>
+                <td class="px-8 py-3 text-center font-mono font-bold text-emerald-600">{{ line.creditAmount > 0 ? fmt(line.creditAmount) : '—' }}</td>
               </tr>
               <tr v-if="!ledger.lines.length"><td colspan="4" class="py-12 text-center text-slate-300 uppercase font-bold tracking-widest italic">لا توجد حركات مسجلة للفترة</td></tr>
             </tbody>
@@ -464,7 +447,6 @@
 </template>
 
 <script setup>
-// [SCRIPT SECTION REMAINS 100% IDENTICAL AS PER THE CRITICAL BUSINESS LOGIC RULE]
 import { ref, computed, onMounted, watch } from 'vue'
 import { useReportsStore } from '@/stores/reports/reportsStore'
 import { useAccountStore } from '@/stores/account/accountStore'
@@ -490,8 +472,8 @@ const accountStore = useAccountStore();
 
 const filters = ref({ start: '', end: '', asOf: '', ledgerAccountId: '' })
 const startRef = ref(null); const endRef = ref(null); const asOfRef = ref(null);
-const trialBalance = ref([]); const ledger = ref({ opening_balance: 0, lines: [] });
-const incomeStatement = ref({ revenues: 0, expenses: 0, net_income: 0 });
+const trialBalance = ref([]); const ledger = ref({ openingBalance: 0, lines: [] });
+const incomeStatement = ref({ revenues: 0, expenses: 0, netIncome: 0 });
 const balanceSheet = ref({ asset: [], liability: [], equity: [] });
 const coverage = ref(null);
 const loadingCoverage = ref(false);
@@ -525,8 +507,8 @@ async function loadAll() {
       ? (tb.value.data?.items || []) : []
 
     incomeStatement.value = is.status === 'fulfilled' && is.value.status === 'success'
-      ? (is.value.data || { revenues: 0, expenses: 0, net_income: 0 })
-      : { revenues: 0, expenses: 0, net_income: 0 }
+      ? (is.value.data || { revenues: 0, expenses: 0, netIncome: 0 })
+      : { revenues: 0, expenses: 0, netIncome: 0 }
 
     balanceSheet.value = bs.status === 'fulfilled' && bs.value.status === 'success'
       ? (bs.value.data || { asset: [], liability: [], equity: [] })
@@ -534,9 +516,9 @@ async function loadAll() {
 
     if (filters.value.ledgerAccountId) {
       const lgResult = await reportsStore.fetchLedger(filters.value.ledgerAccountId, filters.value.start, filters.value.end, branchId)
-      ledger.value = lgResult.status === 'success' ? (lgResult.data || { opening_balance: 0, lines: [] }) : { opening_balance: 0, lines: [] }
+      ledger.value = lgResult.status === 'success' ? (lgResult.data || { openingBalance: 0, lines: [] }) : { openingBalance: 0, lines: [] }
     } else {
-      ledger.value = { opening_balance: 0, lines: [] }
+      ledger.value = { openingBalance: 0, lines: [] }
     }
   } catch (e) {
     console.error('Error loading accounting reports:', e);
@@ -549,8 +531,8 @@ async function loadAccounts() {
   try {
     const result = await accountStore.fetchAccounts()
     const payload = result.status === 'success' ? result.data : {}
-    tenantAccounts.value = Array.isArray(payload) ? payload : (payload.tenant_accounts || [])
-    globalAccounts.value = Array.isArray(payload) ? [] : (payload.global_accounts || [])
+    tenantAccounts.value = Array.isArray(payload) ? payload : (payload.tenantAccounts || [])
+    globalAccounts.value = Array.isArray(payload) ? [] : (payload.globalAccounts || [])
   } catch (_) { tenantAccounts.value = []; globalAccounts.value = []; }
 }
 
@@ -574,9 +556,9 @@ async function loadArAging() {
 }
 
 async function postProvision() {
-  if (!arAgingData.value?.total_provision) return
+  if (!arAgingData.value?.totalProvision) return
   const confirmed = await AlertService.confirm(
-    `سيتم تسجيل قيد مخصص الديون المشكوك فيها بمبلغ ${fmt(arAgingData.value.total_provision)} وفق IFRS 9. هل أنت متأكد؟`,
+    `سيتم تسجيل قيد مخصص الديون المشكوك فيها بمبلغ ${fmt(arAgingData.value.totalProvision)} وفق IFRS 9. هل أنت متأكد؟`,
     'تأكيد قيد المخصص',
     { confirmText: 'تسجيل القيد', cancelText: 'إلغاء' }
   )
@@ -585,7 +567,7 @@ async function postProvision() {
   provisionResult.value = null
   try {
     provisionResult.value = await reportsStore.postBadDebtProvision(
-      arAgingData.value.total_provision,
+      arAgingData.value.totalProvision,
       arAgingAsOf.value || null
     )
   } catch (e) { console.error(e); }

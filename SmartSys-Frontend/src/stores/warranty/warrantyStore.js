@@ -7,13 +7,12 @@ const nowMs = () => Date.now();
 export const useWarrantyStore = defineStore('warranty', () => {
   let latestWarrantiesRequestId = 0;
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     warranties: 5 * 60 * 1000,    // 5 دقائق
     details: 10 * 60 * 1000,      // 10 دقائق
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const warranties = ref([]);
   const warrantiesTotal = ref(0);
   const details = ref(null);
@@ -23,7 +22,6 @@ export const useWarrantyStore = defineStore('warranty', () => {
   const isLoading = ref(false);
   const error = ref(null);
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
@@ -31,7 +29,7 @@ export const useWarrantyStore = defineStore('warranty', () => {
     if (!data?.request) return data;
     return {
       ...data.request,
-      customer_name: data.customer?.name || data.request.customer_name,
+      customerName: data.customer?.name || data.request.customerName,
       items: data.items || [],
       attachments: data.attachments || [],
       notes: data.notes || [],
@@ -45,7 +43,6 @@ export const useWarrantyStore = defineStore('warranty', () => {
     return data;
   };
 
-  // ─── Getters ──────────────────────────────────────────────────────────────
   const totalWarranties = computed(() => warrantiesTotal.value);
   const openWarranties = computed(() => 
     warranties.value.filter(w => ['open', 'in_progress', 'pending_customer'].includes(w.status))
@@ -54,7 +51,7 @@ export const useWarrantyStore = defineStore('warranty', () => {
     warranties.value.filter(w => ['resolved', 'closed'].includes(w.status))
   );
 
-  // ─── Actions ──────────────────────────────────────────────────────────────
+  // Actions
 
   /**
    * جلب قائمة طلبات الضمان
@@ -64,11 +61,11 @@ export const useWarrantyStore = defineStore('warranty', () => {
     try {
       const requestParams = {
         ...params,
-        from_date: params.from_date || params.date_from,
-        to_date: params.to_date || params.date_to,
+        fromDate: params.fromDate || params.dateFrom,
+        toDate: params.toDate || params.dateTo,
       };
-      delete requestParams.date_from;
-      delete requestParams.date_to;
+      delete requestParams.dateFrom;
+      delete requestParams.dateTo;
       const cacheKey = JSON.stringify(
         Object.entries(requestParams)
           .filter(([, value]) => value !== undefined && value !== null && value !== '')
@@ -97,7 +94,7 @@ export const useWarrantyStore = defineStore('warranty', () => {
       const list = Array.isArray(data) ? data : (data?.items || []);
       const total = Array.isArray(data)
         ? list.length
-        : Number(data?.total ?? list.length);
+        : Number(data?.meta?.total ?? list.length);
       if (requestId === latestWarrantiesRequestId) {
         warranties.value = list;
         warrantiesTotal.value = total;
@@ -219,7 +216,7 @@ export const useWarrantyStore = defineStore('warranty', () => {
     try {
       error.value = null;
 
-      await WarrantyService.addNote(id, { content, is_internal: isInternal });
+      await WarrantyService.addNote(id, { content, isInternal: isInternal });
       const updated = await refreshWarrantyDetails(id);
 
       return {

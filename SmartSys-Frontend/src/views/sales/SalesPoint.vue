@@ -1,7 +1,6 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar (Active on Loading / Searching / Saving) -->
     <PageLoadingBar :active="isSearchingProducts || loadingSession || refreshingSession" />
 
     <div class="max-w-[1700px] mx-auto p-5 lg:p-8 space-y-6 animate-fadeIn">
@@ -23,7 +22,6 @@
         </template>
       </PageHeader>
 
-      <!-- Open Invoices -->
       <section class="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
         <div class="flex items-center gap-2 overflow-x-auto custom-scroll">
           <div
@@ -39,7 +37,7 @@
               <span class="min-w-0 flex-1">
                 <span class="block truncate text-[11px] font-bold">{{ invoiceTabLabel(tab) }}</span>
                 <span class="block truncate text-[9px] font-medium text-slate-400">
-                  {{ tab.customer_id ? tab.customer_name : (tab.customer_query || 'عميل نقدي') }} · {{ tab.items.length }} أصناف
+                  {{ tab.customerId ? tab.customerName : (tab.customerQuery || 'عميل نقدي') }} · {{ tab.items.length }} أصناف
                 </span>
               </span>
             </button>
@@ -82,17 +80,13 @@
         </button>
       </div>
 
-      <!-- Main POS Grid -->
       <div class="flex flex-col lg:flex-row gap-6 w-full items-start">
         
-        <!-- Right Column: Product Search & Catalog Table -->
         <div class="w-full lg:w-7/12 xl:w-2/3 space-y-4">
           
-          <!-- Filters & Search Bar Card -->
           <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
             <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
               
-              <!-- Search Box -->
               <div class="sm:col-span-4 relative group">
                 <input
                   v-model="searchQuery"
@@ -109,7 +103,6 @@
                 <kbd class="absolute left-2.5 top-1/2 -translate-y-1/2 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-400 font-bold">F1</kbd>
               </div>
 
-              <!-- Categories Select -->
               <div class="sm:col-span-3 relative">
                 <select v-model="selectedCategory" @change="debouncedSearch" class="filter-input appearance-none" style="padding-right: 2rem;">
                   <option value="">كل التصنيفات</option>
@@ -118,7 +111,6 @@
                 <i class="fas fa-tags absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] pointer-events-none"></i>
               </div>
 
-              <!-- Branch Selector (Admins/Managers) -->
               <div v-if="canSelectBranch" class="sm:col-span-3 relative">
                 <select v-model="selectedBranch" @change="debouncedSearch" class="filter-input appearance-none" style="padding-right: 2rem;">
                   <option disabled :value="null">-- اختر الفرع --</option>
@@ -127,7 +119,6 @@
                 <i class="fas fa-building absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] pointer-events-none"></i>
               </div>
 
-              <!-- Toggles Icons Only -->
               <div class="sm:col-span-2 flex items-center gap-2">
                 <button 
                   type="button"
@@ -153,7 +144,6 @@
             </div>
           </div>
 
-          <!-- Product Catalog Table Card -->
           <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm relative min-h-[420px]">
             <div class="overflow-x-auto">
               <table class="w-full text-right border-collapse">
@@ -173,7 +163,6 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                   
-                  <!-- Skeleton Loading -->
                   <template v-if="isSearchingProducts">
                     <tr v-for="row in 6" :key="row" class="animate-pulse">
                       <td class="px-4 py-3 text-center"><div class="h-3 bg-slate-100 rounded w-4 mx-auto"></div></td>
@@ -189,7 +178,6 @@
                     </tr>
                   </template>
 
-                  <!-- Product Rows -->
                   <tr 
                     v-for="(product, i) in filteredSearchResults" 
                     :key="product.id" 
@@ -198,7 +186,7 @@
                     <td class="px-4 py-3 text-center text-slate-400 font-mono text-[11px]">{{ i + 1 }}</td>
                     <td class="px-3 py-3">
                       <span class="text-[10px] font-bold font-mono text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
-                        {{ product.product_code ?? '-' }}
+                        {{ product.productCode ?? '-' }}
                       </span>
                     </td>
                     <td class="px-4 py-3">
@@ -206,25 +194,25 @@
                     </td>
                     <td class="px-3 py-3 text-center">
                       <span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-slate-100 text-slate-700">
-                        {{ product.product_type === 'service' ? 'خدمة' : (product.quantity ?? 0) }}
+                        {{ product.productType === 'service' ? 'خدمة' : (product.quantity ?? 0) }}
                       </span>
                     </td>
-                    <td class="px-3 py-3 text-[11px] text-slate-500 font-medium">{{ product.unit_name ?? '-' }}</td>
+                    <td class="px-3 py-3 text-[11px] text-slate-500 font-medium">{{ product.unitName ?? '-' }}</td>
                     <td class="px-4 py-3 text-left font-mono font-bold text-xs text-blue-600">
-                      <div v-if="product.campaign_id" class="flex flex-col items-end">
-                        <span class="text-[9px] text-slate-400 line-through">{{ formatPrice(product.regular_sale_price) }}</span>
-                        <span class="text-emerald-700">{{ formatPrice(product.campaign_price) }}</span>
-                        <span class="mt-0.5 rounded bg-rose-50 px-1.5 py-0.5 text-[8px] text-rose-600">عرض {{ product.campaign_name }}</span>
+                      <div v-if="product.campaignId" class="flex flex-col items-end">
+                        <span class="text-[9px] text-slate-400 line-through">{{ formatPrice(product.regularSalePrice) }}</span>
+                        <span class="text-emerald-700">{{ formatPrice(product.campaignPrice) }}</span>
+                        <span class="mt-0.5 rounded bg-rose-50 px-1.5 py-0.5 text-[8px] text-rose-600">عرض {{ product.campaignName }}</span>
                       </div>
-                      <span v-else>{{ formatPrice(product.sale_price) }}</span>
+                      <span v-else>{{ formatPrice(product.salePrice) }}</span>
                     </td>
                     <td class="px-3 py-3 text-left font-mono text-[11px] text-amber-600 font-bold">
-                      {{ formatPrice(product.min_sale_price) }}
+                      {{ formatPrice(product.minSalePrice) }}
                     </td>
                     <td class="px-3 py-3 text-[10px] font-mono text-slate-400">{{ product.barcode ?? '-' }}</td>
                     <td class="px-3 py-3">
                       <span class="text-[10px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
-                        {{ product.category_name ?? '-' }}
+                        {{ product.categoryName ?? '-' }}
                       </span>
                     </td>
                     <td class="px-4 py-3 text-center">
@@ -244,7 +232,6 @@
                     </td>
                   </tr>
 
-                  <!-- Empty State -->
                   <tr v-if="!filteredSearchResults.length && !isSearchingProducts">
                     <td colspan="10" class="py-20 text-center text-slate-300">
                       <i class="fas fa-box-open text-3xl mb-3 opacity-20"></i>
@@ -259,10 +246,8 @@
 
         </div>
 
-        <!-- Left Column: Checkout Cart & Session Status -->
         <div class="w-full lg:w-5/12 xl:w-1/3 sticky top-6 space-y-4">
           
-          <!-- Shift / Session Status Widget -->
           <div v-if="sessionsEnabled" class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
             <div class="px-4 py-3 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between">
               <h3 class="text-xs font-bold text-slate-900 flex items-center gap-2">
@@ -286,27 +271,27 @@
               <div v-if="currentSession" class="space-y-2">
                 <div class="flex justify-between text-xs">
                   <span class="text-slate-400 font-medium">نوع الجلسة:</span>
-                  <span class="font-bold text-slate-800">{{ currentSession.session_type_label || sessionTypeToLabel(currentSession.session_type || 'manual') }}</span>
+                  <span class="font-bold text-slate-800">{{ currentSession.sessionTypeLabel || sessionTypeToLabel(currentSession.sessionType || 'manual') }}</span>
                 </div>
                 <div class="flex justify-between text-xs">
                   <span class="text-slate-400 font-medium">وقت البدء:</span>
-                  <span class="font-bold font-mono text-slate-800">{{ formatSessionStart(currentSession.start_time) }}</span>
+                  <span class="font-bold font-mono text-slate-800">{{ formatSessionStart(currentSession.startTime) }}</span>
                 </div>
                 <div class="flex justify-between text-xs">
                   <span class="text-slate-400 font-medium">الجهاز:</span>
                   <span class="font-bold text-slate-800">{{ deviceLabel(currentSession) }}</span>
                 </div>
-                <div v-if="currentSession.terminal_name || currentSession.terminal_code || currentSession.terminal_id" class="flex justify-between text-xs">
+                <div v-if="currentSession.terminalName || currentSession.terminalCode || currentSession.terminalId" class="flex justify-between text-xs">
                   <span class="text-slate-400 font-medium">الترمينال:</span>
-                  <span class="font-bold text-slate-800 font-mono">{{ currentSession.terminal_name || currentSession.terminal_code || currentTerminalLabel || ('#' + currentSession.terminal_id) }}</span>
+                  <span class="font-bold text-slate-800 font-mono">{{ currentSession.terminalName || currentSession.terminalCode || currentTerminalLabel || ('#' + currentSession.terminalId) }}</span>
                 </div>
-                <div v-if="currentSession.shift_id" class="flex justify-between text-xs">
+                <div v-if="currentSession.shiftId" class="flex justify-between text-xs">
                   <span class="text-slate-400 font-medium">رقم الوردية:</span>
-                  <span class="font-bold font-mono text-indigo-600">#{{ currentSession.shift_id }}</span>
+                  <span class="font-bold font-mono text-indigo-600">#{{ currentSession.shiftId }}</span>
                 </div>
                 <div class="flex justify-between text-xs pt-1 border-t border-slate-50">
                   <span class="text-slate-400 font-medium">الرصيد الافتتاحي:</span>
-                  <span class="font-bold font-mono text-blue-600">{{ formatPrice(currentSession.opening_cash_amount || 0) }}</span>
+                  <span class="font-bold font-mono text-blue-600">{{ formatPrice(currentSession.openingCashAmount || 0) }}</span>
                 </div>
                 <div class="pt-2">
                   <button 
@@ -348,10 +333,8 @@
             </div>
           </div>
 
-          <!-- Checkout Cart Container -->
           <div class="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col min-h-[520px] overflow-hidden">
 
-            <!-- Customer Selection Header -->
             <div class="p-4 border-b border-slate-100 space-y-3">
               <div class="flex items-center justify-between">
                 <label class="text-xs font-bold text-slate-900 flex items-center gap-2">
@@ -368,7 +351,6 @@
                 </button>
               </div>
 
-              <!-- Customer Search Input -->
               <div class="relative">
                 <input
                   v-model="customerQuery"
@@ -394,7 +376,6 @@
                   <i class="fas fa-times-circle text-xs"></i>
                 </button>
 
-                <!-- Customer Dropdown Results -->
                 <div 
                   v-if="showCustomerDropdown" 
                   class="absolute z-30 w-full mt-1.5 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto custom-scroll"
@@ -425,7 +406,6 @@
                 </div>
               </div>
 
-              <!-- Selected Customer Card -->
               <div class="p-3 bg-slate-50 rounded-lg border border-slate-100 flex items-center justify-between">
                 <div class="flex items-center gap-2.5">
                   <div class="w-8 h-8 rounded-full bg-white border border-slate-200 text-blue-600 flex items-center justify-center text-xs shadow-sm">
@@ -447,7 +427,6 @@
               </div>
             </div>
 
-            <!-- Held Invoices List -->
             <div v-if="heldInvoices.length > 0" class="px-4 py-2.5 bg-amber-50/60 border-b border-amber-100 space-y-1.5">
               <div class="flex items-center justify-between text-[10px] font-bold text-amber-800 uppercase tracking-wider">
                 <span>فواتير معلقة ({{ heldInvoices.length }})</span>
@@ -459,7 +438,7 @@
                   class="flex items-center justify-between bg-white rounded-md px-3 py-1.5 border border-amber-200/60 shadow-sm"
                 >
                   <div>
-                    <div class="text-xs font-bold text-slate-800">{{ held.customer_name }}</div>
+                    <div class="text-xs font-bold text-slate-800">{{ held.customerName }}</div>
                     <div class="text-[10px] text-slate-400 font-mono">{{ held.items.length }} أصناف · {{ formatPrice(held.finalTotal) }}</div>
                   </div>
                   <button 
@@ -472,10 +451,8 @@
               </ul>
             </div>
 
-            <!-- Cart Table Area -->
             <div class="flex-grow overflow-y-auto max-h-[340px] p-3 custom-scroll">
               
-              <!-- Approval System Alert -->
               <div v-if="requireApproval" class="mb-2 text-[10px] px-3 py-1.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 font-bold flex items-center gap-2">
                 <i class="fas fa-info-circle text-amber-600"></i>
                 <span>نظام الموافقات مفعل. سيتم قيد الفاتورة كمسودة موافقة.</span>
@@ -493,49 +470,44 @@
                 </thead>
                 <tbody class="divide-y divide-slate-50">
                   <tr v-for="item in invoice" :key="item.id" class="hover:bg-slate-50/50 group transition-all">
-                    <!-- Name & Sub-details -->
                     <td class="py-2.5 pl-2">
                       <div class="font-bold text-slate-900 leading-tight">{{ item.name }}</div>
-                      <div v-if="item.campaign_id" class="mt-1 text-[9px] font-bold text-emerald-700">
+                      <div v-if="item.campaignId" class="mt-1 text-[9px] font-bold text-emerald-700">
                         <i class="fas fa-tag ml-1"></i>
-                        سعر حملة: {{ item.campaign_name }}
-                        <span class="mr-1 text-slate-400 line-through">{{ formatPrice(item.regular_sale_price) }}</span>
+                        سعر حملة: {{ item.campaignName }}
+                        <span class="mr-1 text-slate-400 line-through">{{ formatPrice(item.regularSalePrice) }}</span>
                       </div>
                       <div class="flex items-center gap-2 mt-1 text-[10px]">
-                        <!-- Batches Select -->
                         <select 
-                          v-if="item.product_type !== 'service' && item.has_batch_number"
-                          v-model="item.batch_number" 
-                          class="h-6 text-[10px] bg-white border border-slate-200 rounded px-1 outline-none" 
+                          v-if="item.productType !== 'service' && item.hasBatchNumber"
+                          v-model="item.batchNumber"
+                          class="h-6 text-[10px] bg-white border border-slate-200 rounded px-1 outline-none"
                           @change="onBatchChange(item)"
                         >
                           <option value="">-- الدفعة --</option>
-                          <option v-for="batch in item.available_batches" :key="batch.batch_number" :value="batch.batch_number">{{ batch.batch_number }} ({{ batch.quantity }})</option>
+                          <option v-for="batch in item.availableBatches" :key="batch.batchNumber" :value="batch.batchNumber">{{ batch.batchNumber }} ({{ batch.quantity }})</option>
                         </select>
                         
-                        <!-- Serials Select -->
                         <select 
-                          v-if="item.product_type !== 'service' && item.has_serial_number"
+                          v-if="item.productType !== 'service' && item.hasSerialNumber"
                           v-model="item.serial" 
                           class="h-6 text-[10px] bg-white border border-slate-200 rounded px-1 outline-none"
                         >
                           <option value="">-- السيريال --</option>
-                          <option v-for="serial in item.available_serials" :key="serial" :value="serial">{{ serial }}</option>
+                          <option v-for="serial in item.availableSerials" :key="serial" :value="serial">{{ serial }}</option>
                         </select>
 
-                        <!-- Expiry Tag -->
-                        <div v-if="item.product_type !== 'service' && item.has_expiry_date && item.expiry_date" class="font-mono text-[9px] font-bold">
-                          <span :class="{'text-rose-600': isExpired(item.expiry_date), 'text-amber-600': isExpiringSoon(item.expiry_date), 'text-slate-500': !isExpiringSoon(item.expiry_date) && !isExpired(item.expiry_date)}">
-                            {{ formatDate(item.expiry_date) }}
+                        <div v-if="item.productType !== 'service' && item.hasExpiryDate && item.expiryDate" class="font-mono text-[9px] font-bold">
+                          <span :class="{'text-rose-600': isExpired(item.expiryDate), 'text-amber-600': isExpiringSoon(item.expiryDate), 'text-slate-500': !isExpiringSoon(item.expiryDate) && !isExpired(item.expiryDate)}">
+                            {{ formatDate(item.expiryDate) }}
                           </span>
                         </div>
                       </div>
-                      <div v-if="Number(item.min_sale_price) > 0 && item.sale_price < item.min_sale_price" class="text-[9px] font-mono text-amber-600 font-bold mt-0.5">
-                        أقل من الحد الأدنى - يتطلب اعتماد مدير الفرع ({{ formatPrice(item.min_sale_price) }})
+                      <div v-if="Number(item.minSalePrice) > 0 && item.salePrice < item.minSalePrice" class="text-[9px] font-mono text-amber-600 font-bold mt-0.5">
+                        أقل من الحد الأدنى - يتطلب اعتماد مدير الفرع ({{ formatPrice(item.minSalePrice) }})
                       </div>
                     </td>
 
-                    <!-- Quantity Input -->
                     <td class="py-2.5 px-1 text-center">
                       <input 
                         type="number" 
@@ -546,27 +518,24 @@
                       />
                     </td>
 
-                    <!-- Price Input -->
                     <td class="py-2.5 px-1 text-center">
                       <input 
                         type="number" 
-                        v-model.number="item.sale_price" 
-                        :min="item.min_sale_price" 
-                        :disabled="item.campaign_id && !canApplyCampaignDiscount"
-                        :class="['w-16 h-7 text-center font-mono font-bold bg-white border rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none', item.sale_price < item.min_sale_price ? 'border-rose-300 text-rose-600' : 'border-slate-200 text-slate-800']" 
-                        @change="validateSalePrice(item)" 
+                        v-model.number="item.salePrice"
+                        :min="item.minSalePrice"
+                        :disabled="item.campaignId && !canApplyCampaignDiscount"
+                        :class="['w-16 h-7 text-center font-mono font-bold bg-white border rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none', item.salePrice < item.minSalePrice ? 'border-rose-300 text-rose-600' : 'border-slate-200 text-slate-800']"
+                        @change="validateSalePrice(item)"
                       />
-                      <div v-if="Number(item.sale_price) < Number(item.catalog_sale_price)" class="mt-1 text-[9px] font-bold text-rose-500 whitespace-nowrap">
-                        خصم {{ formatPrice((Number(item.catalog_sale_price) - Number(item.sale_price)) * Number(item.selectedQuantity || 0)) }}
+                      <div v-if="Number(item.salePrice) < Number(item.catalogSalePrice)" class="mt-1 text-[9px] font-bold text-rose-500 whitespace-nowrap">
+                        خصم {{ formatPrice((Number(item.catalogSalePrice) - Number(item.salePrice)) * Number(item.selectedQuantity || 0)) }}
                       </div>
                     </td>
 
-                    <!-- Line Total -->
                     <td class="py-2.5 px-1 font-mono font-bold text-xs text-blue-600 text-center">
                       {{ formatPrice(getNetItemTotal(item)) }}
                     </td>
 
-                    <!-- Delete Button -->
                     <td class="py-2.5 pr-1 text-center">
                       <button 
                         @click="removeFromInvoice(item)" 
@@ -578,7 +547,6 @@
                     </td>
                   </tr>
 
-                  <!-- Empty Cart State -->
                   <tr v-if="invoice.length === 0">
                     <td colspan="5" class="py-14 text-center text-slate-300">
                       <i class="fas fa-basket-shopping text-3xl mb-2 opacity-20 block"></i>
@@ -589,14 +557,12 @@
               </table>
             </div>
 
-            <!-- Financial Totals Section -->
             <div class="p-4 bg-slate-50/70 border-t border-slate-200 space-y-2.5">
               <div class="flex justify-between text-xs">
                 <span class="text-slate-400 font-medium">الإجمالي الفرعي:</span>
                 <span class="font-mono font-bold text-slate-800">{{ formatPrice(totalAmount) }}</span>
               </div>
 
-              <!-- Discount Controls -->
               <div class="flex items-center gap-2 text-xs">
                 <select v-model="discountType" class="h-7 text-[11px] font-bold bg-white border border-slate-200 rounded px-1.5 text-slate-600 outline-none">
                   <option>مبلغ</option>
@@ -613,7 +579,6 @@
                 <span class="text-rose-600 font-mono font-bold text-xs">- {{ formatPrice(discountAmount) }}</span>
               </div>
 
-              <!-- Taxes -->
               <div class="flex justify-between text-xs">
                 <span class="text-slate-400 font-medium">
                   {{ showTaxInPrice && taxValue > 0 ? 'ضريبة القيمة المضافة (ضمن السعر)' : 'ضريبة القيمة المضافة' }} ({{ taxRateDisplay }}%):
@@ -621,7 +586,6 @@
                 <span class="font-mono font-bold text-slate-800">{{ formatPrice(taxAmount) }}</span>
               </div>
 
-              <!-- Final Total Box -->
               <div class="pt-2.5 border-t border-slate-200 space-y-3">
                 <div class="flex justify-between items-center">
                   <div class="flex items-center gap-2">
@@ -635,7 +599,6 @@
                   <span class="text-xl font-bold font-mono tracking-tight text-blue-600">{{ formatPrice(finalTotal) }}</span>
                 </div>
 
-                <!-- Payment Form Controls -->
                 <div class="grid grid-cols-2 gap-2">
                   <div class="relative">
                     <select v-model="selectedPaymentMethod" class="filter-input text-xs h-9 appearance-none" style="padding-right: 1.75rem;">
@@ -668,7 +631,6 @@
                   سيتم تحديد المبلغ المستلم والمتبقي عند مراجعة الفاتورة واعتمادها.
                 </div>
 
-                <!-- Action Execute Buttons -->
                 <div class="space-y-2 pt-1">
                   <LoadingButton
                     text="حفظ وطباعة الفاتورة"
@@ -713,8 +675,6 @@
       </div>
 
     </div>
-
-    <!-- ===== SYSTEM MODALS ===== -->
 
     <BaseModal :show="showQuotationModal" @close="showQuotationModal = false" maxWidth="md">
       <template #header>
@@ -762,7 +722,6 @@
       </template>
     </BaseModal>
 
-    <!-- Open Session Modal -->
     <BaseModal :show="showOpenDialog" @close="showOpenDialog = false" maxWidth="md">
       <template #header>
         <div class="flex items-center gap-3">
@@ -777,7 +736,6 @@
       </template>
       
       <div class="space-y-4">
-        <!-- Branch Selection Modal (Admins/Managers only) -->
         <!-- 📝 VALIDATION: authStore.isAdmin ensures only role_id in [1,2,3] can select branches
              branches.length > 0 prevents showing empty selector if no branches exist -->
         <div v-if="authStore.isAdmin && branches.length > 0" class="space-y-1.5">
@@ -827,7 +785,6 @@
       </template>
     </BaseModal>
 
-    <!-- Close Session Modal -->
     <BaseModal :show="showCloseDialog" @close="showCloseDialog = false" maxWidth="md">
       <template #header>
         <div class="flex items-center gap-3">
@@ -845,7 +802,7 @@
         <div class="grid grid-cols-2 gap-3 text-xs">
           <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
             <div class="text-slate-400 text-[10px] font-bold uppercase mb-1">الرصيد الافتتاحي</div>
-            <div class="text-sm font-bold font-mono text-blue-600">{{ formatPrice(currentSession?.opening_cash_amount || 0) }}</div>
+            <div class="text-sm font-bold font-mono text-blue-600">{{ formatPrice(currentSession?.openingCashAmount || 0) }}</div>
           </div>
           <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
             <div class="text-slate-400 text-[10px] font-bold uppercase mb-1">المتوقع بالخزينة</div>
@@ -894,7 +851,6 @@
       </template>
     </BaseModal>
 
-    <!-- Session Summary Modal -->
     <BaseModal :show="showSummaryDialog" @close="showSummaryDialog = false" maxWidth="lg">
       <template #header>
         <div class="flex items-center gap-3">
@@ -915,12 +871,12 @@
         </span>
 
         <div class="grid grid-cols-2 gap-3 text-xs">
-          <div class="bg-slate-50 border border-slate-100 rounded-lg p-3"><div class="text-slate-400 text-[10px] uppercase font-bold mb-1">وقت البداية</div><div class="font-mono text-slate-800">{{ formatSessionStart(closeSummary.session?.start_time) }}</div></div>
-          <div class="bg-slate-50 border border-slate-100 rounded-lg p-3"><div class="text-slate-400 text-[10px] uppercase font-bold mb-1">وقت النهاية</div><div class="font-mono text-slate-800">{{ formatSessionStart(closeSummary.session?.end_time) }}</div></div>
+          <div class="bg-slate-50 border border-slate-100 rounded-lg p-3"><div class="text-slate-400 text-[10px] uppercase font-bold mb-1">وقت البداية</div><div class="font-mono text-slate-800">{{ formatSessionStart(closeSummary.session?.startTime) }}</div></div>
+          <div class="bg-slate-50 border border-slate-100 rounded-lg p-3"><div class="text-slate-400 text-[10px] uppercase font-bold mb-1">وقت النهاية</div><div class="font-mono text-slate-800">{{ formatSessionStart(closeSummary.session?.endTime) }}</div></div>
           <div class="bg-slate-50 border border-slate-100 rounded-lg p-3"><div class="text-slate-400 text-[10px] uppercase font-bold mb-1">إجمالي المدفوعات</div><div class="font-mono font-bold text-blue-600">{{ formatPrice(closeSummary.totals?.payments || 0) }}</div></div>
-          <div class="bg-slate-50 border border-slate-100 rounded-lg p-3"><div class="text-slate-400 text-[10px] uppercase font-bold mb-1">نقد داخل (Cash In)</div><div class="font-mono font-bold text-emerald-600">{{ formatPrice(closeSummary.totals?.cash_in || 0) }}</div></div>
-          <div class="bg-slate-50 border border-slate-100 rounded-lg p-3"><div class="text-slate-400 text-[10px] uppercase font-bold mb-1">نقد خارج (Cash Out)</div><div class="font-mono font-bold text-rose-600">{{ formatPrice(closeSummary.totals?.cash_out || 0) }}</div></div>
-          <div class="bg-slate-50 border border-slate-100 rounded-lg p-3"><div class="text-slate-400 text-[10px] uppercase font-bold mb-1">المتوقع بالدرج</div><div class="font-mono font-bold text-slate-900">{{ formatPrice(closeSummary.calculated?.expected_cash || 0) }}</div></div>
+          <div class="bg-slate-50 border border-slate-100 rounded-lg p-3"><div class="text-slate-400 text-[10px] uppercase font-bold mb-1">نقد داخل (Cash In)</div><div class="font-mono font-bold text-emerald-600">{{ formatPrice(closeSummary.totals?.cashIn || 0) }}</div></div>
+          <div class="bg-slate-50 border border-slate-100 rounded-lg p-3"><div class="text-slate-400 text-[10px] uppercase font-bold mb-1">نقد خارج (Cash Out)</div><div class="font-mono font-bold text-rose-600">{{ formatPrice(closeSummary.totals?.cashOut || 0) }}</div></div>
+          <div class="bg-slate-50 border border-slate-100 rounded-lg p-3"><div class="text-slate-400 text-[10px] uppercase font-bold mb-1">المتوقع بالدرج</div><div class="font-mono font-bold text-slate-900">{{ formatPrice(closeSummary.calculated?.expectedCash || 0) }}</div></div>
         </div>
       </div>
       
@@ -941,7 +897,6 @@
       </template>
     </BaseModal>
 
-    <!-- Rename Device Modal -->
     <BaseModal :show="showRenameDevice" @close="showRenameDevice = false" maxWidth="md">
       <template #header>
         <div class="flex items-center gap-3">
@@ -989,7 +944,7 @@
           <div v-for="item in belowCostApprovalItems" :key="item.id" class="flex justify-between gap-3 text-xs">
             <span class="font-bold text-slate-700">{{ item.name }}</span>
             <span class="text-rose-700 whitespace-nowrap">
-              سعر البيع {{ formatPrice(effectiveNetUnitPrice(item)) }} · التكلفة {{ formatPrice(Number(item.purchase_price) * Number(item.conversion_factor || 1)) }}
+              سعر البيع {{ formatPrice(effectiveNetUnitPrice(item)) }} · التكلفة {{ formatPrice(Number(item.purchasePrice) * Number(item.conversionFactor || 1)) }}
             </span>
           </div>
         </div>
@@ -1021,7 +976,6 @@
       </template>
     </BaseModal>
 
-    <!-- Branch Required Modal -->
     <Transition name="fade">
       <div v-if="showBranchRequiredModal" class="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
         <div class="bg-white border border-slate-200 rounded-xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4 animate-fadeIn">
@@ -1037,7 +991,6 @@
             <p class="text-xs text-slate-400 font-medium">نظام نقطة البيع يتطلب عزل وتحديد الفرع بدقة قبل العمل.</p>
           </div>
           
-          <!-- Branch Selector for Admin -->
           <div v-if="canSelectBranch">
             <select v-model="tempBranchId" class="filter-input appearance-none text-xs" style="padding-right: 2rem;">
               <option :value="null" disabled>-- اختر الفرع المطلوب --</option>
@@ -1046,9 +999,8 @@
             <i class="fas fa-building absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-[10px] pointer-events-none"></i>
           </div>
           
-          <!-- Regular User Notice -->
-          <div v-else-if="authStore.user?.branch_id" class="p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs font-bold text-blue-700">
-            تم تحديد فرعك: {{ branches.find(b => b.id === authStore.user?.branch_id)?.name || 'الفرع الرئيسي' }}
+          <div v-else-if="authStore.user?.branchId" class="p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs font-bold text-blue-700">
+            تم تحديد فرعك: {{ branches.find(b => b.id === authStore.user?.branchId)?.name || 'الفرع الرئيسي' }}
           </div>
           
           <div class="grid grid-cols-2 gap-2 pt-2">
@@ -1071,6 +1023,7 @@
 </template>
 
 <script setup>
+import logger from '@/utils/services/logger'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
@@ -1127,7 +1080,7 @@ const canApplyCampaignDiscount = computed(() =>
 );
 const canSelectBranch = computed(() => {
   const role = String(authStore.user?.role || '').toLowerCase();
-  return Number(authStore.user?.tenant_id) > 0 && (authStore.isAdmin || role === 'manager');
+  return Number(authStore.user?.tenantId) > 0 && (authStore.isAdmin || role === 'manager');
 });
 const branches = computed(() => branchStore.branches);
 const terminals = ref([]);
@@ -1152,11 +1105,11 @@ const sessionsModeLabel = computed(() => {
   }
 });
 const enforceSessionForMe = computed(() => {
-  const rid = authStore.user?.role_id;
+  const rid = authStore.user?.roleId;
   return Array.isArray(enforceForRoles.value) && enforceForRoles.value.map(n => Number(n)).includes(Number(rid));
 });
 const currentTerminalLabel = computed(() => {
-  const sid = currentSession.value?.terminal_id;
+  const sid = currentSession.value?.terminalId;
   if (!sid) return '';
   const t = (terminals.value || []).find(tt => Number(tt.id) === Number(sid));
   return t ? (t.code ? `${t.code} - ${t.name}` : (t.name || '')) : '';
@@ -1217,8 +1170,8 @@ const filteredSearchResults = computed(() => {
     const soonDate = new Date();
     soonDate.setDate(today.getDate() + 7);
     results = results.filter(p => {
-      if (!p.expire_date) return false;
-      const d = new Date(p.expire_date);
+      if (!p.expireDate) return false;
+      const d = new Date(p.expireDate);
       return d >= today && d <= soonDate;
     });
   }
@@ -1261,7 +1214,7 @@ const selectedPaymentMethod = ref('');
 const getDefaultCashPaymentMethodId = () => {
   const methods = paymentMethods.value || [];
   const isCashMethod = (method) => {
-    const kind = String(method.kind || method.type || method.method_type || '').trim().toLowerCase();
+    const kind = String(method.kind || method.type || method.methodType || '').trim().toLowerCase();
     const code = String(method.code || '').trim().toLowerCase();
     const name = String(method.name || '').trim().toLowerCase();
     return kind === 'cash'
@@ -1298,9 +1251,9 @@ function createInvoiceTab() {
   return {
     id: `invoice-${Date.now()}-${invoiceTabSequence}`,
     items: [],
-    customer_id: '',
-    customer_name: 'عميل نقدي',
-    customer_query: '',
+    customerId: '',
+    customerName: 'عميل نقدي',
+    customerQuery: '',
     discountType: 'مبلغ',
     discountValue: 0,
     taxValue: taxEnabled.value ? taxRate.value : 0,
@@ -1313,9 +1266,9 @@ function createInvoiceTab() {
 function snapshotInvoiceTab() {
   return {
     items: JSON.parse(JSON.stringify(invoice.value || [])),
-    customer_id: selectedCustomer.value,
-    customer_name: selectedCustomerData.value?.name || customerQuery.value || 'عميل نقدي',
-    customer_query: customerQuery.value,
+    customerId: selectedCustomer.value,
+    customerName: selectedCustomerData.value?.name || customerQuery.value || 'عميل نقدي',
+    customerQuery: customerQuery.value,
     discountType: discountType.value,
     discountValue: discountValue.value,
     taxValue: taxValue.value,
@@ -1333,10 +1286,10 @@ function saveActiveInvoiceTab() {
 
 function restoreInvoiceTab(tab) {
   invoice.value = JSON.parse(JSON.stringify(tab.items || []));
-  selectedCustomer.value = tab.customer_id || '';
-  customerQuery.value = tab.customer_id
-    ? (tab.customer_name || '')
-    : (tab.customer_query || (tab.customer_name !== 'عميل نقدي' ? tab.customer_name : ''));
+  selectedCustomer.value = tab.customerId || '';
+  customerQuery.value = tab.customerId
+    ? (tab.customerName || '')
+    : (tab.customerQuery || (tab.customerName !== 'عميل نقدي' ? tab.customerName : ''));
   discountType.value = tab.discountType || 'مبلغ';
   discountValue.value = Number(tab.discountValue) || 0;
   taxValue.value = Number(tab.taxValue) || 0;
@@ -1356,8 +1309,8 @@ function hasUnsavedInvoiceData(tab) {
   const defaultTaxValue = taxEnabled.value ? Number(taxRate.value) || 0 : 0;
   return Boolean(
     tab.items?.length
-    || tab.customer_id
-    || tab.customer_query?.trim()
+    || tab.customerId
+    || tab.customerQuery?.trim()
     || tab.importedQuotationNumber
     || Number(tab.discountValue) > 0
     || (tab.discountType && tab.discountType !== 'مبلغ')
@@ -1382,8 +1335,8 @@ function persistInvoiceTabs() {
 }
 
 function getInvoiceTabStorageKeys() {
-  const tenantId = authStore.user?.tenant_id;
-  const userId = authStore.user?.id ?? authStore.user?.user_id;
+  const tenantId = authStore.user?.tenantId;
+  const userId = authStore.user?.id ?? authStore.user?.userId;
   if (!userId) return null;
   const scope = `${tenantId ?? 'system'}_${userId}`;
   return {
@@ -1402,9 +1355,9 @@ function initializeInvoiceTabs() {
         .filter(tab => tab && typeof tab.id === 'string' && Array.isArray(tab.items))
         .map(tab => ({
           ...tab,
-          customer_query: typeof tab.customer_query === 'string'
-            ? tab.customer_query
-            : (!tab.customer_id && tab.customer_name !== 'عميل نقدي' ? String(tab.customer_name || '') : ''),
+          customerQuery: typeof tab.customerQuery === 'string'
+            ? tab.customerQuery
+            : (!tab.customerId && tab.customerName !== 'عميل نقدي' ? String(tab.customerName || '') : ''),
         }))
         .slice(0, MAX_INVOICE_TABS);
     }
@@ -1479,9 +1432,9 @@ async function closeInvoiceTab(tabId) {
   persistInvoiceTabs();
 }
 
-const enteredSubtotal = computed(() => invoice.value.reduce((sum, item) => sum + item.sale_price * item.selectedQuantity, 0));
+const enteredSubtotal = computed(() => invoice.value.reduce((sum, item) => sum + item.salePrice * item.selectedQuantity, 0));
 const totalAmount = computed(() => invoice.value.reduce(
-  (sum, item) => sum + Math.max(Number(item.catalog_sale_price) || 0, Number(item.sale_price) || 0) * item.selectedQuantity,
+  (sum, item) => sum + Math.max(Number(item.catalogSalePrice) || 0, Number(item.salePrice) || 0) * item.selectedQuantity,
   0
 ));
 const manualPriceDiscountAmount = computed(() => Math.max(0, totalAmount.value - enteredSubtotal.value));
@@ -1510,16 +1463,16 @@ const finalTotal = computed(() => {
 });
 const quotationPricePolicyItems = computed(() => invoice.value.map(item => {
   const quantity = Number(item.selectedQuantity) || 0;
-  const lineSubtotal = (Number(item.sale_price) || 0) * quantity;
+  const lineSubtotal = (Number(item.salePrice) || 0) * quantity;
   const allocatedDiscount = enteredSubtotal.value > 0
     ? invoiceDiscountAmount.value * (lineSubtotal / enteredSubtotal.value)
     : 0;
   const effectiveUnitPrice = quantity > 0
-    ? (Number(item.sale_price) || 0) - allocatedDiscount / quantity
+    ? (Number(item.salePrice) || 0) - allocatedDiscount / quantity
     : 0;
-  const conversionFactor = Number(item.conversion_factor || 1);
-  const purchasePrice = Number(item.purchase_price) * conversionFactor;
-  const minimumPrice = Number(item.min_sale_price) * conversionFactor;
+  const conversionFactor = Number(item.conversionFactor || 1);
+  const purchasePrice = Number(item.purchasePrice) * conversionFactor;
+  const minimumPrice = Number(item.minSalePrice) * conversionFactor;
   return {
     belowCost: purchasePrice > 0 && effectiveUnitPrice + 0.005 < purchasePrice,
     belowMinimum: minimumPrice > 0 && effectiveUnitPrice + 0.005 < minimumPrice
@@ -1549,11 +1502,11 @@ const currentPaymentMethodName = computed(() => {
 const effectiveNetUnitPrice = (item) => {
   const quantity = Number(item.selectedQuantity) || 0;
   if (quantity <= 0) return 0;
-  const lineTotal = (Number(item.sale_price) || 0) * quantity;
+  const lineTotal = (Number(item.salePrice) || 0) * quantity;
   const allocatedDiscount = enteredSubtotal.value > 0
     ? invoiceDiscountAmount.value * (lineTotal / enteredSubtotal.value)
     : 0;
-  return Math.max(0, Number(item.sale_price) - allocatedDiscount / quantity);
+  return Math.max(0, Number(item.salePrice) - allocatedDiscount / quantity);
 };
 
 const requestBelowCostReason = (items) => new Promise((resolve) => {
@@ -1605,21 +1558,21 @@ const getDeviceIdentity = () => {
   const custom = (localStorage.getItem('pos_device_name') || '').trim();
   const nameBase = 'جهاز كاشير';
   return {
-    device_id: id,
-    device_name: (custom || nameBase).slice(0, 64)
+    deviceId: id,
+    deviceName: (custom || nameBase).slice(0, 64)
   };
 };
 
 const deviceLabel = (s) => {
-  if (!s) return getDeviceIdentity().device_name;
+  if (!s) return getDeviceIdentity().deviceName;
   const custom = (localStorage.getItem('pos_device_name') || '').trim();
-  return s.device_name || custom || (s.device_id ? `Device ${s.device_id}` : getDeviceIdentity().device_name);
+  return s.deviceName || custom || (s.deviceId ? `Device ${s.deviceId}` : getDeviceIdentity().deviceName);
 };
 
-const getActivebranchId = () => selectedBranch.value || authStore.user?.branch_id;
+const getActivebranchId = () => selectedBranch.value || authStore.user?.branchId;
 
 const getNetItemTotal = (item) => {
-  const total = item.sale_price * item.selectedQuantity;
+  const total = item.salePrice * item.selectedQuantity;
   const disc = invoiceDiscountAmount.value;
   const all = enteredSubtotal.value;
   const itemDiscount = all > 0 ? disc * (total / all) : 0;
@@ -1672,7 +1625,7 @@ const refreshSession = async () => {
   try {
     loadingSession.value = true;
     if (sessionsEnabled.value) {
-      const { device_id } = getDeviceIdentity();
+      const { deviceId: device_id } = getDeviceIdentity();
       const sessionStore = useSessionStore();
       if (!wid && !enforceSessionForMe.value) {
         const result = await sessionStore.getCurrentSession(
@@ -1728,8 +1681,8 @@ const confirmOpenSession = async () => {
   try {
     openSubmitting.value = true;
     const sessionStore = useSessionStore();
-    const { device_id, device_name } = getDeviceIdentity();
-    const result = await sessionStore.openSession({ branch_id: String(wid) ?? undefined, opening_cash_amount: amount, session_type: 'manual', device_id, device_name, terminal_id: selectedTerminalId.value });
+    const { deviceId: device_id, deviceName: device_name } = getDeviceIdentity();
+    const result = await sessionStore.openSession({ branchId: String(wid) ?? undefined, openingCashAmount: amount, sessionType: 'manual', deviceId: device_id, deviceName: device_name, terminalId: selectedTerminalId.value });
     if (result.status === 'success' && result.data?.id) {
       showToast('تم فتح جلسة الكاشير بنجاح', 'success');
       sessionLimitReached.value = false;
@@ -1782,7 +1735,7 @@ const confirmCloseSession = async () => {
 const printSummary = () => {
   if (!closeSummary.value) return;
   const s = closeSummary.value.session || {}, t = closeSummary.value.totals || {}, c = closeSummary.value.calculated || {};
-  const html = `<!doctype html><html lang="ar"><head><meta charset="utf-8"><title>ملخص الجلسة</title><style>body{font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:16px}table{width:100%;border-collapse:collapse}td{padding:6px;border-bottom:1px solid #eee}</style></head><body onload="window.print();setTimeout(()=>window.close(),300);"><h2>ملخص الجلسة #${s.id||''}</h2><table><tr><td>البداية</td><td>${s.start_time||''}</td></tr><tr><td>النهاية</td><td>${s.end_time||''}</td></tr><tr><td>افتتاحي</td><td>${Number(s.opening_cash_amount||0).toFixed(2)}</td></tr><tr><td>مدفوعات</td><td>${Number(t.payments||0).toFixed(2)}</td></tr><tr><td>نقد داخل</td><td>${Number(t.cash_in||0).toFixed(2)}</td></tr><tr><td>نقد خارج</td><td>${Number(t.cash_out||0).toFixed(2)}</td></tr><tr><td>رصيد متوقع</td><td>${Number(c.expected_cash||0).toFixed(2)}</td></tr></table></body></html>`;
+  const html = `<!doctype html><html lang="ar"><head><meta charset="utf-8"><title>ملخص الجلسة</title><style>body{font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:16px}table{width:100%;border-collapse:collapse}td{padding:6px;border-bottom:1px solid #eee}</style></head><body onload="window.print();setTimeout(()=>window.close(),300);"><h2>ملخص الجلسة #${s.id||''}</h2><table><tr><td>البداية</td><td>${s.startTime||''}</td></tr><tr><td>النهاية</td><td>${s.endTime||''}</td></tr><tr><td>افتتاحي</td><td>${Number(s.openingCashAmount||0).toFixed(2)}</td></tr><tr><td>مدفوعات</td><td>${Number(t.payments||0).toFixed(2)}</td></tr><tr><td>نقد داخل</td><td>${Number(t.cashIn||0).toFixed(2)}</td></tr><tr><td>نقد خارج</td><td>${Number(t.cashOut||0).toFixed(2)}</td></tr><tr><td>رصيد متوقع</td><td>${Number(c.expectedCash||0).toFixed(2)}</td></tr></table></body></html>`;
   const w = window.open('', '_blank', 'width=720,height=600');
   if (!w) return;
   w.document.open(); w.document.write(html); w.document.close();
@@ -1808,7 +1761,7 @@ const debouncedSearch = async () => {
 };
 
 const searchProducts = async () => {
-  const wid = selectedBranch.value || authStore.user?.branch_id;
+  const wid = selectedBranch.value || authStore.user?.branchId;
   if (!wid) {
     showToast('الرجاء اختيار المخزن أولاً للبحث عن المنتجات', 'warning');
     return;
@@ -1827,10 +1780,10 @@ const searchProducts = async () => {
       const list = res?.data || [];
       searchResults.value = list.map(p => ({
         ...p,
-        regular_sale_price: Number(p.regular_sale_price ?? p.sale_price),
-        quantity: p.current_quantity,
+        regularSalePrice: Number(p.regularSalePrice ?? p.salePrice),
+        quantity: p.currentQuantity,
         selectedQuantity: 1,
-        sale_price: Number(p.campaign_price ?? p.sale_price),
+        salePrice: Number(p.campaignPrice ?? p.salePrice),
       }));
     }
   } catch (e) {
@@ -1850,18 +1803,18 @@ const addToInvoice = async prod => {
   if (loadingProductId.value === prod.id) return;
   loadingProductId.value = prod.id;
   try {
-    const wid = selectedBranch.value || authStore.user?.branch_id;
+    const wid = selectedBranch.value || authStore.user?.branchId;
     if (!wid) { showToast('الرجاء اختيار مخزن أولاً', 'error'); return; }
-    const isService = prod.product_type === 'service';
+    const isService = prod.productType === 'service';
     const availableQty = prod.quantity ?? 0;
     if (prod.selectedQuantity < 1) { showToast('الكمية يجب أن تكون أكبر من الصفر', 'warning'); return; }
     if (!isService && prod.selectedQuantity > availableQty) { showToast(`الكمية المطلوبة غير متاحة. الكمية المتاحة: ${availableQty}`, 'warning'); return; }
     let availableBatches = [], availableSerials = [];
-    if (!isService && (prod.has_batch_number || prod.has_serial_number)) {
+    if (!isService && (prod.hasBatchNumber || prod.hasSerialNumber)) {
       try {
         const batchData = await inventoryStore.fetchBatches({ productId: prod.id, branchId: wid });
-        if (prod.has_batch_number) availableBatches = batchData.data?.batches || [];
-        if (prod.has_serial_number) availableSerials = batchData.data?.serials || [];
+        if (prod.hasBatchNumber) availableBatches = batchData.data?.batches || [];
+        if (prod.hasSerialNumber) availableSerials = batchData.data?.serials || [];
       } catch {}
     }
     const exist = invoice.value.find(i => i.id === prod.id);
@@ -1871,7 +1824,7 @@ const addToInvoice = async prod => {
         ? (showToast(`تم تعديل الكمية إلى الحد الأقصى: ${availableQty}`, 'warning'), availableQty)
         : newQty;
     } else {
-      invoice.value.push({ ...prod, catalog_sale_price: Number(prod.sale_price), manual_price_override: false, unit_id: prod.unit_id || (prod.unit && prod.unit.id) || 1, available_batches: availableBatches, available_serials: availableSerials, batch_number: '', expiry_date: '', serial: '' });
+      invoice.value.push({ ...prod, catalogSalePrice: Number(prod.salePrice), manualPriceOverride: false, unitId: prod.unitId || (prod.unit && prod.unit.id) || 1, availableBatches: availableBatches, availableSerials: availableSerials, batchNumber: '', expiryDate: '', serial: '' });
     }
   } catch { showToast('حدث خطأ أثناء إضافة المنتج', 'error'); }
   finally { loadingProductId.value = null; }
@@ -1880,22 +1833,22 @@ const addToInvoice = async prod => {
 };
 
 const validateSalePrice = (item) => {
-  item.manual_price_override = Number(item.sale_price) !== Number(item.catalog_sale_price);
+  item.manualPriceOverride = Number(item.salePrice) !== Number(item.catalogSalePrice);
 };
 
 const updateQty = (item, qty) => {
   if (qty < 1) item.selectedQuantity = 1;
-  else if (item.product_type !== 'service' && qty > item.quantity) { item.selectedQuantity = item.quantity; showToast('تجاوزت الحد الأقصى للمخزون', 'warning'); }
+  else if (item.productType !== 'service' && qty > item.quantity) { item.selectedQuantity = item.quantity; showToast('تجاوزت الحد الأقصى للمخزون', 'warning'); }
   else item.selectedQuantity = qty;
 };
 
 const removeFromInvoice = i => { invoice.value = invoice.value.filter(x => x.id !== i.id); };
 
 const onBatchChange = (item) => {
-  if (item.batch_number && item.available_batches) {
-    const batch = item.available_batches.find(b => b.batch_number === item.batch_number);
+  if (item.batchNumber && item.availableBatches) {
+    const batch = item.availableBatches.find(b => b.batchNumber === item.batchNumber);
     if (batch) {
-      item.expiry_date = batch.expiry_date || '';
+      item.expiryDate = batch.expiryDate || '';
       if (item.selectedQuantity > batch.quantity) { item.selectedQuantity = batch.quantity; showToast(`تم تعديل الكمية إلى المتاح في الدفعة: ${batch.quantity}`, 'warning'); }
     }
   }
@@ -1918,7 +1871,7 @@ const searchCustomers = async (q) => {
     if (!query) {
       const response = await customerStore.fetchCustomers({
         force: true,
-        params: { branch_id: String(branchId) }
+        params: { branchId: String(branchId) }
       });
       if (searchRequestId !== customerSearchRequestId || String(branchId) !== String(getActivebranchId())) return;
       if (response.status === 'success') {
@@ -1929,7 +1882,7 @@ const searchCustomers = async (q) => {
     }
     const searchResponse = await customerStore.searchCustomers(query, {
       force: true,
-      params: { branch_id: String(branchId) }
+      params: { branchId: String(branchId) }
     });
     if (searchRequestId !== customerSearchRequestId || String(branchId) !== String(getActivebranchId())) return;
     if (searchResponse.status === 'success') {
@@ -1951,7 +1904,7 @@ const getMaxAllowedDiscount = () => {
   if (!invoice.value.length) return 0;
   let maxDiscount = Infinity;
   invoice.value.forEach(item => {
-    const allowed = (item.sale_price - (item.min_sale_price || 0)) * item.selectedQuantity;
+    const allowed = (item.salePrice - (item.minSalePrice || 0)) * item.selectedQuantity;
     if (allowed < maxDiscount) maxDiscount = allowed;
   });
   return Math.max(maxDiscount === Infinity ? 0 : maxDiscount, 0);
@@ -1996,7 +1949,7 @@ const clearImportedQuotation = () => {
 
 const holdInvoice = () => {
   if (!invoice.value.length) { showToast('لا توجد فاتورة لتعليقها', 'warning'); return; }
-  heldInvoices.value.push({ items: JSON.parse(JSON.stringify(invoice.value)), customer_id: selectedCustomer.value, customer_name: selectedCustomerData.value?.name || 'عميل نقدي', discountType: discountType.value, discountValue: discountValue.value, actualPaidAmount: actualPaidAmount.value, finalTotal: finalTotal.value, timestamp: new Date().toLocaleTimeString() });
+  heldInvoices.value.push({ items: JSON.parse(JSON.stringify(invoice.value)), customerId: selectedCustomer.value, customerName: selectedCustomerData.value?.name || 'عميل نقدي', discountType: discountType.value, discountValue: discountValue.value, actualPaidAmount: actualPaidAmount.value, finalTotal: finalTotal.value, timestamp: new Date().toLocaleTimeString() });
   resetInvoiceState();
   showToast('تم تعليق الفاتورة بنجاح', 'success');
 };
@@ -2004,7 +1957,7 @@ const holdInvoice = () => {
 const resumeInvoice = (index) => {
   if (invoice.value.length > 0) { showToast('يرجى حفظ الفاتورة الحالية أو تعليقها أولاً.', 'warning'); return; }
   const held = heldInvoices.value[index];
-  invoice.value = held.items; selectedCustomer.value = held.customer_id; customerQuery.value = held.customer_name;
+  invoice.value = held.items; selectedCustomer.value = held.customerId; customerQuery.value = held.customerName;
   discountType.value = held.discountType; discountValue.value = held.discountValue; actualPaidAmount.value = held.actualPaidAmount;
   heldInvoices.value.splice(index, 1);
   showToast('تم استئناف الفاتورة بنجاح', 'success');
@@ -2024,7 +1977,7 @@ const openQuotationModal = () => {
 
 const saveQuotation = async () => {
   if (isSavingQuotation.value) return;
-  const branchId = selectedBranch.value || authStore.user?.branch_id;
+  const branchId = selectedBranch.value || authStore.user?.branchId;
   if (!branchId) {
     showToast('الرجاء تحديد فرع قبل إنشاء عرض السعر.', 'error');
     return;
@@ -2052,30 +2005,30 @@ const saveQuotation = async () => {
   isSavingQuotation.value = true;
   try {
     const result = await salesStore.createQuotation({
-      branch_id: String(branchId),
-      customer_id: selectedCustomer.value || null,
-      valid_until: quotationValidUntil.value,
+      branchId: String(branchId),
+      customerId: selectedCustomer.value || null,
+      validUntil: quotationValidUntil.value,
       items: invoice.value.map(item => ({
-        product_id: Number(item.id),
-        unit_id: Number(item.unit_id || item.unit?.id || 1),
+        productId: Number(item.id),
+        unitId: Number(item.unitId || item.unit?.id || 1),
         quantity: Number(item.selectedQuantity),
-        sale_price: Number(item.sale_price),
-        below_cost_confirmed: quotationHasBelowCost.value && canApproveBelowCost.value,
-        below_minimum_price_confirmed: quotationPriceOverrideConfirmed.value,
+        salePrice: Number(item.salePrice),
+        belowCostConfirmed: quotationHasBelowCost.value && canApproveBelowCost.value,
+        belowMinimumPriceConfirmed: quotationPriceOverrideConfirmed.value,
       })),
-      discount_type: discountType.value === 'نسبة %' ? 'percentage' : 'fixed',
-      discount_value: Number(discountValue.value) || 0,
-      tax_rate: Number(taxValue.value) || 0,
-      currency_code: currencyCode.value || 'EGP',
+      discountType: discountType.value === 'نسبة %' ? 'percentage' : 'fixed',
+      discountValue: Number(discountValue.value) || 0,
+      taxRate: Number(taxValue.value) || 0,
+      currencyCode: currencyCode.value || 'EGP',
       notes: quotationNotes.value,
-      below_cost_reason: quotationBelowCostReason.value.trim(),
+      belowCostReason: quotationBelowCostReason.value.trim(),
     });
     if (result.status !== 'success') {
       throw new Error(result.message || 'تعذر إنشاء عرض السعر.');
     }
 
     showQuotationModal.value = false;
-    showToast(`تم حفظ عرض السعر ${result.data?.quote_number || ''} بنجاح.`, 'success');
+    showToast(`تم حفظ عرض السعر ${result.data?.quoteNumber || ''} بنجاح.`, 'success');
   } catch (error) {
     showToast(error?.message || 'تعذر إنشاء عرض السعر.', 'error');
   } finally {
@@ -2087,7 +2040,7 @@ const saveSale = async (options = {}) => {
   if (isSaving.value || (isPrinting.value && !options.allowWhilePrinting)) return null;
   isSaving.value = true;
   try {
-    const wid = selectedBranch.value || authStore.user?.branch_id;
+    const wid = selectedBranch.value || authStore.user?.branchId;
     if (!wid) { showToast('الرجاء اختيار مخزن قبل الحفظ', 'error'); return null; }
     const branchIdStr = String(wid);
     if (!invoice.value.length) { showToast('الفاتورة فارغة', 'warning'); return null; }
@@ -2095,12 +2048,12 @@ const saveSale = async (options = {}) => {
     const belowMinimumPriceItems = new Set();
     for (const item of invoice.value) {
       const netUnitPrice = effectiveNetUnitPrice(item);
-      const conversionFactor = Number(item.conversion_factor || 1);
-      const minimumSalePrice = Number(item.min_sale_price) * conversionFactor;
+      const conversionFactor = Number(item.conversionFactor || 1);
+      const minimumSalePrice = Number(item.minSalePrice) * conversionFactor;
       if (Number.isFinite(minimumSalePrice) && minimumSalePrice > 0 && netUnitPrice + 0.005 < minimumSalePrice) {
         belowMinimumPriceItems.add(item);
       }
-      const unitCost = Number(item.purchase_price) * conversionFactor;
+      const unitCost = Number(item.purchasePrice) * conversionFactor;
       if (Number.isFinite(unitCost) && unitCost > 0 && netUnitPrice + 0.005 < unitCost) {
         belowCostItems.add(item);
       }
@@ -2134,7 +2087,7 @@ const saveSale = async (options = {}) => {
         const pm = Number(selectedPaymentMethod.value);
         const method = (paymentMethods.value || []).find(m => Number(m.id) === pm);
         if (sessionsEnabled.value && method?.kind === 'cash' && (parseFloat(actualPaidAmount.value) || 0) > 0) {
-          const ok = await ensureOpenSession(wid, { autoOpen: false, opening_cash_amount: 0, prompt: false, session_type: 'manual' });
+          const ok = await ensureOpenSession(wid, { autoOpen: false, openingCashAmount: 0, prompt: false, sessionType: 'manual' });
           if (!ok) { openingAmount.value = ''; showOpenDialog.value = true; showToast('لا توجد جلسة كاشير مفتوحة. يرجى فتح جلسة أولاً.', 'warning'); return null; }
         }
       } catch (e) { showToast(e?.message || 'خطأ أثناء التحقق من الجلسة', 'error'); return null; }
@@ -2152,24 +2105,24 @@ const saveSale = async (options = {}) => {
     const status = requireApproval.value ? 'pending_approval' : (intendedPaidAmount >= finalTotal.value ? 'paid' : (intendedPaidAmount > 0 ? 'partial' : 'due'));
     if ((['due','partial','pending_payment'].includes(status) || (status === 'pending_approval' && isCreditMethod)) && !selectedCustomer.value) { showToast('يجب تحديد عميل لفواتير الآجل والذمم', 'error'); return null; }
     const payload = {
-      customer_id: selectedCustomer.value || null,
-      branch_id: branchIdStr,
-      items: invoice.value.map(i => ({ product_id: i.id, quantity: i.selectedQuantity, sale_price: i.sale_price, manual_price_override: Number(i.sale_price) !== Number(i.catalog_sale_price), below_cost_confirmed: belowCostItems.has(i) && belowPriceConfirmed, below_minimum_price_confirmed: belowMinimumPriceItems.has(i) && belowPriceConfirmed, purchase_price: i.purchase_price || 0, unit_id: Number(i.unit_id || (i.unit && i.unit.id) || 1), branch_id: branchIdStr, conversion_factor: 1, batch_number: (i.batch_number?.trim()) || null, expiry_date: (i.expiry_date?.trim()) || null, serial: (i.serial?.trim()) || null })),
-      discount_type: discountType.value === 'نسبة %' ? 'percentage' : 'fixed',
-      discount_value: parseFloat(discountValue.value) || 0,
-      tax_rate: parseFloat(taxValue.value) || 0,
-      payment_method_id: selectedPaymentMethod.value || null,
-      paid_amount: intendedPaidAmount,
-      tenant_id: authStore.user?.tenant_id,
+      customerId: selectedCustomer.value || null,
+      branchId: branchIdStr,
+      items: invoice.value.map(i => ({ productId: i.id, quantity: i.selectedQuantity, salePrice: i.salePrice, manualPriceOverride: Number(i.salePrice) !== Number(i.catalogSalePrice), belowCostConfirmed: belowCostItems.has(i) && belowPriceConfirmed, belowMinimumPriceConfirmed: belowMinimumPriceItems.has(i) && belowPriceConfirmed, purchasePrice: i.purchasePrice || 0, unitId: Number(i.unitId || (i.unit && i.unit.id) || 1), branchId: branchIdStr, conversionFactor: 1, batchNumber: (i.batchNumber?.trim()) || null, expiryDate: (i.expiryDate?.trim()) || null, serial: (i.serial?.trim()) || null })),
+      discountType: discountType.value === 'نسبة %' ? 'percentage' : 'fixed',
+      discountValue: parseFloat(discountValue.value) || 0,
+      taxRate: parseFloat(taxValue.value) || 0,
+      paymentMethodId: selectedPaymentMethod.value || null,
+      paidAmount: intendedPaidAmount,
+      tenantId: authStore.user?.tenantId,
       status,
-      user_id: authStore.user?.id,
-      device_id: getDeviceIdentity().device_id
+      userId: authStore.user?.id,
+      deviceId: getDeviceIdentity().deviceId
     };
-    if (belowCostReason) payload.below_cost_reason = belowCostReason;
+    if (belowCostReason) payload.belowCostReason = belowCostReason;
     const res = await salesStore.createSale(payload);
     if (res.status === 'success') {
       const d = res.data;
-      const invoiceNo = d?.invoice_number ?? d?.sale?.invoice_number ?? d?.sale_id ?? d?.id ?? '';
+      const invoiceNo = d?.invoiceNumber ?? d?.sale?.invoiceNumber ?? d?.saleId ?? d?.id ?? '';
       
       // ✅ تحديث تلقائي للكميات — امسح cache جميع المنتجات في المستودع
       productStore.invalidateCacheForBranch(wid);
@@ -2178,7 +2131,7 @@ const saveSale = async (options = {}) => {
       
       showToast(`تم الحفظ (#${invoiceNo})`, 'success');
       if (options.returnResult) {
-        return { ...((typeof d === 'object' && d) || {}), sale_id: d?.sale_id ?? d?.id ?? d?.sale?.id, id: d?.id ?? d?.sale_id ?? d?.sale?.id, invoice_number: d?.invoice_number ?? d?.sale?.invoice_number ?? invoiceNo };
+        return { ...((typeof d === 'object' && d) || {}), saleId: d?.saleId ?? d?.id ?? d?.sale?.id, id: d?.id ?? d?.saleId ?? d?.sale?.id, invoiceNumber: d?.invoiceNumber ?? d?.sale?.invoiceNumber ?? invoiceNo };
       }
       if (!options.skipReset) resetInvoiceState();
       return { success: true };
@@ -2187,20 +2140,20 @@ const saveSale = async (options = {}) => {
       return null;
     }
   } catch (e) {
-    const errorCode = e?.response?.data?.error_code;
+    const errorCode = e?.response?.data?.errors?.errorCode;
     const msg = e?.response?.data?.message || 'فشل في الحفظ';
     showToast(msg, 'error');
     
     // ✅ معالجة خاصة لخطأ المخزون غير الكافي
     if (errorCode === 'insufficient_stock') {
       // حدّث فورًا كمية المنتج المعني في السلة والجدول
-      const wid = selectedBranch.value || authStore.user?.branch_id;
+      const wid = selectedBranch.value || authStore.user?.branchId;
       if (wid) {
         productStore.invalidateCacheForBranch(wid);
         await searchProducts();
         
-        const productId = e?.response?.data?.product_id;
-        const availableQty = e?.response?.data?.available_qty;
+        const productId = e?.response?.data?.errors?.productId;
+        const availableQty = e?.response?.data?.errors?.availableQty;
         
         // حدّث الكمية في السلة الحالية
         if (productId && searchResults.value) {
@@ -2254,24 +2207,24 @@ const saveAndPrint = async () => {
   let didSave = false;
   const invoiceSnapshot = JSON.parse(JSON.stringify(invoice.value || []));
   const totals = {
-    total_amount: parseFloat(totalAmount.value || 0),
-    discount_value: parseFloat(discountAmount.value || 0),
-    tax_amount: parseFloat(taxAmount.value || 0),
-    net_total_amount: parseFloat((finalTotal.value - taxAmount.value) || 0),
-    tax_inclusive: showTaxInPrice.value && taxValue.value > 0,
-    paid_amount: parseFloat(actualPaidAmount.value || 0),
+    totalAmount: parseFloat(totalAmount.value || 0),
+    discountValue: parseFloat(discountAmount.value || 0),
+    taxAmount: parseFloat(taxAmount.value || 0),
+    netTotalAmount: parseFloat((finalTotal.value - taxAmount.value) || 0),
+    taxInclusive: showTaxInPrice.value && taxValue.value > 0,
+    paidAmount: parseFloat(actualPaidAmount.value || 0),
   };
   const customerName = selectedCustomerData.value?.name || 'عميل نقدي';
   try {
     const result = await saveSale({ skipReset: true, returnResult: true, allowWhilePrinting: true });
     if (!result) { preOpened.close?.(); return; }
     didSave = true;
-    const saleId = result.sale_id ?? result.id;
+    const saleId = result.saleId ?? result.id;
     if (!saleId) { preOpened.close?.(); return; }
     let sale = null;
     try { sale = await fetchSaleDetailsWithRetry(saleId, 3, 600); } catch {}
     if (!sale || !Array.isArray(sale.items) || !sale.items.length) {
-      sale = { id: saleId, invoice_number: result.invoice_number || saleId, sale_date: getLocalDateISO(), customer_name: customerName, items: invoiceSnapshot.map(it => ({ product_name: it.name, name: it.name, quantity: it.selectedQuantity, sale_price: it.sale_price, net_total: parseFloat((it.sale_price * it.selectedQuantity).toFixed(2)) })), ...totals };
+      sale = { id: saleId, invoiceNumber: result.invoiceNumber || saleId, saleDate: getLocalDateISO(), customerName: customerName, items: invoiceSnapshot.map(it => ({ productName: it.name, name: it.name, quantity: it.selectedQuantity, salePrice: it.salePrice, netTotal: parseFloat((it.salePrice * it.selectedQuantity).toFixed(2)) })), ...totals };
     }
     const printOptions = await resolvePrintOptions(sale, getActivebranchId());
     openPrintWindow(getBuilderByTemplate(printOptions.template)(sale, printOptions), preOpened);
@@ -2285,7 +2238,7 @@ const loadInitial = async () => {
   try {
     const wid = getActivebranchId();
     if (!wid) { showToast('لم يتم تحديد مستودع', 'error'); return; }
-    const params = { branch_id: String(wid) };
+    const params = { branchId: String(wid) };
     
     // استخدام Bootstrap API لتحميل جميع البيانات دفعة واحدة
     try {
@@ -2305,7 +2258,7 @@ const loadInitial = async () => {
         customerSearchResults.value = customers.value;
       }
       
-      console.log('[SalesPoint] Bootstrap data loaded successfully');
+      logger.debug('[SalesPoint] Bootstrap data loaded successfully');
     } catch (bootstrapError) {
       console.warn('[SalesPoint] Bootstrap API failed, using fallback', bootstrapError);
       
@@ -2326,7 +2279,7 @@ const loadInitial = async () => {
 };
 
 const importQuotationToInvoice = async () => {
-  const quotationId = String(route.query.quotation_id || '').trim();
+  const quotationId = String(route.query.quotationId || '').trim();
   if (!quotationId || isImportingQuotation.value) return;
   if (!/^\d+$/.test(quotationId)) {
     showToast('معرف عرض السعر غير صالح.', 'error');
@@ -2345,11 +2298,11 @@ const importQuotationToInvoice = async () => {
     }
     const quotation = quotationResult.data;
     const today = getLocalDateISO(new Date());
-    if (quotation.status !== 'active' || quotation.valid_until < today) {
+    if (quotation.status !== 'active' || quotation.validUntil < today) {
       throw new Error('انتهت صلاحية عرض السعر أو لم يعد متاحاً للتحويل.');
     }
 
-    const branchId = Number(quotation.branch_id);
+    const branchId = Number(quotation.branchId);
     if (!branchId) throw new Error('لا يوجد فرع محدد في عرض السعر.');
     if (String(getActivebranchId()) !== String(branchId)) {
       if (!canSelectBranch.value || !branchStore.setTemporaryBranch(branchId)) {
@@ -2362,74 +2315,74 @@ const importQuotationToInvoice = async () => {
     if (!lines.length) throw new Error('عرض السعر لا يحتوي على أصناف.');
 
     const productLines = await Promise.all(lines.map(async line => {
-      const detailResult = await productStore.getProductDetail(line.product_id, branchId);
+      const detailResult = await productStore.getProductDetail(line.productId, branchId);
       if (detailResult.status !== 'success' || !detailResult.data) {
-        throw new Error(detailResult.message || `تعذر تحميل المنتج ${line.product_name || line.product_id}.`);
+        throw new Error(detailResult.message || `تعذر تحميل المنتج ${line.productName || line.productId}.`);
       }
       const detail = detailResult.data;
-      const unit = (detail.units || []).find(candidate => Number(candidate.id) === Number(line.unit_id));
-      if (!unit) throw new Error(`وحدة القياس في عرض السعر غير متاحة للمنتج ${line.product_name || detail.name}.`);
+      const unit = (detail.units || []).find(candidate => Number(candidate.id) === Number(line.unitId));
+      if (!unit) throw new Error(`وحدة القياس في عرض السعر غير متاحة للمنتج ${line.productName || detail.name}.`);
 
       let availableBatches = [];
       let availableSerials = [];
-      if (detail.configuration?.has_batch_number || detail.configuration?.has_serial_number) {
-        const batchesResult = await inventoryStore.fetchBatches({ productId: line.product_id, branchId });
-        if (detail.configuration.has_batch_number) availableBatches = batchesResult.data?.batches || [];
-        if (detail.configuration.has_serial_number) availableSerials = batchesResult.data?.serials || [];
+      if (detail.configuration?.hasBatchNumber || detail.configuration?.hasSerialNumber) {
+        const batchesResult = await inventoryStore.fetchBatches({ productId: line.productId, branchId });
+        if (detail.configuration.hasBatchNumber) availableBatches = batchesResult.data?.batches || [];
+        if (detail.configuration.hasSerialNumber) availableSerials = batchesResult.data?.serials || [];
       }
 
-      const currentQuantity = detail.inventory?.current_quantity ?? detail.quantity ?? 0;
+      const currentQuantity = detail.inventory?.currentQuantity ?? detail.quantity ?? 0;
       return {
         ...detail,
-        product_type: detail.configuration?.product_type || 'stock',
-        has_batch_number: detail.configuration?.has_batch_number || false,
-        has_serial_number: detail.configuration?.has_serial_number || false,
-        has_expiry_date: detail.configuration?.has_expiry_date || false,
-        current_quantity: currentQuantity,
+        productType: detail.configuration?.productType || 'stock',
+        hasBatchNumber: detail.configuration?.hasBatchNumber || false,
+        hasSerialNumber: detail.configuration?.hasSerialNumber || false,
+        hasExpiryDate: detail.configuration?.hasExpiryDate || false,
+        currentQuantity: currentQuantity,
         quantity: currentQuantity,
-        purchase_price: Number(detail.pricing?.purchase_price) || 0,
-        regular_sale_price: Number(detail.pricing?.sale_price) || 0,
-        sale_price: Number(line.sale_price),
-        catalog_sale_price: Number(detail.pricing?.sale_price) || 0,
-        min_sale_price: Number(detail.pricing?.min_sale_price) || 0,
-        fixed_discount_percentage: Number(detail.pricing?.fixed_discount_percentage) || 0,
-        conversion_factor: Number(unit.conversion_factor) || 1,
+        purchasePrice: Number(detail.pricing?.purchasePrice) || 0,
+        regularSalePrice: Number(detail.pricing?.salePrice) || 0,
+        salePrice: Number(line.salePrice),
+        catalogSalePrice: Number(detail.pricing?.salePrice) || 0,
+        minSalePrice: Number(detail.pricing?.minSalePrice) || 0,
+        fixedDiscountPercentage: Number(detail.pricing?.fixedDiscountPercentage) || 0,
+        conversionFactor: Number(unit.conversionFactor) || 1,
         selectedQuantity: Number(line.quantity),
-        unit_id: Number(line.unit_id),
-        unit_name: unit.name || line.unit_name || 'قطعة',
-        available_batches: availableBatches,
-        available_serials: availableSerials,
-        batch_number: '',
-        expiry_date: '',
+        unitId: Number(line.unitId),
+        unitName: unit.name || line.unitName || 'قطعة',
+        availableBatches: availableBatches,
+        availableSerials: availableSerials,
+        batchNumber: '',
+        expiryDate: '',
         serial: '',
-        manual_price_override: Number(line.sale_price) < (Number(detail.pricing?.sale_price) || 0),
+        manualPriceOverride: Number(line.salePrice) < (Number(detail.pricing?.salePrice) || 0),
       };
     }));
 
     skipDiscountClamp.value = true;
     invoice.value = productLines;
-    discountType.value = quotation.discount_type === 'percentage' ? 'نسبة %' : 'مبلغ';
-    discountValue.value = Number(quotation.discount_value) || 0;
-    taxValue.value = Number(quotation.tax_rate) || 0;
-    selectedCustomer.value = quotation.customer_id ? String(quotation.customer_id) : '';
-    customerQuery.value = quotation.customer_name || '';
-    if (quotation.customer_id && quotation.customer_name) {
-      const customerResult = await customerStore.searchCustomers(quotation.customer_name, {
+    discountType.value = quotation.discountType === 'percentage' ? 'نسبة %' : 'مبلغ';
+    discountValue.value = Number(quotation.discountValue) || 0;
+    taxValue.value = Number(quotation.taxRate) || 0;
+    selectedCustomer.value = quotation.customerId ? String(quotation.customerId) : '';
+    customerQuery.value = quotation.customerName || '';
+    if (quotation.customerId && quotation.customerName) {
+      const customerResult = await customerStore.searchCustomers(quotation.customerName, {
         force: true,
-        params: { branch_id: String(branchId) },
+        params: { branchId: String(branchId) },
       });
-      const matchedCustomer = customerResult.data?.find(customer => String(customer.id) === String(quotation.customer_id));
+      const matchedCustomer = customerResult.data?.find(customer => String(customer.id) === String(quotation.customerId));
       if (matchedCustomer && !customers.value.some(customer => String(customer.id) === String(matchedCustomer.id))) {
         customers.value = [...customers.value, matchedCustomer];
       }
     }
     await nextTick();
     skipDiscountClamp.value = false;
-    importedQuotationNumber.value = quotation.quote_number || String(quotation.id);
+    importedQuotationNumber.value = quotation.quoteNumber || String(quotation.id);
 
     const remainingQuery = { ...route.query };
-    delete remainingQuery.quotation_id;
-    delete remainingQuery.branch_id;
+    delete remainingQuery.quotationId;
+    delete remainingQuery.branchId;
     await router.replace({ path: route.path, query: remainingQuery });
     showToast(`تم تحميل عرض السعر ${importedQuotationNumber.value} إلى نقطة البيع.`, 'success');
   } catch (importError) {
@@ -2524,7 +2477,7 @@ const confirmBranchSelection = async () => {
     return;
   }
   
-  const branchId = tempBranchId.value || authStore.user?.branch_id;
+  const branchId = tempBranchId.value || authStore.user?.branchId;
   if (!branchId) return;
   
   // ✅ استخدم setSelectedBranch لحفظ الاختيار بشكل دائم في localStorage
@@ -2556,7 +2509,7 @@ onMounted(async () => {
   // سجّل ما إذا كان المستخدم اختار فرعاً في جلسة سابقة (قبل fetchBranches يكتب default)
   const hadPriorBranchChoice = localStorage.getItem('selectedBranchId') !== null 
                                && localStorage.getItem('selectedBranchId') !== 'all';
-  const quotationBranchId = String(route.query.branch_id || '').trim();
+  const quotationBranchId = String(route.query.branchId || '').trim();
 
   try {
     branchStore.loadFromStorage();
@@ -2565,7 +2518,7 @@ onMounted(async () => {
     }
   } catch {}
 
-  if (route.query.quotation_id && quotationBranchId && canSelectBranch.value) {
+  if (route.query.quotationId && quotationBranchId && canSelectBranch.value) {
     if (!branchStore.setTemporaryBranch(quotationBranchId)) {
       showToast('فرع عرض السعر غير متاح لحسابك.', 'error');
       return;
@@ -2574,7 +2527,7 @@ onMounted(async () => {
 
   // بعد fetchBranches: أعد تعيين الـ flag بما كان موجوداً قبل الكتابة
   // لأن fetchBranches() قد تكتب selectedBranchId في localStorage تلقائياً
-  userChoseBranch.value = Boolean(route.query.quotation_id && quotationBranchId) || hadPriorBranchChoice;
+  userChoseBranch.value = Boolean(route.query.quotationId && quotationBranchId) || hadPriorBranchChoice;
   
   // ✅ تحميل كل الإعدادات مرة واحدة بدل 3 مرات
   await loadAllSettings();
@@ -2602,7 +2555,7 @@ onMounted(async () => {
     }
   } else {
     // Regular user with assigned branch
-    const defaultBranch = authStore.user?.branch_id;
+    const defaultBranch = authStore.user?.branchId;
     if (defaultBranch && !branchStore.selectedBranchId) {
       // ✅ استخدم setSelectedBranch لحفظ الفرع المخصص
       branchStore.setSelectedBranch(defaultBranch);
@@ -2643,7 +2596,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Animations */
 @keyframes loading {
   0% { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
@@ -2668,7 +2620,6 @@ onUnmounted(() => {
   @apply bg-slate-200 rounded-full;
 }
 
-/* Animation Classes */
 .animate-fadeIn {
   animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }

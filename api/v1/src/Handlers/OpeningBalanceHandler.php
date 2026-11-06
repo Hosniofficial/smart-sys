@@ -412,7 +412,6 @@ class OpeningBalanceHandler extends BaseHandler
             ], 400);
         }
 
-
         $batchNote = 'تاريخ الترحيل: ' . date('Y-m-d H:i:s');
 
         $this->logger->info('Starting opening balance commit', [
@@ -621,7 +620,7 @@ class OpeningBalanceHandler extends BaseHandler
                     $updPurchasePrice->execute([$cost, $productId, $tenantId]);
                 }
 
-                // ── Per-branch Journal Entry ──────────────────────────────
+                // Per-branch Journal Entry
                 $branchInvGLId = $branchGLMap[$branchId] ?? null;
                 if ($postAccounting && $lineTotalCost > 0) {
                     $productName   = $productNameMap[$productId] ?? "منتج #{$productId}";
@@ -734,7 +733,7 @@ class OpeningBalanceHandler extends BaseHandler
 
             // Per-branch JEs are created inside the items loop above
 
-            // ── Mark all posted products with opening_balance_posted = 1 ────────────
+            // Mark all posted products with opening_balance_posted = 1
             // This ensures ProductListResource correctly calculates gl_status = 'posted'
             // (see ProductListResource::transform line 43-44)
             $productIds = array_keys($postedProductIds);

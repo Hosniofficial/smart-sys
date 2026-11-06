@@ -571,7 +571,7 @@ class AccountingReportsHandler extends BaseHandler
         )";
     }
 
-    // ─── AR Aging Report + Bad Debt Provision (IFRS 9) ──────────────────────
+    // AR Aging Report + Bad Debt Provision (IFRS 9)
     /** Return receivables grouped into aging buckets with estimated expected credit loss. */
     public function arAgingReport(Request $request, Response $response): Response
     {

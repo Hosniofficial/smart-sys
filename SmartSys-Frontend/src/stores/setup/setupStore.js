@@ -4,11 +4,10 @@ import setupService from '@/services/setup';
 
 export const useSetupStore = defineStore('setup', () => {
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const loading = ref(false);
   const error   = ref(null);
 
-  // ─── saveSetup ────────────────────────────────────────────────────────────
+  // saveSetup
   /**
    * يرجع {status, data, message} موحد
    */
@@ -34,7 +33,7 @@ export const useSetupStore = defineStore('setup', () => {
     }
   };
 
-  // ─── skipSetup ────────────────────────────────────────────────────────────
+  // skipSetup
   const skipSetup = async () => {
     loading.value = true;
     error.value   = null;
@@ -57,7 +56,7 @@ export const useSetupStore = defineStore('setup', () => {
     }
   };
 
-  // ─── loadSetupStatus ──────────────────────────────────────────────────────
+  // loadSetupStatus
   const loadSetupStatus = async () => {
     loading.value = true;
     error.value   = null;
@@ -80,7 +79,7 @@ export const useSetupStore = defineStore('setup', () => {
     }
   };
 
-  // ─── preview (Opening Balance) ────────────────────────────────────────────
+  // preview (Opening Balance)
   const preview = async (payload) => {
     loading.value = true;
     error.value   = null;
@@ -88,7 +87,7 @@ export const useSetupStore = defineStore('setup', () => {
       const response = await setupService.previewOpeningBalance(payload);
       return {
         status: response.data?.status || 'success',
-        data: response.data?.data ?? response.data,
+        data: response.data?.data,
         message: response.data?.message || ''
       };
     } catch (err) {
@@ -103,7 +102,7 @@ export const useSetupStore = defineStore('setup', () => {
     }
   };
 
-  // ─── commit (Opening Balance) ──────────────────────────────────────────────
+  // commit (Opening Balance)
   const commit = async (payload) => {
     loading.value = true;
     error.value   = null;
@@ -111,7 +110,7 @@ export const useSetupStore = defineStore('setup', () => {
       const response = await setupService.commitOpeningBalance(payload);
       return {
         status: response.data?.status || 'success',
-        data: response.data?.data ?? response.data,
+        data: response.data?.data,
         message: response.data?.message || 'تم حفظ الرصيد الافتتاحي'
       };
     } catch (err) {
@@ -126,7 +125,7 @@ export const useSetupStore = defineStore('setup', () => {
     }
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     loading,
     error,

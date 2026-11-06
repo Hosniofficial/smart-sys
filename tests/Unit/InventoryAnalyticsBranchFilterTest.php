@@ -20,24 +20,24 @@ final class InventoryAnalyticsBranchFilterTest extends TestCase
             ->analyzeInventory($request, new Response());
         $body = json_decode((string) $response->getBody(), true);
         $stockById = [];
-        foreach ($body['data']['branch_products'] ?? [] as $product) {
+        foreach ($body['data']['branchProducts'] ?? [] as $product) {
             $stockById[(int) $product['id']] = $product;
         }
         $movementById = [];
-        foreach ($body['data']['stock_movement'] ?? [] as $product) {
+        foreach ($body['data']['stockMovement'] ?? [] as $product) {
             $movementById[(int) $product['id']] = $product;
         }
 
         self::assertSame(200, $response->getStatusCode());
         self::assertEqualsCanonicalizing([1, 2], array_keys($stockById));
         self::assertEquals(2, $stockById[1]['quantity']);
-        self::assertSame('low', $stockById[1]['stock_status']);
+        self::assertSame('low', $stockById[1]['stockStatus']);
         self::assertEquals(0, $stockById[2]['quantity']);
-        self::assertSame('out_of_stock', $stockById[2]['stock_status']);
-        self::assertEquals(1, $movementById[1]['total_restocks']);
-        self::assertEquals(1, $movementById[1]['total_withdrawals']);
-        self::assertEquals(5, $movementById[1]['total_in']);
-        self::assertEquals(3, $movementById[1]['total_out']);
+        self::assertSame('out_of_stock', $stockById[2]['stockStatus']);
+        self::assertEquals(1, $movementById[1]['totalRestocks']);
+        self::assertEquals(1, $movementById[1]['totalWithdrawals']);
+        self::assertEquals(5, $movementById[1]['totalIn']);
+        self::assertEquals(3, $movementById[1]['totalOut']);
     }
 
     public function testInventoryAnalyticsRejectsMalformedBranchInsteadOfWideningScope(): void
@@ -65,11 +65,11 @@ final class InventoryAnalyticsBranchFilterTest extends TestCase
             ->analyzeInventory($request, new Response());
         $body = json_decode((string) $response->getBody(), true);
         $stockByBranchAndId = [];
-        foreach ($body['data']['branch_products'] ?? [] as $product) {
-            $stockByBranchAndId[(int) $product['branch_id']][(int) $product['id']] = $product;
+        foreach ($body['data']['branchProducts'] ?? [] as $product) {
+            $stockByBranchAndId[(int) $product['branchId']][(int) $product['id']] = $product;
         }
         $movementById = [];
-        foreach ($body['data']['stock_movement'] ?? [] as $product) {
+        foreach ($body['data']['stockMovement'] ?? [] as $product) {
             $movementById[(int) $product['id']] = $product;
         }
 
@@ -81,8 +81,8 @@ final class InventoryAnalyticsBranchFilterTest extends TestCase
         self::assertEquals(100, $stockByBranchAndId[5][1]['quantity']);
         self::assertEquals(0, $stockByBranchAndId[4][2]['quantity']);
         self::assertEquals(3, $stockByBranchAndId[5][2]['quantity']);
-        self::assertEquals(105, $movementById[1]['total_in']);
-        self::assertEquals(3, $movementById[1]['total_out']);
+        self::assertEquals(105, $movementById[1]['totalIn']);
+        self::assertEquals(3, $movementById[1]['totalOut']);
     }
 
     public function testInventoryAnalyticsRejectsBranchFromAnotherTenant(): void

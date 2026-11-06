@@ -7,7 +7,7 @@ const nowMs = () => Date.now();
 
 export const useProductStore = defineStore('product', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     products:      5  * 60 * 1000, // 5 دقائق
     productSearch: 2  * 60 * 1000, // 2 دقيقة
@@ -16,7 +16,6 @@ export const useProductStore = defineStore('product', () => {
     glStatus:      10 * 60 * 1000, // 10 دقائق
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const products          = ref({});
   const productsFetchedAt = ref({});
   const productsInFlight  = ref({});
@@ -33,11 +32,10 @@ export const useProductStore = defineStore('product', () => {
   const glStatusCache          = ref({});
   const glStatusCacheFetchedAt = ref({});
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
-  // ─── fetchProducts ────────────────────────────────────────────────────────
+  // fetchProducts
   const fetchProducts = async ({ branchId = null, force = false } = {}) => {
     try {
       const cacheKey = branchId ? String(branchId) : 'all';
@@ -64,10 +62,10 @@ export const useProductStore = defineStore('product', () => {
       const promise = (async () => {
         try {
           const params = {};
-          if (branchId) params.branch_id = String(branchId);
+          if (branchId) params.branchId = String(branchId);
           
           const response    = await productsService.list(params);
-          const list        = response?.data?.data || response?.data || [];
+          const list        = response?.data?.data || [];
           const newProducts = Array.isArray(list) ? list : (list?.items || []);
 
           products.value[cacheKey]          = newProducts;
@@ -98,7 +96,7 @@ export const useProductStore = defineStore('product', () => {
     }
   };
 
-  // ─── searchProducts ───────────────────────────────────────────────────────
+  // searchProducts
   const searchProducts = async ({ query, branchId, categoryId, limit = 50, force = false } = {}) => {
     try {
       if (!query || query.trim().length < 2) {
@@ -123,11 +121,11 @@ export const useProductStore = defineStore('product', () => {
       }
 
       const params = { q, limit: String(limit) };
-      if (branchId)   params.branch_id    = String(branchId);
-      if (categoryId) params.category_id  = String(categoryId);
+      if (branchId)   params.branchId    = String(branchId);
+      if (categoryId) params.categoryId  = String(categoryId);
 
       const response = await productsService.search(params);
-      const results  = response?.data?.data || response?.data || [];
+      const results  = response?.data?.data || [];
       const list     = Array.isArray(results) ? results : (results?.items || []);
 
       searchCache.value[cacheKey]          = list;
@@ -148,7 +146,7 @@ export const useProductStore = defineStore('product', () => {
     }
   };
 
-  // ─── fetchInventoryStock ──────────────────────────────────────────────────
+  // fetchInventoryStock
   const fetchInventoryStock = async ({ productId, branchId, force = false } = {}) => {
     if (!productId || !branchId) throw new Error('Product ID and Branch ID are required');
 
@@ -159,7 +157,7 @@ export const useProductStore = defineStore('product', () => {
     if (!force && cached && isFresh(cachedAt, TTL.inventory)) return cached;
 
     const response     = await inventoryService.getProductStock(productId, branchId);
-    const data         = response?.data?.data || response?.data || [];
+    const data         = response?.data?.data || [];
     const inventoryItem = Array.isArray(data)
       ? data.find(item => String(item.id) === String(productId))
       : data;
@@ -169,7 +167,7 @@ export const useProductStore = defineStore('product', () => {
     return inventoryItem;
   };
 
-  // ─── fetchProductBatches ──────────────────────────────────────────────────
+  // fetchProductBatches
   const fetchProductBatches = async ({ productId, branchId, force = false } = {}) => {
     if (!productId || !branchId) throw new Error('Product ID and Branch ID are required');
 
@@ -180,7 +178,7 @@ export const useProductStore = defineStore('product', () => {
     if (!force && cached && isFresh(cachedAt, TTL.batches)) return cached;
 
     const response = await inventoryService.getProductBatches(productId, branchId);
-    const data     = response?.data?.data || response?.data || {};
+    const data     = response?.data?.data || {};
     const batches  = { batches: data.batches || [], serials: data.serials || [] };
 
     batchesCache.value[cacheKey]          = batches;
@@ -188,7 +186,7 @@ export const useProductStore = defineStore('product', () => {
     return batches;
   };
 
-  // ─── fetchGLStatus ────────────────────────────────────────────────────────
+  // fetchGLStatus
   const fetchGLStatus = async ({ branchId, force = false } = {}) => {
     if (!branchId) throw new Error('Branch ID is required');
 
@@ -199,7 +197,7 @@ export const useProductStore = defineStore('product', () => {
     if (!force && cached && isFresh(cachedAt, TTL.glStatus)) return cached;
 
     const response   = await productsService.getBranchStatus(branchId);
-    const data       = response?.data?.data || response?.data || {};
+    const data       = response?.data?.data || {};
     const glProducts = data.products || [];
 
     glStatusCache.value[cacheKey]          = glProducts;
@@ -207,7 +205,7 @@ export const useProductStore = defineStore('product', () => {
     return glProducts;
   };
 
-  // ─── activateProductInBranch ──────────────────────────────────────────────
+  // activateProductInBranch
   /**
    * يفعّل منتج في فرع معين
    * الـ component يستخدمها هكذا:
@@ -249,7 +247,7 @@ export const useProductStore = defineStore('product', () => {
     }
   };
 
-  // ─── postOpeningBalance ───────────────────────────────────────────────────
+  // postOpeningBalance
   /**
    * يرسل رصيد افتتاحي لمنتج في فرع
    * الـ component يستخدمها هكذا:
@@ -261,8 +259,8 @@ export const useProductStore = defineStore('product', () => {
       const response = await productsService.postOpeningBalance(payload);
 
       // ✅ استخدام invalidateCacheForBranch للتوحيد
-      if (payload?.branch_id) {
-        invalidateCacheForBranch(payload.branch_id);
+      if (payload?.branchId) {
+        invalidateCacheForBranch(payload.branchId);
       }
 
       return {
@@ -284,10 +282,10 @@ export const useProductStore = defineStore('product', () => {
     try {
       if (!branchId) throw new Error('Branch ID is required');
       const response = await productsService.listOpeningBalances(branchId);
-      const data = response?.data?.data || response?.data || {};
+      const data = response?.data?.data || {};
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
-        data: data.opening_balances || [],
+        data: data.openingBalances || [],
         message: response?.data?.message,
       };
     } catch (error) {
@@ -307,7 +305,7 @@ export const useProductStore = defineStore('product', () => {
       invalidateCacheForBranch(branchId);
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
-        data: response?.data?.data || response?.data || {},
+        data: response?.data?.data || {},
         message: response?.data?.message,
       };
     } catch (error) {
@@ -320,7 +318,7 @@ export const useProductStore = defineStore('product', () => {
     }
   };
 
-  // ─── deleteProduct ────────────────────────────────────────────────────────
+  // deleteProduct
   /**
    * يحذف منتج ويمسح كل الـ cache المرتبط بيه
    * الـ component بيستدعيها بدون انتظار response:
@@ -370,12 +368,12 @@ export const useProductStore = defineStore('product', () => {
     }
   };
 
-  // ─── createProduct ────────────────────────────────────────────────────────
+  // createProduct
   const createProduct = async (payload) => {
     try {
       const response = await productsService.create(payload);
       
-      const newProduct = response?.data?.data || response?.data;
+      const newProduct = response?.data?.data;
       if (newProduct) {
         // Clear all branch caches to force refresh
         clear();
@@ -396,7 +394,7 @@ export const useProductStore = defineStore('product', () => {
     }
   };
 
-  // ─── getProductDetail ─────────────────────────────────────────────────────
+  // getProductDetail
   /**
    * جلب تفاصيل منتج واحد مع جميع البيانات المتداخلة
    * الـ API ترجع ProductDetailResource بنية متداخلة
@@ -407,7 +405,7 @@ export const useProductStore = defineStore('product', () => {
       if (!productId) throw new Error('Product ID is required');
 
       const response = await productsService.get(productId, branchId);
-      const data = response?.data?.data || response?.data;
+      const data = response?.data?.data;
 
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
@@ -424,7 +422,7 @@ export const useProductStore = defineStore('product', () => {
     }
   };
 
-  // ─── Computed Getters ─────────────────────────────────────────────────────
+  // Computed Getters
   const getProductById = (id) =>
     computed(() => {
       for (const list of Object.values(products.value)) {
@@ -441,10 +439,10 @@ export const useProductStore = defineStore('product', () => {
   const getProductGLStatus = (productId, branchId) =>
     computed(() => {
       const branchStatus = glStatusCache.value[String(branchId)] || [];
-      return branchStatus.find(p => String(p.product_id) === String(productId));
+      return branchStatus.find(p => String(p.productId) === String(productId));
     });
 
-  // ─── Cache Clearers ───────────────────────────────────────────────────────
+  // Cache Clearers
   const clear = () => {
     products.value          = {};
     productsFetchedAt.value = {};
@@ -474,7 +472,7 @@ export const useProductStore = defineStore('product', () => {
     batchesCacheFetchedAt.value = {};
   };
 
-  // ─── invalidateCacheForBranch ─────────────────────────────────────────────
+  // invalidateCacheForBranch
   /**
    * يمسح جميع الـ cache المرتبطة بفرع معين
    * يُستخدم بعد أي عملية تؤثر على الكميات (بيع، شراء، مرتجع، تحويل)
@@ -522,7 +520,7 @@ export const useProductStore = defineStore('product', () => {
     delete glStatusCacheFetchedAt.value[bid];
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     products,

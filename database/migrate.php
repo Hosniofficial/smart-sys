@@ -21,9 +21,7 @@ if (file_exists(__DIR__ . '/../.env')) {
     Dotenv\Dotenv::createImmutable(dirname(__DIR__))->load();
 }
 
-// ──────────────────────────────────────────────────────────
 // إعداد الاتصال بقاعدة البيانات باستخدام أسماء إعدادات التطبيق القياسية
-// ──────────────────────────────────────────────────────────
 
 require_once __DIR__ . '/MigrationDatabase.php';
 require_once __DIR__ . '/MigrationHistoryGuard.php';
@@ -40,9 +38,7 @@ try {
 // Migration history is initialized only by `up` after the fresh-database guard passes.
 // `status` remains read-only; an existing schema without a ledger requires reviewed reconciliation.
 
-// ──────────────────────────────────────────────────────────
 // قائمة الـ migrations بالترتيب
-// ──────────────────────────────────────────────────────────
 
 $migrations = [
     '001_create_system_configuration',
@@ -97,9 +93,7 @@ $migrations = [
     '050_add_tax_inclusive_invoice_mode',
 ];
 
-// ──────────────────────────────────────────────────────────
 // معالجة الأوامر
-// ──────────────────────────────────────────────────────────
 
 $command = $argv[1] ?? 'status';
 
@@ -129,9 +123,7 @@ switch ($command) {
         showHelp();
 }
 
-// ──────────────────────────────────────────────────────────
 // الدوال
-// ──────────────────────────────────────────────────────────
 
 function migrationClassName(string $migration): string
 {

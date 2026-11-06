@@ -1,17 +1,18 @@
 import apiClient from '@/config/axios';
 
 // Warranty Service
-// axios baseURL is '/api' and Vite proxy rewrites '/api' -> '/api/v1'.
-// Therefore, DO NOT prefix paths with '/v1' here.
 export const WarrantyService = {
   async list(params = {}) {
     const res = await apiClient.get('/warranty/requests', { params });
-    return res.data?.data || { items: [], total: 0 };
+    return {
+      ...(res.data?.data || { items: [] }),
+      meta: res.data?.meta || {},
+    };
   },
 
   async create(payload) {
     // invoice_id, when supplied, is the selected internal sales.id for this customer and tenant.
-    // payload: { customer_id, invoice_id, product_serial, issue_description, purchase_date, priority, items: [{product_id, quantity, issue_notes}] }
+    // payload: { customerId, invoiceId, productSerial, issueDescription, purchaseDate, priority, items: [{productId, quantity, issueNotes}] }
     const res = await apiClient.post('/warranty/requests', payload);
     return res.data?.data || null;
   },
@@ -33,8 +34,8 @@ export const WarrantyService = {
     return res.data?.data || null;
   },
 
-  async addNote(id, { content, is_internal = false }) {
-    const res = await apiClient.post(`/warranty/requests/${id}/notes`, { note: content, is_internal });
+  async addNote(id, { content, isInternal: is_internal = false }) {
+    const res = await apiClient.post(`/warranty/requests/${id}/notes`, { note: content, isInternal: is_internal });
     return res.data?.data || null;
   },
 

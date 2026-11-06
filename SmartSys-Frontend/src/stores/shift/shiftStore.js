@@ -5,25 +5,22 @@ import { getCurrentShift as getCurrentShiftRequest } from '@/services/shifts';
 const nowMs = () => Date.now();
 
 export const useShiftStore = defineStore('shift', () => {
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     currentShift: 1 * 60 * 1000,  // دقيقة واحدة
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const currentShift = ref(null);
   const currentShiftFetchedAt = ref(null);
   const isLoading = ref(false);
   const error = ref(null);
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
-  // ─── Getters ──────────────────────────────────────────────────────────────
   const isShiftOpen = computed(() => !!currentShift.value);
 
-  // ─── Actions ──────────────────────────────────────────────────────────────
+  // Actions
 
   /**
    * جلب الوردية الحالية

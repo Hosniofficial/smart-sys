@@ -90,6 +90,6 @@ final class JwtAuthMiddlewareExceptionBoundaryTest extends TestCase
 
         self::assertSame(403, $response->getStatusCode());
         $error = json_decode((string) $response->getBody(), true);
-        self::assertSame('session_revoked', $error['error_code']);
+        self::assertSame('session_revoked', $error['errors']['errorCode']);
     }
 }

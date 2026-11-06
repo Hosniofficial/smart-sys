@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="loading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="إدارة الجلسات والورديات"
@@ -30,7 +28,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPI Summary -->
       <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
         <div v-for="kpi in [
           { label: 'إجمالي الجلسات', val: total, icon: 'fa-clipboard-list', color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -47,7 +44,6 @@
         </div>
       </section>
 
-      <!-- Filters Panel -->
       <transition name="slide-down">
         <div v-if="showFilters" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden animate-fadeIn">
           <div class="p-6 space-y-6">
@@ -115,7 +111,6 @@
         </div>
       </transition>
 
-      <!-- Active Filter Chips -->
       <div v-if="hasActiveSessionFilters" class="flex flex-wrap gap-2 animate-fadeIn">
         <div v-for="chip in [
           { show: deviceFilter, label: deviceFilter, clear: () => deviceFilter = '' },
@@ -129,7 +124,6 @@
         </div>
       </div>
 
-      <!-- Main Data Table -->
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
@@ -165,15 +159,15 @@
                     </div>
                     <div class="flex flex-col">
                       <span class="text-xs font-bold text-slate-900">#{{ row.id }}</span>
-                      <span class="text-[10px] font-medium text-slate-400">{{ row.cashier_name || 'كاشير' }}</span>
+                      <span class="text-[10px] font-medium text-slate-400">{{ row.cashierName || 'كاشير' }}</span>
                     </div>
                   </div>
                 </td>
                 <td class="px-4 py-4">
-                  <div v-if="row.shift_id" class="flex flex-col gap-1">
+                  <div v-if="row.shiftId" class="flex flex-col gap-1">
                     <span class="inline-flex w-fit items-center gap-1.5 rounded-md border border-indigo-100 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700">
                       <i class="fas fa-clock text-[9px]"></i>
-                      #{{ row.shift_id }}
+                      #{{ row.shiftId }}
                     </span>
                     <span class="text-[9px] text-slate-400">{{ row.status === 'open' ? 'وردية مفتوحة' : 'مرتبطة بالجلسة' }}</span>
                   </div>
@@ -184,8 +178,8 @@
                 </td>
                 <td class="px-4 py-4">
                   <div class="flex flex-col gap-0.5">
-                    <div class="text-[10px] font-bold text-slate-700 tracking-tighter">{{ formatDateTime(row.start_time) }}</div>
-                    <div v-if="row.end_time" class="text-[9px] font-medium text-slate-400 italic">أغلقت: {{ formatDateTime(row.end_time) }}</div>
+                    <div class="text-[10px] font-bold text-slate-700 tracking-tighter">{{ formatDateTime(row.startTime) }}</div>
+                    <div v-if="row.endTime" class="text-[9px] font-medium text-slate-400 italic">أغلقت: {{ formatDateTime(row.endTime) }}</div>
                     <div v-else class="text-[9px] font-bold text-blue-600 flex items-center gap-1"><span class="w-1 h-1 rounded-full bg-blue-600 animate-pulse"></span> نشطة حالياً</div>
                   </div>
                 </td>
@@ -193,7 +187,7 @@
                   <div class="min-w-[140px] space-y-1">
                     <template v-if="summaries[row.id]">
                       <div class="flex justify-between text-[10px] font-bold"><span class="text-slate-400">المدفوعات:</span><span class="text-slate-900">{{ formatCurrency(summaries[row.id]?.totals?.payments || 0) }}</span></div>
-                      <div class="flex justify-between text-[10px] font-bold border-t border-slate-50 pt-1"><span class="text-slate-400">المتوقع:</span><span class="text-slate-900 font-mono tracking-tighter">{{ formatCurrency(summaries[row.id]?.calculated?.expected_cash || 0) }}</span></div>
+                      <div class="flex justify-between text-[10px] font-bold border-t border-slate-50 pt-1"><span class="text-slate-400">المتوقع:</span><span class="text-slate-900 font-mono tracking-tighter">{{ formatCurrency(summaries[row.id]?.calculated?.expectedCash || 0) }}</span></div>
                     </template>
                     <div v-else class="h-8 w-24 bg-slate-50 animate-pulse rounded"></div>
                   </div>
@@ -205,14 +199,14 @@
                 </td>
                 <td class="px-4 py-4 text-center">
                    <template v-if="summaries[row.id] && !summaries[row.id]?._partial">
-                    <span v-if="summaries[row.id]?.calculated?.variance_amount !== null"
-                          :class="[summaries[row.id].calculated.variance_amount > 0 ? 'text-emerald-600 border-emerald-100 bg-emerald-50' : summaries[row.id].calculated.variance_amount < 0 ? 'text-rose-600 border-rose-100 bg-rose-50' : 'text-slate-400 bg-slate-50 border-slate-100']"
+                    <span v-if="summaries[row.id]?.calculated?.varianceAmount !== null"
+                          :class="[summaries[row.id].calculated.varianceAmount > 0 ? 'text-emerald-600 border-emerald-100 bg-emerald-50' : summaries[row.id].calculated.varianceAmount < 0 ? 'text-rose-600 border-rose-100 bg-rose-50' : 'text-slate-400 bg-slate-50 border-slate-100']"
                           class="px-1.5 py-0.5 rounded text-[11px] font-bold border font-mono">
-                      {{ formatCurrency(summaries[row.id].calculated.variance_amount) }}
+                      {{ formatCurrency(summaries[row.id].calculated.varianceAmount) }}
                     </span>
                     <span v-else class="text-slate-300 font-mono">—</span>
                   </template>
-                  <span v-else-if="row.variance_amount" :class="row.variance_amount > 0 ? 'text-emerald-600' : 'text-rose-600'" class="text-xs font-bold font-mono">...</span>
+                  <span v-else-if="row.varianceAmount" :class="row.varianceAmount > 0 ? 'text-emerald-600' : 'text-rose-600'" class="text-xs font-bold font-mono">...</span>
                   <span v-else class="text-slate-200">—</span>
                 </td>
                 <td class="px-4 py-4 text-center">
@@ -227,7 +221,6 @@
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ currentPage }}</span> من <span class="text-slate-900">{{ totalPages }}</span>
@@ -266,7 +259,7 @@
           <div class="flex items-center gap-3 mb-6">
             <div class="w-8 h-8 bg-blue-100 border border-blue-200 rounded-lg flex items-center justify-center text-blue-700 text-xs font-bold">{{ detailsSession.id }}</div>
             <div>
-              <p class="text-xs font-bold text-slate-900">{{ getbranchName(detailsSession.branch_id) }}</p>
+              <p class="text-xs font-bold text-slate-900">{{ getbranchName(detailsSession.branchId) }}</p>
               <p class="text-[10px] text-slate-400 font-medium mt-0.5">محطة: {{ deviceLabel(detailsSession) }}</p>
             </div>
           </div>
@@ -276,13 +269,13 @@
               <span :class="[detailsSession.status === 'open' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200', 'px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-widest']">
                 {{ statusLabel(detailsSession.status) }}
               </span>
-              <span class="text-[10px] font-bold text-blue-500 uppercase tracking-widest">{{ formatDate(detailsSession.start_time) }}</span>
+              <span class="text-[10px] font-bold text-blue-500 uppercase tracking-widest">{{ formatDate(detailsSession.startTime) }}</span>
             </div>
             <div class="flex items-center gap-2 text-xs font-bold text-slate-700">
               <i class="fas fa-clock text-blue-500"></i>
-              <span>{{ formatTime(detailsSession.start_time) }}</span>
+              <span>{{ formatTime(detailsSession.startTime) }}</span>
               <span class="text-slate-300 mx-1">→</span>
-              <span v-if="detailsSession.end_time">{{ formatTime(detailsSession.end_time) }}</span>
+              <span v-if="detailsSession.endTime">{{ formatTime(detailsSession.endTime) }}</span>
               <span v-else class="text-emerald-600 flex items-center gap-1">
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> الآن
               </span>
@@ -291,10 +284,10 @@
 
           <div class="grid grid-cols-2 gap-4 mt-6">
             <div v-for="info in [
-              { l: 'الرصيد الافتتاحي', v: summaries[detailsSession.id]?.calculated?.opening_balance, c: 'text-slate-600' },
-              { l: 'إجمالي المبيعات', v: summaries[detailsSession.id]?.totals?.cash_in, c: 'text-emerald-600' },
-              { l: 'إجمالي المصروفات', v: summaries[detailsSession.id]?.totals?.cash_out, c: 'text-rose-600' },
-              { l: 'المتوقع حالياً', v: summaries[detailsSession.id]?.calculated?.expected_cash, c: 'text-blue-600 font-black' }
+              { l: 'الرصيد الافتتاحي', v: summaries[detailsSession.id]?.calculated?.openingBalance, c: 'text-slate-600' },
+              { l: 'إجمالي المبيعات', v: summaries[detailsSession.id]?.totals?.cashIn, c: 'text-emerald-600' },
+              { l: 'إجمالي المصروفات', v: summaries[detailsSession.id]?.totals?.cashOut, c: 'text-rose-600' },
+              { l: 'المتوقع حالياً', v: summaries[detailsSession.id]?.calculated?.expectedCash, c: 'text-blue-600 font-black' }
             ]" :key="info.l" class="p-4 rounded-lg bg-slate-50 border border-slate-100 space-y-1">
               <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{{ info.l }}</p>
               <p :class="[info.c, 'text-sm font-bold font-mono tracking-tighter']">{{ formatCurrency(info.v || 0) }}</p>
@@ -308,7 +301,7 @@
                 <thead><tr class="bg-slate-50 border-b border-slate-100"><th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">الوقت</th><th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">النوع</th><th class="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase text-left">المبلغ</th></tr></thead>
                 <tbody class="divide-y divide-slate-50">
                   <tr v-for="tx in transactions[detailsSession.id]" :key="tx.id" class="hover:bg-slate-50 transition-colors">
-                    <td class="px-4 py-3 text-slate-400 font-mono">{{ formatTime(tx.created_at) }}</td>
+                    <td class="px-4 py-3 text-slate-400 font-mono">{{ formatTime(tx.createdAt) }}</td>
                     <td class="px-4 py-3 font-bold text-slate-700">
                       {{ getTransactionTypeLabel(tx.type) }}
                       <span v-if="tx.status === 'cancelled'" class="mr-1 text-[9px] text-slate-400">ملغاة</span>
@@ -323,12 +316,12 @@
             </div>
           </div>
 
-          <div v-if="summaries[detailsSession.id]?.calculated?.variance_amount" class="mt-8 p-6 rounded-xl bg-amber-50 border border-amber-100 space-y-3 shadow-inner">
+          <div v-if="summaries[detailsSession.id]?.calculated?.varianceAmount" class="mt-8 p-6 rounded-xl bg-amber-50 border border-amber-100 space-y-3 shadow-inner">
             <div class="flex items-center gap-3">
               <h4 class="text-[10px] font-bold text-amber-800 uppercase tracking-widest">تقرير الفروقات والتصفية</h4>
-              <span class="text-sm font-bold text-amber-900 font-mono tracking-tighter">{{ formatCurrency(summaries[detailsSession.id].calculated.variance_amount) }}</span>
+              <span class="text-sm font-bold text-amber-900 font-mono tracking-tighter">{{ formatCurrency(summaries[detailsSession.id].calculated.varianceAmount) }}</span>
             </div>
-            <p class="text-xs text-amber-700 leading-relaxed italic border-t border-amber-200/50 pt-3">{{ summaries[detailsSession.id]?.session?.variance_reason || 'تم إغلاق الجلسة دون تبرير للفروقات المذكورة.' }}</p>
+            <p class="text-xs text-amber-700 leading-relaxed italic border-t border-amber-200/50 pt-3">{{ summaries[detailsSession.id]?.session?.varianceReason || 'تم إغلاق الجلسة دون تبرير للفروقات المذكورة.' }}</p>
           </div>
       </template>
       <template #footer>
@@ -341,7 +334,6 @@
       </template>
     </HistoryDetailsModal>
 
-    <!-- Rename Device Modal -->
     <transition name="fade">
       <div v-if="showRenameDevice" class="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
         <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-slate-200 animate-modalIn">
@@ -428,8 +420,8 @@ const toDateRef   = ref(null);
 const deviceOptions = computed(() => {
   const set = new Set();
   for (const it of items.value) {
-    if (it.device_name) set.add(String(it.device_name));
-    else if (it.device_id) set.add(String(it.device_id));
+    if (it.deviceName) set.add(String(it.deviceName));
+    else if (it.deviceId) set.add(String(it.deviceId));
     else if (it.device) set.add(String(it.device));
   }
   try {
@@ -479,21 +471,21 @@ async function fetchData() {
   try {
     const baseParams = filters.getApiParams();
     const params = {
-      page: baseParams.page, per_page: baseParams.perPage, status: baseParams.status || undefined,
-      branch_id: !isExempt.value ? (branchIsolation.currentBranchId.value || undefined) : (selectedBranch.value || undefined),
-      from_date: baseParams.dateFrom || undefined, to_date: baseParams.dateTo || undefined,
-      session_type: sessionType.value || undefined, device: deviceFilter.value || undefined, has_variance: hasVariance.value || undefined,
+      page: baseParams.page, perPage: baseParams.perPage, status: baseParams.status || undefined,
+      branchId: !isExempt.value ? (branchIsolation.currentBranchId.value || undefined) : (selectedBranch.value || undefined),
+      fromDate: baseParams.dateFrom || undefined, toDate: baseParams.dateTo || undefined,
+      sessionType: sessionType.value || undefined, device: deviceFilter.value || undefined, hasVariance: hasVariance.value || undefined,
     };
     const sessionStore = useSessionStore();
     const result = await sessionStore.fetchSessions(params);
     if (result.status === 'success') {
       items.value = result.data || [];
       totalCount.value = result.total ?? result.data?.length ?? 0;
-      kpiTotalExpectedCash.value = result.kpi?.total_expected_cash ?? 0;
-      kpiSessionsWithVariance.value = result.kpi?.sessions_with_variance ?? 0;
+      kpiTotalExpectedCash.value = result.kpi?.totalExpectedCash ?? 0;
+      kpiSessionsWithVariance.value = result.kpi?.sessionsWithVariance ?? 0;
       for (const item of items.value) {
         if (!summaries.value[item.id] || summaries.value[item.id]?._partial) {
-          summaries.value[item.id] = { variance_amount: item.variance_amount ?? null, calculated: { opening_balance: parseFloat(item.opening_cash_amount || 0), expected_cash: null }, totals: { payments: 0, cash_in: 0, cash_out: 0 }, _partial: true };
+          summaries.value[item.id] = { varianceAmount: item.varianceAmount ?? null, calculated: { openingBalance: parseFloat(item.openingCashAmount || 0), expectedCash: null }, totals: { payments: 0, cashIn: 0, cashOut: 0 }, _partial: true };
         }
       }
       const sessionIds = items.value.map(item => item.id);
@@ -538,10 +530,10 @@ async function printSession(row) {
     }
     const summary = summaries.value[row.id] || {};
     const sessionTransactions = summary.transactions || transactions.value[row.id] || [];
-    const printOptions = await resolvePrintOptions(row, row.branch_id || selectedBranch.value);
+    const printOptions = await resolvePrintOptions(row, row.branchId || selectedBranch.value);
     const html = buildSessionHtml({
       ...row,
-      branch_name: getbranchName(row.branch_id),
+      branchName: getbranchName(row.branchId),
       summary,
       transactions: sessionTransactions,
     }, printOptions);
@@ -561,7 +553,7 @@ const formatDateTime = (v) => v ? new Date(v).toLocaleString('en-US', { year: 'n
 const formatDate = (v) => v ? new Date(v).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
 const formatTime = (v) => v ? new Date(v).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '';
 
-const deviceLabel = (row) => row?.device_name || (localStorage.getItem('pos_device_name') || '').trim() || (row?.device_id ? `Device ${row.device_id}` : '—');
+const deviceLabel = (row) => row?.deviceName || (localStorage.getItem('pos_device_name') || '').trim() || (row?.deviceId ? `Device ${row.deviceId}` : '—');
 const statusLabel = (s) => ({ open: 'نشطة', closed: 'مغلقة', cancelled: 'ملغاة' }[s] || s);
 const statusClass = (s) => ({ open: 'text-blue-600 border-blue-100 bg-blue-50', closed: 'text-slate-400 border-slate-100 bg-slate-50', cancelled: 'text-rose-600 border-rose-100 bg-rose-50' }[s] || 'bg-slate-50');
 const getbranchName = (id) => branches.value.find(b => b.id === id)?.name || 'الفرع الرئيسي';
@@ -582,7 +574,7 @@ onMounted(async () => {
     await Promise.all([fetchSettings(), branchStore.fetchBranches().catch(() => {})]);
   }
   await ensureExemptionLoaded();
-  if (!isExempt.value && authStore.user?.branch_id) { selectedBranch.value = String(authStore.user.branch_id); }
+  if (!isExempt.value && authStore.user?.branchId) { selectedBranch.value = String(authStore.user.branchId); }
   fetchData();
 });
 </script>

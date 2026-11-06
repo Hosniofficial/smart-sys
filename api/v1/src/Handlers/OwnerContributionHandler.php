@@ -188,7 +188,16 @@ class OwnerContributionHandler extends BaseHandler
             $service = new OwnerContributionService($this->db, $tenantId, $userId, $this->audit);
             $result = $service->listContributions($filters, $limit, $offset);
 
-            return $this->successResponse($response, $result);
+            return $this->jsonResponse($response, [
+                'status' => 'success',
+                'message' => '',
+                'data' => ['items' => $result['data']],
+                'meta' => [
+                    'total' => $result['total'],
+                    'limit' => $result['limit'],
+                    'offset' => $result['offset'],
+                ],
+            ], 200, false);
 
         } catch (\Throwable $e) {
             $this->logger->error('Failed to list contributions', [

@@ -23,7 +23,6 @@
     </transition>
   </router-view>
 
-  <!-- Global overlays -->
   <GlobalLoader />
   <GlobalToasts />
   <AlertComponent 

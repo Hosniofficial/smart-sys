@@ -11,14 +11,14 @@ export const productsService = {
 
   getBranchStatus(branchId) {
     return apiClient.get('/product-branch/status', {
-      params: { branch_id: String(branchId) },
+      params: { branchId: String(branchId) },
     });
   },
 
   activateInBranch(productId, branchId) {
     return apiClient.post('/product-branch/activate', {
-      product_id: productId,
-      branch_id: Number(branchId),
+      productId: productId,
+      branchId: Number(branchId),
     });
   },
 
@@ -28,14 +28,14 @@ export const productsService = {
 
   listOpeningBalances(branchId) {
     return apiClient.get('/product-branch/opening-balances', {
-      params: { branch_id: String(branchId) },
+      params: { branchId: String(branchId) },
     });
   },
 
   reverseOpeningBalance(productId, branchId) {
     return apiClient.post('/product-branch/opening-balance/reverse', {
-      product_id: Number(productId),
-      branch_id: Number(branchId),
+      productId: Number(productId),
+      branchId: Number(branchId),
     });
   },
 
@@ -53,7 +53,7 @@ export const productsService = {
 
   get(id, branchId) {
     return apiClient.get(`/products/${id}`, {
-      params: branchId ? { branch_id: String(branchId) } : undefined,
+      params: branchId ? { branchId: String(branchId) } : undefined,
     });
   },
 };

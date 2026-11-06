@@ -39,9 +39,7 @@ class ReturnService
         $this->logger       = MonologHandler::getInstance('returns');
     }
 
-    // -------------------------------------------------------------------------
     // Account resolution
-    // -------------------------------------------------------------------------
 
     /**
      * Resolve account ID via settings key then account code fallback.
@@ -353,9 +351,7 @@ class ReturnService
         }
     }
 
-    // -------------------------------------------------------------------------
     // allocateCustomerBalance
-    // -------------------------------------------------------------------------
 
     /**
      * توزيع مبلغ خصم من رصيد العميل (من مرتجع مبيعات) على فواتير المبيعات المستحقة.
@@ -596,10 +592,7 @@ class ReturnService
         ")->execute([$this->tenantId, $returnId, $saleId, $allocatedAmount, $createdBy ?? 1]);
     }
 
-    // -------------------------------------------------------------------------
-    // =========================================================================
     // createReturn — full return creation flow extracted from ReturnsHandler
-    // =========================================================================
 
     /**
      * إنشاء مرتجع كامل (مبيعات أو مشتريات).
@@ -719,7 +712,7 @@ class ReturnService
         $data['items'] = $normalized['items'];
         $data['discount_value'] = 0;
 
-        // ── حساب الإجماليات ───────────────────────────────────────────────────
+        // حساب الإجماليات
         $grossTotal = $normalized['subtotal'];
         $taxTotal = $normalized['tax'];
 
@@ -745,7 +738,7 @@ class ReturnService
             throw new \Exception('paid_amount cannot exceed total amount');
         }
 
-        // ── رقم المرتجع ───────────────────────────────────────────────────────
+        // رقم المرتجع
         $timestamp = strtotime((string) $data['return_date']);
         $datePart  = date('ymd', $timestamp);
         $prefix    = $data['return_type'] === 'sale' ? 'SR' : 'PR';
@@ -769,7 +762,7 @@ class ReturnService
         }
         $returnNumber = sprintf('%s-%s-%03d', $prefix, $datePart, $maxSequence + 1);
 
-        // ── بيانات الفاتورة الأصلية ───────────────────────────────────────────
+        // بيانات الفاتورة الأصلية
         $saleId      = null;
         $purchaseId  = null;
         $invoiceNumber = null;
@@ -871,7 +864,7 @@ class ReturnService
                 }
                 $grandTotal = $totalAfterDiscount + $taxTotal;
 
-                // ── حساب paid_amount بناءً على الديون والـ refund_mode ────────────────────
+                // حساب paid_amount بناءً على الديون والـ refund_mode
                 if ($saleOutstanding === 0 && $refundMode !== 'refund_excess') {
                     // الفاتورة الأصلية مسددة بالكامل = العميل دفع نقداً = يجب رد المبلغ نقداً
                     // في mode=auto، يكون ذكياً: خصم من ديون فواتير أخرى أولاً، ثم رد الباقي نقداً
@@ -967,11 +960,11 @@ class ReturnService
             }
         }
 
-        // ── INSERT returns ────────────────────────────────────────────────────
+        // INSERT returns
         $methodIsCash = $this->isCashMethodInternal((int) $data['payment_method_id'], $tenantId);
         $isCash       = $methodIsCash && $data['paid_amount'] > 0;
 
-        // ── LIQUIDITY VALIDATION (Phase 5 — Sale Return Cash Refund) ──────────
+        // LIQUIDITY VALIDATION (Phase 5 — Sale Return Cash Refund)
         // A sale return with paid_amount > 0 using a cash or bank method is an OUTFLOW:
         //   Dr. Sales Returns  /  Cr. Cash|Bank  (money leaves the register)
         // This path is NOT hit for credit-note-only returns (paid_amount = 0)
@@ -1088,7 +1081,7 @@ class ReturnService
             )->execute([$data['paid_amount'], $refundMethod, $returnId, $tenantId]);
         }
 
-        // ── INSERT return_items + stock ───────────────────────────────────────
+        // INSERT return_items + stock
         $stmtItems = $this->db->prepare("
             INSERT INTO return_items (
                 return_id, product_id, unit_id, quantity,
@@ -1128,7 +1121,7 @@ class ReturnService
             );
         }
 
-        // ── القيد المحاسبي ────────────────────────────────────────────────────
+        // القيد المحاسبي
         $originalOutstanding = $data['return_type'] === 'sale' ? $saleOutstanding : $purchaseOutstanding;
 
         $journalEntryId = $this->accounting->postReturnJournalEntry(
@@ -1152,7 +1145,7 @@ class ReturnService
         $this->db->prepare("UPDATE returns SET journal_entry_id = ? WHERE id = ? AND tenant_id = ?")
             ->execute([$journalEntryId, $returnId, $tenantId]);
 
-        // ── INSERT payments ───────────────────────────────────────────────────
+        // INSERT payments
         $paymentType  = $data['return_type'] === 'sale' ? 'return_payment' : 'payment_for_return';
         $paymentNotes = $data['notes'] ?? ('مرتجع ' . ($data['return_type'] === 'sale' ? 'مبيعات' : 'مشتريات') . ' #' . $returnNumber);
         $currency     = $this->settingsRepo->get($tenantId, 'company.currency', 'EGP') ?: 'EGP';
@@ -1187,7 +1180,7 @@ class ReturnService
             (new PurchaseService($this->db, $tenantId, $userId))->recalculateBalance((int) $purchaseId);
         }
 
-        // ── cash_transactions ─────────────────────────────────────────────────
+        // cash_transactions
         if ($isCash && $data['paid_amount'] > 0) {
             $cashTransactionType = $data['return_type'] === 'sale' ? 'return_payment' : 'return_receipt';
             $customerId  = $data['return_type'] === 'sale' ? ($data['party_id'] ?? null) : null;
@@ -1218,7 +1211,7 @@ class ReturnService
             ]);
         }
 
-        // ── توزيع رصيد العميل ─────────────────────────────────────────────────
+        // توزيع رصيد العميل
         if ($data['return_type'] === 'sale' && !empty($data['party_id']) && $deductFromCustomerBalance > 0) {
             // ✅ IMPORTANT: Always pass originalSaleId to register allocation on the original invoice first
             // Then allocateCustomerBalance() will distribute remaining balance to other invoices (FIFO by date)
@@ -1245,7 +1238,7 @@ class ReturnService
         ];
     }
 
-    // ── Private helpers for createReturn ─────────────────────────────────────
+    // Private helpers for createReturn
 
     private function isCashMethodInternal(int $paymentMethodId, int $tenantId): bool
     {

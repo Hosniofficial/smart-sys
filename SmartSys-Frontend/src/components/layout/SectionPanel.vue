@@ -5,7 +5,6 @@
     :style="{ right: sidebarCollapsed ? '72px' : '256px' }"
     :aria-label="`التنقل داخل ${section.name}`"
   >
-    <!-- Header -->
     <div class="flex items-center justify-between gap-3 px-4 py-4 border-b border-slate-100 shrink-0">
       <div class="flex items-center gap-2 min-w-0">
         <component :is="section.icon" :size="18" class="text-blue-600 shrink-0" />
@@ -21,7 +20,6 @@
       </button>
     </div>
 
-    <!-- Search (if many items) -->
     <div v-if="section.items?.length > 8" class="px-3 pt-3 shrink-0">
       <label :for="`section-search-${section.key}`" class="sr-only">البحث في {{ section.name }}</label>
       <input
@@ -33,7 +31,6 @@
       />
     </div>
 
-    <!-- Items -->
     <nav class="flex-1 overflow-y-auto p-3 custom-scroll" :aria-label="section.name">
       <div v-for="group in groups" :key="group.key" class="mb-4 last:mb-0">
         <h3 v-if="group.name" class="px-2 mb-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">

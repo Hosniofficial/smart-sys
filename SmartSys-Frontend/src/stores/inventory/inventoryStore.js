@@ -7,7 +7,7 @@ const nowMs = () => Date.now();
 
 export const useInventoryStore = defineStore('inventory', () => {
 
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     stock:        1 * 60 * 1000, // دقيقة واحدة
     batches:      1 * 60 * 1000, // دقيقة واحدة
@@ -15,7 +15,6 @@ export const useInventoryStore = defineStore('inventory', () => {
     history:      2 * 60 * 1000, // دقيقتان
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const stockCache          = ref({});
   const stockCacheFetchedAt = ref({});
   const stockInFlight       = ref(null);
@@ -29,30 +28,17 @@ export const useInventoryStore = defineStore('inventory', () => {
   const historyCache          = ref({});
   const historyCacheFetchedAt = ref({});
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
-  /**
-   * يقبل camelCase أو snake_case في نفس الوقت
-   * fetchStock({ productId, branchId })
-   * fetchStock({ product_id, branch_id })   ← من الـ component القديم
-   */
-  const resolveStockParams = (params) => ({
-    productId: params.productId ?? params.product_id,
-    branchId:  params.branchId  ?? params.branch_id,
-    force:     params.force     ?? false,
-  });
-
-  // ─── fetchStock ───────────────────────────────────────────────────────────
+  // fetchStock
   /**
    * الـ component يستخدمها هكذا:
    *   const data = await inventoryStore.fetchStock(params);
-   *   // params = { product_id, branch_id } أو { productId, branchId }
+   *   // params = { productId, branchId }
    */
-  const fetchStock = async (params = {}) => {
+  const fetchStock = async ({ productId, branchId, force = false } = {}) => {
     try {
-      const { productId, branchId, force } = resolveStockParams(params);
       if (!productId || !branchId) throw new Error('Product ID and Branch ID are required');
 
       const cacheKey = `${productId}_${branchId}`;
@@ -78,7 +64,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       const promise = (async () => {
         try {
           const response  = await inventoryService.getProductStock(productId, branchId);
-          const data      = response?.data?.data || response?.data || [];
+          const data      = response?.data?.data || [];
           const stockItem = Array.isArray(data)
             ? data.find(item => String(item.id) === String(productId))
             : data;
@@ -111,7 +97,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   };
 
-  // ─── fetchAllStock - for general inventory listing by branch using fetchStock for each product
+  // fetchAllStock - for general inventory listing by branch using fetchStock for each product
   const fetchAllStock = async ({ branchId, page = 1, perPage = 50 } = {}) => {
     try {
       if (!branchId) {
@@ -145,9 +131,9 @@ export const useInventoryStore = defineStore('inventory', () => {
               ...product,
               ...stockResponse.data,
               // Ensure we have product info merged with stock info
-              product_id: product.id,
-              product_name: product.name,
-              branch_id: branchId
+              productId: product.id,
+              productName: product.name,
+              branchId: branchId
             });
           }
         } catch (stockError) {
@@ -155,12 +141,12 @@ export const useInventoryStore = defineStore('inventory', () => {
           // Still include product with default stock values
           inventoryData.push({
             ...product,
-            product_id: product.id,
-            product_name: product.name,
-            branch_id: branchId,
+            productId: product.id,
+            productName: product.name,
+            branchId: branchId,
             quantity: 0,
-            stock_quantity: 0,
-            available_quantity: 0
+            stockQuantity: 0,
+            availableQuantity: 0
           });
         }
       }
@@ -191,20 +177,20 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   };
 
-  // ─── adjustStock ──────────────────────────────────────────────────────────
+  // adjustStock
   /**
    * adjusts stock
    * returns standardized response like settingsStore
    */
   const adjustStock = async (payload) => {
     try {
-      const branchId = payload?.branch_id ?? payload?.branchId;
+      const branchId = payload?.branchId ?? payload?.branchId;
       if (!branchId) throw new Error('Branch ID is required for stock adjustment');
 
       const response = await inventoryService.adjustStock(branchId, payload);
 
       // clear cache for affected product and branch so it fetches from API
-      const productId = payload?.product_id ?? payload?.productId;
+      const productId = payload?.productId ?? payload?.productId;
 
       // ✅ تحديث تلقائي للكميات — امسح cache المنتجات عند التسويات
       const productStore = useProductStore();
@@ -235,18 +221,18 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   };
 
-  // ─── transferStock ──────────────────────────────────────────────────────────
-  const transferStock = async ({ product_id, from_branch_id, to_branch_id, quantity, notes = '' }) => {
+  // transferStock
+  const transferStock = async ({ productId, fromBranchId, toBranchId, quantity, notes = '' }) => {
     try {
-      const response = await inventoryService.transferStock(from_branch_id, {
-        from_branch: from_branch_id,
-        to_branch: to_branch_id,
-        product_id,
+      const response = await inventoryService.transferStock(fromBranchId, {
+        fromBranch: fromBranchId,
+        toBranch: toBranchId,
+        productId,
         quantity,
         notes: notes || null
       });
-      clearBranchCache(String(from_branch_id));
-      clearBranchCache(String(to_branch_id));
+      clearBranchCache(String(fromBranchId));
+      clearBranchCache(String(toBranchId));
       return {
         status: response?.data?.status === 'success' ? 'success' : 'error',
         data: response?.data?.data ?? {},
@@ -262,7 +248,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   };
 
-  // ─── getProductHistory ────────────────────────────────────────────────────
+  // getProductHistory
   /**
    * gets inventory movement history for a product
    * returns standardized response like settingsStore
@@ -284,11 +270,11 @@ export const useInventoryStore = defineStore('inventory', () => {
       }
 
       const response = await inventoryService.getProductMovements({
-          product_id: String(productId),
+          productId: String(productId),
           limit: String(limit),
-          ...(branchId ? { branch_id: String(branchId) } : {})
+          ...(branchId ? { branchId: String(branchId) } : {})
         });
-      const list = response?.data?.data || response?.data || [];
+      const list = response?.data?.data || [];
 
       historyCache.value[cacheKey]          = list;
       historyCacheFetchedAt.value[cacheKey] = nowMs();
@@ -308,7 +294,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   };
 
-  // ─── fetchBatches ─────────────────────────────────────────────────────────
+  // fetchBatches
   const fetchBatches = async ({ productId, branchId, force = false } = {}) => {
     try {
       if (!productId || !branchId) throw new Error('Product ID and Branch ID are required');
@@ -326,7 +312,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       }
 
       const response = await inventoryService.getProductBatches(productId, branchId);
-      const data    = response?.data?.data || response?.data || {};
+      const data    = response?.data?.data || {};
       const batches = { batches: data.batches || [], serials: data.serials || [] };
 
       batchesCache.value[cacheKey]          = batches;
@@ -347,7 +333,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   };
 
-  // ─── fetchStockSummary ────────────────────────────────────────────────────
+  // fetchStockSummary
   const fetchStockSummary = async ({ branchId, force = false } = {}) => {
     try {
       if (!branchId) throw new Error('Branch ID is required');
@@ -365,7 +351,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       }
 
       const response = await inventoryService.getStockSummary(branchId);
-      const data    = response?.data?.data || response?.data || [];
+      const data    = response?.data?.data || [];
       const summary = Array.isArray(data) ? data : (data?.items || []);
 
       summaryCache.value[cacheKey]          = summary;
@@ -386,7 +372,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   };
 
-  // ─── Computed Getters ─────────────────────────────────────────────────────
+  // Computed Getters
   const getStock = (productId, branchId) =>
     computed(() => stockCache.value[`${productId}_${branchId}`]);
 
@@ -405,7 +391,7 @@ export const useInventoryStore = defineStore('inventory', () => {
   const getAvailableQuantity = (productId, branchId) =>
     computed(() => getStock(productId, branchId).value?.quantity || 0);
 
-  // ─── Cache Clearers ───────────────────────────────────────────────────────
+  // Cache Clearers
   const clear = () => {
     stockCache.value          = {};
     stockCacheFetchedAt.value = {};
@@ -449,7 +435,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       });
   };
 
-  // ─── fetchInventorySummary ─────────────────────────────────────────────────────────
+  // fetchInventorySummary
   const summaryKpiCache          = ref({});
   const summaryKpiCacheFetchedAt = ref({});
   const TTL_SUMMARY_KPI = 30 * 1000; // 30 seconds
@@ -465,10 +451,10 @@ export const useInventoryStore = defineStore('inventory', () => {
       }
 
       const params = {};
-      if (branchId) params.branch_id = String(branchId);
+      if (branchId) params.branchId = String(branchId);
 
       const response = await inventoryService.getInventorySummary(params);
-      const data = response?.data?.data || response?.data || {};
+      const data = response?.data?.data || {};
 
       summaryKpiCache.value[cacheKey]          = data;
       summaryKpiCacheFetchedAt.value[cacheKey] = nowMs();
@@ -496,7 +482,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     delete summaryCacheFetchedAt.value[bid];
   };
 
-  // ─── Return ───────────────────────────────────────────────────────────────
+  // Return
   return {
     // State
     stockCache,

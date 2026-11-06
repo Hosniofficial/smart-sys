@@ -634,7 +634,7 @@ final class SupplierPaymentAllocationPolicyTest extends TestCase
         $createdBody = json_decode((string) $created->getBody(), true);
         self::assertSame(201, $created->getStatusCode());
         self::assertSame('success', $createdBody['status']);
-        self::assertEquals(25.0, $createdBody['data']['total_paid']);
+        self::assertEquals(25.0, $createdBody['data']['totalPaid']);
         self::assertSame(1, (int) $db->query('SELECT COUNT(*) FROM payments')->fetchColumn());
 
         $replayed = $this->requestSupplierPayment($db, $payload, $headers, $this->cashierUser());
@@ -707,7 +707,7 @@ final class SupplierPaymentAllocationPolicyTest extends TestCase
         $body = json_decode((string) $response->getBody(), true);
 
         self::assertSame(201, $response->getStatusCode());
-        self::assertSame(501, $body['data']['session_id']);
+        self::assertSame(501, $body['data']['sessionId']);
         self::assertSame(501, (int) $db->query('SELECT session_id FROM payments')->fetchColumn());
         self::assertSame(501, (int) $db->query('SELECT session_id FROM cash_transactions')->fetchColumn());
         self::assertSame('expense', $db->query('SELECT type FROM cash_transactions')->fetchColumn());

@@ -118,7 +118,6 @@ class InventoryOpeningBalanceService
             );
         }
 
-
         if (!$inventoryGLAccountId) {
             $inventoryGLAccountId = $this->accounting->resolveInventoryAccountForBranch($tenantId, $branchId);
         }

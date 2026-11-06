@@ -1,3 +1,4 @@
+import logger from '@/utils/services/logger'
 /**
  * Subscription store — moved from src/store/modules/subscription.js
  * Week 3 refactor: consolidating all stores under src/stores/
@@ -21,19 +22,19 @@ export const useSubscriptionStore = defineStore('subscription', {
   }),
 
   getters: {
-    isActive:   (state) => !!state.current && state.current.status === 'active'  && state.current.days_left > 0,
-    isTrial:    (state) => !!state.current && state.current.status === 'trial'   && state.current.days_left > 0,
-    isExpired:  (state) => !!state.current && (state.current.status === 'expired' || state.current.days_left <= 0),
+    isActive:   (state) => !!state.current && state.current.status === 'active'  && state.current.daysLeft > 0,
+    isTrial:    (state) => !!state.current && state.current.status === 'trial'   && state.current.daysLeft > 0,
+    isExpired:  (state) => !!state.current && (state.current.status === 'expired' || state.current.daysLeft <= 0),
     isInactive: (state) => !state.current  || state.current.status === 'inactive',
 
     canAccess: (state) => {
       if (!state.current) return false
-      return ['active', 'trial'].includes(state.current.status) && state.current.days_left > 0
+      return ['active', 'trial'].includes(state.current.status) && state.current.daysLeft > 0
     },
 
     statusText: (state) => {
       if (!state.current) return 'No Subscription'
-      const { status, days_left } = state.current
+      const { status, daysLeft: days_left } = state.current
       const map = {
         active:   days_left > 0 ? `Active (${days_left} days left)` : 'Expired',
         trial:    days_left > 0 ? `Trial (${days_left} days left)`  : 'Trial Expired',
@@ -69,9 +70,9 @@ export const useSubscriptionStore = defineStore('subscription', {
           if (import.meta.env.DEV) {
             const { useAuthStore } = await import('@/stores/auth/authStore');
             const authStore = useAuthStore();
-            console.log('[SubscriptionStore] Fetching /subscription/me');
-            console.log('  authStore.token:', authStore.token ? '✓ Present' : '✗ Missing');
-            console.log('  authStore.isAuthenticated:', authStore.isAuthenticated);
+            logger.debug('[SubscriptionStore] Fetching /subscription/me');
+            logger.debug('  authStore.token:', authStore.token ? '✓ Present' : '✗ Missing');
+            logger.debug('  authStore.isAuthenticated:', authStore.isAuthenticated);
           }
           // Skip token refresh during subscription fetch to avoid 401 on new auto-logged-in users
           const response = await subscriptionsService.getCurrentSubscription()
@@ -85,7 +86,7 @@ export const useSubscriptionStore = defineStore('subscription', {
         } catch (error) {
           this.error = error.message || 'Failed to fetch subscription'
           if (!this.current) {
-            this.current = { status: 'inactive', plan_code: null, plan_name: null, price: 0, currency: 'USD', billing_cycle_days: 30, end_date: null, days_left: 0 }
+            this.current = { status: 'inactive', planCode: null, planName: null, price: 0, currency: 'USD', billingCycleDays: 30, endDate: null, daysLeft: 0 }
           }
           this.loaded = true
           throw error

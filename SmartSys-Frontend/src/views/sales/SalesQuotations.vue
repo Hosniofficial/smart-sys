@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
 
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading" />
 
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
 
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="{ parent: { label: 'المبيعات', path: '/sales/pos' }, current: { label: 'عروض الأسعار', path: '/sales/quotations' } }"
         title="عروض الأسعار"
@@ -22,7 +20,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPI Summary: Quotations Stats -->
       <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
         <div v-for="kpi in [
           { label: 'إجمالي العروض', val: total, icon: 'fa-file-invoice', color: 'text-blue-600', bg: 'bg-blue-50', show: true },
@@ -40,7 +37,6 @@
         </div>
       </section>
 
-      <!-- Search & Filter Controls -->
       <div class="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row">
         <div class="relative flex-1">
           <input
@@ -71,7 +67,6 @@
 
       <div v-if="error" role="alert" class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{{ error }}</div>
 
-      <!-- Main Data Table -->
       <div class="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-200">
         <div class="overflow-x-auto">
           <table class="w-full text-right border-collapse">
@@ -99,11 +94,11 @@
                 </td>
               </tr>
               <tr v-for="quote in quotations" :key="quote.id" class="hover:bg-blue-50/20 transition-all group">
-                <td class="px-5 py-3 font-mono font-bold text-blue-700 text-[11px]">{{ quote.quote_number }}</td>
-                <td class="px-5 py-3 font-bold text-slate-900 text-[11px]">{{ quote.customer_name || 'عميل نقدي' }}</td>
-                <td class="px-5 py-3 font-mono text-[10px] text-slate-500">{{ formatDate(quote.created_at) }}</td>
-                <td class="px-5 py-3 font-mono text-[10px] text-slate-500">{{ formatDate(quote.valid_until) }}</td>
-                <td class="px-5 py-3 font-mono font-bold text-blue-600 text-[11px]">{{ formatMoney(quote.total_amount, quote.currency_code) }}</td>
+                <td class="px-5 py-3 font-mono font-bold text-blue-700 text-[11px]">{{ quote.quoteNumber }}</td>
+                <td class="px-5 py-3 font-bold text-slate-900 text-[11px]">{{ quote.customerName || 'عميل نقدي' }}</td>
+                <td class="px-5 py-3 font-mono text-[10px] text-slate-500">{{ formatDate(quote.createdAt) }}</td>
+                <td class="px-5 py-3 font-mono text-[10px] text-slate-500">{{ formatDate(quote.validUntil) }}</td>
+                <td class="px-5 py-3 font-mono font-bold text-blue-600 text-[11px]">{{ formatMoney(quote.totalAmount, quote.currencyCode) }}</td>
                 <td class="px-5 py-3 text-center">
                   <span :class="quote.status === 'expired' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'" class="rounded-full border px-2.5 py-1 text-[9px] font-bold inline-block">
                     {{ quote.status === 'expired' ? 'منتهي' : 'ساري' }}
@@ -131,7 +126,6 @@
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="px-5 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ page }}</span> من <span class="text-slate-900">{{ totalPages }}</span>
@@ -197,16 +191,16 @@ async function loadQuotations(nextPage = page.value) {
     if (result.status !== 'success') throw new Error(result.message || 'تعذر تحميل عروض الأسعار');
     const data = result.data || {};
     quotations.value = Array.isArray(data.items) ? data.items : [];
-    page.value = Number(data.page) || nextPage;
-    total.value = Number(data.total) || 0;
+    page.value = Number(result.meta?.page || result.meta?.currentPage) || nextPage;
+    total.value = Number(result.meta?.total) || 0;
 
-    // ── KPI: طلبات منفصلة للحصول على أعداد دقيقة بغض النظر عن الصفحة الحالية
+    // KPI: طلبات منفصلة للحصول على أعداد دقيقة بغض النظر عن الصفحة الحالية
     const [resActive, resExpired] = await Promise.allSettled([
       salesStore.fetchQuotations({ page: 1, perPage: 1, query: search.value, status: 'active' }),
       salesStore.fetchQuotations({ page: 1, perPage: 1, query: search.value, status: 'expired' }),
     ]);
-    const activeTotal  = resActive.status  === 'fulfilled' ? Number(resActive.value?.data?.total  ?? 0) : 0;
-    const expiredTotal = resExpired.status === 'fulfilled' ? Number(resExpired.value?.data?.total ?? 0) : 0;
+    const activeTotal  = resActive.status  === 'fulfilled' ? Number(resActive.value?.meta?.total  ?? 0) : 0;
+    const expiredTotal = resExpired.status === 'fulfilled' ? Number(resExpired.value?.meta?.total ?? 0) : 0;
 
     // إجمالي القيمة: نجمعها من الصفحة الكاملة (بدون فلتر حالة وبدون pagination)
     const resAll = await salesStore.fetchQuotations({ page: 1, perPage: 1000, query: search.value, status: '' });
@@ -214,7 +208,7 @@ async function loadQuotations(nextPage = page.value) {
     kpiCounts.value = {
       active:     activeTotal,
       expired:    expiredTotal,
-      totalValue: allItems.reduce((sum, q) => sum + (Number(q.total_amount) || 0), 0),
+      totalValue: allItems.reduce((sum, q) => sum + (Number(q.totalAmount) || 0), 0),
     };
   } catch (loadError) {
     error.value = loadError.message || 'تعذر تحميل عروض الأسعار';
@@ -229,8 +223,8 @@ async function convertQuotation(quote) {
     await router.push({
       path: '/sales/pos',
       query: {
-        quotation_id: String(quote.id),
-        branch_id: String(quote.branch_id),
+        quotationId: String(quote.id),
+        branchId: String(quote.branchId),
       },
     });
   } catch (navigationError) {
@@ -290,14 +284,14 @@ async function printQuotation(row) {
     const rows = (Array.isArray(quote.items) ? quote.items : []).map((item, index) => `
       <tr>
         <td>${index + 1}</td>
-        <td>${escapeHtml(item.product_name)}</td>
-        <td>${escapeHtml(item.unit_name || '')}</td>
+        <td>${escapeHtml(item.productName)}</td>
+        <td>${escapeHtml(item.unitName || '')}</td>
         <td>${Number(item.quantity || 0)}</td>
-        <td>${Number(item.sale_price || 0).toFixed(2)}</td>
-        <td>${Number(item.line_total || 0).toFixed(2)}</td>
+        <td>${Number(item.salePrice || 0).toFixed(2)}</td>
+        <td>${Number(item.lineTotal || 0).toFixed(2)}</td>
       </tr>`).join('');
     printWindow.document.write(`<!doctype html>
-      <html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${escapeHtml(quote.quote_number)}</title>
+      <html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${escapeHtml(quote.quoteNumber)}</title>
       <style>
         body{font-family:Tahoma,Arial,sans-serif;margin:32px;color:#1e293b}
         h1{margin:0 0 8px;font-size:24px} .meta{display:flex;gap:24px;margin:20px 0;color:#475569}
@@ -306,15 +300,15 @@ async function printQuotation(row) {
         .notes{margin-top:18px;white-space:pre-wrap}
         @media print{body{margin:10mm}}
       </style></head><body>
-      <h1>عرض سعر</h1><strong>${escapeHtml(quote.quote_number)}</strong>
-      <div class="meta"><span>العميل: ${escapeHtml(quote.customer_name || 'عميل نقدي')}</span><span>صالح حتى: ${escapeHtml(quote.valid_until)}</span></div>
+      <h1>عرض سعر</h1><strong>${escapeHtml(quote.quoteNumber)}</strong>
+      <div class="meta"><span>العميل: ${escapeHtml(quote.customerName || 'عميل نقدي')}</span><span>صالح حتى: ${escapeHtml(quote.validUntil)}</span></div>
       <table><thead><tr><th>#</th><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="meta">
-        <span>الإجمالي قبل الخصم: ${escapeHtml(formatMoney(quote.subtotal, quote.currency_code))}</span>
-        <span>الخصم: ${escapeHtml(formatMoney(quote.discount_amount, quote.currency_code))}</span>
-        <span>الضريبة: ${escapeHtml(formatMoney(quote.tax_amount, quote.currency_code))}</span>
+        <span>الإجمالي قبل الخصم: ${escapeHtml(formatMoney(quote.subtotal, quote.currencyCode))}</span>
+        <span>الخصم: ${escapeHtml(formatMoney(quote.discountAmount, quote.currencyCode))}</span>
+        <span>الضريبة: ${escapeHtml(formatMoney(quote.taxAmount, quote.currencyCode))}</span>
       </div>
-      <div class="total">الإجمالي النهائي: ${escapeHtml(formatMoney(quote.total_amount, quote.currency_code))}</div>
+      <div class="total">الإجمالي النهائي: ${escapeHtml(formatMoney(quote.totalAmount, quote.currencyCode))}</div>
       ${quote.notes ? `<div class="notes">ملاحظات: ${escapeHtml(quote.notes)}</div>` : ''}
       </body></html>`);
     printWindow.onload = () => {

@@ -20,9 +20,7 @@ class PurchaseRepository
         $this->db = $db;
     }
 
-    // -------------------------------------------------------------------------
     // Read
-    // -------------------------------------------------------------------------
 
     /**
      * Find a single purchase by ID and tenant.
@@ -65,9 +63,7 @@ class PurchaseRepository
         return round((float) $stmt->fetchColumn(), 2);
     }
 
-    // -------------------------------------------------------------------------
     // Write
-    // -------------------------------------------------------------------------
 
     /**
      * Update paid_amount and status for a purchase.

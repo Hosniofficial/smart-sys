@@ -66,16 +66,16 @@ class RBACHandler extends BaseHandler
         }
 
         try {
-            // ── Pagination ──────────────────────────────────────────────
+            // Pagination
             $query = $request->getQueryParams();
             [$page, $limit, $offset] = PaginationHelper::fromArray($query, 20, 100);
 
-            // ── Filters ──────────────────────────────────────────────────
+            // Filters
             $search = trim((string) ($query['search'] ?? ''));
             $roleFilter = trim((string) ($query['role_id'] ?? ''));
             $statusFilter = trim((string) ($query['status'] ?? ''));
 
-            // ── Build WHERE clause ───────────────────────────────────────
+            // Build WHERE clause
             $where = "WHERE u.tenant_id = ?";
             $params = [$tenantId];
 
@@ -92,13 +92,13 @@ class RBACHandler extends BaseHandler
                 $params[] = $statusFilter;
             }
 
-            // ── Count total (before GROUP BY, count distinct user ids) ───
+            // Count total (before GROUP BY, count distinct user ids)
             $countSql = "SELECT COUNT(DISTINCT u.id) FROM users u {$where}";
             $countStmt = $this->db->prepare($countSql);
             $countStmt->execute($params);
             $total = (int) $countStmt->fetchColumn();
 
-            // ── Data query with role filter applied after GROUP BY ───────
+            // Data query with role filter applied after GROUP BY
             $dataParams = $params;
             $dataParams[] = $limit;
             $dataParams[] = $offset;

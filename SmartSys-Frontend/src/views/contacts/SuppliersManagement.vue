@@ -1,12 +1,10 @@
 <template>
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-indigo-100" dir="rtl">
     
-    <!-- Top Progress Bar -->
     <PageLoadingBar :active="isLoading" />
     
     <div class="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="إدارة الموردين والذمم"
@@ -22,7 +20,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPIs Overview: Metric Grid -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div v-for="kpi in kpis" :key="kpi.title" class="bg-white border border-slate-200 p-5 rounded-xl flex items-center justify-between group hover:border-slate-300 transition-all shadow-sm">
           <div>
@@ -35,7 +32,6 @@
         </div>
       </section>
 
-      <!-- Toolbar: Search & View Toggle -->
       <section class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
         <div class="relative flex-grow group max-w-xl">
           <input type="text" v-model="search" class="h-9 w-full bg-white border border-slate-200 rounded-md pr-9 pl-4 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all" placeholder="ابحث باسم المورد أو رقم الهاتف..." />
@@ -52,15 +48,12 @@
         </div>
       </section>
 
-      <!-- Main Content States -->
       <div class="relative min-h-[400px]">
         
-        <!-- Loading State -->
         <div v-if="isLoading" class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div v-for="i in 6" :key="i" class="h-48 bg-white border border-slate-200 rounded-xl animate-pulse"></div>
         </div>
 
-        <!-- Empty State -->
         <div v-else-if="loadError" class="py-24 text-center bg-white border border-rose-200 rounded-xl">
           <div class="w-16 h-16 bg-rose-50 text-rose-300 rounded-full flex items-center justify-center mx-auto mb-4">
             <i class="fas fa-triangle-exclamation text-2xl"></i>
@@ -78,7 +71,6 @@
           <button @click="fetchContacts" class="mt-6 text-xs font-bold text-indigo-600 hover:underline">إعادة تحميل البيانات</button>
         </div>
 
-        <!-- View Mode: Cards -->
         <div v-else-if="viewMode === 'cards'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           <div v-for="contact in filteredContacts" :key="contact.id" class="bg-white border border-slate-200 rounded-xl p-6 hover:border-indigo-500/30 hover:shadow-md transition-all group flex flex-col justify-between">
             <div class="space-y-4">
@@ -117,7 +109,6 @@
           </div>
         </div>
 
-        <!-- View Mode: Table -->
         <div v-else-if="viewMode === 'table'" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
           <div class="overflow-x-auto">
             <table class="w-full text-right border-collapse">
@@ -157,7 +148,6 @@
             </table>
           </div>
 
-          <!-- Pagination Footer -->
           <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
               صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ filters.totalPages.value }}</span>
@@ -185,9 +175,6 @@
       </div>
     </div>
 
-    <!-- Modals: Minimal Standard Overlay -->
-    
-    <!-- Supplier Form -->
     <Teleport to="body">
     <transition name="fade">
       <div v-if="showFormModal" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
@@ -226,11 +213,11 @@
             <div class="grid grid-cols-2 gap-4">
               <div class="space-y-1.5">
                 <label class="metadata-label">الرقم الضريبي</label>
-                <input type="text" dir="rtl" v-model.trim="selectedContact.tax_number" class="filter-input-v2 h-10 text-right font-sans font-bold leading-4 placeholder:text-[11px] placeholder:font-sans placeholder:font-bold placeholder:leading-4" placeholder="أدخل الرقم الضريبي" />
+                <input type="text" dir="rtl" v-model.trim="selectedContact.taxNumber" class="filter-input-v2 h-10 text-right font-sans font-bold leading-4 placeholder:text-[11px] placeholder:font-sans placeholder:font-bold placeholder:leading-4" placeholder="أدخل الرقم الضريبي" />
               </div>
               <div class="space-y-1.5">
                 <label class="metadata-label">حد المديونية</label>
-                <input type="number" v-model.number="selectedContact.credit_limit" min="0" class="filter-input-v2 h-10 font-mono text-indigo-600 placeholder:text-[11px] placeholder:font-bold" placeholder="0" />
+                <input type="number" v-model.number="selectedContact.creditLimit" min="0" class="filter-input-v2 h-10 font-mono text-indigo-600 placeholder:text-[11px] placeholder:font-bold" placeholder="0" />
               </div>
             </div>
             <div class="space-y-1.5">
@@ -253,7 +240,6 @@
     </transition>
     </Teleport>
 
-    <!-- Payment Collection (Supplier Outgoing) -->
     <Teleport to="body">
       <transition name="fade">
         <div v-if="showPaymentModal" class="fixed inset-0 z-[300] flex items-start justify-center p-4 pt-20 md:pt-24 bg-slate-900/60 backdrop-blur-md" @click.self="showPaymentModal = false">
@@ -278,10 +264,10 @@
               <div v-else class="max-h-48 space-y-2 overflow-y-auto pr-1">
                 <div v-for="purchase in supplierOpenPurchases" :key="purchase.id" class="grid grid-cols-[1fr_110px] items-center gap-3 rounded-md border border-slate-200 p-3">
                   <div class="min-w-0">
-                    <div class="truncate text-[11px] font-bold text-slate-700">{{ purchase.invoice_number || `فاتورة #${purchase.id}` }}</div>
-                    <div class="mt-1 text-[9px] text-slate-400">المتبقي: {{ formatPrice(purchase.remaining_balance) }}</div>
+                    <div class="truncate text-[11px] font-bold text-slate-700">{{ purchase.invoiceNumber || `فاتورة #${purchase.id}` }}</div>
+                    <div class="mt-1 text-[9px] text-slate-400">المتبقي: {{ formatPrice(purchase.remainingBalance) }}</div>
                   </div>
-                  <input v-model.number="purchaseAllocations[purchase.id]" :disabled="hasPendingSupplierPayment" type="number" min="0" :max="purchase.remaining_balance" step="0.01" class="filter-input-v2 h-9 text-left font-mono" placeholder="0.00" aria-label="مبلغ التخصيص" />
+                  <input v-model.number="purchaseAllocations[purchase.id]" :disabled="hasPendingSupplierPayment" type="number" min="0" :max="purchase.remainingBalance" step="0.01" class="filter-input-v2 h-9 text-left font-mono" placeholder="0.00" aria-label="مبلغ التخصيص" />
                 </div>
               </div>
               <div class="flex items-center justify-between border-t border-slate-100 pt-2 text-xs font-bold">
@@ -295,10 +281,10 @@
               <input type="number" v-model.number="paymentData.amount" :disabled="hasPendingSupplierPayment" class="w-full h-14 text-3xl font-bold text-center text-rose-600 border-b-2 border-slate-100 focus:border-rose-500 outline-none transition-all font-mono" required />
             </div>
             <div class="grid grid-cols-2 gap-4">
-              <div class="space-y-1.5"><label class="metadata-label">التاريخ</label><input ref="paymentDateRef" type="date" v-model="paymentData.payment_date" :disabled="hasPendingSupplierPayment" class="filter-input-v2 h-10 font-mono" required /></div>
-              <div class="space-y-1.5"><label class="metadata-label">طريقة الدفع</label><select v-model.number="paymentData.payment_method_id" :disabled="hasPendingSupplierPayment" class="filter-input-v2 h-10 font-bold" required><option value="">-- اختر --</option><option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option></select></div>
+              <div class="space-y-1.5"><label class="metadata-label">التاريخ</label><input ref="paymentDateRef" type="date" v-model="paymentData.paymentDate" :disabled="hasPendingSupplierPayment" class="filter-input-v2 h-10 font-mono" required /></div>
+              <div class="space-y-1.5"><label class="metadata-label">طريقة الدفع</label><select v-model.number="paymentData.paymentMethodId" :disabled="hasPendingSupplierPayment" class="filter-input-v2 h-10 font-bold" required><option value="">-- اختر --</option><option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.name }}</option></select></div>
             </div>
-            <div class="space-y-1.5"><label class="metadata-label">الفرع المرتبط</label><select v-model="paymentData.branch_id" :disabled="!canSelectBranches || hasPendingSupplierPayment" class="filter-input-v2 h-10 disabled:bg-slate-100 disabled:text-slate-500"><option value="">-- اختياري --</option><option v-for="w in branches" :key="w.id" :value="String(w.id)">{{ w.name }}</option></select></div>
+            <div class="space-y-1.5"><label class="metadata-label">الفرع المرتبط</label><select v-model="paymentData.branchId" :disabled="!canSelectBranches || hasPendingSupplierPayment" class="filter-input-v2 h-10 disabled:bg-slate-100 disabled:text-slate-500"><option value="">-- اختياري --</option><option v-for="w in branches" :key="w.id" :value="String(w.id)">{{ w.name }}</option></select></div>
             <div class="space-y-1.5"><label class="metadata-label">ملاحظات</label><textarea v-model="paymentData.notes" :disabled="hasPendingSupplierPayment" rows="2" class="filter-input-v2 h-auto py-2 italic" placeholder="مرجع شيك، تحويل بنكي..."></textarea></div>
             <div class="pt-4 border-t border-slate-100 flex gap-3">
               <button type="button" @click="showPaymentModal = false" :disabled="isSubmittingSupplierPayment" class="flex-1 h-10 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors disabled:opacity-50">إلغاء</button>
@@ -347,7 +333,7 @@ import { useStatementStore } from '@/stores/statement/statementStore';
 import PageHeader from '@/components/PageHeader.vue';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 
-// --- Logic Initialization ---
+// Logic Initialization
 const { formatCurrencyLocale, fetchSettings } = useCompanyCurrency();
 const { breadcrumb } = useBreadcrumb();
 const authStore = useAuthStore();
@@ -390,7 +376,7 @@ const supplierFormErrors = ref({ name: '', phone: '', email: '' });
 const viewMode = ref('cards'); 
 const showPaymentModal = ref(false);
 const loadError = ref('');
-const paymentData = ref({ amount: null, payment_date: null, payment_method_id: null, branch_id: null, notes: '' });
+const paymentData = ref({ amount: null, paymentDate: null, paymentMethodId: null, branchId: null, notes: '' });
 const pendingSupplierPayment = usePendingIdempotentRequest('supplier-payment');
 const hasPendingSupplierPayment = computed(() => !!pendingSupplierPayment.pending.value);
 const paymentMode = ref('allocate');
@@ -401,9 +387,9 @@ const isSubmittingSupplierPayment = ref(false);
 const allocatedPayments = computed(() =>
   supplierOpenPurchases.value
     .map(purchase => ({
-      purchase_id: Number(purchase.id),
+      purchaseId: Number(purchase.id),
       amount: Math.round((Number(purchaseAllocations.value[purchase.id]) || 0) * 100) / 100,
-      remaining_balance: Number(purchase.remaining_balance) || 0,
+      remainingBalance: Number(purchase.remainingBalance) || 0,
     }))
     .filter(allocation => allocation.amount > 0)
 );
@@ -422,7 +408,7 @@ const filteredContacts = computed(() => {
   return contacts.value.filter(c => (c.name && c.name.toLowerCase().includes(q)) || (c.phone && c.phone.includes(q)));
 });
 
-// ─── Pagination (using useTableFilters composable)
+// Pagination (using useTableFilters composable)
 const filters = useTableFilters('suppliers_filters');
 
 const paginatedContacts = computed(() => {
@@ -432,7 +418,6 @@ const paginatedContacts = computed(() => {
   return filteredContacts.value.slice(start, end);
 });
 
-// Logic: KPIs (Calculations Preserved)
 const kpis = computed(() => {
   const creditors = contacts.value.filter(c => Number(c.balance) > 0);
   const totalPayable = creditors.reduce((sum, c) => sum + Number(c.balance || 0), 0);
@@ -452,14 +437,14 @@ const fetchContacts = async () => {
     if (!canSelectBranches.value) {
       try {
         const wid = branchIsolation.getRequiredBranchId();
-        params.branch_id = String(wid);
+        params.branchId = String(wid);
       } catch (e) {
         loadError.value = e.message || 'لم يتم تعيين فرع للمستخدم';
         showToast(e.message || 'لم يتم تعيين مخزن للمستخدم', 'warning');
         return;
       }
     } else if (selectedBranch.value) {
-      params.branch_id = String(selectedBranch.value);
+      params.branchId = String(selectedBranch.value);
     }
     // No selected branch for a branch-privileged user means all suppliers.
     const result = await supplierStore.fetchSuppliers({ force: true, params });
@@ -485,12 +470,12 @@ const openAddModal = () => {
   } else {
     branchId = selectedBranch.value || null; // null when 'all' → admin must explicitly pick branch in form
   }
-  selectedContact.value = { name: '', phone: '', email: '', tax_number: '', address: '', credit_limit: 0, branch_id: branchId };
+  selectedContact.value = { name: '', phone: '', email: '', taxNumber: '', address: '', creditLimit: 0, branchId: branchId };
   supplierFormErrors.value = { name: '', phone: '', email: '' };
   showFormModal.value = true;
 };
 const editContact = (c) => {
-  selectedContact.value = { ...c, credit_limit: Number(c.credit_limit) || 0 };
+  selectedContact.value = { ...c, creditLimit: Number(c.creditLimit) || 0 };
   supplierFormErrors.value = { name: '', phone: '', email: '' };
   showFormModal.value = true;
 };
@@ -523,8 +508,8 @@ const validateSupplierForm = () => {
   validateSupplierField('name');
   validateSupplierField('phone');
   validateSupplierField('email');
-  if (Number(selectedContact.value?.credit_limit) < 0) {
-    selectedContact.value.credit_limit = 0;
+  if (Number(selectedContact.value?.creditLimit) < 0) {
+    selectedContact.value.creditLimit = 0;
   }
   return !Object.values(supplierFormErrors.value).some(Boolean);
 };
@@ -580,8 +565,8 @@ const openPaymentModal = async (c) => {
     showToast(error.message || 'تعذر استعادة عملية الدفع السابقة.', 'error');
     return;
   }
-  if (pending?.payload?.branch_id) {
-    branchId = Number(pending.payload.branch_id);
+  if (pending?.payload?.branchId) {
+    branchId = Number(pending.payload.branchId);
   }
 
   selectedContact.value = c;
@@ -589,9 +574,9 @@ const openPaymentModal = async (c) => {
     ? { ...pending.payload }
     : {
         amount: null,
-        payment_date: getLocalDateISO(),
-        payment_method_id: null,
-        branch_id: branchId ? String(branchId) : '',
+        paymentDate: getLocalDateISO(),
+        paymentMethodId: null,
+        branchId: branchId ? String(branchId) : '',
         notes: ''
       };
   paymentMode.value = pending
@@ -599,7 +584,7 @@ const openPaymentModal = async (c) => {
     : 'allocate';
   supplierOpenPurchases.value = [];
   purchaseAllocations.value = Object.fromEntries(
-    (pending?.payload?.purchases || []).map(({ purchase_id, amount }) => [purchase_id, Number(amount)])
+    (pending?.payload?.purchases || []).map(({ purchaseId: purchase_id, amount }) => [purchase_id, Number(amount)])
   );
   showPaymentModal.value = true;
   isLoadingSupplierPurchases.value = true;
@@ -632,8 +617,8 @@ const openPaymentModal = async (c) => {
       allPurchases.push(...(nextPage.data.items || []));
     }
     supplierOpenPurchases.value = allPurchases.filter(purchase =>
-      Number(purchase.remaining_balance) > 0
-      && !['canceled', 'cancelled', 'rejected'].includes(String(purchase.dynamic_status || purchase.status).toLowerCase())
+      Number(purchase.remainingBalance) > 0
+      && !['canceled', 'cancelled', 'rejected'].includes(String(purchase.dynamicStatus || purchase.status).toLowerCase())
     );
   } catch (error) {
     supplierOpenPurchases.value = [];
@@ -650,26 +635,26 @@ const handlePaymentSubmit = async () => {
     ? Number(savedRequest.payload.amount)
     : (paymentMode.value === 'allocate' ? allocatedPaymentTotal.value : Number(paymentData.value.amount));
   if (!Number.isFinite(amount) || amount <= 0) return showToast(paymentMode.value === 'allocate' ? 'خصص مبلغًا موجبًا لفاتورة واحدة على الأقل' : 'ادخل مبلغ صحيح', 'error');
-  if (!(savedRequest?.payload?.payment_method_id || paymentData.value.payment_method_id)) return showToast('اختر الطريقة', 'error');
-  if (!(savedRequest?.payload?.payment_date || paymentData.value.payment_date)) {
+  if (!(savedRequest?.payload?.paymentMethodId || paymentData.value.paymentMethodId)) return showToast('اختر الطريقة', 'error');
+  if (!(savedRequest?.payload?.paymentDate || paymentData.value.paymentDate)) {
     showToast('الرجاء تحديد تاريخ الدفع', 'error');
     return;
   }
-  if (!savedRequest && paymentMode.value === 'allocate' && allocatedPayments.value.some(allocation => allocation.amount > allocation.remaining_balance + 0.009)) {
+  if (!savedRequest && paymentMode.value === 'allocate' && allocatedPayments.value.some(allocation => allocation.amount > allocation.remainingBalance + 0.009)) {
     return showToast('مبلغ التخصيص لا يمكن أن يتجاوز المتبقي على الفاتورة.', 'error');
   }
 
   isSubmittingSupplierPayment.value = true;
   try {
     const payload = savedRequest?.payload || {
-      supplier_id: Number(selectedContact.value?.id),
+      supplierId: Number(selectedContact.value?.id),
       amount,
-      payment_date: paymentData.value.payment_date,
-      payment_method_id: Number(paymentData.value.payment_method_id),
-      branch_id: paymentData.value.branch_id ? String(paymentData.value.branch_id) : undefined,
+      paymentDate: paymentData.value.paymentDate,
+      paymentMethodId: Number(paymentData.value.paymentMethodId),
+      branchId: paymentData.value.branchId ? String(paymentData.value.branchId) : undefined,
       notes: paymentData.value.notes || '',
       ...(paymentMode.value === 'allocate'
-        ? { purchases: allocatedPayments.value.map(({ purchase_id, amount: allocationAmount }) => ({ purchase_id, amount: allocationAmount })) }
+        ? { purchases: allocatedPayments.value.map(({ purchaseId: purchase_id, amount: allocationAmount }) => ({ purchaseId: purchase_id, amount: allocationAmount })) }
         : {}),
     };
     const pending = pendingSupplierPayment.prepare(selectedContact.value?.id, payload);

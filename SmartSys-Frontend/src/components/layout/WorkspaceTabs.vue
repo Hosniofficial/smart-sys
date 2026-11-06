@@ -54,8 +54,8 @@ const { showToast } = useToast()
 const tabs = ref([])
 
 const storageKey = computed(() => {
-  const tenantId = authStore.user?.tenant_id
-  const userId = authStore.user?.id ?? authStore.user?.user_id
+  const tenantId = authStore.user?.tenantId
+  const userId = authStore.user?.id ?? authStore.user?.userId
   return userId ? `${STORAGE_PREFIX}_${tenantId ?? 'system'}_${userId}` : null
 })
 

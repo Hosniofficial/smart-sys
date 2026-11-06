@@ -31,19 +31,19 @@ export const getTransactionTypeLabel = (type) => {
     'receipt': 'قبض',
     'payment': 'صرف',
     'refund': 'صرف',
-    'sales_return': 'مرتجع بيع',
-    'sale_return': 'مرتجع بيع',
-    'return_sale': 'مرتجع بيع',
-    'purchase_return': 'مرتجع شراء',
-    'return_purchase': 'مرتجع شراء',
+    'salesReturn': 'مرتجع بيع',
+    'saleReturn': 'مرتجع بيع',
+    'returnSale': 'مرتجع بيع',
+    'purchaseReturn': 'مرتجع شراء',
+    'returnPurchase': 'مرتجع شراء',
     'return': 'مرتجع',
     'discount': 'خصم',
     'tax': 'ضريبة',
-    'cash_voucher': 'سند نقدي',
+    'cashVoucher': 'سند نقدي',
     'journal': 'قيد يومية',
-    'return_payment': 'سداد مرتجع',
-    'sales_return_refund': 'استرداد عميل',
-    'purchase_return_refund': 'استرجاع مورد'
+    'returnPayment': 'سداد مرتجع',
+    'salesReturnRefund': 'استرداد عميل',
+    'purchaseReturnRefund': 'استرجاع مورد'
   };
 
   return typeMap[t] || t || 'حركة';
@@ -60,10 +60,10 @@ export const getTransactionBadgeClass = (type) => {
   const t = String(type || '').toLowerCase();
 
   const statusMap = {
-    'closed_by_return': 'bg-indigo-50 text-indigo-700 border border-indigo-200',
-    'settled_by_return': 'bg-teal-50 text-teal-700 border border-teal-200',
-    'settled_by_credit': 'bg-cyan-50 text-cyan-700 border border-cyan-200',
-    'settled_mixed': 'bg-purple-50 text-purple-700 border border-purple-200',
+    'closedByReturn': 'bg-indigo-50 text-indigo-700 border border-indigo-200',
+    'settledByReturn': 'bg-teal-50 text-teal-700 border border-teal-200',
+    'settledByCredit': 'bg-cyan-50 text-cyan-700 border border-cyan-200',
+    'settledMixed': 'bg-purple-50 text-purple-700 border border-purple-200',
     'returned': 'bg-indigo-50 text-indigo-700 border border-indigo-200',
     'paid': 'bg-emerald-50 text-emerald-700 border border-emerald-200',
     'partial': 'bg-amber-50 text-amber-700 border border-amber-200',

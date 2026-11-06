@@ -58,7 +58,7 @@ const apiClient = axios.create({
 
 // Register BASE_URL for development and testing
 if (import.meta.env.MODE === 'development') {
-  console.log(`[API Config] Mode: ${import.meta.env.MODE}, Base URL: ${apiClient.defaults.baseURL}`);
+  logger.debug(`[API Config] Mode: ${import.meta.env.MODE}, Base URL: ${apiClient.defaults.baseURL}`);
 }
 apiClient.interceptors.request.use(
   async (config) => {
@@ -102,20 +102,20 @@ apiClient.interceptors.request.use(
       const tenantContextStore = useTenantContextStore();
       if (authStore.isSuperAdmin && tenantContextStore.activeTenantId) {
         tenantId = tenantContextStore.activeTenantId;
-      } else if (authStore.user?.tenant_id) {
-        tenantId = authStore.user.tenant_id;
+      } else if (authStore.user?.tenantId) {
+        tenantId = authStore.user.tenantId;
       }
     } catch (_) { /* ignore */ }
 
     if (!tenantId) {
       const u = safeParseUser(localStorage.getItem('user'));
-      tenantId = u?.tenant_id ?? null;
+      tenantId = u?.tenantId ?? null;
     }
 
     if (tenantId) {
       config.headers['X-Tenant-Id'] = tenantId;
       if (import.meta.env.MODE === 'development') {
-        console.log(`[API] Tenant: ${tenantId}  ${config.method?.toUpperCase()} ${config.url}`);
+        logger.debug(`[API] Tenant: ${tenantId}  ${config.method?.toUpperCase()} ${config.url}`);
       }
     }
 
@@ -243,10 +243,10 @@ apiClient.interceptors.response.use(
     
     // Surface server warnings (e.g., journal_entry_skipped) to the user
     try {
-      const warnings = response?.data?.warnings;
-      if (warnings && warnings.journal_entry_skipped && typeof window.showToast === 'function') {
-        const msg = warnings.skipped_count
-          ? `تمت العملية مع تحذير: تم تخطي إنشاء ${warnings.skipped_count} قيد/قيود يومية بسبب إعدادات ناقصة أو قيمة صفرية.`
+      const warnings = response?.data?.data?.warnings;
+      if (warnings && warnings.journalEntrySkipped && typeof window.showToast === 'function') {
+        const msg = warnings.skippedCount
+          ? `تمت العملية مع تحذير: تم تخطي إنشاء ${warnings.skippedCount} قيد/قيود يومية بسبب إعدادات ناقصة أو قيمة صفرية.`
           : 'تمت العملية مع تحذير: تم تخطي إنشاء قيد اليومية بسبب إعدادات ناقصة أو قيمة صفرية.';
         window.showToast(msg, 'warning');
       }
@@ -269,7 +269,7 @@ apiClient.interceptors.response.use(
 
       // 400 Bad Request on refresh = missing refresh token (new user case) — not a redirect-worthy error
       if (status === 400 && (error.config._isRefreshRequest || error.config.url?.includes('/auth/refresh'))) {
-        console.log('[API] 400 on refresh — missing token (expected for new users)');
+        logger.debug('[API] 400 on refresh — missing token (expected for new users)');
         return Promise.reject(error);
       }
 
@@ -313,7 +313,7 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      if (status === 403 && data?.error_code === 'session_revoked') {
+      if (status === 403 && data?.errors?.errorCode === 'session_revoked') {
         try {
           const authStore = useAuthStore();
           authStore.clearAuthData();
@@ -328,7 +328,7 @@ apiClient.interceptors.response.use(
       //      The caller (purchaseStore, salesStore, etc.) surfaces the specific message itself.
       //      We must NOT hijack these as subscription errors.
       if (status === 402) {
-        const isLiquidityError = data?.error_code === 'insufficient_liquidity' ||
+        const isLiquidityError = data?.errors?.errorCode === 'insufficient_liquidity' ||
           originalRequest?.meta?.suppress402 === true;
 
         if (!isLiquidityError) {

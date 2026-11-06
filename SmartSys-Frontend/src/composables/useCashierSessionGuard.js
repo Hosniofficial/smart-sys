@@ -21,7 +21,7 @@ export function useCashierSessionGuard() {
   const sessionsEnabled = ref(false);
   const enforceForRoles = ref([]); // array of role_ids that must work within sessions
   const enforceSessionForMe = computed(() => {
-    const rid = authStore?.user?.role_id;
+    const rid = authStore?.user?.roleId;
     return Array.isArray(enforceForRoles.value) && enforceForRoles.value.map(n=>Number(n)).includes(Number(rid));
   });
 
@@ -59,9 +59,9 @@ export function useCashierSessionGuard() {
     branchId,
     {
       autoOpen = true,
-      opening_cash_amount = 0,
+      openingCashAmount: opening_cash_amount = 0,
       prompt = true,
-      session_type = 'manual',
+      sessionType: session_type = 'manual',
     } = {}
   ) => {
     error.value = null;
@@ -79,7 +79,7 @@ export function useCashierSessionGuard() {
       // - Enforced roles: scoped by branch
       // - Non-enforced roles: always check global session for this cashier (no branch filter)
       const isEnforced = enforceSessionForMe.value;
-      const { device_id } = getDeviceIdentity();
+      const { deviceId: device_id } = getDeviceIdentity();
       currentSession.value = await SessionsService.getCurrent(
         isEnforced ? (branchId ?? undefined) : undefined,
         isEnforced ? undefined : cashierId,
@@ -102,14 +102,14 @@ export function useCashierSessionGuard() {
         if (!ok) return false;
       }
 
-      const { device_id: devId, device_name } = getDeviceIdentity();
+      const { deviceId: devId, deviceName: device_name } = getDeviceIdentity();
       const opened = await SessionsService.openSession({
         // For non-enforced roles, open a global session (omit branch completely)
-        branch_id: (enforceSessionForMe.value ? branchId : undefined),
-        opening_cash_amount,
-        session_type,
-        device_id: devId,
-        device_name,
+        branchId: (enforceSessionForMe.value ? branchId : undefined),
+        openingCashAmount: opening_cash_amount,
+        sessionType: session_type,
+        deviceId: devId,
+        deviceName: device_name,
       });
       currentSession.value = opened;
       return !!opened;
@@ -143,7 +143,7 @@ export function useSessionExemption() {
   const hasPrivilegedRole = () => {
     const role = String(authStore?.user?.role || '').toLowerCase();
     if (authStore.isSuperAdmin || authStore.isAdmin) return true;
-    return Number(authStore?.user?.tenant_id) > 0 &&
+    return Number(authStore?.user?.tenantId) > 0 &&
       role === 'manager';
   };
 
@@ -162,8 +162,8 @@ export function useSessionExemption() {
         }
         const { data } = await settingsService.getSettings({ skipLoader: true });
         const s = (data && data.status === 'success') ? (data.data || {}) : {};
-        const usersCsv = String(s['cashier_session_exempt_users'] || '').trim();
-        const rolesCsv = String(s['cashier_session_exempt_roles'] || '').trim();
+        const usersCsv = String(s['cashierSessionExemptUsers'] || '').trim();
+        const rolesCsv = String(s['cashierSessionExemptRoles'] || '').trim();
         const uid = Number(authStore?.user?.id || 0);
         const role = String(authStore?.user?.role || '').toLowerCase();
         let ok = false;

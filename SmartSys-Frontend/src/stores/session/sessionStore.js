@@ -5,14 +5,13 @@ import SessionsService from '@/services/sessions';
 const nowMs = () => Date.now();
 
 export const useSessionStore = defineStore('session', () => {
-  // ─── Cache TTL ────────────────────────────────────────────────────────────
+  // Cache TTL
   const TTL = {
     sessions: 2 * 60 * 1000,       // دقيقتان
     currentSession: 1 * 60 * 1000, // دقيقة واحدة
     summary: 1 * 60 * 1000,        // دقيقة واحدة
   };
 
-  // ─── State ────────────────────────────────────────────────────────────────
   const sessions = ref([]);
   const currentSession = ref(null);
   const sessionSummary = ref(null);
@@ -22,15 +21,13 @@ export const useSessionStore = defineStore('session', () => {
   const isLoading = ref(false);
   const error = ref(null);
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
   const isFresh = (fetchedAt, ttl) =>
     !!fetchedAt && (nowMs() - fetchedAt) < ttl;
 
-  // ─── Getters ──────────────────────────────────────────────────────────────
   const isSessionOpen = computed(() => !!currentSession.value);
   const totalSessions = computed(() => sessions.value.length);
 
-  // ─── Actions ──────────────────────────────────────────────────────────────
+  // Actions
 
   /**
    * جلب الجلسة الحالية
@@ -48,9 +45,9 @@ export const useSessionStore = defineStore('session', () => {
       error.value = null;
 
       const response = await SessionsService.getCurrentSession({
-        branch_id: branchId,
-        user_id: userId,
-        device_id: deviceId,
+        branchId: branchId,
+        userId: userId,
+        deviceId: deviceId,
       });
 
       const _d = response?.data?.data;
@@ -91,7 +88,7 @@ export const useSessionStore = defineStore('session', () => {
       error.value = null;
 
       const response = await SessionsService.openSessionRequest(payload);
-      currentSession.value = response?.data?.data || response?.data;
+      currentSession.value = response?.data?.data;
       currentSessionFetchedAt.value = nowMs();
 
       return {
@@ -118,11 +115,11 @@ export const useSessionStore = defineStore('session', () => {
       error.value = null;
 
       const response = await SessionsService.closeSession(sessionId, {
-        closing_cash_amount: closingAmount,
-        variance_reason: reason,
+        closingCashAmount: closingAmount,
+        varianceReason: reason,
       });
 
-      const result = response?.data?.data || response?.data;
+      const result = response?.data?.data;
       currentSession.value = null;
       currentSessionFetchedAt.value = null;
 
@@ -155,7 +152,7 @@ export const useSessionStore = defineStore('session', () => {
       }
 
       const response = await SessionsService.getSessionSummary(sessionId);
-      const data = response?.data?.data || response?.data;
+      const data = response?.data?.data;
 
       // Only cache if this is the single-session use case (not overwrite shared ref during bulk loads)
       if (!force) {
@@ -227,8 +224,9 @@ export const useSessionStore = defineStore('session', () => {
 
       const response = await SessionsService.listSessions(params);
       const resData = response?.data?.data;
+      const meta = response?.data?.meta || {};
       const items   = Array.isArray(resData) ? resData : (resData?.items || []);
-      const total   = resData?.total ?? items.length;
+      const total   = meta.total ?? items.length;
 
       sessions.value = items;
       sessionsFetchedAt.value = nowMs();
@@ -237,8 +235,8 @@ export const useSessionStore = defineStore('session', () => {
         status: 'success',
         data:   items,
         total,
-        page:        resData?.page        ?? 1,
-        total_pages: resData?.total_pages ?? 1,
+        page:        meta.page        ?? 1,
+        totalPages: meta.totalPages ?? 1,
         kpi:         resData?.kpi         ?? null,
       };
     } catch (err) {

@@ -2,7 +2,6 @@
   <div class="min-h-screen bg-[#fafafa] text-slate-900 font-sans antialiased selection:bg-blue-100" dir="rtl">
     <div class="max-w-[1800px] mx-auto p-4 lg:p-8 space-y-8">
       
-      <!-- Page Header -->
       <PageHeader
         :breadcrumb="breadcrumb"
         title="إدارة المخزون"
@@ -22,17 +21,16 @@
               تسوية سريعة
             </button>
 
-            <!-- Product Picker Panel: Refined Dropdown -->
             <transition name="dropdown">
               <div v-if="showPickerPanel" class="absolute left-0 top-full mt-2 w-80 bg-white rounded-lg shadow-2xl border border-slate-200 z-50 overflow-hidden animate-fadeIn" @click.stop>
                 <div class="p-3 bg-slate-50 border-b border-slate-100">
                   <input v-model="pickerSearch" autofocus placeholder="بحث سريع عن صنف..." class="w-full h-8 rounded-md border border-slate-200 bg-white px-3 text-[11px] font-bold outline-none focus:border-blue-500" />
                 </div>
                 <div class="max-h-64 overflow-y-auto custom-scroll">
-                  <div v-for="item in pickerItems" :key="item.product_id ?? item.id" @click="openAdjustFromPicker(item)" class="flex items-center justify-between px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 group transition-colors">
+                  <div v-for="item in pickerItems" :key="item.productId ?? item.id" @click="openAdjustFromPicker(item)" class="flex items-center justify-between px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 group transition-colors">
                     <div class="min-w-0">
                       <p class="text-xs font-bold text-slate-800 truncate">{{ item.name }}</p>
-                      <p class="text-[9px] text-slate-400 font-mono mt-0.5">{{ item.barcode || item.product_code || '—' }}</p>
+                      <p class="text-[9px] text-slate-400 font-mono mt-0.5">{{ item.barcode || item.productCode || '—' }}</p>
                     </div>
                     <span :class="[item.quantity <= 0 ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100']" class="text-[10px] font-bold px-2 py-0.5 rounded border">
                       {{ item.quantity ?? 0 }}
@@ -45,7 +43,6 @@
         </template>
       </PageHeader>
 
-      <!-- KPIs Overview: Stripe-inspired Data Blocks -->
       <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div v-for="kpi in [
           { label: 'إجمالي الأصناف', val: stats.totalProducts, icon: 'fa-boxes', color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -63,10 +60,8 @@
         </div>
       </section>
 
-      <!-- Main Content Grid -->
       <div class="space-y-6">
         
-        <!-- Utility Toolbar -->
         <div class="bg-white border border-slate-200 rounded-xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-6 shadow-sm">
           <div class="flex-grow grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="space-y-1.5 group">
@@ -98,7 +93,6 @@
           </div>
         </div>
 
-        <!-- Inventory Table: Professional High-Density Grid -->
         <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm relative">
           <div class="overflow-x-auto">
             <table class="w-full text-right border-collapse">
@@ -139,7 +133,7 @@
                   </td>
 
                   <td class="px-4 py-4">
-                    <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{{ item.category_name || 'عام' }}</span>
+                    <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{{ item.categoryName || 'عام' }}</span>
                   </td>
 
                   <td class="px-4 py-4 text-center">
@@ -158,9 +152,9 @@
                   </td>
 
                   <td class="px-4 py-4 text-center">
-                    <template v-if="item.profit_margin_percent !== undefined && item.sale_price > 0">
-                      <span :class="item.profit_margin_percent >= 0 ? 'text-emerald-600' : 'text-rose-600'" class="text-[10px] font-bold font-mono">
-                        {{ item.profit_margin_percent }}%
+                    <template v-if="item.profitMarginPercent !== undefined && item.salePrice > 0">
+                      <span :class="item.profitMarginPercent >= 0 ? 'text-emerald-600' : 'text-rose-600'" class="text-[10px] font-bold font-mono">
+                        {{ item.profitMarginPercent }}%
                       </span>
                     </template>
                     <span v-else class="text-slate-300">—</span>
@@ -168,15 +162,15 @@
 
                   <template v-if="selectedBranch">
                     <td class="px-4 py-4 text-center">
-                      <span v-if="item.gl_status === 'draft'" class="text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded">غير مُفعَّل</span>
-                      <span v-else-if="item.gl_status === 'active'" class="text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded">مفعَّل</span>
-                      <span v-else-if="item.gl_status === 'posted'" class="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded">✓ مُرصّد</span>
+                      <span v-if="item.glStatus === 'draft'" class="text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded">غير مُفعَّل</span>
+                      <span v-else-if="item.glStatus === 'active'" class="text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded">مفعَّل</span>
+                      <span v-else-if="item.glStatus === 'posted'" class="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded">✓ مُرصّد</span>
                     </td>
 
                     <td class="px-4 py-4 text-center">
-                      <button v-if="item.gl_status === 'draft'" @click="openActivateModal(item)" class="h-7 px-3 text-[10px] font-bold bg-blue-600 text-white rounded hover:bg-blue-700 transition-all">تفعيل</button>
-                      <button v-else-if="item.gl_status === 'active'" @click="openOpeningBalanceModal(item)" class="h-7 px-3 text-[10px] font-bold bg-amber-500 text-white rounded hover:bg-amber-600 transition-all">ترحيل الرصيد الافتتاحي</button>
-                      <i v-else-if="item.gl_status === 'posted'" class="fas fa-check-double text-emerald-500 text-xs"></i>
+                      <button v-if="item.glStatus === 'draft'" @click="openActivateModal(item)" class="h-7 px-3 text-[10px] font-bold bg-blue-600 text-white rounded hover:bg-blue-700 transition-all">تفعيل</button>
+                      <button v-else-if="item.glStatus === 'active'" @click="openOpeningBalanceModal(item)" class="h-7 px-3 text-[10px] font-bold bg-amber-500 text-white rounded hover:bg-amber-600 transition-all">ترحيل الرصيد الافتتاحي</button>
+                      <i v-else-if="item.glStatus === 'posted'" class="fas fa-check-double text-emerald-500 text-xs"></i>
                     </td>
                   </template>
 
@@ -185,7 +179,7 @@
                       <template v-if="selectedBranch">
                         <button @click="adjustStock(item)" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-amber-600 hover:border-amber-200 transition-all flex items-center justify-center shadow-sm"><i class="fas fa-sliders text-[10px]"></i></button>
                         <button
-                          v-if="canReverseOpeningBalance && item.opening_balance_id && item.opening_balance_has_transaction"
+                          v-if="canReverseOpeningBalance && item.openingBalanceId && item.openingBalanceHasTransaction"
                           @click="reverseOpeningBalance(item)"
                           :disabled="reversingOpeningBalanceId === item.id"
                           title="عكس الرصيد الافتتاحي"
@@ -205,7 +199,6 @@
 
           </div>
 
-        <!-- Pagination Footer -->
         <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             صفحة <span class="text-slate-900">{{ filters.page.value }}</span> من <span class="text-slate-900">{{ filters.totalPages.value }}</span>
@@ -232,9 +225,6 @@
       </div>
     </div>
 
-    <!-- ===== Modals: Restructured for SaaS consistency ===== -->
-    
-    <!-- Stock Transfer Modal -->
     <BaseModal :show="showTransferModal" @close="showTransferModal = false" maxWidth="md" align="center">
       <template #header>
         <div class="flex items-center gap-3">
@@ -271,7 +261,7 @@
       :show="showDetailsModal"
       @close="closeDetailsModal"
       :title="productDetails?.name ? `تفاصيل الصنف: ${productDetails.name}` : 'تفاصيل الصنف'"
-      :subtitle="productDetails?.product_code || productDetails?.barcode || ''"
+      :subtitle="productDetails?.productCode || productDetails?.barcode || ''"
       icon="fas fa-box-open"
       maxWidth="4xl"
     >
@@ -289,17 +279,17 @@
           <h4 class="text-2xl font-bold mb-1">{{ productDetails.name }}</h4>
           <p class="text-xs font-bold text-slate-500 font-mono mb-6">{{ productDetails.barcode || '—' }}</p>
           <div class="grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
-            <div><p class="text-[9px] font-bold text-slate-400 uppercase">الرصيد الحالي</p><p class="text-lg font-bold font-mono">{{ productDetails.quantity }} {{ productDetails.unit_name }}</p></div>
+            <div><p class="text-[9px] font-bold text-slate-400 uppercase">الرصيد الحالي</p><p class="text-lg font-bold font-mono">{{ productDetails.quantity }} {{ productDetails.unitName }}</p></div>
             <div><p class="text-[9px] font-bold text-slate-400 uppercase">القيمة التقديرية</p><p class="text-lg font-bold font-mono text-emerald-400">{{ formatCurrency(getPrice(productDetails) * (productDetails.quantity || 0)) }}</p></div>
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-4 font-bold text-xs">
           <div v-for="info in [
-            {l: 'الفئة', v: productDetails.category_name || 'بدون تصنيف', c: 'text-slate-700'},
-            {l: 'سعر البيع', v: formatCurrency(productDetails.sale_price || 0), c: 'text-blue-600'},
-            {l: 'حد التنبيه', v: productDetails.min_quantity, c: 'text-slate-700'},
-            {l: 'SKU الكود', v: productDetails.product_code || '--', c: 'text-indigo-600 font-mono'}
+            {l: 'الفئة', v: productDetails.categoryName || 'بدون تصنيف', c: 'text-slate-700'},
+            {l: 'سعر البيع', v: formatCurrency(productDetails.salePrice || 0), c: 'text-blue-600'},
+            {l: 'حد التنبيه', v: productDetails.minQuantity, c: 'text-slate-700'},
+            {l: 'SKU الكود', v: productDetails.productCode || '--', c: 'text-indigo-600 font-mono'}
           ]" :key="info.l" class="p-4 rounded-xl bg-slate-50 border border-slate-100 flex flex-col justify-center">
             <p class="text-[9px] font-bold text-slate-400 uppercase mb-1">{{ info.l }}</p>
             <p :class="info.c">{{ info.v }}</p>
@@ -314,10 +304,10 @@
             <thead><tr class="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase"><th class="px-4 py-3">التاريخ</th><th class="px-4 py-3">النوع</th><th class="px-4 py-3 text-center">الكمية</th><th class="px-4 py-3">البيان</th></tr></thead>
             <tbody class="divide-y divide-slate-50">
               <tr v-for="h in productDetails?.recentHistory" :key="h.id" class="hover:bg-slate-50 transition-colors font-medium">
-                <td class="px-4 py-3 text-slate-400 font-mono">{{ formatDate(h.movement_date || h.created_at) }}</td>
-                <td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-[10px] font-bold text-slate-600">{{ getMovementTypeText(h.movement_type || h.type) }}</span></td>
+                <td class="px-4 py-3 text-slate-400 font-mono">{{ formatDate(h.movementDate || h.createdAt) }}</td>
+                <td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-[10px] font-bold text-slate-600">{{ getMovementTypeText(h.movementType || h.type) }}</span></td>
                 <td class="px-4 py-3 text-center font-bold text-slate-900">{{ h.quantity }}</td>
-                <td class="px-4 py-3 text-slate-400 italic">{{ translateMovementNote(h.notes, h.movement_type || h.type) }}</td>
+                <td class="px-4 py-3 text-slate-400 italic">{{ translateMovementNote(h.notes, h.movementType || h.type) }}</td>
               </tr>
               <tr v-if="!productDetails?.recentHistory?.length"><td colspan="4" class="py-12 text-center text-slate-300 uppercase font-bold text-[10px]">لا توجد حركات مسجلة</td></tr>
             </tbody>
@@ -328,7 +318,7 @@
       <template #footer>
         <button @click="closeDetailsModal" class="px-6 h-10 text-xs font-bold text-slate-500">إغلاق</button>
         <button
-          v-if="canReverseOpeningBalance && productDetails?.opening_balance_id && productDetails?.opening_balance_has_transaction"
+          v-if="canReverseOpeningBalance && productDetails?.openingBalanceId && productDetails?.openingBalanceHasTransaction"
           @click="reverseOpeningBalance(productDetails)"
           :disabled="reversingOpeningBalanceId === productDetails.id"
           class="px-6 h-10 bg-rose-600 text-white rounded-md text-xs font-bold disabled:opacity-50"
@@ -339,7 +329,6 @@
       </template>
     </HistoryDetailsModal>
 
-    <!-- GL Activate Modal -->
     <BaseModal :show="showActivateModal" @close="showActivateModal = false" maxWidth="md" align="center">
       <template #header>
         <div class="flex items-center gap-3">
@@ -415,7 +404,6 @@
       </form>
     </BaseModal>
 
-    <!-- External Modal Components: Strictly logic-preserved -->
     <StockAdjustmentModal
       v-if="showStockModal && selectedItem"
       v-model="showStockModal"
@@ -429,6 +417,7 @@
 </template>
 
 <script setup>
+import logger from '@/utils/services/logger'
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import BaseModal from '@/components/BaseModal.vue';
 import HistoryDetailsModal from '@/components/HistoryDetailsModal.vue';
@@ -454,7 +443,6 @@ import { useInventoryStore } from '@/stores/inventory/inventoryStore';
 import PageHeader from '@/components/PageHeader.vue';
 import StockAdjustmentModal from '@/components/branch/StockAdjustmentModal.vue';
 
-// ─── State ───────────────────────────────────────────────────────────────────
 const branchStore = useBranchStore();
 const branchIsolation = useBranchIsolation();
 const productStore = useProductStore();
@@ -477,7 +465,7 @@ const canReverseOpeningBalance = computed(() => {
 const branches = computed(() => branchStore.branches);
 const selectedBranch = computed(() => branchIsolation.isExempt.value
   ? branchStore.selectedBranchId
-  : authStore.user?.branch_id ?? null);
+  : authStore.user?.branchId ?? null);
 
 const currentBranchName = computed(() => {
   const branch = branches.value.find(b => b.id === selectedBranch.value);
@@ -498,7 +486,7 @@ const search = ref('');
 const filter = ref('all');
 const sort = ref('name');
 
-// ─── Stock Adjustment State ────────────────────────────────────────────────────────────────
+// Stock Adjustment State
 const showStockModal = ref(false);
 const showDetailsModal = ref(false);
 const selectedItem = ref(null);
@@ -515,7 +503,7 @@ const obQuantity = ref(0);
 const obUnitCost = ref(0);
 const reversingOpeningBalanceId = ref(null);
 
-// ─── Transfer State (moved from BranchInventory) ─────────────────────────────
+// Transfer State (moved from BranchInventory)
 const showTransferModal = ref(false);
 const transferItem = ref(null);
 const isTransferring = ref(false);
@@ -525,7 +513,7 @@ const transferableBranches = computed(() =>
   (branches.value || []).filter(b => String(b.id) !== String(selectedBranch.value))
 );
 
-// ─── Picker Computed ────────────────────────────────────────────────────────────
+// Picker Computed
 const pickerItems = computed(() => {
   const q = pickerSearch.value.trim().toLowerCase();
   const src = inventory.value.length ? inventory.value : [];
@@ -533,7 +521,7 @@ const pickerItems = computed(() => {
   return src.filter(i =>
     i.name?.toLowerCase().includes(q) ||
     i.barcode?.toLowerCase().includes(q) ||
-    i.product_code?.toLowerCase().includes(q)
+    i.productCode?.toLowerCase().includes(q)
   ).slice(0, 50);
 });
 
@@ -543,10 +531,9 @@ const openAdjustFromPicker = (item) => {
   adjustStock(item);
 };
 
-// ─── Pagination (using useTableFilters composable)
+// Pagination (using useTableFilters composable)
 const filters = useTableFilters('inventory_filters');
 
-// ─── Computed ─────────────────────────────────────────────────────────────────
 const filteredInventory = computed(() => {
   let filtered = inventory.value;
   if (search.value) {
@@ -560,14 +547,14 @@ const filteredInventory = computed(() => {
   if (filter.value === 'low') {
     // Only include items where min_quantity is defined and quantity <= min_quantity
     filtered = filtered.filter(item => 
-      item.min_quantity > 0 && item.quantity <= item.min_quantity
+      item.minQuantity > 0 && item.quantity <= item.minQuantity
     );
   } else if (filter.value === 'about-to-finish') {
     // Only include items where min_quantity is defined
     filtered = filtered.filter(item => 
-      item.min_quantity > 0 && 
+      item.minQuantity > 0 &&
       item.quantity > 0 && 
-      item.quantity <= item.min_quantity * 1.5
+      item.quantity <= item.minQuantity * 1.5
     );
   } else if (filter.value === 'out') {
     filtered = filtered.filter(item => item.quantity === 0);
@@ -592,7 +579,7 @@ const paginatedInventory = computed(() => {
   return filteredInventory.value.slice(start, end);
 });
 
-// ─── Summary Loader ───────────────────────────────────────────────────
+// Summary Loader
 const loadSummary = async (force = false) => {
   if (!selectedBranch.value) {
     stats.value = { totalProducts: 0, totalValue: 0, lowStock: 0, aboutToFinish: 0, expiringSoon: 0 };
@@ -604,16 +591,16 @@ const loadSummary = async (force = false) => {
   });
   if (res.status === 'success' && res.data) {
     stats.value = {
-      totalProducts: res.data.total_products  ?? 0,
-      totalValue:    res.data.total_value     ?? 0,
-      lowStock:      res.data.low_stock       ?? 0,
-      aboutToFinish: res.data.about_to_finish ?? 0,
-      expiringSoon:  res.data.expiring_soon   ?? 0,
+      totalProducts: res.data.totalProducts  ?? 0,
+      totalValue:    res.data.totalValue     ?? 0,
+      lowStock:      res.data.lowStock       ?? 0,
+      aboutToFinish: res.data.aboutToFinish ?? 0,
+      expiringSoon:  res.data.expiringSoon   ?? 0,
     };
   }
 };
 
-// ─── Branch Change Handler ───────────────────────────────────────────────────
+// Branch Change Handler
 const handleBranchChange = (newBranchId) => {
   if (!setRequiredBranch(newBranchId)) return;
   // Reload data with new branch
@@ -623,7 +610,7 @@ const handleBranchChange = (newBranchId) => {
   ]);
 };
 
-// ─── Data Loading ─────────────────────────────────────────────────────────────
+// Data Loading
 const loadInventory = async (force = false) => {
   try {
     const params = { force };
@@ -648,13 +635,13 @@ const loadInventory = async (force = false) => {
 
     const response = await productStore.fetchProducts(params);
     if (response.status === 'success') {
-      const data = response.data?.items || response.data || [];
+      const data = response.data?.data?.items || response.data || [];
       const openingBalancesResponse = await productStore.fetchActiveOpeningBalances(selectedBranch.value);
       if (openingBalancesResponse.status !== 'success') {
         showToast(openingBalancesResponse.message || 'تعذر تحميل حالة الأرصدة الافتتاحية.', 'warning');
       }
       const openingBalancesByProduct = new Map(
-        (openingBalancesResponse.data || []).map(opening => [String(opening.product_id), opening])
+        (openingBalancesResponse.data || []).map(opening => [String(opening.productId), opening])
       );
       
       // Map new API response fields to component properties
@@ -663,31 +650,31 @@ const loadInventory = async (force = false) => {
         ...p,
         ...(openingBalancesByProduct.has(String(p.id))
           ? {
-              opening_balance_id: openingBalancesByProduct.get(String(p.id)).opening_balance_id,
-              opening_quantity: openingBalancesByProduct.get(String(p.id)).opening_quantity,
-              opening_unit_cost: openingBalancesByProduct.get(String(p.id)).opening_unit_cost,
-              opening_balance_has_transaction: Boolean(Number(openingBalancesByProduct.get(String(p.id)).has_inventory_transaction)),
-              opening_balance_has_journal: Boolean(Number(openingBalancesByProduct.get(String(p.id)).has_journal_entry)),
+              openingBalanceId: openingBalancesByProduct.get(String(p.id)).openingBalanceId,
+              openingQuantity: openingBalancesByProduct.get(String(p.id)).openingQuantity,
+              openingUnitCost: openingBalancesByProduct.get(String(p.id)).openingUnitCost,
+              openingBalanceHasTransaction: Boolean(Number(openingBalancesByProduct.get(String(p.id)).hasInventoryTransaction)),
+              openingBalanceHasJournal: Boolean(Number(openingBalancesByProduct.get(String(p.id)).hasJournalEntry)),
             }
-          : { opening_balance_id: null }),
+          : { openingBalanceId: null }),
         id: p.id,
         name: p.name,
         barcode: p.barcode,
-        category_name: p.category_name,
-        category_id: p.category_id,
-        purchase_price: parseFloat(p.purchase_price) || 0,
-        sale_price: parseFloat(p.sale_price) || 0,
-        quantity: parseInt(p.current_quantity) || 0,
-        min_quantity: parseFloat(p.min_quantity) || 0,  // ← قيمة محددة: null → 0
-        unit_name: p.unit_name || 'قطعة',
-        unit_id: p.unit_id,
-        inventory_status: p.inventory_status, // from API: in_stock, low_stock, out_of_stock, N/A
-        gl_status: p.gl_status, // from API: posted, draft
+        categoryName: p.categoryName,
+        categoryId: p.categoryId,
+        purchasePrice: parseFloat(p.purchasePrice) || 0,
+        salePrice: parseFloat(p.salePrice) || 0,
+        quantity: parseInt(p.currentQuantity) || 0,
+        minQuantity: parseFloat(p.minQuantity) || 0,  // ← قيمة محددة: null → 0
+        unitName: p.unitName || 'قطعة',
+        unitId: p.unitId,
+        inventoryStatus: p.inventoryStatus, // from API: in_stock, low_stock, out_of_stock, N/A
+        glStatus: p.glStatus, // from API: posted, draft
         active: p.active,  // ← توحيد: is_active → active
-        profit_margin_percent: parseFloat(p.profit_margin_percent) || 0,
-        profit_markup_percent: parseFloat(p.profit_markup_percent) || 0,
-        total_inventory_value: parseFloat(p.total_inventory_value) || 0,
-        product_type: p.product_type || 'stock'
+        profitMarginPercent: parseFloat(p.profitMarginPercent) || 0,
+        profitMarkupPercent: parseFloat(p.profitMarkupPercent) || 0,
+        totalInventoryValue: parseFloat(p.totalInventoryValue) || 0,
+        productType: p.productType || 'stock'
       }));
       
       inventory.value = [...products.value];
@@ -698,25 +685,25 @@ const loadInventory = async (force = false) => {
   }
 };
 
-// ─── Price Logic (UPDATED to use API purchase_price) ──────────────────────────────────────────────────
+// Price Logic (UPDATED to use API purchase_price)
 const getPrice = item => {
-  const pid = item.product_id || item.id;
+  const pid = item.productId || item.id;
   
   // Primary source: API purchase_price (most reliable)
-  if (item.purchase_price > 0) return parseFloat(item.purchase_price);
+  if (item.purchasePrice > 0) return parseFloat(item.purchasePrice);
   
   // Fallback: find in products array cache
   const product = products.value.find(p => p.id === pid);
-  if (product?.purchase_price > 0) return parseFloat(product.purchase_price);
+  if (product?.purchasePrice > 0) return parseFloat(product.purchasePrice);
   
   // Last resort: use sale_price if no purchase price available
-  if (product?.sale_price > 0) return parseFloat(product.sale_price);
-  if (item.sale_price > 0) return parseFloat(item.sale_price);
+  if (product?.salePrice > 0) return parseFloat(product.salePrice);
+  if (item.salePrice > 0) return parseFloat(item.salePrice);
   
   return 0;
 };
 
-// ─── Stock Adjustment Handlers ──────────────────────────────────────────────────────────────────
+// Stock Adjustment Handlers
 const adjustStock = item => {
   if (!selectedBranch.value) {
     showToast('يرجى اختيار فرع قبل تسوية المخزون', 'warning');
@@ -742,7 +729,7 @@ const reverseOpeningBalance = async (item) => {
   if (!canReverseOpeningBalance.value || !selectedBranch.value || !item?.id) return;
 
   const confirmed = await AlertService.confirm(
-    `${item.opening_balance_has_journal ? 'سيتم عكس القيد المحاسبي وحركة المخزون' : 'سيتم عكس حركة المخزون فقط لعدم وجود قيد محاسبي مرحّل'} للرصيد الافتتاحي الخاص بـ "${item.name}" في فرع "${currentBranchName.value}". لا يُسمح بالعكس عند وجود أي حركة مخزون لاحقة أو رصيد محاسبي غير مطابق، وسيبقى سجل المنتج محفوظًا. هل تريد المتابعة؟`
+    `${item.openingBalanceHasJournal ? 'سيتم عكس القيد المحاسبي وحركة المخزون' : 'سيتم عكس حركة المخزون فقط لعدم وجود قيد محاسبي مرحّل'} للرصيد الافتتاحي الخاص بـ "${item.name}" في فرع "${currentBranchName.value}". لا يُسمح بالعكس عند وجود أي حركة مخزون لاحقة أو رصيد محاسبي غير مطابق، وسيبقى سجل المنتج محفوظًا. هل تريد المتابعة؟`
   );
   if (!confirmed) return;
 
@@ -766,7 +753,7 @@ const reverseOpeningBalance = async (item) => {
   }
 };
 
-// ─── Transfer Handlers (moved from BranchInventory) ──────────────────────────
+// Transfer Handlers (moved from BranchInventory)
 const openTransferModal = (item) => {
   if (!selectedBranch.value) {
     showToast('يرجى اختيار فرع مصدر قبل نقل المخزون', 'warning');
@@ -793,9 +780,9 @@ const submitTransfer = async () => {
   isTransferring.value = true;
   try {
     const result = await inventoryStore.transferStock({
-      product_id: transferItem.value.product_id || transferItem.value.id,
-      from_branch_id: selectedBranch.value,
-      to_branch_id: transferData.value.toBranchId,
+      productId: transferItem.value.productId || transferItem.value.id,
+      fromBranchId: selectedBranch.value,
+      toBranchId: transferData.value.toBranchId,
       quantity: transferData.value.quantity,
       notes: transferData.value.notes,
     });
@@ -814,7 +801,6 @@ const submitTransfer = async () => {
     isTransferring.value = false;
   }
 };
-
 
 const openActivateModal = (item) => {
   // Ensure a branch is selected
@@ -878,11 +864,11 @@ const handleOpeningBalanceSubmit = async () => {
   try {
     // ✅ مباشرة: أرسل product_id + branch_id، الـ backend سيبحث عن mapping
     const response = await productStore.postOpeningBalance({
-      product_id: selectedProductForActivation.value.id,
-      branch_id: selectedBranch.value,
+      productId: selectedProductForActivation.value.id,
+      branchId: selectedBranch.value,
       quantity: obQuantity.value,
-      unit_cost: obUnitCost.value,
-      entry_date: getLocalDateISO(),
+      unitCost: obUnitCost.value,
+      entryDate: getLocalDateISO(),
     });
 
     if (response.status === 'success') {
@@ -905,7 +891,6 @@ const handleOpeningBalanceSubmit = async () => {
   }
 };
 
-// ─── Product Details (PRESERVED) ─────────────────────────────────────────────
 const viewDetails = async item => {
   try {
     isLoadingDetails.value = true;
@@ -919,17 +904,17 @@ const viewDetails = async item => {
         ...productDetails.value,
         ...data,
         // Flatten nested objects for template compatibility
-        sale_price: data.pricing?.sale_price ?? data.sale_price,
-        purchase_price: data.pricing?.purchase_price ?? data.purchase_price,
-        min_sale_price: data.pricing?.min_sale_price ?? data.min_sale_price,
-        quantity: data.inventory?.current_quantity ?? data.quantity,
-        unit_name: data.inventory?.unit_name ?? data.unit_name,
-        unit_id: data.inventory?.unit_id ?? data.unit_id,
-        min_quantity: data.inventory?.min_quantity ?? data.min_quantity,
-        max_quantity: data.inventory?.max_quantity ?? data.max_quantity,
-        inventory_status: data.inventory?.inventory_status ?? data.inventory_status,
-        category_name: data.category?.name ?? data.category_name,
-        category_id: data.category?.id ?? data.category_id,
+        salePrice: data.pricing?.salePrice ?? data.salePrice,
+        purchasePrice: data.pricing?.purchasePrice ?? data.purchasePrice,
+        minSalePrice: data.pricing?.minSalePrice ?? data.minSalePrice,
+        quantity: data.inventory?.currentQuantity ?? data.quantity,
+        unitName: data.inventory?.unitName ?? data.unitName,
+        unitId: data.inventory?.unitId ?? data.unitId,
+        minQuantity: data.inventory?.minQuantity ?? data.minQuantity,
+        maxQuantity: data.inventory?.maxQuantity ?? data.maxQuantity,
+        inventoryStatus: data.inventory?.inventoryStatus ?? data.inventoryStatus,
+        categoryName: data.category?.name ?? data.categoryName,
+        categoryId: data.category?.id ?? data.categoryId,
       };
     }
     const historyRes = await inventoryStore.getProductHistory(item.id, 5, {
@@ -947,39 +932,47 @@ const viewDetails = async item => {
 
 const closeDetailsModal = () => { showDetailsModal.value = false; productDetails.value = null; };
 
-// ─── Stats Update (PRESERVED) ─────────────────────────────────────────────────
 const updateStats = () => {
   loadSummary(true);
 };
 
-// ─── UI Helpers (UPDATED for new API status) ──────────────────────────────────────────────────
+// UI Helpers (UPDATED for new API status)
 // Map inventory_status from API to UI classes
-const getStatusClass = item => {
-  const status = item.inventory_status || 'out_of_stock';
+const getInventoryStatus = item => {
+  const status = item.inventoryStatus || 'outOfStock';
   return {
-    'in_stock': 'bg-emerald-100 text-emerald-700 border-emerald-200',      // 🟢 Green
-    'low_stock': 'bg-amber-100 text-amber-700 border-amber-200',            // 🟠 Orange
-    'out_of_stock': 'bg-rose-100 text-rose-700 border-rose-200',            // 🔴 Red
+    in_stock: 'inStock',
+    low_stock: 'lowStock',
+    out_of_stock: 'outOfStock',
+  }[status] || status;
+};
+
+const getStatusClass = item => {
+  const status = getInventoryStatus(item);
+  return {
+    'inStock': 'bg-emerald-100 text-emerald-700 border-emerald-200',      // 🟢 Green
+    'lowStock': 'bg-amber-100 text-amber-700 border-amber-200',            // 🟠 Orange
+    'outOfStock': 'bg-rose-100 text-rose-700 border-rose-200',            // 🔴 Red
     'N/A': 'bg-slate-100 text-slate-700 border-slate-200'                   // ⚪ Gray (service)
   }[status] || 'bg-slate-100 text-slate-700 border-slate-200';
 };
 
 const getStatusText = item => {
-  const status = item.inventory_status || 'out_of_stock';
+  const status = getInventoryStatus(item);
   return {
-    'in_stock': 'متوفر بالمخزن',
-    'low_stock': 'مخزون منخفض',
-    'out_of_stock': 'نافذ من المخزن',
+    'inStock': 'متوفر بالمخزن',
+    'lowStock': 'مخزون منخفض',
+    'outOfStock': 'نافذ من المخزن',
     'N/A': 'خدمة (بدون مخزون)'
   }[status] || 'غير معروف';
 };
 
 const getQuantityClass = item => {
-  const status = item.inventory_status || 'out_of_stock';
+  const status = getInventoryStatus(item);
   return {
-    'in_stock': 'bg-blue-50 text-blue-600',       // 🟢 Green
-    'low_stock': 'bg-amber-50 text-amber-600',     // 🟠 Orange
-    'out_of_stock': 'bg-rose-50 text-rose-600',    // 🔴 Red
+    'inStock': 'bg-blue-50 text-blue-600',       // 🟢 Green
+    'lowStock': 'bg-amber-50 text-amber-600',     // 🟠 Orange
+    'outOfStock': 'bg-rose-50 text-rose-600',    // 🔴 Red
     'N/A': 'bg-slate-50 text-slate-600'            // ⚪ Gray
   }[status] || 'bg-slate-50 text-slate-600';
 };
@@ -987,26 +980,26 @@ const getQuantityClass = item => {
 const getMovementTypeText = (type) => ({
   out:             'بيع',
   in:              'وارد',
-  initial_stock:   'إدخال مخزون أولي',
+  initialStock:   'إدخال مخزون أولي',
   sale:            'بيع',
   sales:           'بيع',
   purchase:        'مشتريات',
-  opening_balance:        'رصيد افتتاحي',
-  opening_balance_manual: 'رصيد افتتاحي يدوي',
-  opening_balance_bulk:   'رصيد افتتاحي دفعي',
+  openingBalance:        'رصيد افتتاحي',
+  openingBalanceManual: 'رصيد افتتاحي يدوي',
+  openingBalanceBulk:   'رصيد افتتاحي دفعي',
   adjustment:      'تسوية مخزون',
-  adjustment_in:   'تسوية وارد',
-  adjustment_out:  'تسوية صادر',
+  adjustmentIn:   'تسوية وارد',
+  adjustmentOut:  'تسوية صادر',
   add:             'إضافة وارد',
   subtract:        'خصم / سحب',
   set:             'تعيين يدوي',
-  transfer_in:     'تحويل وارد',
-  transfer_out:    'تحويل صادر',
+  transferIn:     'تحويل وارد',
+  transferOut:    'تحويل صادر',
   transfer:        'تحويل بين فروع',
   return:          'مرتجع',
-  return_in:       'مرتجع وارد',
-  return_out:      'مرتجع صادر',
-  write_off:       'إتلاف / شطب',
+  returnIn:       'مرتجع وارد',
+  returnOut:      'مرتجع صادر',
+  writeOff:       'إتلاف / شطب',
   correction:      'تصحيح',
 }[type] || type || '—');
 
@@ -1033,9 +1026,9 @@ const NOTES_PREFIX_AR = [
 ];
 const translateMovementNote = (note, movementType = '') => {
   const typeTranslation = {
-    initial_stock: 'رصيد افتتاحي عند إنشاء المنتج',
-    opening_balance_manual: 'رصيد افتتاحي يدوي',
-    opening_balance_bulk: 'رصيد افتتاحي دفعي',
+    initialStock: 'رصيد افتتاحي عند إنشاء المنتج',
+    openingBalanceManual: 'رصيد افتتاحي يدوي',
+    openingBalanceBulk: 'رصيد افتتاحي دفعي',
   }[movementType];
 
   if (typeTranslation && (!note || note.startsWith('رصيد افتتاحي:'))) {
@@ -1054,9 +1047,9 @@ const formatCurrency = v => formatCurrencyLocale(v, 2);
 
 const formatDate = date => { if (!date) return '—'; return new Date(date).toLocaleDateString('ar-SA'); };
 
-// ─── Lifecycle ────────────────────────────────────────────────────────────────
+// Lifecycle
 const handleOpeningBalancePosted = async (event) => {
-  console.log('📡 Received openingBalancePosted event:', event.detail);
+  logger.debug('📡 Received openingBalancePosted event:', event.detail);
   try {
     showToast('🔄 جاري تحديث بيانات المخزون...', 'info');
     
@@ -1071,7 +1064,7 @@ const handleOpeningBalancePosted = async (event) => {
       'success'
     );
     
-    console.log('✅ Inventory refreshed successfully');
+    logger.debug('✅ Inventory refreshed successfully');
   } catch (error) {
     console.error('❌ Error refreshing inventory:', error);
     showToast('خطأ في تحديث البيانات: ' + error.message, 'error');
@@ -1088,7 +1081,7 @@ const checkPendingOpeningBalance = async () => {
       
       // If the update was recent (last 10 seconds), refresh the data
       if (timeDiff < 10000) {
-        console.log('📡 Found pending opening balance update from sessionStorage');
+        logger.debug('📡 Found pending opening balance update from sessionStorage');
         await handleOpeningBalancePosted({
           detail: {
             ...data,
@@ -1116,14 +1109,14 @@ onMounted(async () => {
   // Check for pending opening balance updates from previous session
   await checkPendingOpeningBalance();
 
-  // ─── Listen for opening balance posted events from OpeningBalance.vue ─────
+  // Listen for opening balance posted events from OpeningBalance.vue
   window.addEventListener('openingBalancePosted', handleOpeningBalancePosted);
-  console.log('✅ Listener registered for openingBalancePosted events');
+  logger.debug('✅ Listener registered for openingBalancePosted events');
 
-  // ─── Auto-open modal from query params (من BranchInventory router-links) ───
+  // Auto-open modal from query params (من BranchInventory router-links)
   const action    = route.query.action;
-  const productId = route.query.product_id ? Number(route.query.product_id) : null;
-  const branchId  = route.query.branch_id;
+  const productId = route.query.productId ? Number(route.query.productId) : null;
+  const branchId  = route.query.branchId;
   if (action && productId) {
     if (branchId && isExempt.value && String(branchId) !== String(selectedBranch.value)) {
       if (!setRequiredBranch(branchId)) {
@@ -1133,7 +1126,7 @@ onMounted(async () => {
       await loadInventory();
     }
     const item = inventory.value.find(
-      i => Number(i.product_id ?? i.id) === productId
+      i => Number(i.productId ?? i.id) === productId
     );
     if (item) {
       if (action === 'adjust')   adjustStock(item);
@@ -1149,7 +1142,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Animations */
 @keyframes loading {
   0% { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
@@ -1186,7 +1178,6 @@ onUnmounted(() => {
   @apply bg-slate-200 rounded-full;
 }
 
-/* Animation Classes */
 .animate-fadeIn {
   animation: fadeIn 0.4s ease-out;
 }
