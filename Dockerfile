@@ -31,6 +31,7 @@ WORKDIR /var/www/html
 COPY . .
 
 # Create .htaccess for production (without /smartsys/ subdirectory)
+# Note: CORS headers are handled by PHP middleware to avoid conflicts
 RUN echo '<IfModule mod_rewrite.c>\n\
     RewriteEngine On\n\
     RewriteCond %{REQUEST_FILENAME} !-f\n\
@@ -41,10 +42,6 @@ RUN echo '<IfModule mod_rewrite.c>\n\
     Header set X-Content-Type-Options "nosniff"\n\
     Header set X-Frame-Options "SAMEORIGIN"\n\
     Header set X-XSS-Protection "1; mode=block"\n\
-    Header set Access-Control-Allow-Origin "*"\n\
-    Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"\n\
-    Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"\n\
-    Header set Access-Control-Allow-Credentials "true"\n\
 </IfModule>' > /var/www/html/public/.htaccess
 
 # Install PHP dependencies
