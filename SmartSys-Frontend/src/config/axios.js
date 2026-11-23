@@ -53,7 +53,7 @@ const apiClient = axios.create({
   // refresh_token cookie on cross-origin requests to /auth/refresh,
   // /auth/logout, and /auth/logout-all-devices.
   withCredentials: true,
-  timeout: 10000,
+  timeout: 30000, // 30 seconds for Render cold starts
 });
 
 // Register BASE_URL for development and testing
