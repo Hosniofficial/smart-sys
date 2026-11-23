@@ -185,6 +185,17 @@ $currentPath = normalizeRequestPath($requestedPath, (string) ($_ENV['APP_BASE_PA
 $queryString = isset($parsedRequest['query']) && $parsedRequest['query'] !== '' ? '?' . $parsedRequest['query'] : '';
 $_SERVER['REQUEST_URI'] = $currentPath . $queryString;
 
+// Debug logging in production to diagnose 405 error
+if (($_ENV['APP_ENV'] ?? '') === 'production') {
+    error_log(sprintf(
+        '[ROUTER DEBUG] Method=%s Original=%s Normalized=%s Final=%s',
+        $_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN',
+        $requestedPath,
+        $currentPath,
+        $_SERVER['REQUEST_URI']
+    ));
+}
+
 // Container
 $container = (require __DIR__ . '/../config/container.php')();
 (require __DIR__ . '/../config/bootstrap.php')($container);
