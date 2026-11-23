@@ -99,3 +99,6 @@ coverage/
 .gitkeep!
 package.json.bak
 composer.json.bak
+
+# -------- TEST SUITE VENDOR --------
+test_suite/psr-http-message/
