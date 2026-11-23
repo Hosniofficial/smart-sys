@@ -17,7 +17,7 @@ use Dotenv\Dotenv;
 use App\Utils\ApiResponseEnvelope;
 
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../');
-$dotenv->load();
+$dotenv->safeLoad(); // safeLoad doesn't throw if .env is missing (production uses system env vars)
 
 // Determine environment
 $appEnv = strtolower($_ENV['APP_ENV'] ?? 'production');
