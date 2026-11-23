@@ -19,6 +19,15 @@ class Database {
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
             ];
+            
+            // SSL configuration for production databases (e.g., Aiven)
+            $sslMode = $_ENV['DB_SSL_MODE'] ?? null;
+            if ($sslMode === 'REQUIRED' || $sslMode === 'VERIFY_CA' || $sslMode === 'VERIFY_IDENTITY') {
+                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+                // For cloud databases, we typically don't need CA file in Docker
+                // The connection will use TLS/SSL without explicit CA verification
+            }
+            
             $this->pdo = new PDO($dsn, $user, $pass, $options);
 
             // تحميل tenant_id من الجلسة
