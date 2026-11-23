@@ -167,7 +167,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useToast } from '@/composables/useToast';
-import { adjustStock } from '@/services/branchInventoryService';
+import { adjustStock } from '@/services/BranchInventoryService';
 import LoadingButton from '@/components/ui/LoadingButton.vue';
 
 const props = defineProps({

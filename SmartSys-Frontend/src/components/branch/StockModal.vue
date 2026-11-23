@@ -120,7 +120,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
 import { useToast } from '@/composables/useToast';
-import { searchProducts as apiSearchProducts } from '@/services/branchInventoryService';
+import { searchProducts as apiSearchProducts } from '@/services/BranchInventoryService';
 import LoadingButton from '@/components/ui/LoadingButton.vue'
 
 // Props & Emits
