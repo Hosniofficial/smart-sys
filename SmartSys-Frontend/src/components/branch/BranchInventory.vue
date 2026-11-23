@@ -203,7 +203,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useToast } from '@/composables/useToast';
 import { useCompanyCurrency } from '@/composables/useCompanyCurrency';
 import BaseSpinner from '@/components/ui/BaseSpinner.vue';
-import { getBranchInventory } from '@/services/branchInventoryService';
+import { getBranchInventory } from '@/services/BranchInventoryService';
 
 const props = defineProps({
   branchId: {
