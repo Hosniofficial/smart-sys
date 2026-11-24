@@ -64,8 +64,21 @@ ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
-# Allow .htaccess overrides
+# Allow .htaccess overrides and disable directory slash redirects
 RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
+
+# Write a clean VirtualHost that disables DirectorySlash globally
+RUN echo '<VirtualHost *:80>\n\
+    ServerName localhost\n\
+    DocumentRoot /var/www/html/public\n\
+    DirectorySlash Off\n\
+    <Directory /var/www/html/public>\n\
+        Options -Indexes\n\
+        AllowOverride All\n\
+        Require all granted\n\
+        DirectorySlash Off\n\
+    </Directory>\n\
+</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
 
 # Expose port
 EXPOSE 80
