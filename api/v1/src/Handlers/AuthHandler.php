@@ -42,7 +42,7 @@ class AuthHandler extends BaseHandler
         $this->securityLogger = $securityLogger;
         $this->authSession = $authSession ?? new AuthSessionService($db);
         $this->ga = new \PragmaRX\Google2FA\Google2FA();
-        $this->twoFaEncryption = new TwoFactorEncryptionService();
+        $this->twoFaEncryption = new TwoFactorEncryptionService(requireKey: true);
     }
 
     /** Authenticate credentials and optional 2FA, then issue access and refresh tokens. */
