@@ -11,7 +11,7 @@
 - [x] H1: XSS in PageHeader - FIXED (removed v-html)
 - [x] H2: Rate limiting behind proxy - FIXED (removed ::1 from whitelist)
 - [x] H3: 2FA plaintext storage - FIXED (requireKey: true + script created)
-- [ ] H4: Default secrets not validated - TODO
+- [x] H4: Default secrets not validated - FIXED (validateSecuritySecrets() in container.php)
 - [ ] H5: /admin/owner-contribution-tenants 403 - TODO
 
 ### Medium/Low

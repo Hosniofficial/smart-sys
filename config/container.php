@@ -74,6 +74,102 @@ use Monolog\Logger;
 
 use DI\ContainerBuilder;
 
+/**
+ * Validate critical security secrets are set and not using default/placeholder values
+ * 
+ * This prevents accidental production deployment with weak or default secrets that
+ * would compromise the entire system's security.
+ */
+function validateSecuritySecrets(): void
+{
+    $requiredSecrets = [
+        'JWT_SECRET' => 'JWT access token signing key',
+        'JWT_REFRESH_SECRET' => 'JWT refresh token signing key',
+    ];
+
+    $optionalSecrets = [
+        'ENCRYPTION_KEY' => 'General data encryption key',
+        'TWO_FA_ENCRYPTION_KEY' => '2FA secrets encryption key (required if 2FA is enabled)',
+    ];
+
+    $errors = [];
+    $warnings = [];
+
+    // Check required secrets
+    foreach ($requiredSecrets as $key => $description) {
+        $value = $_ENV[$key] ?? null;
+        
+        if (empty($value)) {
+            $errors[] = "❌ {$key} is not set ({$description})";
+            continue;
+        }
+
+        // Check for common default/weak patterns
+        $lowerValue = strtolower($value);
+        $defaultPatterns = [
+            'change_me',
+            'changeme',
+            'default',
+            'secret',
+            'password',
+            'replace_me',
+            'replaceme',
+            'your_secret_here',
+            'yoursecrethere',
+            'example',
+            '12345',
+            'test',
+        ];
+
+        foreach ($defaultPatterns as $pattern) {
+            if (strpos($lowerValue, $pattern) !== false) {
+                $errors[] = "❌ {$key} contains weak/default value pattern '{$pattern}' ({$description})";
+                break;
+            }
+        }
+
+        // Check minimum length (at least 32 characters for cryptographic secrets)
+        if (strlen($value) < 32) {
+            $errors[] = "❌ {$key} is too short (minimum 32 characters for security) - current length: " . strlen($value);
+        }
+    }
+
+    // Check optional secrets (warning only, not fatal)
+    foreach ($optionalSecrets as $key => $description) {
+        $value = $_ENV[$key] ?? null;
+        
+        if (empty($value)) {
+            $warnings[] = "⚠️  {$key} is not set ({$description}) - Feature may be disabled";
+        }
+    }
+
+    // Report errors and stop if any critical secrets are invalid
+    if (!empty($errors)) {
+        $errorMessage = "🔒 SECURITY CONFIGURATION ERROR 🔒\n\n";
+        $errorMessage .= implode("\n", $errors) . "\n\n";
+        $errorMessage .= "Production deployment BLOCKED to prevent security breach.\n";
+        $errorMessage .= "Please set strong, unique secrets in environment variables.\n\n";
+        $errorMessage .= "Generate secure secrets:\n";
+        $errorMessage .= "  JWT_SECRET: openssl rand -hex 32\n";
+        $errorMessage .= "  JWT_REFRESH_SECRET: openssl rand -hex 32\n";
+        $errorMessage .= "  ENCRYPTION_KEY: openssl rand -base64 32\n";
+        $errorMessage .= "  TWO_FA_ENCRYPTION_KEY: php scripts/generate_2fa_key.php\n";
+        
+        error_log($errorMessage);
+        throw new \RuntimeException($errorMessage);
+    }
+
+    // Log warnings (non-fatal)
+    if (!empty($warnings)) {
+        foreach ($warnings as $warning) {
+            error_log($warning);
+        }
+    }
+}
+
+// Validate secrets before building container
+validateSecuritySecrets();
+
 return function (): Container {
     $containerBuilder = new ContainerBuilder();
     
