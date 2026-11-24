@@ -22,11 +22,11 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
     public function __construct(
         bool $enabled = true,
         bool $redirectToHttps = true,
-        array $excludePaths = []
+        ?array $excludePaths = null
     ) {
         $this->enabled = $enabled;
         $this->redirectToHttps = $redirectToHttps;
-        $this->excludePaths = $excludePaths ?? [
+        $this->excludePaths = $excludePaths ?: [
             '/health',
             '/status',
             '/metrics',
@@ -40,25 +40,20 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
         $path = $request->getUri()->getPath();
         $host = $request->getUri()->getHost();
 
+        // Skip excluded paths (health checks, metrics)
         if ($this->isPathExcluded($path)) {
             return $handler->handle($request);
         }
 
-        if (in_array($host, ['localhost', '127.0.0.1', '0.0.0.0'])) {
+        // Skip localhost/development
+        if (in_array($host, ['localhost', '127.0.0.1', '0.0.0.0'], true)) {
             return $handler->handle($request);
         }
 
-        // Check if behind a trusted proxy (e.g., Render, Cloudflare)
-        $remote = $request->getServerParams()['REMOTE_ADDR'] ?? '';
-        $trustProxy = filter_var($_ENV['TRUST_PROXY'] ?? 'false', FILTER_VALIDATE_BOOLEAN);
-        $trustedIPs = array_map('trim', explode(',', $_ENV['TRUSTED_PROXY_IPS'] ?? ''));
-        $isTrustedProxy = $trustProxy && in_array($remote, $trustedIPs, true);
-        
-        // Determine actual scheme (considering X-Forwarded-Proto from proxy)
-        $isHttps = $scheme === 'https' 
-            || ($isTrustedProxy && strtolower($request->getHeaderLine('X-Forwarded-Proto')) === 'https');
+        // Determine if request is HTTPS (direct or via trusted proxy)
+        $isHttps = $scheme === 'https' || $this->isForwardedHttps($request);
 
-        // Redirect to HTTPS if not already secure
+        // Redirect HTTP → HTTPS if enforcement is enabled
         if ($this->enabled && $this->redirectToHttps && !$isHttps) {
             $httpsUri = $request->getUri()->withScheme('https')->withPort(null);
             return (new SlimResponse())
@@ -77,6 +72,34 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
         }
 
         return $response;
+    }
+
+    /**
+     * Check if request is HTTPS based on X-Forwarded-Proto from trusted proxy
+     * 
+     * Only trusts the header if TRUST_PROXY is enabled and request comes from
+     * a trusted proxy IP (e.g., Render's internal proxy at ::1)
+     */
+    private function isForwardedHttps(Request $request): bool
+    {
+        // Check if proxy trust is enabled
+        if (!filter_var($_ENV['TRUST_PROXY'] ?? 'false', FILTER_VALIDATE_BOOLEAN)) {
+            return false;
+        }
+
+        // Verify request comes from trusted proxy
+        $remote = (string)($request->getServerParams()['REMOTE_ADDR'] ?? '');
+        $trustedProxies = array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string)($_ENV['TRUSTED_PROXY_IPS'] ?? ''))
+        )));
+
+        if (empty($trustedProxies) || !in_array($remote, $trustedProxies, true)) {
+            return false;
+        }
+
+        // Check X-Forwarded-Proto header
+        return strtolower(trim($request->getHeaderLine('X-Forwarded-Proto'))) === 'https';
     }
 
     /** Exempt only the exact health endpoint paths from HTTPS redirects. */
