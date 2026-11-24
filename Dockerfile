@@ -19,7 +19,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Enable Apache modules
-RUN a2enmod rewrite headers
+RUN a2enmod rewrite headers dir
+
+# Suppress ServerName warning and disable directory slash redirects
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -30,13 +33,15 @@ WORKDIR /var/www/html
 # Copy application files
 COPY . .
 
-# Create .htaccess for production (without /smartsys/ subdirectory)
+# Create .htaccess for production
 # Note: CORS headers are handled by PHP middleware to avoid conflicts
-RUN echo '<IfModule mod_rewrite.c>\n\
+RUN echo 'DirectorySlash Off\n\
+DirectoryIndex index.php\n\
+<IfModule mod_rewrite.c>\n\
     RewriteEngine On\n\
     RewriteCond %{REQUEST_FILENAME} !-f\n\
     RewriteCond %{REQUEST_FILENAME} !-d\n\
-    RewriteRule ^ index.php [L]\n\
+    RewriteRule ^ index.php [QSA,L]\n\
 </IfModule>\n\
 <IfModule mod_headers.c>\n\
     Header set X-Content-Type-Options "nosniff"\n\
