@@ -48,7 +48,18 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
-        if ($this->enabled && $this->redirectToHttps && $scheme === 'http') {
+        // Check if behind a trusted proxy (e.g., Render, Cloudflare)
+        $remote = $request->getServerParams()['REMOTE_ADDR'] ?? '';
+        $trustProxy = filter_var($_ENV['TRUST_PROXY'] ?? 'false', FILTER_VALIDATE_BOOLEAN);
+        $trustedIPs = array_map('trim', explode(',', $_ENV['TRUSTED_PROXY_IPS'] ?? ''));
+        $isTrustedProxy = $trustProxy && in_array($remote, $trustedIPs, true);
+        
+        // Determine actual scheme (considering X-Forwarded-Proto from proxy)
+        $isHttps = $scheme === 'https' 
+            || ($isTrustedProxy && strtolower($request->getHeaderLine('X-Forwarded-Proto')) === 'https');
+
+        // Redirect to HTTPS if not already secure
+        if ($this->enabled && $this->redirectToHttps && !$isHttps) {
             $httpsUri = $request->getUri()->withScheme('https')->withPort(null);
             return (new SlimResponse())
                 ->withStatus(301)
@@ -57,7 +68,8 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
 
         $response = $handler->handle($request);
 
-        if ($scheme === 'https') {
+        // Add HSTS header for HTTPS responses
+        if ($isHttps) {
             $response = $response->withHeader(
                 'Strict-Transport-Security',
                 'max-age=31536000; includeSubDomains; preload'
