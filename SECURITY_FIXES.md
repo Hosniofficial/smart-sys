@@ -9,7 +9,7 @@
 
 ### High Priority  
 - [x] H1: XSS in PageHeader - FIXED (removed v-html)
-- [ ] H2: Rate limiting behind proxy - TODO
+- [x] H2: Rate limiting behind proxy - FIXED (removed ::1 from whitelist)
 - [ ] H3: 2FA plaintext storage - TODO
 - [ ] H4: Default secrets not validated - TODO
 - [ ] H5: /admin/owner-contribution-tenants 403 - TODO

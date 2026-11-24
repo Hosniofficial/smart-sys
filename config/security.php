@@ -45,8 +45,9 @@ return [
             explode(',', (string) ($_ENV['TRUSTED_PROXY_IPS'] ?? ''))
         ))),
         'ip_whitelist' => [
-            '127.0.0.1',
-            '::1',
+            // Note: Do not add ::1 or 127.0.0.1 in production behind a proxy.
+            // The proxy will appear as ::1, defeating rate limiting.
+            // Use TRUSTED_PROXY_IPS env var instead to trust specific proxy IPs.
         ],
         // Per-path rules override the global max/window for specific endpoints
         'rules' => [
