@@ -36,12 +36,7 @@ return function (App $app, Container $container): void {
     $app->group('/api/v1', function (RouteCollectorProxy $group) use ($container) {
 
         $group->get('/plans', \App\Handlers\SubscriptionHandler::class . ':listPublicPlans');
-        $ownerContributionHandler = $container->get(OwnerContributionHandler::class);
-        $group->get(
-            '/admin/owner-contribution-tenants',
-            [$ownerContributionHandler, 'listAvailableTenants']
-        )->add($container->get(SuperAdminMiddleware::class));
-
+        
         $group->group('', function (RouteCollectorProxy $group) {
             $group->get('/subscription/me', \App\Handlers\SubscriptionHandler::class . ':getMySubscription');
         })->add(JwtAuthMiddleware::class);
@@ -50,6 +45,12 @@ return function (App $app, Container $container): void {
 
     // 4. Protected routes (JWT + Tenant + Subscription)
     $app->group('/api/v1', function (RouteCollectorProxy $group) use ($container) {
+
+        // Admin-only routes (SuperAdmin access, no tenant required)
+        $group->group('/admin', function (RouteCollectorProxy $group) use ($container) {
+            $ownerContributionHandler = $container->get(OwnerContributionHandler::class);
+            $group->get('/owner-contribution-tenants', [$ownerContributionHandler, 'listAvailableTenants']);
+        })->add($container->get(SuperAdminMiddleware::class));
 
         // Core
         (require __DIR__ . '/../app/routes/admin.php')($group, $container);

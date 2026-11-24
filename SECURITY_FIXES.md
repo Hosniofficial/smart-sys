@@ -12,7 +12,7 @@
 - [x] H2: Rate limiting behind proxy - FIXED (removed ::1 from whitelist)
 - [x] H3: 2FA plaintext storage - FIXED (requireKey: true + script created)
 - [x] H4: Default secrets not validated - FIXED (validateSecuritySecrets() in container.php)
-- [ ] H5: /admin/owner-contribution-tenants 403 - TODO
+- [x] H5: /admin/owner-contribution-tenants 403 - FIXED (added JwtAuthMiddleware)
 
 ### Medium/Low
 - [ ] PHPSESSID without Secure/HttpOnly
@@ -22,9 +22,9 @@
 - [ ] Old .htaccess RewriteBase
 
 ## Next Steps
-1. ✅ Commit current fixes (H1, H2, H3)
+1. ✅ All High Priority fixes complete (H1-H5)
 2. ⚠️  Add TWO_FA_ENCRYPTION_KEY to Render: 868XqWvGd7FNv6yv2/dn9wU+u5BsIQlXUqgdxXfN09Y=
-3. Fix H4 (Secrets validation)
-4. Fix H5 (Missing middleware)
-5. Add deployment files
-6. Run full test suite
+3. 🚀 Push all fixes to GitHub
+4. 🔄 Deploy to Render (auto-deploy on push)
+5. 🧪 Test all fixes in production
+6. 📊 Address Medium/Low priority issues if time permits
