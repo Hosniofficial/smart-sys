@@ -11,9 +11,9 @@
         </template>
       </div>
       
-      <h1 class="text-2xl font-bold tracking-tight text-slate-900" v-html="title"></h1>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900">{{ title }}</h1>
       
-      <p class="text-sm text-slate-500 font-medium" v-html="description"></p>
+      <p class="text-sm text-slate-500 font-medium">{{ description }}</p>
     </div>
 
     <div class="flex flex-wrap items-center gap-3">
