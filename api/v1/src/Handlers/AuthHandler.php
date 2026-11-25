@@ -71,7 +71,7 @@ class AuthHandler extends BaseHandler
                     SELECT COUNT(*) FROM login_attempts
                     WHERE username = ? AND ip_address = ?
                       AND success = 0
-                      AND created_at >= DATE_SUB(NOW(), INTERVAL ? SECOND)
+                      AND attempt_time >= DATE_SUB(NOW(), INTERVAL ? SECOND)
                 ");
                 $stmtCheck->execute([$username, $clientIp, $lockoutWindow]);
                 $recentFails = (int) $stmtCheck->fetchColumn();

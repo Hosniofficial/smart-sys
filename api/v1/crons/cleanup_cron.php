@@ -104,7 +104,7 @@ try {
 
 // Task 4: Old login attempts (> 30 days)
 try {
-    $stmt = $pdo->prepare("DELETE FROM login_attempts WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
+    $stmt = $pdo->prepare("DELETE FROM login_attempts WHERE attempt_time < DATE_SUB(NOW(), INTERVAL 30 DAY)");
     $stmt->execute();
     $results['login_attempts'] = ['deleted' => $stmt->rowCount(), 'status' => 'ok'];
 } catch (\Throwable $e) {

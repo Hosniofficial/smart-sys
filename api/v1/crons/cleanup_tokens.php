@@ -104,7 +104,7 @@ try {
 try {
     $stmt = $pdo->prepare("
         DELETE FROM login_attempts
-        WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)
+        WHERE attempt_time < DATE_SUB(NOW(), INTERVAL 30 DAY)
     ");
     $stmt->execute();
     $n = $stmt->rowCount();
