@@ -1,6 +1,6 @@
 # 🚀 Deployment Checklist - Security and Production Readiness
 
-**الحالة الفعلية حتى 25 نوفمبر 2026:** إصلاحات H1-H5 أدناه موجودة في التاريخ المنشور. آخر commit ناجح على Render هو `cfa58c8`. التغييرات الحالية على المستودع تنظيف وتوثيق وحذف ملفات غير مستخدمة؛ لم تُنشر على Render. فحوص `/health` و`/check` وواجهة Cloudflare Pages أعادت HTTP 200. هذه النتائج لا تعني أن الخدمة جاهزة لاستقبال المستخدمين؛ انظر المخاطر التشغيلية أدناه.
+**الحالة الفعلية حتى 25 نوفمبر 2026:** إصلاحات H1-H5 أدناه موجودة في التاريخ المنشور. آخر تغيير تطبيقي هو `cfa58c8`، ثم نشر Render تلقائيًا commit التنظيف `aa87bb7` من `smart-sys/main`. بعده أعادت `/health` و`/check` وواجهة Cloudflare Pages HTTP 200. لم يتغير منطق التطبيق في commit التنظيف. هذه النتائج لا تعني أن الخدمة جاهزة لاستقبال المستخدمين؛ انظر المخاطر التشغيلية أدناه.
 
 ## ✅ Completed High Priority Security Fixes
 
@@ -82,10 +82,12 @@ The application uses the bundled public Aiven CA at `/var/www/html/certs/aiven-p
 - Render `/health`: HTTP 200 (database readiness).
 - Render `/check`: HTTP 200 (liveness).
 - Cloudflare Pages home page: HTTP 200.
+- GitHub Actions run #92 for `aa87bb7`: all three jobs were marked failed within about two seconds; the logs endpoint returned 404 for each job. No job-step output was available, so this is not evidence that the PHP or frontend tests themselves failed.
 
 ### Required before onboarding
 - Run login, refresh-cookie, logout, and authorization checks with a staging account.
 - Rerun the Vite build on a machine/CI runner with adequate free memory, and confirm CI and Docker build succeed for the deployed commit.
+- Investigate why GitHub Actions jobs terminate before producing logs, then rerun the workflow and retain successful PHP, frontend, audit, and build evidence.
 - Take a production backup and test restoring it to an isolated staging database.
 - Review rate limiting, trusted proxy IPs, TLS identity verification, and security headers in staging.
 
@@ -136,7 +138,7 @@ Do not run repeated failed-login/rate-limit tests against production; they can b
 3. **Choose reliable hosting:** decide whether Render must move off the sleeping free plan. Verify the least-privilege DB account and keep Aiven network access restricted; add only an approved developer CIDR if local access is essential.
 4. **Verify deployment configuration:** confirm the mounted CA file and `DB_SSL_MODE=VERIFY_IDENTITY`, `TRUST_PROXY`, trusted proxy addresses, `REFRESH_COOKIE_PATH`, Cloudflare `BACKEND_URL`, and frontend `VITE_API_BASE_URL`. Validate cookie flags and client-IP attribution without trusting arbitrary forwarded headers.
 5. **Complete staging end-to-end tests:** exercise login, refresh, reload, logout, password reset/email links, roles/tenant boundaries, and representative sale, return, and inventory flows. Use synthetic data and verify the resulting database and UI behavior.
-6. **Prove build and runtime support:** upgrade Docker from PHP 8.2 to PHP 8.3 before 31 December 2026, extend CI to test the target version, and require passing PHPUnit/MySQL 8 integration, frontend tests/build, dependency audits, and Docker build. The local Vite build currently fails from memory exhaustion; do not mark it passed until CI or a capable machine proves it.
+6. **Prove build and runtime support:** investigate the immediate, logless failures in GitHub Actions run #92 and obtain a successful workflow run. Then upgrade Docker from PHP 8.2 to PHP 8.3 before 31 December 2026, extend CI to test the target version, and require passing PHPUnit/MySQL 8 integration, frontend tests/build, dependency audits, and Docker build. The local Vite build currently fails from memory exhaustion; do not mark it passed until CI or a capable machine proves it.
 7. **Enable scheduled work safely:** test the subscription cron against isolated data, verify reminder deduplication and expiry behavior, then add a controlled daily schedule with protected secrets and concurrency prevention. It can change subscription state and send real email; do not enable it before the test.
 8. **Resolve launch policies:** confirm the 8-character password minimum and 72-byte maximum, decide how to address the global user-identity duplicate check in `RBACHandler`, and record an accounting plan for widespread floating-point money calculations. Do not make partial financial precision changes.
 9. **Operational readiness and sign-off:** verify health/readiness, logs/alerts, security headers, CORS, TLS, backups and restoration; fill the security-reporting contact in `SECURITY.md`; obtain technical and financial owner approval. Keep the release **NO-GO** until all launch blockers are evidenced in staging.
