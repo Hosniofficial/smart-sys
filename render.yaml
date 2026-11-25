@@ -38,7 +38,7 @@ services:
       - key: DB_SSL_MODE
         value: VERIFY_IDENTITY
       - key: DB_SSL_CA
-        sync: false
+        value: /var/www/html/certs/aiven-project-ca.pem
       - key: JWT_SECRET
         sync: false
       - key: JWT_REFRESH_SECRET

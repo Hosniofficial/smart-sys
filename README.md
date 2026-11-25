@@ -105,7 +105,7 @@ GitHub Actions يشغّل PHPUnit مع تكاملات MySQL 8 على PHP 8.1 و8
 
 - إعداد Render المبدئي موجود في `render.yaml`، وصورة backend في `Dockerfile`. فحص الجاهزية `/health` يحتاج اتصال قاعدة البيانات؛ `/check` فحص liveness لا يتصل بها.
 - واجهة Cloudflare Pages تستخدم `SmartSys-Frontend/functions/api/[[path]].js` لتمرير `/api/v1` إلى backend. يلزم ضبط `BACKEND_URL` و`VITE_API_BASE_URL=/api/v1` في إعدادات البناء/النشر.
-- في Render، اضبط اتصال MySQL مع `DB_SSL_MODE=VERIFY_IDENTITY` ومسار شهادة CA موثوقة في `DB_SSL_CA`، وحدد عناوين `TRUSTED_PROXY_IPS` بعد التحقق من إعداد proxy الفعلي.
+- في Render، يضبط `render.yaml` اتصال MySQL مع `DB_SSL_MODE=VERIFY_IDENTITY` وشهادة Aiven العامة المرفقة في `/var/www/html/certs/aiven-project-ca.pem` عبر `DB_SSL_CA`. حدّث الشهادة وأعد النشر إذا دوّر Aiven شهادة المشروع. حدد عناوين `TRUSTED_PROXY_IPS` بعد التحقق من إعداد proxy الفعلي.
 - `TWO_FA_ENCRYPTION_KEY` مطلوب قبل تفعيل 2FA أو تخزين أسرارها؛ يمكن للتطبيق بدء التشغيل من دونه، لكن عمليات 2FA تفشل بأمان. لا تدوّر مفتاحًا مستخدمًا لبيانات مشفرة قبل خطة ترحيل/إعادة تسجيل مناسبة.
 - لم يُتحقق محليًا من بناء Docker أو إعدادات Render وCloudflare أو اتصال Aiven. نفّذ ذلك في staging قبل أي نشر إنتاجي.
 

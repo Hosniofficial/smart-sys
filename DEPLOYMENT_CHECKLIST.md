@@ -44,7 +44,7 @@ The high-priority fixes below are present in the selected upstream history. Addi
 
 `TWO_FA_ENCRYPTION_KEY` must be set to a valid base64-encoded 32-byte key before enabling 2FA or storing 2FA secrets. The application can start without it, but 2FA verification fails securely until the key is configured. A previous value was published in deployment documentation and is compromised. Do not simply replace the active key if encrypted 2FA secrets already exist: migrate/re-encrypt those records with a new key first, or affected users will need to re-enroll 2FA.
 
-Use `render.yaml` as a starting blueprint, then configure the prompted secrets and settings in Render. Set a mounted trusted CA file path for `DB_SSL_CA`, the actual Aiven DB port, verified `TRUSTED_PROXY_IPS`, and the frontend origin. Configure Cloudflare Pages with `BACKEND_URL` and `VITE_API_BASE_URL=/api/v1`.
+Use `render.yaml` as a starting blueprint, then configure the prompted secrets and settings in Render. It points `DB_SSL_CA` to the bundled public Aiven project CA at `/var/www/html/certs/aiven-project-ca.pem`; replace that certificate and redeploy if Aiven rotates the project CA. Configure the actual Aiven DB port, verified `TRUSTED_PROXY_IPS`, and the frontend origin. Configure Cloudflare Pages with `BACKEND_URL` and `VITE_API_BASE_URL=/api/v1`.
 
 **⚠️ Important Notes**:
 - The application can start without this key, but 2FA operations fail securely until a valid key is configured.

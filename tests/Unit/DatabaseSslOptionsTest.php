@@ -36,6 +36,19 @@ final class DatabaseSslOptionsTest extends TestCase
         }
     }
 
+    public function testBundledAivenProjectCaIsValidAndUsableForVerifiedTls(): void
+    {
+        $caPath = dirname(__DIR__, 2) . '/certs/aiven-project-ca.pem';
+        self::assertFileExists($caPath);
+
+        $certificate = openssl_x509_read((string) file_get_contents($caPath));
+        self::assertNotFalse($certificate);
+
+        $options = DatabaseSslOptions::forMode('VERIFY_IDENTITY', $caPath);
+        self::assertSame($caPath, $options[PDO::MYSQL_ATTR_SSL_CA]);
+        self::assertTrue($options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT]);
+    }
+
     public function testVerifiedModesRejectMissingCa(): void
     {
         $this->expectException(RuntimeException::class);
