@@ -91,6 +91,7 @@ $migrations = [
     '048_clarify_core_role_metadata',
     '049_create_branch_print_settings',
     '050_add_tax_inclusive_invoice_mode',
+    '051_reconcile_email_token_and_notification_json_constraints',
 ];
 
 // معالجة الأوامر
