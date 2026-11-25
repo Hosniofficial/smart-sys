@@ -36,6 +36,22 @@ final class DatabaseSslOptionsTest extends TestCase
         }
     }
 
+    public function testMergingSslOptionsPreservesPdoAttributeKeys(): void
+    {
+        $caPath = dirname(__DIR__, 2) . '/certs/aiven-project-ca.pem';
+        $options = DatabaseSslOptions::mergeInto([
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ], 'VERIFY_IDENTITY', $caPath);
+
+        self::assertSame(PDO::ERRMODE_EXCEPTION, $options[PDO::ATTR_ERRMODE]);
+        self::assertSame(PDO::FETCH_ASSOC, $options[PDO::ATTR_DEFAULT_FETCH_MODE]);
+        self::assertFalse($options[PDO::ATTR_EMULATE_PREPARES]);
+        self::assertSame($caPath, $options[PDO::MYSQL_ATTR_SSL_CA]);
+        self::assertTrue($options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT]);
+    }
+
     public function testBundledAivenProjectCaIsValidAndUsableForVerifiedTls(): void
     {
         $caPath = dirname(__DIR__, 2) . '/certs/aiven-project-ca.pem';

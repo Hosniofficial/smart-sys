@@ -9,6 +9,15 @@ use RuntimeException;
 
 final class DatabaseSslOptions
 {
+    public static function mergeInto(array $options, string $mode, string $caPath = ''): array
+    {
+        foreach (self::forMode($mode, $caPath) as $attribute => $value) {
+            $options[$attribute] = $value;
+        }
+
+        return $options;
+    }
+
     public static function forMode(string $mode, string $caPath = ''): array
     {
         $mode = strtoupper(trim($mode));

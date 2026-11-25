@@ -25,7 +25,7 @@ class Database {
             
             $sslMode = (string) ($_ENV['DB_SSL_MODE'] ?? getenv('DB_SSL_MODE') ?: '');
             $sslCa = (string) ($_ENV['DB_SSL_CA'] ?? getenv('DB_SSL_CA') ?: '');
-            $options = array_merge($options, DatabaseSslOptions::forMode($sslMode, $sslCa));
+            $options = DatabaseSslOptions::mergeInto($options, $sslMode, $sslCa);
             
             $this->pdo = new PDO($dsn, $user, $pass, $options);
 
