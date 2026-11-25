@@ -1,8 +1,10 @@
-# 🚀 Deployment Checklist - Security Fixes
+# 🚀 Deployment Checklist - Security and Production Readiness
+
+**الحالة الفعلية حتى 25 نوفمبر 2026:** إصلاحات H1-H5 أدناه موجودة في التاريخ المنشور. آخر commit ناجح على Render هو `cfa58c8`، والشفرة المحلية على هذا commit؛ التغييرات المحلية الحالية توثيقية فقط. فحوص `/health` و`/check` وواجهة Cloudflare Pages أعادت HTTP 200. هذه النتائج لا تعني أن الخدمة جاهزة لاستقبال المستخدمين؛ انظر المخاطر التشغيلية أدناه.
 
 ## ✅ Completed High Priority Security Fixes
 
-The high-priority fixes below are present in the selected upstream history. Additional local security and deployment changes are currently uncommitted; none of the changes in this work session have been pushed or deployed.
+The high-priority fixes below are present in the deployed history. The operational blockers and follow-up checks are listed below.
 
 ### H1: XSS Vulnerability in PageHeader ✅
 - **Issue**: v-html directive rendering unsanitized user input
@@ -38,77 +40,80 @@ The high-priority fixes below are present in the selected upstream history. Addi
 
 ---
 
-## 🔐 Required Environment Variable - URGENT
+## 🔐 Encryption keys
 
-### Configure in Render before deployment
+`ENCRYPTION_KEY` was added to Render configuration to avoid the startup warning. This does not mean all application data is encrypted with it.
 
-`TWO_FA_ENCRYPTION_KEY` must be set to a valid base64-encoded 32-byte key before enabling 2FA or storing 2FA secrets. The application can start without it, but 2FA verification fails securely until the key is configured. A previous value was published in deployment documentation and is compromised. Do not simply replace the active key if encrypted 2FA secrets already exist: migrate/re-encrypt those records with a new key first, or affected users will need to re-enroll 2FA.
+`TWO_FA_ENCRYPTION_KEY` is configured in Render according to the prior deployment setup, but an earlier value was published in deployment documentation and must be treated as compromised. Do not rotate the active key before checking for encrypted 2FA secrets and taking a backup; changing it without migration can make existing data unreadable.
 
-Use `render.yaml` as a starting blueprint, then configure the prompted secrets and settings in Render. It points `DB_SSL_CA` to the bundled public Aiven project CA at `/var/www/html/certs/aiven-project-ca.pem`; replace that certificate and redeploy if Aiven rotates the project CA. Configure the actual Aiven DB port, verified `TRUSTED_PROXY_IPS`, and the frontend origin. Configure Cloudflare Pages with `BACKEND_URL` and `VITE_API_BASE_URL=/api/v1`.
+The application uses the bundled public Aiven CA at `/var/www/html/certs/aiven-project-ca.pem` with `DB_SSL_MODE=VERIFY_IDENTITY`. Replace the certificate and redeploy if Aiven rotates the project CA. Never commit secret values or include them in deployment logs.
 
 **⚠️ Important Notes**:
-- The application can start without this key, but 2FA operations fail securely until a valid key is configured.
-- Configure and verify the key before enabling 2FA. If encrypted 2FA data already exists, plan key migration or user re-enrollment before rotating it.
-- This is a production key - DO NOT commit to version control
-- Keep this key secure - losing it means losing access to all encrypted 2FA secrets
-- Use different keys for dev/staging/production environments
+- `TWO_FA_ENCRYPTION_KEY` must be Base64 for a 32-byte key.
+- Use separate keys per environment.
+- Rotate the exposed key only after verifying current 2FA data and the backup.
 
 ---
 
 ## 📋 Deployment Status
 
 ### Backend (Render)
-- ⏳ Local changes are not pushed or deployed
-- ⏳ **ACTION REQUIRED**: Configure all prompted Render secrets and verify CA/proxy settings
+- ✅ Last successful commit: `cfa58c8` (Live on Render)
+- ✅ `/health` and `/check` returned HTTP 200 in the latest check
+- ⚠️ The free plan may sleep when idle; evaluate an upgrade before onboarding
 - 🌐 URL: https://smartsys-api.onrender.com
 
 ### Frontend (Cloudflare Pages)
-- ⏳ Deployment status not verified
-- ⏳ Configure `BACKEND_URL` and `VITE_API_BASE_URL=/api/v1`
+- ✅ The home page returned HTTP 200 in the latest check
+- ✅ `GET /api/v1/auth/login` through Pages returned HTTP 405 (route reached; method not allowed)
+- ⚠️ Full login flow through the frontend was not tested in this review
 - 🌐 URL: https://smart-sys.pages.dev
 
 ---
 
-## 🧪 Testing After Deployment
+## 🧪 Verification
 
-### 1. Health Check
-```bash
-curl https://smartsys-api.onrender.com/health
-```
-Expected: HTTP 200 when the API can reach MySQL; `/check` is a liveness-only endpoint and does not verify database readiness.
+### Completed checks
+- PHPUnit: 461 tests, 1,266 assertions, 52 skipped; no failures. This is not a full database integration or coverage certification.
+- Frontend tests: 12 passed.
+- Vite production build: did not complete locally; Node ran out of memory while only about 149 MB of system memory was free.
+- Render `/health`: HTTP 200 (database readiness).
+- Render `/check`: HTTP 200 (liveness).
+- Cloudflare Pages home page: HTTP 200.
 
-### 2. Login and refresh test
-Use a staging account through the frontend. Confirm login, refresh after a full page reload, and logout. Do not put real passwords or tokens in shell history or deployment logs.
+### Required before onboarding
+- Run login, refresh-cookie, logout, and authorization checks with a staging account.
+- Rerun the Vite build on a machine/CI runner with adequate free memory, and confirm CI and Docker build succeed for the deployed commit.
+- Take a production backup and test restoring it to an isolated staging database.
+- Review rate limiting, trusted proxy IPs, TLS identity verification, and security headers in staging.
 
-### 3. Rate limiting test
-Run the configured threshold test only in staging. Repeated failed login attempts can block the caller IP for the lockout window; do not perform this test against production.
-
-### 4. Admin Route Test
-```bash
-curl https://smartsys-api.onrender.com/api/v1/admin/owner-contribution-tenants \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
-```
-Expected: `200 OK` (not `403 Forbidden` anymore)
+Do not run repeated failed-login/rate-limit tests against production; they can block the caller IP for the lockout window. Never put real passwords or tokens in shell history or deployment logs.
 
 ---
 
-## 📊 Outstanding Deployment Work
+## ⛔ Production blockers and operational decisions
 
-### Operational verification
-- Confirm CI succeeds on the pushed commit.
-- Verify Render `/health`, Cloudflare proxy, refresh-cookie behavior, TLS certificate validation, rate limiting, and security headers in staging before production.
-- Take a database backup and test restore before rotating encryption keys or changing production data.
+### Aiven database
+- MySQL 8.4.11 on `Free-1-1gb` (1 CPU, 1 GB RAM, 1 GB storage) in Amsterdam; Aiven shows that the trial has ended.
+- The free plan is scheduled for retirement on **21 December 2026**. Memory usage was approximately 81% in the last review.
+- The IP address allowlist is restricted to Render's current shared outbound ranges: `74.220.48.0/24` and `74.220.56.0/24`. Render `/health` and `/check` remained HTTP 200 after the change. These ranges are shared with other Render services and are not unique to this service. Direct local connections to Aiven are now blocked unless an approved development IP is added.
+- Termination protection is enabled to reduce accidental deletion risk; this does not prevent retirement of the free plan.
+- **Decision required:** select a paid Aiven plan or a tested migration destination before the retirement date. Do not change plans without confirming cost and a restorable backup.
+
+### Before public launch
+- Choose a Render plan that does not sleep on idle if reliable response times are required.
+- Verify whether production has encrypted 2FA secrets; back them up and rotate the previously exposed key using a migration or user re-enrollment plan.
+- Create or verify a least-privilege application database user; do not assume the runtime account needs administrative privileges.
+- Complete staging end-to-end checks and backup-restore verification.
 
 ---
 
 ## 🎯 Next Steps
 
-1. Review and commit the local changes.
-2. Push to the selected `Hosniofficial/smart-sys` repository and confirm CI.
-3. Configure Render and Cloudflare variables and CA secret file.
-4. Deploy to staging and run the checks above.
-5. Plan 2FA key migration/re-enrollment, then rotate compromised production keys.
-6. Deploy to production only after backups and staging checks pass.
+1. Decide on the Aiven replacement/upgrade and Render availability plan.
+2. If local Aiven access is needed, add only an approved developer CIDR; do not reopen `0.0.0.0/0` or `::/0`.
+3. Verify current 2FA data and backup, then rotate the previously exposed key safely.
+4. Finish staging, CI, Docker, end-to-end, and backup-restore checks before onboarding.
 
 ---
 
@@ -122,4 +127,4 @@ If you encounter any issues:
 
 ---
 
-**Last Updated**: 2024 (after completing H1-H5 security fixes)
+**Last Updated**: 2026-11-25
