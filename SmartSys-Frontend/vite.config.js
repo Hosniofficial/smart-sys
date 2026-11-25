@@ -63,7 +63,7 @@ export default defineConfig({
           }
 
           // UI libraries
-          if (id.includes('node_modules/lucide-vue-next') ||
+          if (id.includes('node_modules/@lucide/vue') ||
               id.includes('node_modules/@fortawesome')) {
             return 'vendor-ui';
           }

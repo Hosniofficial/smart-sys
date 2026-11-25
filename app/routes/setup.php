@@ -8,8 +8,8 @@ use DI\Container;
 use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
-        $setupHandler = $container->get(SetupHandler::class);
-        $ownerContributionHandler = $container->get(OwnerContributionHandler::class);
+        $setupHandler = new \App\Routing\ContainerHandlerProxy($container, SetupHandler::class);
+        $ownerContributionHandler = new \App\Routing\ContainerHandlerProxy($container, OwnerContributionHandler::class);
 
         $group->group('/setup', function (RouteCollectorProxy $group) use ($setupHandler) {
             // Get setup status and current settings

@@ -7,8 +7,8 @@ use DI\Container;
 use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
-    $handler = $container->get(ProductBranchHandler::class);
-    $db = $container->get(PDO::class);
+    $handler = new \App\Routing\ContainerHandlerProxy($container, ProductBranchHandler::class);
+    $db = $container;
 
     // Product-Branch GL Integration routes (SAP-style accounting)
     $group->group('/product-branch', function (RouteCollectorProxy $group) use ($handler, $db) {

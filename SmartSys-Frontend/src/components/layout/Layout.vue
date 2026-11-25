@@ -308,7 +308,7 @@ import SectionPanel from '@/components/layout/SectionPanel.vue'
 import WorkspaceTabs from '@/components/layout/WorkspaceTabs.vue'
 import {
   Bell, User, LogOut, Menu, X, ChevronDown, Building
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 
 const router = useRouter()
 const route = useRoute()

@@ -71,6 +71,12 @@ jobs:
       - name: Install frontend dependencies
         working-directory: SmartSys-Frontend
         run: npm ci
+      - name: Audit frontend dependencies
+        working-directory: SmartSys-Frontend
+        run: npm audit
+      - name: Run frontend tests
+        working-directory: SmartSys-Frontend
+        run: npm test
       - name: Build frontend
         working-directory: SmartSys-Frontend
         run: npm run build

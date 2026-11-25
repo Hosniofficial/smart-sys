@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Security\PasswordPolicy;
 use PDO;
 use RuntimeException;
 
@@ -16,6 +17,8 @@ final class UserSessionService
     /** Change a user's password and revoke every access and refresh session atomically. */
     public function changePassword(int $userId, int $tenantId, string $newPassword): void
     {
+        PasswordPolicy::assertValid($newPassword);
+
         $updatedAt = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite'
             ? 'CURRENT_TIMESTAMP'
             : 'NOW()';

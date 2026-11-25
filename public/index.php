@@ -30,13 +30,13 @@ if ($isProduction) {
     // ═══════════════════════════════════════════════════════════════════════
     // - Hide E_DEPRECATED & E_STRICT (vendor library warnings)
     // - Never display errors on screen (security risk)
-    // - Log all real errors to file for debugging
+    // - Send real errors to stderr for the platform log collector
     // ═══════════════════════════════════════════════════════════════════════
     error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
     ini_set('display_errors', '0');
     ini_set('display_startup_errors', '0');
     ini_set('log_errors', '1');
-    ini_set('error_log', __DIR__ . '/../logs/error.log');
+    ini_set('error_log', 'php://stderr');
     
 } elseif ($isDevelopment) {
     // ═══════════════════════════════════════════════════════════════════════
@@ -97,7 +97,7 @@ function normalizeRequestPath(string $rawUri, string $basePath): string
 // Static files handler — Dev only (PHP built-in server)
 // يخدّم الصور والـ CSS والـ JS مباشرةً بدون routing
 // ══════════════════════════════════════════════════════════
-$basePath = (string) ($_ENV['APP_BASE_PATH'] ?? getenv('APP_BASE_PATH') ?? '/smartsys/api/v1');
+$basePath = (string) ($_ENV['APP_BASE_PATH'] ?? getenv('APP_BASE_PATH') ?? '');
 $rawRequestUri = $_SERVER['REQUEST_URI'] ?? '/';
 $parsedRequestUri = parse_url($rawRequestUri);
 $uri = normalizeRequestPath($rawRequestUri, $basePath);
@@ -181,20 +181,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
 // normalize URI: /smartsys/api/something or /api/something → /api/v1/something
 $requestedPath = $_SERVER['REQUEST_URI'] ?? '/';
 $parsedRequest = parse_url($requestedPath);
-$currentPath = normalizeRequestPath($requestedPath, (string) ($_ENV['APP_BASE_PATH'] ?? getenv('APP_BASE_PATH') ?? '/smartsys/api/v1'));
+$currentPath = normalizeRequestPath($requestedPath, (string) ($_ENV['APP_BASE_PATH'] ?? getenv('APP_BASE_PATH') ?? ''));
 $queryString = isset($parsedRequest['query']) && $parsedRequest['query'] !== '' ? '?' . $parsedRequest['query'] : '';
 $_SERVER['REQUEST_URI'] = $currentPath . $queryString;
-
-// Debug logging in production to diagnose 405 error
-if (($_ENV['APP_ENV'] ?? '') === 'production') {
-    error_log(sprintf(
-        '[ROUTER DEBUG] Method=%s Original=%s Normalized=%s Final=%s',
-        $_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN',
-        $requestedPath,
-        $currentPath,
-        $_SERVER['REQUEST_URI']
-    ));
-}
 
 // Container
 $container = (require __DIR__ . '/../config/container.php')();

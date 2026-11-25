@@ -304,7 +304,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
         $createdBody = json_decode((string) $created->getBody(), true, 512, JSON_THROW_ON_ERROR);
         self::assertSame('success', $createdBody['status']);
         $originalId = (int) $createdBody['data']['id'];
-        $originalJournalId = (int) $createdBody['data']['journal_entry_id'];
+        $originalJournalId = (int) $createdBody['data']['journalEntryId'];
 
         $replay = $this->request('POST', '/api/v1/cash-vouchers', $payload, [
             'Idempotency-Key' => $idempotencyKey,
@@ -377,7 +377,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
         self::assertSame(200, $updated->getStatusCode(), (string) $updated->getBody());
         $updatedBody = json_decode((string) $updated->getBody(), true, 512, JSON_THROW_ON_ERROR);
         $replacementId = (int) $updatedBody['data']['id'];
-        $replacementJournalId = (int) $updatedBody['data']['journal_entry_id'];
+        $replacementJournalId = (int) $updatedBody['data']['journalEntryId'];
         self::assertNotSame($originalId, $replacementId);
         self::assertSame('cancelled', $this->rowValue('cash_vouchers', 'status', $originalId));
         self::assertSame('reversed', $this->rowValue('journal_entries', 'status', $originalJournalId));
@@ -474,7 +474,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
         self::assertSame(201, $disbursementResponse->getStatusCode(), (string) $disbursementResponse->getBody());
         $disbursementBody = json_decode((string) $disbursementResponse->getBody(), true, 512, JSON_THROW_ON_ERROR);
         $disbursementVoucherId = (int) $disbursementBody['data']['id'];
-        $disbursementJournalId = (int) $disbursementBody['data']['journal_entry_id'];
+        $disbursementJournalId = (int) $disbursementBody['data']['journalEntryId'];
         self::assertJournalBalanced($disbursementJournalId);
         $disbursementLines = self::$db->prepare(
             'SELECT account_id, debit_amount, credit_amount
@@ -540,7 +540,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
             512,
             JSON_THROW_ON_ERROR
         );
-        self::assertNull($exemptCashVoucherBody['data']['session_id']);
+        self::assertNull($exemptCashVoucherBody['data']['sessionId']);
         self::$db->prepare(
             "DELETE FROM settings WHERE tenant_id = ? AND key_name = 'cashier_session_exempt_users'"
         )->execute([self::$tenantId]);
@@ -552,7 +552,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
         self::assertSame(201, $bankVoucherResponse->getStatusCode(), (string) $bankVoucherResponse->getBody());
         $bankVoucherBody = json_decode((string) $bankVoucherResponse->getBody(), true, 512, JSON_THROW_ON_ERROR);
         $bankVoucherId = (int) $bankVoucherBody['data']['id'];
-        self::assertNull($bankVoucherBody['data']['session_id']);
+        self::assertNull($bankVoucherBody['data']['sessionId']);
         $bankMovement = self::$db->prepare(
             "SELECT session_id FROM cash_transactions
              WHERE tenant_id = ? AND reference_type = 'cash_voucher' AND reference_id = ?"
@@ -574,7 +574,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
         self::assertSame(201, $sessionVoucherResponse->getStatusCode(), (string) $sessionVoucherResponse->getBody());
         $sessionVoucherBody = json_decode((string) $sessionVoucherResponse->getBody(), true, 512, JSON_THROW_ON_ERROR);
         $sessionVoucherId = (int) $sessionVoucherBody['data']['id'];
-        self::assertSame($sessionId, (int) $sessionVoucherBody['data']['session_id']);
+        self::assertSame($sessionId, (int) $sessionVoucherBody['data']['sessionId']);
         $sessionMovement = self::$db->prepare(
             "SELECT session_id, branch_id FROM cash_transactions
              WHERE tenant_id = ? AND reference_type = 'cash_voucher' AND reference_id = ?"
@@ -646,7 +646,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
              VALUES (?, ?, ?, ?, 0, 0)'
         )->execute([
             self::$tenantId,
-            'IT-VOUCHER-CREATE-LIQ-' . $suffix,
+            'IT-VCL-' . $suffix,
             'Voucher create liquidity account',
             'asset',
         ]);
@@ -681,7 +681,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
 
             self::assertSame(402, $response->getStatusCode(), (string) $response->getBody());
             $body = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
-            self::assertSame('insufficient_liquidity', $body['error_code'] ?? null);
+            self::assertSame('insufficient_liquidity', $body['errors']['errorCode'] ?? null);
             self::assertSame($countsBefore['cash_vouchers'], $this->countForTenant('cash_vouchers'));
             self::assertSame($countsBefore['journal_entries'], $this->countForTenant('journal_entries'));
             self::assertSame($countsBefore['cash_transactions'], $this->countForTenant('cash_transactions'));
@@ -700,7 +700,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
              VALUES (?, ?, ?, ?, 0, 0)'
         )->execute([
             self::$tenantId,
-            'IT-VOUCHER-EDIT-LIQ-' . $suffix,
+            'IT-VEL-' . $suffix,
             'Voucher edit liquidity account',
             'asset',
         ]);
@@ -762,7 +762,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
             self::assertSame(201, $created->getStatusCode(), (string) $created->getBody());
             $createdBody = json_decode((string) $created->getBody(), true, 512, JSON_THROW_ON_ERROR);
             $voucherId = (int) $createdBody['data']['id'];
-            $journalId = (int) $createdBody['data']['journal_entry_id'];
+            $journalId = (int) $createdBody['data']['journalEntryId'];
 
             $balanceQuery = self::$db->prepare(
                 "SELECT COALESCE(SUM(jel.debit_amount - jel.credit_amount), 0)
@@ -780,7 +780,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
             );
             self::assertSame(402, $updated->getStatusCode(), (string) $updated->getBody());
             $errorBody = json_decode((string) $updated->getBody(), true, 512, JSON_THROW_ON_ERROR);
-            self::assertSame('insufficient_liquidity', $errorBody['error_code'] ?? null);
+            self::assertSame('insufficient_liquidity', $errorBody['errors']['errorCode'] ?? null);
             self::assertSame('posted', $this->rowValue('cash_vouchers', 'status', $voucherId));
             self::assertSame('posted', $this->rowValue('journal_entries', 'status', $journalId));
             self::assertSame('completed', $this->cashTransactionStatus($voucherId));
@@ -807,7 +807,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
              VALUES (?, ?, ?, ?, 0, 0)'
         )->execute([
             self::$tenantId,
-            'IT-RECEIPT-REVERSAL-' . $suffix,
+            'IT-RREV-' . $suffix,
             'Receipt reversal liquidity account',
             'asset',
         ]);
@@ -856,7 +856,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
             self::assertSame(201, $receiptResponse->getStatusCode(), (string) $receiptResponse->getBody());
             $receiptBody = json_decode((string) $receiptResponse->getBody(), true, 512, JSON_THROW_ON_ERROR);
             $receiptId = (int) $receiptBody['data']['id'];
-            $receiptJournalId = (int) $receiptBody['data']['journal_entry_id'];
+            $receiptJournalId = (int) $receiptBody['data']['journalEntryId'];
 
             $expensePayload = [
                 'type' => 'payment',
@@ -899,9 +899,9 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
             ] as $response) {
                 self::assertSame(402, $response->getStatusCode(), (string) $response->getBody());
                 $body = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
-                self::assertSame('insufficient_liquidity', $body['error_code'] ?? null);
-                self::assertEquals(0, (float) $body['details']['current_balance']);
-                self::assertEquals(40, (float) $body['details']['required_amount']);
+                self::assertSame('insufficient_liquidity', $body['errors']['errorCode'] ?? null);
+                self::assertEquals(0, (float) $body['errors']['details']['currentBalance']);
+                self::assertEquals(40, (float) $body['errors']['details']['requiredAmount']);
                 self::assertSame($before['vouchers'], $this->countForTenant('cash_vouchers'));
                 self::assertSame($before['journals'], $this->countForTenant('journal_entries'));
                 self::assertSame($before['cash_transactions'], $this->countForTenant('cash_transactions'));
@@ -1040,7 +1040,7 @@ final class CashVoucherMySqlIntegrationTest extends TestCase
              VALUES (?, ?, ?, ?, 0, 0)'
         )->execute([
             self::$tenantId,
-            'IT-VOUCHER-RACE-' . $suffix,
+            'IT-VR-' . $suffix,
             'Concurrent voucher liquidity account',
             'asset',
         ]);

@@ -15,13 +15,13 @@ const safeParseUser = (raw) => {
 function getBaseURL() {
   // In development: use VITE_API_BASE_URL directly (should contain full path)
   if (import.meta.env.MODE === 'development') {
-    // VITE_API_BASE_URL should be: http://localhost:8000/smartsys/api/v1
+    // VITE_API_BASE_URL should be: http://localhost:8000/api/v1
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
     if (apiBaseUrl) {
       return apiBaseUrl;
     }
     // Fallback if VITE_API_BASE_URL not set
-    return 'http://localhost:8000/smartsys/api/v1';
+    return 'http://localhost:8000/api/v1';
   }
   
   // In production: use VITE_API_BASE_URL if set
@@ -29,8 +29,8 @@ function getBaseURL() {
     return import.meta.env.VITE_API_BASE_URL;
   }
   
-  // Default for production: relative path from same origin
-  return '/smartsys/api/v1';
+  // Default for production: use the same-origin Cloudflare Pages API proxy
+  return '/api/v1';
 }
 
 function finishGlobalLoader(config) {

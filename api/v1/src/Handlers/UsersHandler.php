@@ -4,6 +4,7 @@ namespace App\Handlers;
 
 use App\Services\SecurityLogger;
 use App\Services\UserSessionService;
+use App\Security\PasswordPolicy;
 use PDO;
 use App\Services\MonologHandler;
 use App\Utils\PaginationHelper;
@@ -193,8 +194,9 @@ class UsersHandler extends BaseHandler
             }
 
             $newPassword = trim($data['new_password'] ?? '');
-            if (strlen($newPassword) < 8) {
-                return $this->errorResponse($response, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل', 400);
+            $passwordError = PasswordPolicy::validationMessage($newPassword);
+            if ($passwordError !== null) {
+                return $this->errorResponse($response, $passwordError, 400);
             }
 
             (new UserSessionService($this->db))->changePassword(

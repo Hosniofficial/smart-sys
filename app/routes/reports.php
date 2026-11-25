@@ -12,13 +12,13 @@ use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
 
-    $db = $container->get(PDO::class);
+    $db = $container;
 
     $group->group('/reports', function (RouteCollectorProxy $group) use ($container, $db) {
 
-        $salesH     = $container->get(SalesAnalyticsHandler::class);
-        $posH       = $container->get(PosAnalyticsHandler::class);
-        $advanced   = $container->get(AdvancedReportsHandler::class);
+        $salesH     = new \App\Routing\ContainerHandlerProxy($container, SalesAnalyticsHandler::class);
+        $posH       = new \App\Routing\ContainerHandlerProxy($container, PosAnalyticsHandler::class);
+        $advanced   = new \App\Routing\ContainerHandlerProxy($container, AdvancedReportsHandler::class);
 
         // Sales reports
         // NOTE: Duplicate route GET /reports/sales/summary was removed.

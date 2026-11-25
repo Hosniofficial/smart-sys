@@ -13,13 +13,10 @@
 
 ```env
 TRUST_PROXY=true
-TRUSTED_PROXY_IPS=::1,127.0.0.1
+TRUSTED_PROXY_IPS=<عناوين الوكلاء التي تم التحقق منها>
 ```
 
-**ليه `::1`؟**
-- من الـ logs بتاعك: `Method=POST ... IP=::1`
-- Render بيستخدم proxy داخلي بـ IPv6 loopback
-- لازم نضيفه للـ trusted IPs عشان نقرا `X-Forwarded-Proto` صح
+أضف عناوين الوكلاء التي ثبت أنها تتصل بالتطبيق فقط. لا تخلط بين `TRUSTED_PROXY_IPS` (للتحقق من رؤوس الوكيل) و`ip_whitelist` (لتجاوز تحديد المعدل). لا تثق في `::1` أو `127.0.0.1` إلا إذا أكدت سجلات الخدمة أن الوكيل الموثوق يتصل فعلًا من هذا العنوان.
 
 ---
 
@@ -40,7 +37,7 @@ SESSIONS_DEBUG=0
 ### 3️⃣ إصلاح 2FA Encryption Key (إلزامي)
 
 ```env
-TWO_FA_ENCRYPTION_KEY=868XqWvGd7FNv6yv2/dn9wU+u5BsIQlXUqgdxXfN09Y=
+TWO_FA_ENCRYPTION_KEY=<ضع ناتج php scripts/generate_2fa_key.php هنا>
 ```
 
 **المشكلة**:
@@ -94,31 +91,9 @@ APP_URL=https://smart-sys.pages.dev
    - اضغط **Save**
 5. بعد حفظ كل التعديلات، اضغط **Manual Deploy** → **Deploy latest commit**
 
-### Method 2: Render.yaml (أوتوماتيك)
+### Method 2: Render Blueprint
 
-إنشاء ملف `render.yaml` في الـ root:
-
-```yaml
-services:
-  - type: web
-    name: smartsys-api
-    env: docker
-    dockerfilePath: ./Dockerfile
-    envVars:
-      - key: APP_ENV
-        value: production
-      - key: APP_DEBUG
-        value: false
-      - key: TRUST_PROXY
-        value: true
-      - key: TRUSTED_PROXY_IPS
-        value: ::1,127.0.0.1
-      - key: LOG_LEVEL
-        value: info
-      - key: SESSIONS_DEBUG
-        value: 0
-      # ... باقي المتغيرات (secrets من dashboard)
-```
+The repository includes `render.yaml` with the Docker service, `/health` check, and prompts for required secrets. Review the service name, set every prompted value in Render, and configure `DB_SSL_CA` as the path to a mounted trusted CA certificate. Verify the trusted proxy addresses before saving; do not use the example to grant broad proxy trust.
 
 ---
 
@@ -182,32 +157,13 @@ done
   - Domain مخصص (`app.yourdomain.com` + `api.yourdomain.com`)
   - أو Cloudflare Pages Function كـ proxy (موجود فعلاً)
 
-### 2. Database SSL Certificate
-المتغيرات `DB_SSL_CA` و `DB_SSL_MODE` **مش مستخدمين في الكود**:
-```bash
-# Verify
-grep -r "DB_SSL_CA" api/
-grep -r "DB_SSL_MODE" api/
-```
+### 2. Database TLS
+استخدم `DB_SSL_MODE=VERIFY_IDENTITY` مع `DB_SSL_CA` يشير إلى شهادة CA موثوقة ومقروءة داخل الخدمة. وفّر الشهادة من إعدادات/ملفات النشر؛ لا تضع أسرار الاتصال أو مفاتيح التشفير في الريبو. وضع `REQUIRED` يشفّر الاتصال دون التحقق من الشهادة، وليس بديلًا مكافئًا للتحقق.
 
-الاتصال بـ Aiven ممكن يحتاج إضافة SSL options في `config/database.php`:
-```php
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false, // For Aiven
-];
-```
+### 3. Refresh cookie خلف Cloudflare Pages
+الواجهة تستخدم المسار المحلي `/api/v1`، وPages Function يمرر هذا المسار إلى backend. اضبط `VITE_API_BASE_URL=/api/v1` في إعدادات البناء، و`BACKEND_URL` على عنوان الخدمة، و`REFRESH_COOKIE_PATH=/api/v1/auth` في إعدادات النشر حتى يطابق مسار الكوكي مسار الـproxy. إذا غُيّر أحد المسارات، حدّثها معًا واختبر تجديد الجلسة بعد إعادة تحميل الصفحة.
 
-### 3. PHPSESSID Cookie (Medium Priority)
-في `config/database.php:31` في `session_start()` بدون flags:
-```php
-session_start([
-    'cookie_secure' => true,
-    'cookie_httponly' => true,
-    'cookie_samesite' => 'Strict',
-]);
-```
+تطبيق API يعتمد JWT؛ إنشاء جلسة PHP من مُنشئ قاعدة البيانات غير مطلوب.
 
 ---
 
@@ -216,7 +172,7 @@ session_start([
 | Priority | Variable | Current | Required | Impact |
 |----------|----------|---------|----------|--------|
 | 🔴 Critical | `TRUST_PROXY` | false | true | Login 301 error |
-| 🔴 Critical | `TRUSTED_PROXY_IPS` | empty | ::1,127.0.0.1 | Login 301 error |
+| 🔴 Critical | `TRUSTED_PROXY_IPS` | empty | verified proxy addresses | Login 301 error |
 | 🟠 High | `TWO_FA_ENCRYPTION_KEY` | invalid | valid base64 | 2FA plaintext storage |
 | 🟠 High | `APP_DEBUG` | true | false | Security leak |
 | 🟡 Medium | `CRON_SECRET` | "change_this" | random | Cron security |
@@ -231,9 +187,9 @@ session_start([
 # على Render dashboard
 1. Environment tab
 2. Update TRUST_PROXY = true
-3. Update TRUSTED_PROXY_IPS = ::1,127.0.0.1
+3. Set TRUSTED_PROXY_IPS to addresses verified from the service's network/logs
 4. Update APP_DEBUG = false
-5. Update TWO_FA_ENCRYPTION_KEY = 868XqWvGd7FNv6yv2/dn9wU+u5BsIQlXUqgdxXfN09Y=
+5. Set a newly generated TWO_FA_ENCRYPTION_KEY; do not reuse any key previously published in the repository
 6. Manual Deploy → Deploy latest commit
 7. Wait 5 mins
 8. Test: curl https://smartsys-api.onrender.com/api/v1/health

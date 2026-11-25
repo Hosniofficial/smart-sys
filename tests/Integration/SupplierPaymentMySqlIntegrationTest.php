@@ -695,16 +695,16 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
         self::assertSame(200, $statementResponse->getStatusCode());
         $statementPaymentTransactions = array_values(array_filter(
             $supplierStatement['data']['transactions'],
-            static fn (array $transaction): bool => $transaction['reference_type'] === 'supplier_payment'
+            static fn (array $transaction): bool => $transaction['referenceType'] === 'supplier_payment'
         ));
         self::assertCount(2, $statementPaymentTransactions);
         self::assertSame(['payment'], array_values(array_unique(array_column(
             $statementPaymentTransactions,
-            'transaction_type'
+            'transactionType'
         ))));
-        self::assertEquals(30.0, (float) $supplierStatement['data']['closing_balance']);
-        self::assertEquals(30.0, (float) $supplierStatement['data']['total_debit']);
-        self::assertEquals(0.0, (float) $supplierStatement['data']['total_credit']);
+        self::assertEquals(30.0, (float) $supplierStatement['data']['closingBalance']);
+        self::assertEquals(30.0, (float) $supplierStatement['data']['totalDebit']);
+        self::assertEquals(0.0, (float) $supplierStatement['data']['totalCredit']);
 
         $missingBranch = $this->requestPayment($this->payload(
             self::$cashPurchaseId,
@@ -729,7 +729,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
         $cashPayment = $this->requestPayment($payloadWithoutSession);
         $cashBody = json_decode((string) $cashPayment->getBody(), true);
         self::assertSame(201, $cashPayment->getStatusCode(), (string) $cashPayment->getBody());
-        self::assertSame($sessionId, (int) $cashBody['data']['session_id']);
+        self::assertSame($sessionId, (int) $cashBody['data']['sessionId']);
 
         $cashTransaction = $db->prepare(
             "SELECT type, reference_type, reference_id, session_id, branch_id
@@ -959,7 +959,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
              VALUES (?, ?, ?, ?, 0, 0)'
         )->execute([
             self::$tenantId,
-            'IT-INVOICE-SHORT-' . bin2hex(random_bytes(4)),
+            'IT-IS-' . bin2hex(random_bytes(4)),
             'Invoice payment shortfall account',
             'asset',
         ]);
@@ -983,9 +983,9 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
 
             self::assertSame(402, $response->getStatusCode(), (string) $response->getBody());
             self::assertSame('error', $body['status'] ?? null);
-            self::assertSame('insufficient_liquidity', $body['error_code'] ?? null);
-            self::assertIsArray($body['details'] ?? null);
-            self::assertSame($liquidityAccountId, (int) ($body['details']['account_id'] ?? 0));
+            self::assertSame('insufficient_liquidity', $body['errors']['errorCode'] ?? null);
+            self::assertIsArray($body['errors']['details'] ?? null);
+            self::assertSame($liquidityAccountId, (int) ($body['errors']['details']['accountId'] ?? 0));
             self::assertFalse(self::$db->inTransaction(), 'The rejected invoice payment must roll back its transaction.');
 
             $paymentCount = self::$db->prepare(
@@ -1006,7 +1006,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
     public function testConcurrentSupplierPaymentsCannotOverdrawSharedLiquidityAccount(): void
     {
         $suffix = bin2hex(random_bytes(5));
-        $liquidityAccountCode = 'IT-RACE-BANK-' . $suffix;
+        $liquidityAccountCode = 'IT-RB-' . $suffix;
         self::$db->prepare(
             'INSERT INTO accounts (tenant_id, code, name, type, debit_balance, credit_balance)
              VALUES (?, ?, ?, ?, 0, 0)'
@@ -1069,7 +1069,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
         foreach (['first', 'second'] as $name) {
             $supplierAccount->execute([
                 self::$tenantId,
-                'IT-RACE-AP-' . strtoupper($name) . '-' . $suffix,
+                'IT-AP-' . substr(strtoupper($name), 0, 1) . '-' . $suffix,
                 'Concurrent supplier payable ' . $name,
                 'liability',
             ]);
@@ -1215,7 +1215,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
              VALUES (?, ?, ?, ?, 0, 0)'
         )->execute([
             self::$tenantId,
-            'IT-INVOICE-RACE-CASH-' . $suffix,
+            'IT-IRC-' . $suffix,
             'Concurrent invoice liquidity account',
             'asset',
         ]);
@@ -1273,7 +1273,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
         foreach (['first', 'second'] as $index => $name) {
             $supplierAccount->execute([
                 self::$tenantId,
-                'IT-INVOICE-RACE-AP-' . strtoupper($name) . '-' . $suffix,
+                'IT-IRAP-' . substr(strtoupper($name), 0, 1) . '-' . $suffix,
                 'Concurrent invoice supplier ' . $name,
                 'liability',
             ]);
@@ -1438,7 +1438,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
              VALUES (?, ?, ?, ?, 0, 0)'
         )->execute([
             self::$tenantId,
-            'IT-INITIAL-PAYMENT-' . $suffix,
+            'IT-IP-' . $suffix,
             'Initial purchase payment liquidity account',
             'asset',
         ]);
@@ -1453,7 +1453,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
                  VALUES (?, ?, ?, ?, 0, 0)'
             )->execute([
                 self::$tenantId,
-                'IT-INITIAL-INVENTORY-' . $suffix,
+                'IT-II-' . $suffix,
                 'Initial purchase inventory account',
                 'asset',
             ]);
@@ -1463,7 +1463,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
                  VALUES (?, ?, ?, ?, 0, 0)'
             )->execute([
                 self::$tenantId,
-                'IT-INITIAL-COGS-' . $suffix,
+                'IT-IC-' . $suffix,
                 'Initial purchase cost account',
                 'expense',
             ]);
@@ -1471,7 +1471,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
 
             self::$db->prepare('INSERT INTO units (name, code, tenant_id) VALUES (?, ?, ?)')->execute([
                 'Initial purchase unit ' . $suffix,
-                'IT-INITIAL-UNIT-' . $suffix,
+                'IT-IU-' . $suffix,
                 self::$tenantId,
             ]);
             $unitId = (int) self::$db->lastInsertId();
@@ -1530,7 +1530,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
 
             self::assertSame(402, $response->getStatusCode(), (string) $response->getBody());
             $body = json_decode((string) $response->getBody(), true);
-            self::assertSame('insufficient_liquidity', $body['error_code'] ?? null);
+            self::assertSame('insufficient_liquidity', $body['errors']['errorCode'] ?? null);
             self::assertSame(0, (int) self::$db->query(
                 'SELECT COUNT(*) FROM purchases WHERE tenant_id = ' . self::$tenantId .
                 ' AND idempotency_key = ' . self::$db->quote($key)
@@ -1658,7 +1658,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
              VALUES (?, ?, ?, ?, 0, 0)'
         )->execute([
             self::$tenantId,
-            'IT-PURCHASE-UPDATE-BANK-' . $suffix,
+            'IT-PUB-' . $suffix,
             'Purchase update liquidity account',
             'asset',
         ]);
@@ -1672,7 +1672,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
              VALUES (?, ?, ?, ?, 0, 0)'
         )->execute([
             self::$tenantId,
-            'IT-PURCHASE-UPDATE-INV-' . $suffix,
+            'IT-PUI-' . $suffix,
             'Purchase update inventory account',
             'asset',
         ]);
@@ -1682,14 +1682,14 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
              VALUES (?, ?, ?, ?, 0, 0)'
         )->execute([
             self::$tenantId,
-            'IT-PURCHASE-UPDATE-COGS-' . $suffix,
+            'IT-PUC-' . $suffix,
             'Purchase update COGS account',
             'expense',
         ]);
         $cogsAccountId = (int) self::$db->lastInsertId();
         self::$db->prepare('INSERT INTO units (name, code, tenant_id) VALUES (?, ?, ?)')->execute([
             'Purchase update unit ' . $suffix,
-            'IT-PURCHASE-UPDATE-UNIT-' . $suffix,
+            'IT-PUU-' . $suffix,
             self::$tenantId,
         ]);
         $unitId = (int) self::$db->lastInsertId();
@@ -1755,7 +1755,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
             $rejected = $this->requestPurchaseUpdate($purchaseId, $payload);
             self::assertSame(402, $rejected->getStatusCode(), (string) $rejected->getBody());
             $rejectedBody = json_decode((string) $rejected->getBody(), true, 512, JSON_THROW_ON_ERROR);
-            self::assertSame('insufficient_liquidity', $rejectedBody['error_code'] ?? null);
+            self::assertSame('insufficient_liquidity', $rejectedBody['errors']['errorCode'] ?? null);
             self::assertSame(0, (int) self::$db->query(
                 'SELECT COUNT(*) FROM purchase_items WHERE tenant_id = ' . self::$tenantId .
                 ' AND purchase_id = ' . $purchaseId
@@ -2128,7 +2128,7 @@ final class SupplierPaymentMySqlIntegrationTest extends TestCase
         $balanceBeforeExpense = (float) $liquidity->fetchColumn();
         self::assertGreaterThan(70, $balanceBeforeExpense);
 
-        $expenseCode = 'IT-OWNER-VOID-EXPENSE-' . bin2hex(random_bytes(4));
+        $expenseCode = 'IT-OVE-' . bin2hex(random_bytes(4));
         self::$db->prepare(
             'INSERT INTO accounts (tenant_id, code, name, type, debit_balance, credit_balance)
              VALUES (?, ?, ?, ?, 0, 0)'

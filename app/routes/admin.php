@@ -6,7 +6,7 @@ use DI\Container;
 use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
-        $handler = $container->get(AdminSubscriptionHandler::class);
+        $handler = new \App\Routing\ContainerHandlerProxy($container, AdminSubscriptionHandler::class);
 
         $group->group('/admin', function (RouteCollectorProxy $group) use ($handler) {
             // Subscriptions
@@ -23,5 +23,5 @@ return function (RouteCollectorProxy $group, Container $container): void {
             $group->post('/plans', [$handler, 'createPlan']);
             $group->put('/plans/{code}', [$handler, 'updatePlan']);
             $group->delete('/plans/{code}', [$handler, 'deletePlan']);
-        })->add($container->get(SuperAdminMiddleware::class));
+        })->add(SuperAdminMiddleware::class);
 };

@@ -10,6 +10,7 @@ use Throwable;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
+use App\Security\PasswordPolicy;
 use App\Utils\RequestHelper;
 
 /**
@@ -90,6 +91,12 @@ class StrictSubscriptionHandler extends BaseHandler
                 $request,
                 ['username', 'email', 'password', 'full_name']
             );
+
+            $passwordError = PasswordPolicy::validationMessage((string) $data['password']);
+            if ($passwordError !== null) {
+                $this->db->rollBack();
+                return $this->errorResponse($response, $passwordError, 400);
+            }
 
             $validation = $this->performEnhancedValidation($data, $ip, $fingerprint);
             if (!$validation['valid']) {
@@ -228,10 +235,6 @@ class StrictSubscriptionHandler extends BaseHandler
 
         if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
             throw new Exception('Invalid email format');
-        }
-
-        if (strlen((string) $data['password']) < 8) {
-            throw new Exception('Password must be at least 8 characters');
         }
 
         if (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', (string) $data['username'])) {

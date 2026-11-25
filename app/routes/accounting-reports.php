@@ -10,8 +10,8 @@ use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
 
-    $handler = $container->get(AccountingReportsHandler::class);
-    $db      = $container->get(PDO::class);
+    $handler = new \App\Routing\ContainerHandlerProxy($container, AccountingReportsHandler::class);
+    $db      = $container;
 
     $group->group('/reports/accounting', function (RouteCollectorProxy $group) use ($handler, $db) {
 

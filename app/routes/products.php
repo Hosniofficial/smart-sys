@@ -10,8 +10,8 @@ use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
 
-    $handler = $container->get(ProductsHandler::class);
-    $db      = $container->get(PDO::class);
+    $handler = new \App\Routing\ContainerHandlerProxy($container, ProductsHandler::class);
+    $db      = $container;
 
     // Units lookup — any authenticated user (cashier needs it for POS)
     $group->get('/units', [$handler, 'listUnits']);

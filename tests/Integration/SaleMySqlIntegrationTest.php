@@ -258,13 +258,13 @@ final class SaleMySqlIntegrationTest extends TestCase
         self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
         $body = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
         self::assertSame('success', $body['status']);
-        self::assertSame([$fixture['first_sale_id'], $fixture['second_sale_id']], $body['data']['allocated_sale_ids']);
+        self::assertSame([$fixture['first_sale_id'], $fixture['second_sale_id']], $body['data']['allocatedSaleIds']);
 
         $allocations = self::$db->prepare(
             'SELECT sale_id, allocated_amount FROM customer_payment_allocations
              WHERE tenant_id = ? AND payment_id = ? ORDER BY sale_id'
         );
-        $allocations->execute([self::$tenantId, $body['data']['payment_id']]);
+        $allocations->execute([self::$tenantId, $body['data']['paymentId']]);
         self::assertEquals([
             $fixture['first_sale_id'] => 100.0,
             $fixture['second_sale_id'] => 20.0,
@@ -274,9 +274,9 @@ final class SaleMySqlIntegrationTest extends TestCase
             "SELECT journal_entry_id FROM payments
              WHERE id = ? AND tenant_id = ? AND customer_id = ? AND type = 'debt_payment'"
         );
-        $payment->execute([$body['data']['payment_id'], self::$tenantId, $fixture['customer_id']]);
+        $payment->execute([$body['data']['paymentId'], self::$tenantId, $fixture['customer_id']]);
         $journalEntryId = (int) $payment->fetchColumn();
-        self::assertSame((int) $body['data']['journal_entry_id'], $journalEntryId);
+        self::assertSame((int) $body['data']['journalEntryId'], $journalEntryId);
         self::assertJournalBalanced($journalEntryId);
         self::assertSame('paid', $this->saleStatus($fixture['first_sale_id']));
         self::assertSame('partial', $this->saleStatus($fixture['second_sale_id']));
@@ -464,7 +464,7 @@ final class SaleMySqlIntegrationTest extends TestCase
         $firstBody = json_decode((string) $first->getBody(), true, 512, JSON_THROW_ON_ERROR);
         $retryBody = json_decode((string) $retry->getBody(), true, 512, JSON_THROW_ON_ERROR);
         self::assertSame($firstBody, $retryBody);
-        self::assertSame([$fixture['first_sale_id'], $fixture['second_sale_id']], $firstBody['data']['allocated_sale_ids']);
+        self::assertSame([$fixture['first_sale_id'], $fixture['second_sale_id']], $firstBody['data']['allocatedSaleIds']);
         self::assertSame(1, $this->countCustomerPaymentRecords($fixture['customer_id']));
         self::assertSame(1, $this->countCustomerPaymentJournals($fixture['customer_id']));
     }
@@ -1361,7 +1361,7 @@ final class SaleMySqlIntegrationTest extends TestCase
 
             $separateSaleIds = [];
             foreach (['left', 'right'] as $suffix) {
-                $separateAccountCode = 'IT-RET-RACE-' . strtoupper($suffix) . '-' . bin2hex(random_bytes(3));
+                $separateAccountCode = 'IT-RACE-' . strtoupper($suffix) . '-' . bin2hex(random_bytes(3));
                 $account->execute([
                     self::$tenantId,
                     $separateAccountCode,
@@ -1383,7 +1383,7 @@ final class SaleMySqlIntegrationTest extends TestCase
                     $separateCustomerId,
                     self::$userId,
                     self::$branchId,
-                    'IT-RETURN-NUMBER-' . strtoupper($suffix) . '-' . bin2hex(random_bytes(4)),
+                    'IT-RNUM-' . strtoupper($suffix) . '-' . bin2hex(random_bytes(4)),
                     self::$paymentMethodId,
                     self::$costCenterId,
                 ]);
@@ -1470,7 +1470,7 @@ final class SaleMySqlIntegrationTest extends TestCase
             self::assertCount(2, $numbers);
             self::assertCount(2, array_unique($numbers), 'Concurrent returns for separate sales must have distinct numbers.');
 
-            $liquidityAccountCode = 'IT-RET-LIQUIDITY-' . bin2hex(random_bytes(4));
+            $liquidityAccountCode = 'IT-LIQUID-' . bin2hex(random_bytes(4));
             $account->execute([
                 self::$tenantId,
                 $liquidityAccountCode,
@@ -1495,7 +1495,7 @@ final class SaleMySqlIntegrationTest extends TestCase
                     self::$tenantId,
                     self::$userId,
                     self::$branchId,
-                    'IT-RET-LIQ-' . strtoupper($suffix) . '-' . bin2hex(random_bytes(4)),
+                    'IT-LIQ-' . strtoupper($suffix) . '-' . bin2hex(random_bytes(4)),
                     $liquidityMethodId,
                     self::$costCenterId,
                 ]);
@@ -1524,7 +1524,7 @@ final class SaleMySqlIntegrationTest extends TestCase
                 ]);
             }
 
-            $equityCode = 'IT-RET-LIQ-EQUITY-' . bin2hex(random_bytes(4));
+            $equityCode = 'IT-LIQEQ-' . bin2hex(random_bytes(4));
             $account->execute([
                 self::$tenantId,
                 $equityCode,
@@ -1636,13 +1636,13 @@ final class SaleMySqlIntegrationTest extends TestCase
             ))[0];
             self::assertSame(
                 'insufficient_liquidity',
-                $rejectedLiquidityResult['body']['error_code'] ?? null,
+                $rejectedLiquidityResult['body']['errors']['errorCode'] ?? null,
                 json_encode($rejectedLiquidityResult, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
             );
-            self::assertIsArray($rejectedLiquidityResult['body']['details'] ?? null);
+            self::assertIsArray($rejectedLiquidityResult['body']['errors']['details'] ?? null);
             self::assertSame(
                 $liquidityAccountId,
-                (int) ($rejectedLiquidityResult['body']['details']['account_id'] ?? 0)
+                (int) ($rejectedLiquidityResult['body']['errors']['details']['accountId'] ?? 0)
             );
             $liquidityReturns = self::$db->prepare(
                 "SELECT COUNT(*), COALESCE(SUM(paid_amount), 0)
@@ -1998,7 +1998,7 @@ final class SaleMySqlIntegrationTest extends TestCase
             'credit_note'
         ));
         self::assertSame(200, $saleReturnResponse->getStatusCode(), (string) $saleReturnResponse->getBody());
-        $saleReturnId = (int) json_decode((string) $saleReturnResponse->getBody(), true)['data']['return_id'];
+        $saleReturnId = (int) json_decode((string) $saleReturnResponse->getBody(), true)['data']['returnId'];
 
         $saleReturn = self::$db->prepare(
             'SELECT paid_amount, is_cash, journal_entry_id FROM returns WHERE id = ? AND tenant_id = ?'
@@ -2027,7 +2027,7 @@ final class SaleMySqlIntegrationTest extends TestCase
             'cash'
         ));
         self::assertSame(200, $purchaseReturnResponse->getStatusCode(), (string) $purchaseReturnResponse->getBody());
-        $purchaseReturnId = (int) json_decode((string) $purchaseReturnResponse->getBody(), true)['data']['return_id'];
+        $purchaseReturnId = (int) json_decode((string) $purchaseReturnResponse->getBody(), true)['data']['returnId'];
 
         $purchaseReturn = self::$db->prepare(
             'SELECT paid_amount, is_cash, journal_entry_id FROM returns WHERE id = ? AND tenant_id = ?'

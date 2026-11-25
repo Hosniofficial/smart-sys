@@ -65,7 +65,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { Building, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { Building, ChevronDown, ChevronLeft, ChevronRight } from '@lucide/vue'
 import { useActiveRoute } from '@/composables/useActiveRoute'
 
 defineProps({

@@ -23,11 +23,12 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  */
 class AuthHandler extends BaseHandler
 {
+    private static ?string $dummyPasswordHash = null;
     private ?JwtBlacklistService $jwtBlacklistService;
     private ?SecurityLogger $securityLogger;
     private AuthSessionService $authSession;
     private \PragmaRX\Google2FA\Google2FA $ga;
-    private TwoFactorEncryptionService $twoFaEncryption;
+    private ?TwoFactorEncryptionService $twoFaEncryption = null;
 
     public function __construct(
         PDO $db,
@@ -42,7 +43,6 @@ class AuthHandler extends BaseHandler
         $this->securityLogger = $securityLogger;
         $this->authSession = $authSession ?? new AuthSessionService($db);
         $this->ga = new \PragmaRX\Google2FA\Google2FA();
-        $this->twoFaEncryption = new TwoFactorEncryptionService(requireKey: true);
     }
 
     /** Authenticate credentials and optional 2FA, then issue access and refresh tokens. */
@@ -69,7 +69,7 @@ class AuthHandler extends BaseHandler
                 $maxAttempts    = 5;
                 $stmtCheck = $this->db->prepare("
                     SELECT COUNT(*) FROM login_attempts
-                    WHERE (username = ? OR ip_address = ?)
+                    WHERE username = ? AND ip_address = ?
                       AND success = 0
                       AND created_at >= DATE_SUB(NOW(), INTERVAL ? SECOND)
                 ");
@@ -90,7 +90,8 @@ class AuthHandler extends BaseHandler
                     );
                 }
             } catch (\Throwable $e) {
-                $this->logger->warning('Lockout check failed', ['error' => $e->getMessage()]);
+                $this->logger->error('Lockout check failed; denying login', ['error' => $e->getMessage()]);
+                return $this->errorResponse($response, 'تعذر التحقق من محاولات تسجيل الدخول', 503);
             }
 
             $this->logger->info('Login attempt', [
@@ -122,7 +123,7 @@ class AuthHandler extends BaseHandler
             $stmt->execute([$username, $username]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if (!$user || !password_verify($password, (string) $user['password'])) {
+            if (!$this->verifyCredentials(is_array($user) ? $user : null, $password)) {
                 $this->recordLoginAttempt($username, false, $clientIp);
 
                 $this->securityLogger?->logSecurityEvent(
@@ -169,7 +170,7 @@ class AuthHandler extends BaseHandler
                 if (
                     empty($user['two_fa_secret'])
                     || !$this->ga->verifyKey(
-                        (string) $this->twoFaEncryption->decrypt($user['two_fa_secret']),
+                        (string) $this->twoFactorEncryption()->decrypt($user['two_fa_secret']),
                         $twoFactorCode,
                         1
                     )
@@ -246,6 +247,38 @@ class AuthHandler extends BaseHandler
 
             return $this->errorResponse($response, 'حدث خطأ أثناء تسجيل الدخول', 500);
         }
+    }
+
+    private function verifyCredentials(?array $user, string $password): bool
+    {
+        $dummyHash = self::getDummyPasswordHash();
+        $passwordHash = $user !== null ? (string) ($user['password'] ?? '') : $dummyHash;
+        $passwordMatches = password_verify($password, $passwordHash);
+
+        return $user !== null && $passwordMatches;
+    }
+
+    private function twoFactorEncryption(): TwoFactorEncryptionService
+    {
+        if ($this->twoFaEncryption === null) {
+            $this->twoFaEncryption = new TwoFactorEncryptionService(requireKey: true);
+        }
+
+        return $this->twoFaEncryption;
+    }
+
+    private static function getDummyPasswordHash(): string
+    {
+        if (self::$dummyPasswordHash === null) {
+            $hash = password_hash(bin2hex(random_bytes(32)), PASSWORD_DEFAULT);
+            if ($hash === false) {
+                throw new \RuntimeException('Unable to initialize the dummy password hash.');
+            }
+
+            self::$dummyPasswordHash = $hash;
+        }
+
+        return self::$dummyPasswordHash;
     }
 
     /** Validate and rotate a refresh token, returning a new access token and cookie. */

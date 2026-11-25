@@ -10,8 +10,8 @@ use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
 
-    $handler = $container->get(RBACHandler::class);
-    $db      = $container->get(PDO::class);
+    $handler = new \App\Routing\ContainerHandlerProxy($container, RBACHandler::class);
+    $db      = $container;
 
     $group->group('/rbac', function (RouteCollectorProxy $group) use ($handler, $db) {
 

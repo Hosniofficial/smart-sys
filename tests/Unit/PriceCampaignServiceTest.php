@@ -86,7 +86,7 @@ final class PriceCampaignServiceTest extends TestCase
         ?string $endDate = null,
         int $tenantId = 4
     ): void {
-        $today = date('Y-m-d');
+        $today = (string) $this->db->query('SELECT CURRENT_DATE')->fetchColumn();
         $campaign = $this->db->prepare(
             'INSERT INTO sales_price_campaigns
                 (id, tenant_id, branch_id, name, status, start_date, end_date, priority)

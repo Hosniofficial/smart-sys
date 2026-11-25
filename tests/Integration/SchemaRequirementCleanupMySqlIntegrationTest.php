@@ -132,7 +132,7 @@ final class SchemaRequirementCleanupMySqlIntegrationTest extends TestCase
              WHERE TABLE_SCHEMA = DATABASE()
                AND TABLE_NAME = 'cash_vouchers' AND COLUMN_NAME = 'cost_center_id'"
         )->fetch(PDO::FETCH_ASSOC);
-        self::assertSame('int(11)', strtolower($columnMetadata['COLUMN_TYPE']));
+        self::assertContains(strtolower($columnMetadata['COLUMN_TYPE']), ['int', 'int(11)']);
         self::assertSame('YES', $columnMetadata['IS_NULLABLE']);
         self::assertTrue(in_array($columnMetadata['COLUMN_DEFAULT'], [null, 'NULL'], true));
         self::assertSame('', $columnMetadata['COLUMN_COMMENT']);

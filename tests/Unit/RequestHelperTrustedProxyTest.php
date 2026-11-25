@@ -23,6 +23,8 @@ final class RequestHelperTrustedProxyTest extends TestCase
     {
         $request = (new ServerRequestFactory())
             ->createServerRequest('GET', 'https://example.test/', ['REMOTE_ADDR' => '10.0.0.5'])
+            ->withHeader('CF-Connecting-IP', '203.0.113.99')
+            ->withHeader('X-Real-IP', '203.0.113.98')
             ->withHeader('X-Forwarded-For', '192.0.2.99, 198.51.100.24, 10.0.0.4');
 
         self::assertSame(

@@ -6,6 +6,10 @@
  */
 
 $environment = $_ENV['APP_ENV'] ?? 'production';
+$isProduction = in_array(strtolower((string) $environment), ['production', 'prod'], true);
+$logTarget = static fn(string $filename): string => $isProduction
+    ? 'php://stderr'
+    : __DIR__ . '/../logs/' . $filename;
 $sentryConfigured = filter_var($_ENV['SENTRY_ENABLED'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $sentryEnabled = false;
 
@@ -35,6 +39,7 @@ if ($sentryConfigured && $sentryDsn && @class_exists('\\Sentry\\ClientBuilder'))
             'environment' => $environment,
             'traces_sample_rate' => (float)($_ENV['SENTRY_TRACES_SAMPLE_RATE'] ?? 0.1),
             'profiles_sample_rate' => (float)($_ENV['SENTRY_PROFILES_SAMPLE_RATE'] ?? 0.1),
+            'send_default_pii' => false,
             'error_types' => E_ERROR | (defined('E_CRITICAL') ? E_CRITICAL : 256) | E_PARSE | E_CORE_ERROR | E_CORE_WARNING | E_COMPILE_ERROR | E_COMPILE_WARNING,
             'integrations' => $integrations,
             'attach_stacktrace' => true,
@@ -72,7 +77,7 @@ return [
             ],
             'single' => [
                 'driver' => 'single',
-                'path' => __DIR__ . '/../logs/smartsys.log',
+                'path' => $logTarget('smartsys.log'),
                 'level' => $environment === 'production' ? 'error' : 'debug',
                 'bubble' => true,
             ],
@@ -83,17 +88,17 @@ return [
             ],
             'security' => [
                 'driver' => 'single',
-                'path' => __DIR__ . '/../logs/security.log',
+                'path' => $logTarget('security.log'),
                 'level' => 'info',
             ],
             'api' => [
                 'driver' => 'single',
-                'path' => __DIR__ . '/../logs/api.log',
+                'path' => $logTarget('api.log'),
                 'level' => 'debug',
             ],
             'database' => [
                 'driver' => 'single',
-                'path' => __DIR__ . '/../logs/database.log',
+                'path' => $logTarget('database.log'),
                 'level' => 'debug',
             ],
         ],
@@ -107,7 +112,7 @@ return [
         'log_errors' => true,
         
         // Log file path
-        'error_log' => __DIR__ . '/../logs/error.log',
+        'error_log' => $logTarget('error.log'),
         
         // Include stack traces in logs
         'include_stacktrace' => $environment !== 'production',

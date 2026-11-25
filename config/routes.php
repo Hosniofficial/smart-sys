@@ -24,7 +24,7 @@ return function (App $app, Container $container): void {
     // The cron handler authenticates requests with X-Cron-Token itself.
     $app->post(
         '/api/v1/admin/subscriptions/cron',
-        [$container->get(SubscriptionCronHandler::class), 'processCron']
+        SubscriptionCronHandler::class . ':processCron'
     );
 
     // 2. Auth routes (بدون أي middleware)
@@ -43,14 +43,16 @@ return function (App $app, Container $container): void {
 
     });
 
+    // Platform-scoped admin route: JWT and super-admin authorization only.
+    $app->get(
+        '/api/v1/admin/owner-contribution-tenants',
+        OwnerContributionHandler::class . ':listAvailableTenants'
+    )
+        ->add(SuperAdminMiddleware::class)
+        ->add(JwtAuthMiddleware::class);
+
     // 4. Protected routes (JWT + Tenant + Subscription)
     $app->group('/api/v1', function (RouteCollectorProxy $group) use ($container) {
-
-        // Admin-only routes (SuperAdmin access, no tenant required)
-        $group->group('/admin', function (RouteCollectorProxy $group) use ($container) {
-            $ownerContributionHandler = $container->get(OwnerContributionHandler::class);
-            $group->get('/owner-contribution-tenants', [$ownerContributionHandler, 'listAvailableTenants']);
-        })->add($container->get(SuperAdminMiddleware::class));
 
         // Core
         (require __DIR__ . '/../app/routes/admin.php')($group, $container);

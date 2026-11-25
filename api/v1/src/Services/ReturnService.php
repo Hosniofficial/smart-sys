@@ -1044,11 +1044,11 @@ class ReturnService
                     $saleId,
                     $purchaseId,
                     $branchId,
-                    $isCash,
+                    (int) $isCash,
                 ]);
                 break;
             } catch (PDOException $e) {
-                if ($attempt >= $maxAttempts) {
+                if ((int) ($e->errorInfo[1] ?? 0) !== 1062 || $attempt >= $maxAttempts) {
                     throw $e;
                 }
                 $returnNumber  = $returnNumber  . '-' . date('His') . '-' . mt_rand(100, 999);

@@ -329,14 +329,14 @@ class SaleCreationService
             $stmt = $this->pdo->prepare("
                 INSERT INTO sales_items (
                     sale_id, product_id, unit_id, conversion_factor, quantity,
-                    sale_price, purchase_price, discount_type, discount_value, net_total, profit, tax_amount,
+                    sale_price, purchase_price, discount_type, discount_value, net_total, tax_amount,
                     batch_number, expiry_date, serial,
                     tenant_id, created_at, created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'amount', ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'amount', ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
             ");
             $stmt->execute([
                 $saleId, $productId, $unitId, $conversionFactor, $quantity,
-                $salePrice, $purchasePrice, $discountValue, $netTotal, (float) ($item['profit'] ?? 0), (float) ($item['tax_amount'] ?? 0),
+                $salePrice, $purchasePrice, $discountValue, $netTotal, (float) ($item['tax_amount'] ?? 0),
                 $item['batch_number'] ?? null, $item['expiry_date'] ?? null, $item['serial'] ?? null,
                 $tenantId, $this->userId,
             ]);

@@ -5,13 +5,13 @@
 export async function onRequest(context) {
   const { request, env } = context;
   
-  // Get the original path after /api/
+  // Preserve the backend's /api/v1 route prefix after the Pages function prefix.
   const url = new URL(request.url);
   const apiPath = url.pathname.replace(/^\/api/, '');
   
   // Backend URL from environment or default
-  const backendUrl = env.BACKEND_URL || 'https://smartsys-api.onrender.com';
-  const targetUrl = `${backendUrl}${apiPath}${url.search}`;
+  const backendUrl = (env.BACKEND_URL || 'https://smartsys-api.onrender.com').replace(/\/+$/, '');
+  const targetUrl = `${backendUrl}/api${apiPath}${url.search}`;
   
   // Clone the request with the new URL
   const modifiedRequest = new Request(targetUrl, {

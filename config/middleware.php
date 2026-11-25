@@ -28,13 +28,13 @@ return function (App $app, Container $container): void {
 
     error_reporting(E_ALL);
 
-    // Do not emit raw PHP warnings/notices into HTTP responses.
-    // Always log errors to file and keep display_errors disabled so JSON responses stay valid.
+    // Keep PHP errors out of HTTP responses and send production logs to the platform collector.
     ini_set('display_errors', '0');
     ini_set('display_startup_errors', '0');
     ini_set('html_errors', '0');
     ini_set('log_errors', '1');
-    ini_set('error_log', __DIR__ . '/../logs/error.log');
+    $isProduction = in_array(strtolower((string) ($_ENV['APP_ENV'] ?? 'production')), ['production', 'prod'], true);
+    ini_set('error_log', $isProduction ? 'php://stderr' : __DIR__ . '/../logs/error.log');
 
     // CORS Middleware MUST be first (added last in Slim order)
     $app->add(new CorsMiddleware($corsConfig ?? []));

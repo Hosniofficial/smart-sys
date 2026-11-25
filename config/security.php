@@ -126,15 +126,7 @@ return [
     // Password Policy
     'password_policy' => [
         'min_length' => 8,
-        'max_length' => 128,
-        'require_uppercase' => true,
-        'require_lowercase' => true,
-        'require_numbers' => true,
-        'require_symbols' => false,
-        'prevent_common_passwords' => true,
-        'prevent_username_in_password' => true,
-        'expiry_days' => 90, // Password expires after 90 days
-        'history_count' => 5, // Remember last 5 passwords
+        'max_length' => 72,
     ],
     
     // Account Lockout Policy

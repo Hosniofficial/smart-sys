@@ -12,8 +12,8 @@ use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
 
-    $handler = $container->get(OpeningBalanceHandler::class);
-    $db      = $container->get(PDO::class);
+    $handler = new \App\Routing\ContainerHandlerProxy($container, OpeningBalanceHandler::class);
+    $db      = $container;
 
     $group->group('/setup/opening-balance', function (RouteCollectorProxy $group) use ($handler, $db) {
 

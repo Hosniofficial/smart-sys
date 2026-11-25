@@ -89,7 +89,7 @@ function validateSecuritySecrets(): void
 
     $optionalSecrets = [
         'ENCRYPTION_KEY' => 'General data encryption key',
-        'TWO_FA_ENCRYPTION_KEY' => '2FA secrets encryption key (required if 2FA is enabled)',
+        'TWO_FA_ENCRYPTION_KEY' => '2FA secrets encryption key (required before enabling 2FA)',
     ];
 
     $errors = [];
@@ -121,10 +121,12 @@ function validateSecuritySecrets(): void
             'test',
         ];
 
-        foreach ($defaultPatterns as $pattern) {
-            if (strpos($lowerValue, $pattern) !== false) {
-                $errors[] = "❌ {$key} contains weak/default value pattern '{$pattern}' ({$description})";
-                break;
+        if ($key !== 'TWO_FA_ENCRYPTION_KEY') {
+            foreach ($defaultPatterns as $pattern) {
+                if (strpos($lowerValue, $pattern) !== false) {
+                    $errors[] = "❌ {$key} contains weak/default value pattern '{$pattern}' ({$description})";
+                    break;
+                }
             }
         }
 
@@ -132,6 +134,24 @@ function validateSecuritySecrets(): void
         if (strlen($value) < 32) {
             $errors[] = "❌ {$key} is too short (minimum 32 characters for security) - current length: " . strlen($value);
         }
+    }
+
+    $twoFaKey = (string) ($_ENV['TWO_FA_ENCRYPTION_KEY'] ?? '');
+    if ($twoFaKey !== '') {
+        if (!extension_loaded('sodium')) {
+            $errors[] = '❌ The sodium PHP extension is required for 2FA encryption';
+        } else {
+            $decodedKey = base64_decode($twoFaKey, true);
+            if ($decodedKey === false || strlen($decodedKey) !== SODIUM_CRYPTO_SECRETBOX_KEYBYTES) {
+                $errors[] = '❌ TWO_FA_ENCRYPTION_KEY must be a base64-encoded 32-byte key';
+            }
+        }
+    }
+
+    $accessSecret = (string) ($_ENV['JWT_SECRET'] ?? '');
+    $refreshSecret = (string) ($_ENV['JWT_REFRESH_SECRET'] ?? '');
+    if ($accessSecret !== '' && $refreshSecret !== '' && hash_equals($accessSecret, $refreshSecret)) {
+        $errors[] = '❌ JWT_SECRET and JWT_REFRESH_SECRET must be different values';
     }
 
     // Check optional secrets (warning only, not fatal)
@@ -172,6 +192,15 @@ validateSecuritySecrets();
 
 return function (): Container {
     $containerBuilder = new ContainerBuilder();
+    $isProduction = in_array(
+        strtolower((string) ($_ENV['APP_ENV'] ?? 'production')),
+        ['production', 'prod'],
+        true
+    );
+    $logTarget = static fn(string $filename): string => $isProduction
+        ? 'php://stderr'
+        : __DIR__ . '/../logs/' . $filename;
+    $logLevel = $isProduction ? Logger::ERROR : Logger::DEBUG;
     
     $containerBuilder->addDefinitions([
         // Configuration
@@ -320,15 +349,15 @@ return function (): Container {
     EmailVerificationHandler::class => fn(PDO $pdo) => new EmailVerificationHandler($pdo),
     PurchasesHandler::class => fn(PDO $pdo) => new PurchasesHandler($pdo),
 
-    ReturnsHandler::class => function (PDO $pdo) {
+    ReturnsHandler::class => function (PDO $pdo) use ($logTarget, $logLevel) {
         $logger = new Logger('returns');
-        $logger->pushHandler(new StreamHandler(__DIR__ . '/../logs/returns.log', Logger::DEBUG));
+        $logger->pushHandler(new StreamHandler($logTarget('returns.log'), $logLevel));
         return new ReturnsHandler($pdo, $logger);
     },
 
-    BranchHandler::class => function (PDO $pdo) {
+    BranchHandler::class => function (PDO $pdo) use ($logTarget, $logLevel) {
         $logger = new Logger('branch');
-        $logger->pushHandler(new StreamHandler(__DIR__ . '/../logs/branch.log', Logger::DEBUG));
+        $logger->pushHandler(new StreamHandler($logTarget('branch.log'), $logLevel));
         return new BranchHandler($pdo, $logger);
     },
 
@@ -363,9 +392,9 @@ return function (): Container {
     CategoriesHandler::class => fn(PDO $pdo) => new CategoriesHandler($pdo),
     ShiftsHandler::class => fn(PDO $pdo) => new ShiftsHandler($pdo),
 
-    InventoryHandler::class => function (PDO $pdo) {
+    InventoryHandler::class => function (PDO $pdo) use ($logTarget, $logLevel) {
         $logger = new Logger('inventory');
-        $logger->pushHandler(new StreamHandler(__DIR__ . '/../logs/debug.log', Logger::DEBUG));
+        $logger->pushHandler(new StreamHandler($logTarget('debug.log'), $logLevel));
         return new InventoryHandler($pdo, $logger);
     },
 

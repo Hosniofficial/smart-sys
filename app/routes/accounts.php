@@ -7,8 +7,8 @@ use DI\Container;
 use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
-        $handler = $container->get(AccountStatementHandler::class);
-        $db = $container->get(PDO::class);
+        $handler = new \App\Routing\ContainerHandlerProxy($container, AccountStatementHandler::class);
+        $db = $container;
         $accountRead = PermissionMiddleware::anyOf([
             Permissions::ACCOUNTING_VIEW,
             Permissions::REPORT_FINANCIAL,

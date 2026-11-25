@@ -10,8 +10,8 @@ use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
 
-    $handler = $container->get(WarrantyHandler::class);
-    $db      = $container->get(PDO::class);
+    $handler = new \App\Routing\ContainerHandlerProxy($container, WarrantyHandler::class);
+    $db      = $container;
 
     $group->group('/warranty', function (RouteCollectorProxy $group) use ($handler, $db) {
 

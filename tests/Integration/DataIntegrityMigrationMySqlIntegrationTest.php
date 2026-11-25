@@ -136,7 +136,10 @@ final class DataIntegrityMigrationMySqlIntegrationTest extends TestCase
              WHERE TABLE_SCHEMA = DATABASE()
                AND TABLE_NAME = 'cashier_sessions' AND COLUMN_NAME = 'shift_id'"
         );
-        self::assertSame('bigint(20) unsigned', strtolower((string) $shiftType->fetchColumn()));
+        self::assertContains(
+            strtolower((string) $shiftType->fetchColumn()),
+            ['bigint unsigned', 'bigint(20) unsigned']
+        );
 
         $columnMetadata = self::$db->query(
             "SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_DEFAULT
@@ -146,9 +149,12 @@ final class DataIntegrityMigrationMySqlIntegrationTest extends TestCase
                     OR (TABLE_NAME = 'notifications' AND COLUMN_NAME = 'priority')
                     OR (TABLE_NAME = 'warranty_requests' AND COLUMN_NAME = 'customer_id'))"
         )->fetchAll(PDO::FETCH_UNIQUE | PDO::FETCH_ASSOC);
-        self::assertSame("'batched'", $columnMetadata['delivery_mode']['COLUMN_DEFAULT']);
-        self::assertSame("'normal'", $columnMetadata['priority']['COLUMN_DEFAULT']);
-        self::assertSame('int(11)', strtolower($columnMetadata['customer_id']['COLUMN_TYPE']));
+        self::assertContains($columnMetadata['delivery_mode']['COLUMN_DEFAULT'], ["'batched'", 'batched']);
+        self::assertContains($columnMetadata['priority']['COLUMN_DEFAULT'], ["'normal'", 'normal']);
+        self::assertContains(
+            strtolower($columnMetadata['customer_id']['COLUMN_TYPE']),
+            ['int', 'int(11)']
+        );
     }
 
     private static function dropTemporarySchema(): void

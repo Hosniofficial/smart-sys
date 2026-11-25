@@ -5,7 +5,7 @@ use DI\Container;
 use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
-        $handler = $container->get(SessionsHandler::class);
+        $handler = new \App\Routing\ContainerHandlerProxy($container, SessionsHandler::class);
 
         $group->group('/sessions', function (RouteCollectorProxy $group) use ($handler) {
             $group->post('/open', [$handler, 'open']);

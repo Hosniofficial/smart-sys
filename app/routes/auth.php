@@ -9,28 +9,22 @@ use DI\Container;
 use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
-        $authHandler = $container->get(AuthHandler::class);
-        $strictSubscriptionHandler = $container->get(StrictSubscriptionHandler::class);
-        $emailVerificationHandler = $container->get(EmailVerificationHandler::class);
-        $strictSubscriptionMiddleware = $container->get(StrictSubscriptionMiddleware::class);
-        $rateLimiter = $container->get(RequestRateLimiter::class);
+    $group->post('/login', AuthHandler::class . ':login')
+        ->add(RequestRateLimiter::class);
+    $group->post('/logout', AuthHandler::class . ':logout');
+    $group->post('/logout-all-devices', AuthHandler::class . ':logoutAllDevices');
+    $group->post('/refresh', AuthHandler::class . ':refreshToken')
+        ->add(RequestRateLimiter::class);
 
-        $group->post('/login', [$authHandler, 'login'])
-            ->add($rateLimiter);
-        $group->post('/logout', [$authHandler, 'logout']);
-        $group->post('/logout-all-devices', [$authHandler, 'logoutAllDevices']);
-        $group->post('/refresh', [$authHandler, 'refreshToken'])
-            ->add($rateLimiter);
+    $group->post('/register', StrictSubscriptionHandler::class . ':createSecureTrial')
+        ->add(StrictSubscriptionMiddleware::class);
 
-        $group->post('/register', [$strictSubscriptionHandler, 'createSecureTrial'])
-            ->add($strictSubscriptionMiddleware);
+    $group->post('/verify-email', EmailVerificationHandler::class . ':verifyEmail');
+    $group->post('/verify-email/resend', EmailVerificationHandler::class . ':resendVerificationEmail');
 
-        $group->post('/verify-email', [$emailVerificationHandler, 'verifyEmail']);
-        $group->post('/verify-email/resend', [$emailVerificationHandler, 'resendVerificationEmail']);
-
-        $group->post('/forgot-password', [$emailVerificationHandler, 'forgotPassword'])
-            ->add($rateLimiter);
-        $group->post('/reset-password', [$emailVerificationHandler, 'resetPassword'])
-            ->add($rateLimiter);
+    $group->post('/forgot-password', EmailVerificationHandler::class . ':forgotPassword')
+        ->add(RequestRateLimiter::class);
+    $group->post('/reset-password', EmailVerificationHandler::class . ':resetPassword')
+        ->add(RequestRateLimiter::class);
 
 };

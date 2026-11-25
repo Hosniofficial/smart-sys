@@ -12,10 +12,10 @@ use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
 
-    $salesH      = $container->get(SalesAnalyticsHandler::class);
-    $inventoryH  = $container->get(InventoryAnalyticsHandler::class);
-    $posH        = $container->get(PosAnalyticsHandler::class);
-    $db          = $container->get(PDO::class);
+    $salesH      = new \App\Routing\ContainerHandlerProxy($container, SalesAnalyticsHandler::class);
+    $inventoryH  = new \App\Routing\ContainerHandlerProxy($container, InventoryAnalyticsHandler::class);
+    $posH        = new \App\Routing\ContainerHandlerProxy($container, PosAnalyticsHandler::class);
+    $db          = $container;
 
     $group->group('/analytics', function (RouteCollectorProxy $group) use ($salesH, $inventoryH, $posH, $db) {
 

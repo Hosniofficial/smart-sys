@@ -15,10 +15,10 @@ php database/migrate.php status
 تتطلب migrations المعلّمة `REQUIRES_BACKUP_CONFIRMATION` تأكيدًا صريحًا ومعرّف نسخة احتياطية:
 
 ```powershell
-php database/migrate.php up --confirm-irreversible --backup-reference=backup-id-2026-10-27
+php database/migrate.php up --confirm-irreversible --backup-reference=REAL_RESTORABLE_BACKUP_ID
 ```
 
-لا تستخدم هذا الخيار قبل استعادة النسخة في بيئة اختبار والتحقق منها. يحتفظ سجل نشر الأوامر بمعرّف النسخة؛ الخيار يضيف حاجزًا تشغيليًا ولا ينشئ نسخة احتياطية بنفسه.
+استبدل `REAL_RESTORABLE_BACKUP_ID` بمعرّف نسخة فعلية، ولا تستخدم الأمر قبل استعادة النسخة في بيئة اختبار والتحقق منها. يحتفظ سجل نشر الأوامر بمعرّف النسخة؛ الخيار يضيف حاجزًا تشغيليًا ولا ينشئ نسخة احتياطية بنفسه.
 
 للاتصال بخادم بعيد عبر TLS، مرر إعدادات الهدف عبر متغيرات العملية `DB_*`، واضبط `DB_SSL_CA` إلى شهادة CA؛ يتحقق runner من شهادة الخادم افتراضيًا عند استخدام CA.
 

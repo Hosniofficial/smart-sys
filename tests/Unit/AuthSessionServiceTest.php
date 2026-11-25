@@ -17,7 +17,7 @@ final class AuthSessionServiceTest extends TestCase
 
     protected function setUp(): void
     {
-        foreach (['JWT_SECRET', 'JWT_REFRESH_SECRET', 'APP_BASE_PATH', 'HTTPS_ENFORCEMENT_ENABLED'] as $key) {
+        foreach (['JWT_SECRET', 'JWT_REFRESH_SECRET', 'APP_BASE_PATH', 'REFRESH_COOKIE_PATH', 'HTTPS_ENFORCEMENT_ENABLED'] as $key) {
             $this->previousEnv[$key] = $_ENV[$key] ?? null;
         }
 
@@ -139,5 +139,27 @@ final class AuthSessionServiceTest extends TestCase
 
         $clearedCookie = $service->clearRefreshTokenCookie(new Response())->getHeaderLine('Set-Cookie');
         self::assertStringContainsString('Secure', $clearedCookie);
+    }
+
+    public function testRefreshCookiePathCanDifferFromTheBackendRoutingBasePath(): void
+    {
+        $_ENV['APP_BASE_PATH'] = '/smartsys/api/v1';
+        $_ENV['REFRESH_COOKIE_PATH'] = '/api/v1/auth';
+
+        $service = new AuthSessionService(new PDO('sqlite::memory:'));
+        $cookie = $service->setRefreshTokenCookie(new Response(), 'refresh-token')->getHeaderLine('Set-Cookie');
+
+        self::assertStringContainsString('Path=/api/v1/auth', $cookie);
+    }
+
+    public function testRefreshCookieDefaultsToApiPathEvenWithAnEmptyRoutingBasePath(): void
+    {
+        $_ENV['APP_BASE_PATH'] = '';
+        unset($_ENV['REFRESH_COOKIE_PATH']);
+
+        $service = new AuthSessionService(new PDO('sqlite::memory:'));
+        $cookie = $service->setRefreshTokenCookie(new Response(), 'refresh-token')->getHeaderLine('Set-Cookie');
+
+        self::assertStringContainsString('Path=/api/v1/auth', $cookie);
     }
 }

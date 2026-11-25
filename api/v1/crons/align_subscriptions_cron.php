@@ -172,7 +172,7 @@ if ($useRemote) {
             fwrite(STDERR, "ADMIN_API_URL or API_BASE_URL must be configured for remote cron execution.\n");
             exit(1);
         }
-        $apiUrl = $apiBaseUrl . '/smartsys/api/v1/admin/subscriptions/cron';
+        $apiUrl = $apiBaseUrl . '/api/v1/admin/subscriptions/cron';
     }
     $cronSecret = (string) ($_ENV['CRON_SECRET'] ?? getenv('CRON_SECRET') ?? '');
     if ($cronSecret === '') {

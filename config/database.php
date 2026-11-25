@@ -1,5 +1,8 @@
 <?php
 require_once __DIR__ . '/bootstrap.php';
+
+use App\Services\DatabaseSslOptions;
+
 class Database {
     public $pdo;
     private $tenant_id;
@@ -20,21 +23,15 @@ class Database {
                 PDO::ATTR_EMULATE_PREPARES   => false,
             ];
             
-            // SSL configuration for production databases (e.g., Aiven)
-            $sslMode = $_ENV['DB_SSL_MODE'] ?? null;
-            if ($sslMode === 'REQUIRED' || $sslMode === 'VERIFY_CA' || $sslMode === 'VERIFY_IDENTITY') {
-                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
-                // For cloud databases, we typically don't need CA file in Docker
-                // The connection will use TLS/SSL without explicit CA verification
-            }
+            $sslMode = (string) ($_ENV['DB_SSL_MODE'] ?? getenv('DB_SSL_MODE') ?: '');
+            $sslCa = (string) ($_ENV['DB_SSL_CA'] ?? getenv('DB_SSL_CA') ?: '');
+            $options = array_merge($options, DatabaseSslOptions::forMode($sslMode, $sslCa));
             
             $this->pdo = new PDO($dsn, $user, $pass, $options);
 
-            // تحميل tenant_id من الجلسة
-            if (session_status() === PHP_SESSION_NONE) {
-                session_start();
-            }
-            $this->tenant_id = $_SESSION['user']['tenant_id'] ?? null;
+            $this->tenant_id = session_status() === PHP_SESSION_ACTIVE
+                ? ($_SESSION['user']['tenant_id'] ?? null)
+                : null;
 
         } catch (PDOException $e) {
             throw new RuntimeException('Database connection failed.', 0, $e);

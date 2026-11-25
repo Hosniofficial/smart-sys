@@ -131,7 +131,7 @@ final class RepairOrdersMySqlIntegrationTest extends TestCase
         );
         self::assertSame(201, $invoice->getStatusCode(), (string) $invoice->getBody());
         $invoiceData = $this->responseData($invoice);
-        $saleId = (int) $invoiceData['sale_id'];
+        $saleId = (int) $invoiceData['saleId'];
         self::assertGreaterThan(0, $saleId);
 
         $retry = $this->invoke(
@@ -142,7 +142,7 @@ final class RepairOrdersMySqlIntegrationTest extends TestCase
             ['id' => (string) $orderId]
         );
         self::assertSame(200, $retry->getStatusCode(), (string) $retry->getBody());
-        self::assertTrue($this->responseData($retry)['already_created']);
+        self::assertTrue($this->responseData($retry)['alreadyCreated']);
 
         $order = self::$db->prepare(
             'SELECT status, invoice_id FROM repair_orders WHERE id = ? AND tenant_id = ?'
@@ -155,7 +155,7 @@ final class RepairOrdersMySqlIntegrationTest extends TestCase
         $salesCount = self::$db->prepare(
             "SELECT COUNT(*) FROM sales WHERE tenant_id = ? AND notes = ?"
         );
-        $salesCount->execute([self::$tenantId, 'صيانة: ' . $createdData['order_number']]);
+        $salesCount->execute([self::$tenantId, 'صيانة: ' . $createdData['orderNumber']]);
         self::assertSame(1, (int) $salesCount->fetchColumn());
 
         $items = self::$db->prepare(
@@ -268,7 +268,7 @@ final class RepairOrdersMySqlIntegrationTest extends TestCase
         $db->prepare('INSERT INTO units (name, code, tenant_id) VALUES (?, ?, ?)')
             ->execute([
                 'Repair integration unit',
-                'IT-REPAIR-UNIT-' . bin2hex(random_bytes(4)),
+                'IT-RU-' . bin2hex(random_bytes(4)),
                 self::$tenantId,
             ]);
         self::$unitId = (int) $db->lastInsertId();

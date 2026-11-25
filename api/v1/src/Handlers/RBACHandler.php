@@ -13,6 +13,7 @@ use App\Utils\PaginationHelper;
 use App\Security\TenantRoleAssignmentPolicy;
 use App\Security\PermissionResolver;
 use App\Security\Permissions;
+use App\Security\PasswordPolicy;
 use App\Services\UserSessionService;
 use App\Utils\RequestHelper;
 
@@ -181,8 +182,9 @@ class RBACHandler extends BaseHandler
                 return $this->errorResponse($response, 'اسم المستخدم وكلمة المرور والبريد الإلكتروني مطلوبة', 400);
             }
 
-            if (strlen((string) $data['password']) < 8) {
-                return $this->errorResponse($response, 'يجب أن تكون كلمة المرور 8 أحرف على الأقل', 400);
+            $passwordError = PasswordPolicy::validationMessage((string) $data['password']);
+            if ($passwordError !== null) {
+                return $this->errorResponse($response, $passwordError, 400);
             }
 
             if (!filter_var(trim((string) $data['email']), FILTER_VALIDATE_EMAIL)) {
@@ -415,6 +417,13 @@ class RBACHandler extends BaseHandler
             $newPassword = isset($data['password']) && trim((string) $data['password']) !== ''
                 ? (string) $data['password']
                 : null;
+
+            if ($newPassword !== null) {
+                $passwordError = PasswordPolicy::validationMessage($newPassword);
+                if ($passwordError !== null) {
+                    return $this->errorResponse($response, $passwordError, 400);
+                }
+            }
 
             $this->db->beginTransaction();
 

@@ -14,8 +14,9 @@ RUN apt-get update && apt-get install -y \
     zip \
     unzip \
     libzip-dev \
+    libsodium-dev \
     default-mysql-client \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip \
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip sodium \
     && rm -rf /var/lib/apt/lists/*
 
 # Enable Apache modules
@@ -25,7 +26,7 @@ RUN a2enmod rewrite headers dir
 RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 
 # Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2.8.12 /usr/bin/composer /usr/bin/composer
 
 # Set working directory
 WORKDIR /var/www/html
@@ -83,9 +84,9 @@ RUN echo '<VirtualHost *:80>\n\
 # Expose port
 EXPOSE 80
 
-# Health check - adjusted for no subdirectory
+# Health check uses the public readiness endpoint.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s \
-  CMD curl -f http://localhost/ || exit 1
+  CMD curl -f http://localhost/health || exit 1
 
 # Start Apache
 CMD ["apache2-foreground"]

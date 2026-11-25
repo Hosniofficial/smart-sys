@@ -12,10 +12,10 @@ use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
 
-    $handler = $container->get(SalesHandler::class);
-    $campaignsHandler = $container->get(SalesPriceCampaignsHandler::class);
-    $quotationsHandler = $container->get(SalesQuotationsHandler::class);
-    $db      = $container->get(PDO::class);
+    $handler = new \App\Routing\ContainerHandlerProxy($container, SalesHandler::class);
+    $campaignsHandler = new \App\Routing\ContainerHandlerProxy($container, SalesPriceCampaignsHandler::class);
+    $quotationsHandler = new \App\Routing\ContainerHandlerProxy($container, SalesQuotationsHandler::class);
+    $db      = $container;
 
     $group->group('/sales', function (RouteCollectorProxy $group) use ($handler, $campaignsHandler, $quotationsHandler, $db) {
 

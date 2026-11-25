@@ -18,8 +18,10 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  *   - RequestLoggingMiddleware
  *   - SecurityLogger
  *
- * Forwarding headers are used only when the direct peer matches an explicitly
- * trusted proxy. X-Forwarded-For is walked from the nearest hop outwards.
+ * X-Forwarded-For is used only when the direct peer matches an explicitly
+ * trusted proxy, then walked from the nearest hop outwards. Other client-IP
+ * headers are ignored because the deployment proxy's overwrite behavior is
+ * not guaranteed.
  */
 final class RequestHelper
 {
@@ -42,8 +44,6 @@ final class RequestHelper
         $server = $request->getServerParams();
         return self::resolveClientIp(
             [
-                'CF_CONNECTING_IP' => $request->getHeaderLine('CF-Connecting-IP'),
-                'X_REAL_IP' => $request->getHeaderLine('X-Real-IP'),
                 'X_FORWARDED_FOR' => $request->getHeaderLine('X-Forwarded-For'),
             ],
             (string) ($server['REMOTE_ADDR'] ?? ''),
@@ -65,8 +65,6 @@ final class RequestHelper
     {
         return self::resolveClientIp(
             [
-                'CF_CONNECTING_IP' => (string) ($_SERVER['HTTP_CF_CONNECTING_IP'] ?? ''),
-                'X_REAL_IP' => (string) ($_SERVER['HTTP_X_REAL_IP'] ?? ''),
                 'X_FORWARDED_FOR' => (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''),
             ],
             (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
@@ -90,13 +88,6 @@ final class RequestHelper
         [$proxyTrustEnabled, $proxyAddresses] = self::proxySettings($trustProxy, $trustedProxies);
         if (!$proxyTrustEnabled || !$isValidRemote || !self::matchesTrustedProxy($remoteAddress, $proxyAddresses)) {
             return $remoteAddress;
-        }
-
-        foreach (['CF_CONNECTING_IP', 'X_REAL_IP'] as $header) {
-            $candidate = trim((string) ($headers[$header] ?? ''));
-            if (filter_var($candidate, FILTER_VALIDATE_IP) !== false) {
-                return $candidate;
-            }
         }
 
         $forwardedFor = trim((string) ($headers['X_FORWARDED_FOR'] ?? ''));

@@ -605,7 +605,7 @@ CREATE TABLE `email_verification_tokens` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `token_hash` (`token_hash`),
-  UNIQUE KEY `token` (`token`) USING HASH,
+  UNIQUE KEY `token` (`token`(255)),
   KEY `idx_tenant_id` (`tenant_id`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_email` (`email`),

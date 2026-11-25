@@ -9,8 +9,8 @@ use DI\Container;
 use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
-    $handler = $container->get(CostCentersHandler::class);
-    $db = $container->get(PDO::class);
+    $handler = new \App\Routing\ContainerHandlerProxy($container, CostCentersHandler::class);
+    $db = $container;
 
     $group->get('/cost-centers', [$handler, 'list'])
         ->add(PermissionMiddleware::anyOf([

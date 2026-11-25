@@ -7,6 +7,7 @@ namespace App\Services;
 use PDO;
 use Exception;
 use App\Services\MonologHandler;
+use App\Security\PasswordPolicy;
 use App\Utils\RequestHelper;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use PHPMailer\PHPMailer\PHPMailer;
@@ -212,8 +213,9 @@ class EmailVerificationService
     /** Reset the password using a valid, unused password-reset token. */
     public function resetPassword(string $token, string $newPassword): void
     {
-        if (strlen($newPassword) < 8) {
-            throw new Exception('كلمة المرور يجب أن تكون 8 أحرف على الأقل');
+        $passwordError = PasswordPolicy::validationMessage($newPassword);
+        if ($passwordError !== null) {
+            throw new Exception($passwordError);
         }
 
         $tokenHash = hash('sha256', $token);

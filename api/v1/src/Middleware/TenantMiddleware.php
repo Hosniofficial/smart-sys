@@ -38,11 +38,8 @@ class TenantMiddleware implements MiddlewareInterface
         }
         // السماح بالوصول لمسارات المصادقة والصحة بدون التحقق من X-Tenant-ID
         $allowed = [
-            '/smartsys/api/v1/auth/login',
-            '/smartsys/api/v1/auth/register',
-            '/smartsys/api/v1/auth/refresh',
-            '/smartsys/api/v1/health',
-            '/smartsys/api/v1/check'
+            '/api/v1/health',
+            '/api/v1/check'
         ];
         if (in_array($path, $allowed)) {
             return $handler->handle($request);

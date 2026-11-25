@@ -5,7 +5,7 @@ use DI\Container;
 use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
-        $notificationHandler = $container->get(NotificationHandler::class);
+        $notificationHandler = new \App\Routing\ContainerHandlerProxy($container, NotificationHandler::class);
 
         // Notification routes
         $group->group('/notifications', function (RouteCollectorProxy $group) use ($notificationHandler) {

@@ -16,6 +16,7 @@ return function (Container $container): void {
                 'environment' => $_ENV['APP_ENV'] ?? 'production',
                 'traces_sample_rate' => (float)($_ENV['SENTRY_TRACES_SAMPLE_RATE'] ?? 0.1),
                 'profiles_sample_rate' => (float)($_ENV['SENTRY_PROFILES_SAMPLE_RATE'] ?? 0.1),
+                'send_default_pii' => false,
                 'attach_stacktrace' => true,
                 'max_breadcrumbs' => 50,
             ]);

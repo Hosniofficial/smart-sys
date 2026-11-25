@@ -67,7 +67,7 @@ import {
   ArrowLeftRight, Clock, BarChart2, Settings, PieChart,
   UserCog, ShieldCheck, Layers, BookOpen,
   ClipboardList, CalendarCheck
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 
 /**
  * Menu Configuration: Single Source of Truth.

@@ -182,18 +182,11 @@ final class AuthSessionService
 
     private function getRefreshCookiePath(): string
     {
-        $basePath = trim((string) ($_ENV['APP_BASE_PATH'] ?? getenv('APP_BASE_PATH') ?? '/api/v1'));
-        $basePath = trim($basePath, '/');
-
-        if ($basePath === '') {
-            return '/';
+        $configuredPath = trim((string) ($_ENV['REFRESH_COOKIE_PATH'] ?? getenv('REFRESH_COOKIE_PATH') ?: ''));
+        if ($configuredPath !== '') {
+            return '/' . trim($configuredPath, '/');
         }
 
-        $cookiePath = '/' . $basePath;
-        if (!str_ends_with($cookiePath, '/auth')) {
-            $cookiePath .= '/auth';
-        }
-
-        return $cookiePath;
+        return '/api/v1/auth';
     }
 }

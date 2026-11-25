@@ -94,7 +94,7 @@ final class RemainingRequestedForeignKeysMySqlIntegrationTest extends TestCase
              WHERE TABLE_SCHEMA = DATABASE()
                AND TABLE_NAME = 'suppliers' AND COLUMN_NAME = 'branch_id'"
         )->fetchColumn();
-        self::assertSame('int(11)', strtolower((string) $supplierBranchType));
+        self::assertContains(strtolower((string) $supplierBranchType), ['int', 'int(11)']);
 
         $this->expectException(PDOException::class);
         self::$db->exec(

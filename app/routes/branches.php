@@ -15,11 +15,11 @@ use Slim\Routing\RouteCollectorProxy;
 
 return function (RouteCollectorProxy $group, Container $container): void {
 
-    $handler     = $container->get(BranchHandler::class);
-    $reportH     = $container->get(BranchInventoryReportHandler::class);
-    $adjustH     = $container->get(StockAdjustmentHandler::class);
-    $transferH   = $container->get(StockTransferHandler::class);
-    $db          = $container->get(PDO::class);
+    $handler     = new \App\Routing\ContainerHandlerProxy($container, BranchHandler::class);
+    $reportH     = new \App\Routing\ContainerHandlerProxy($container, BranchInventoryReportHandler::class);
+    $adjustH     = new \App\Routing\ContainerHandlerProxy($container, StockAdjustmentHandler::class);
+    $transferH   = new \App\Routing\ContainerHandlerProxy($container, StockTransferHandler::class);
+    $db          = $container;
 
     $group->group('/branches', function (RouteCollectorProxy $group) use ($handler, $reportH, $adjustH, $transferH, $db) {
 

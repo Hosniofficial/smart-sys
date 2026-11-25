@@ -57,15 +57,9 @@ class MonologHandler
         );
 
         if ($this->env === 'production') {
-            $logFile = __DIR__ . '/../../../../logs/erp-error.log';
-            $errorHandler = new RotatingFileHandler($logFile, 30, Logger::ERROR);
+            $errorHandler = new StreamHandler('php://stderr', Logger::ERROR);
             $errorHandler->setFormatter($formatter);
             $this->logger->pushHandler($errorHandler);
-
-            $criticalFile = __DIR__ . '/../../../../logs/erp-critical.log';
-            $criticalHandler = new RotatingFileHandler($criticalFile, 30, Logger::CRITICAL);
-            $criticalHandler->setFormatter($formatter);
-            $this->logger->pushHandler($criticalHandler);
 
         } else {
             $logFile = __DIR__ . '/../../../../logs/erp-debug.log';

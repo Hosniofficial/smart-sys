@@ -78,9 +78,9 @@ https://<api-service-domain>/api/v1
 | `CORS_ALLOWED_ORIGINS` | أصل الواجهة المنشورة فقط، مثل `https://<frontend-domain>` |
 | `CORS_ALLOW_ALL` | `false` |
 | `APP_URL` | عنوان الواجهة المنشور، لا عنوان localhost |
-| `APP_BASE_PATH` | `/smartsys/api/v1`، وفق إعداد المسار الأساسي في التطبيق |
+| `APP_BASE_PATH` | فارغ عند النشر في جذر النطاق؛ أو بادئة نشر مخصصة فقط (من دون `/api/v1`) |
 | `API_BASE_URL` | أصل خدمة الـAPI فقط، مثل `https://<api-service-domain>` دون مسار |
-| `ADMIN_API_URL` | للرابط الإداري عند إعداد cron: `https://<api-service-domain>/smartsys/api/v1/admin/subscriptions/cron` |
+| `ADMIN_API_URL` | للرابط الإداري عند إعداد cron: `https://<api-service-domain>/api/v1/admin/subscriptions/cron` |
 | `CRON_SECRET` | سر عشوائي جديد إذا ستُستخدم مهمة cron |
 | `TWO_FA_ENCRYPTION_KEY` | مفتاح تشفير قوي إذا ستُستخدم ميزة المصادقة الثنائية |
 

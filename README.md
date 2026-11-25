@@ -1,140 +1,126 @@
 # SmartSys ERP
 
-نظام ERP متعدد المستأجرين لإدارة المبيعات والمشتريات والمخزون والمحاسبة والعملاء والموردين، مع واجهة Vue 3 وواجهة API مبنية على PHP + Slim 4 وقاعدة MySQL.
+نظام ERP متعدد المستأجرين لإدارة المبيعات والمشتريات والمخزون والمحاسبة والعملاء والموردين. يتكون من API بـ PHP وSlim 4 وواجهة Vue 3، ويستخدم MySQL.
 
-## نظرة عامة
+## الحالة الحالية
 
-هذا المشروع مصمم ليكون جاهزًا للإصدار الأولي (v1) مع هيكل واضح، وثائق كافية، وبنية قائمة على الطبقات:
+المشروع في مرحلة التجهيز الأولى قبل الإنتاج، ولا يوجد مستخدمون فعليون حتى الآن بحسب تأكيد مالك المشروع. تغييرات العمل المحلية لم تُرفع أو تُنشر بعد؛ لذلك لا تعتبر أي خدمة مستضافة أو إعداد خارجي متحققًا قبل اختباره في بيئة staging.
 
-- Backend API: `api/v1/`
-- Frontend: `SmartSys-Frontend/`
-- Config & runtime: `config/`, `public/`, `app/`
-- Database: `database/`
-- Docs: `docs/`
+## المكونات
 
-## هيكل المشروع
+- `api/v1/`, `app/`, `config/`, `public/`: API ونقطة دخول التطبيق.
+- `database/migrations/`: migrations قاعدة البيانات.
+- `SmartSys-Frontend/`: تطبيق Vue وملفات Cloudflare Pages Functions.
+- `tests/`: اختبارات PHPUnit واختبارات تكامل MySQL.
+- `docs/`: أدلة التطوير والتشغيل.
 
-```text
-SmartSys/
-├── api/v1/                 API backend
-│   ├── src/Handlers/
-│   ├── src/Services/
-│   ├── src/Middleware/
-│   ├── src/Repositories/
-│   ├── src/Security/
-│   └── src/Utils/
-├── app/                    تطبيق PHP + routing
-├── config/                 إعدادات التطبيق
-├── database/               migrations + README + backups
-├── docs/                   وثائق المشروع
-├── public/                 نقطة دخول HTTP
-├── SmartSys-Frontend/      واجهة المستخدم
-│   ├── src/
-│   ├── public/
-│   └── package.json
-├── tests/                  اختبارات PHPUnit
-├── vendor/                 تبعيات PHP
-├── README.md               نقطة البداية
-├── SECURITY.md             سياسات الأمان
-├── composer.json
-├── composer.lock
-└── .env.example
-```
+`vendor/` و`node_modules/` و`SmartSys-Frontend/dist/` مخرجات/اعتماديات محلية وليست ملفات مصدر مطلوبة في Git.
 
 ## المتطلبات
 
-- PHP 8.1+ (يوصى باستخدام إصدار ما زال مدعومًا أمنيًا، مثل PHP 8.2+ للإنتاج)
-- Composer 2
-- MySQL 8+
-- Node.js 20.19+
-- npm
+- PHP 8.1 أو أحدث، مع `pdo_mysql`, `pdo_sqlite`, `mysqli` و`sodium` للاختبارات والميزات المرتبطة بها.
+- Composer 2.
+- MySQL 8 للاختبارات المتكاملة والإنتاج.
+- Node.js 22 وnpm للواجهة.
 
-## إعداد بيئة التطوير
+## التشغيل المحلي على Windows / PowerShell
 
-### 1) إعداد الـ backend
+### Backend
+
+من جذر المستودع:
 
 ```powershell
 composer install
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-قم بتحديث ملف `.env` محليًا باستخدام بيانات قاعدة التطوير الخاصة بك، ولا ترفع الملف إلى Git.
+عدّل `.env` محليًا بقيم قاعدة تطوير معزولة وأسرار جديدة؛ لا ترفع `.env` أو بيانات الاعتماد. تحقق من حالة migrations قبل تطبيق أي منها:
 
 ```powershell
 php database/migrate.php status
 ```
 
-تشغيل الخادم محليًا:
+لتشغيل خادم PHP المحلي مع توجيه المسارات إلى التطبيق:
 
 ```powershell
-php -S localhost:8000 -t public
+php -S 127.0.0.1:8000 -t public public/index.php
 ```
 
-### 2) إعداد الـ frontend
+### Frontend
+
+في نافذة PowerShell أخرى:
 
 ```powershell
-Set-Location SmartSys-Frontend
-npm ci
+Set-Location .\SmartSys-Frontend
+npm.cmd ci
 ```
 
-أنشئ ملفًا محليًا باسم `SmartSys-Frontend/.env.local`:
+أنشئ `SmartSys-Frontend/.env.local` للتطوير المحلي:
 
 ```dotenv
-VITE_API_BASE_URL=http://localhost:8000/smartsys/api/v1
+VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1
 ```
 
-ثم شغّل الواجهة:
+ثم شغّل الواجهة على `http://localhost:5173`:
 
 ```powershell
-npm run dev
+npm.cmd run dev
 ```
 
-افتح: `http://localhost:5173`
+## الاختبارات والتحقق
 
-## وثائق التطوير
-
-- [docs/README.md](docs/README.md) — دليل فهرس الوثائق
-- [docs/PROJECT_ARCHITECTURE.md](docs/PROJECT_ARCHITECTURE.md) — بنية المشروع ونمط التطوير
-- [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) — إرشادات التطوير والمصادقة والفرع والأمان
-- [database/README.md](database/README.md) — إرشادات قاعدة البيانات
-- [SECURITY.md](SECURITY.md) — سياسات الأمان
-
-## التحقق الأساسي
+من جذر المستودع:
 
 ```powershell
-# اختبارات PHP
-vendor/bin/phpunit --testsuite Unit
-
-# بناء الواجهة
-Set-Location SmartSys-Frontend
-npm run build
+composer test
 ```
 
-يتحقق GitHub Actions من PHP 8.1 و8.2، واختبارات MySQL المعزولة، وبناء الواجهة عند كل push وpull request.
-
-قبل تشغيل migrations غير القابلة للعكس على قاعدة قائمة، اختبر استعادة نسخة احتياطية على staging ثم مرر معرّفها صراحةً:
+واختبارات الواجهة وبناؤها:
 
 ```powershell
-php database/migrate.php up --confirm-irreversible --backup-reference=backup-id-2026-10-27
+Set-Location .\SmartSys-Frontend
+npm.cmd test
+npm.cmd run build
 ```
 
-راجع [إرشادات قاعدة البيانات](database/README.md) قبل أي ترحيل.
+تشغيل تكاملات MySQL اختياريًا يتطلب خادم MySQL 8 محليًا وقاعدة اختبار مخصصة قابلة للحذف. الاختبارات ترفض قواعد البيانات البعيدة، وتنشئ مخططات اختبار مؤقتة ثم تحذفها؛ لا تستخدم إعدادات الإنتاج أو قاعدة تحتوي بيانات مهمة:
 
-## إرشادات النمط والعمل
+```powershell
+$env:DB_HOST = '127.0.0.1'
+$env:DB_PORT = '3306'
+$env:DB_DATABASE = 'inventory_test'
+$env:DB_USERNAME = 'root'
+$env:DB_PASSWORD = '' # أدخل كلمة مرور خادم الاختبار إن كانت مضبوطة
+$env:RUN_MYSQL_MIGRATION_TESTS = '1'
+$env:RUN_MYSQL_CASH_VOUCHER_TESTS = '1'
+$env:RUN_MYSQL_SUPPLIER_PAYMENT_TESTS = '1'
+$env:RUN_MYSQL_REPAIR_TESTS = '1'
+$env:RUN_MYSQL_SALES_TESTS = '1'
+php vendor\bin\phpunit
+```
 
-- لا تضع منطق الأعمال داخل الـ Handlers، بل داخل Services.
-- استخدم `useRequiredBranch` / `useBranchIsolation` عند التعامل مع الفرع في الواجهة.
-- حافظ على مصدر واحد للبيانات في Pinia، وتجنب التكرار في الصفحة.
-- استخدم Axios المشترك بدل إنشاء إعدادات HTTP جديدة داخل كل صفحة.
-- لا ترفع `.env` أو بيانات الإنتاج إلى المستودع.
-- افحص `branch_id` وتأكد من صلاحية المستخدم/الفرع لكل تقرير أو تحديث يعتمد على الفرع.
+GitHub Actions يشغّل PHPUnit مع تكاملات MySQL 8 على PHP 8.1 و8.2، واختبارات الواجهة وبناء Vite على Node 22، إضافة إلى تدقيق Composer وnpm.
 
-## حالة التنظيف الحالية
+## النشر والاستعداد للإنتاج
 
-تم تنظيم المستودع لتكون الصورة القابلة للتسليم أولية بشكل أساسي:
+- إعداد Render المبدئي موجود في `render.yaml`، وصورة backend في `Dockerfile`. فحص الجاهزية `/health` يحتاج اتصال قاعدة البيانات؛ `/check` فحص liveness لا يتصل بها.
+- واجهة Cloudflare Pages تستخدم `SmartSys-Frontend/functions/api/[[path]].js` لتمرير `/api/v1` إلى backend. يلزم ضبط `BACKEND_URL` و`VITE_API_BASE_URL=/api/v1` في إعدادات البناء/النشر.
+- في Render، اضبط اتصال MySQL مع `DB_SSL_MODE=VERIFY_IDENTITY` ومسار شهادة CA موثوقة في `DB_SSL_CA`، وحدد عناوين `TRUSTED_PROXY_IPS` بعد التحقق من إعداد proxy الفعلي.
+- `TWO_FA_ENCRYPTION_KEY` مطلوب قبل تفعيل 2FA أو تخزين أسرارها؛ يمكن للتطبيق بدء التشغيل من دونه، لكن عمليات 2FA تفشل بأمان. لا تدوّر مفتاحًا مستخدمًا لبيانات مشفرة قبل خطة ترحيل/إعادة تسجيل مناسبة.
+- لم يُتحقق محليًا من بناء Docker أو إعدادات Render وCloudflare أو اتصال Aiven. نفّذ ذلك في staging قبل أي نشر إنتاجي.
 
-- تم توحيد وثائق التطوير في `docs/`
-- تم حذف الملفات المؤقتة والمتكررة الناتجة عن التحليل أو المراجعة
-- تم الاحتفاظ بالملفات التشغيلية المهمة فقط
+قبل تشغيل migrations على قاعدة قائمة، اختبر استعادة نسخة احتياطية قابلة للاستعادة على staging. بعض migrations غير قابلة للعكس وتتطلب مرجع نسخة حقيقية:
 
-إذا كانت هناك حاجة لاحقًا إلى مرحلة cleanup أعمق، فالأولوية تكون في: الملفات المؤقتة، التقريريات المتكررة، ملفات اللقطات غير المهمة، وتدقيق الاستيرادات داخل الواجهة.
+```powershell
+php database/migrate.php up --confirm-irreversible --backup-reference=REAL_RESTORABLE_BACKUP_ID
+```
+
+الأمر لا ينشئ النسخة الاحتياطية ولا يختبر استعادتها. راجع [دليل قاعدة البيانات](database/README.md) و[قائمة النشر](DEPLOYMENT_CHECKLIST.md) قبل أي تغيير تشغيلي.
+
+## مراجع المشروع
+
+- [فهرس الوثائق](docs/README.md)
+- [معمارية المشروع](docs/PROJECT_ARCHITECTURE.md)
+- [دليل المطور](docs/DEVELOPER_GUIDE.md)
+- [دليل قاعدة البيانات](database/README.md)
+- [سياسة الأمان](SECURITY.md)

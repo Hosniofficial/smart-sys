@@ -8,6 +8,7 @@ use App\Security\PermissionResolver;
 use App\Utils\SuperAdminHelper;
 use App\Utils\ApiResponseEnvelope;
 use PDO;
+use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Server\MiddlewareInterface;
@@ -25,7 +26,7 @@ class PermissionMiddleware implements MiddlewareInterface
     /** @var string[] */
     private array $permissions;
 
-    private PDO $db;
+    private PDO|ContainerInterface $database;
 
     /** 'any' = at least one match, 'all' = every permission required */
     private string $mode;
@@ -37,23 +38,23 @@ class PermissionMiddleware implements MiddlewareInterface
      * @param string[] $permissions
      * @param 'any'|'all' $mode
      */
-    public function __construct(array $permissions, PDO $db, string $mode = 'any')
+    public function __construct(array $permissions, PDO|ContainerInterface $database, string $mode = 'any')
     {
         if (empty($permissions)) {
             throw new \InvalidArgumentException('PermissionMiddleware requires at least one permission.');
         }
 
         $this->permissions = $permissions;
-        $this->db          = $db;
+        $this->database    = $database;
         $this->mode        = $mode;
     }
 
     /**
      * Require exactly one permission.
      */
-    public static function require(string $permission, PDO $db): self
+    public static function require(string $permission, PDO|ContainerInterface $database): self
     {
-        return new self([$permission], $db, 'any');
+        return new self([$permission], $database, 'any');
     }
 
     /**
@@ -61,9 +62,9 @@ class PermissionMiddleware implements MiddlewareInterface
      *
      * @param string[] $permissions
      */
-    public static function anyOf(array $permissions, PDO $db): self
+    public static function anyOf(array $permissions, PDO|ContainerInterface $database): self
     {
-        return new self($permissions, $db, 'any');
+        return new self($permissions, $database, 'any');
     }
 
     /**
@@ -81,9 +82,9 @@ class PermissionMiddleware implements MiddlewareInterface
      *
      * @param string[] $permissions
      */
-    public static function allOf(array $permissions, PDO $db): self
+    public static function allOf(array $permissions, PDO|ContainerInterface $database): self
     {
-        return new self($permissions, $db, 'all');
+        return new self($permissions, $database, 'all');
     }
 
     /** Authenticate the user context and enforce the configured permission set. */
@@ -134,7 +135,14 @@ class PermissionMiddleware implements MiddlewareInterface
     private function resolveGranted(int $userId): array
     {
         try {
-            return PermissionResolver::getGrantedPermissionNames($this->db, $userId);
+            $database = $this->database instanceof PDO
+                ? $this->database
+                : $this->database->get(PDO::class);
+            if (!$database instanceof PDO) {
+                throw new \UnexpectedValueException('The container did not return a PDO connection.');
+            }
+
+            return PermissionResolver::getGrantedPermissionNames($database, $userId);
         } catch (\Throwable $e) {
             // On DB error, fail closed (deny access) — never fail open.
             return [];

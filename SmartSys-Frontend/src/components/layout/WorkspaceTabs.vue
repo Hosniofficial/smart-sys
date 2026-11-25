@@ -40,7 +40,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { X } from 'lucide-vue-next'
+import { X } from '@lucide/vue'
 import { useAuthStore } from '@/stores/auth/authStore'
 import { useToast } from '@/composables/useToast'
 

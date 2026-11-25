@@ -65,7 +65,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { X } from 'lucide-vue-next'
+import { X } from '@lucide/vue'
 import { useActiveRoute } from '@/composables/useActiveRoute'
 
 const props = defineProps({
