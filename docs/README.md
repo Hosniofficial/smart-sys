@@ -4,10 +4,10 @@
 
 ## محتويات الوثائق
 
+- [قائمة النشر وبوابة الإصدار](../DEPLOYMENT_CHECKLIST.md) — المصدر الحالي لحالة الجاهزية والخطوات المطلوبة قبل التسليم.
 - [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) — دليل التطوير العام، نقطة بداية للمطور الجديد.
 - [PROJECT_ARCHITECTURE.md](./PROJECT_ARCHITECTURE.md) — وصف بنية المشروع وطبقات التطبيق.
 - [AUDIT_TRAIL.md](./AUDIT_TRAIL.md) — سجل المراجعات والتنقيحات المهمة.
-- [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) — حالة الاستعداد للإنتاج.
 - [PERMISSIONS.md](./PERMISSIONS.md) — نظرة على صلاحيات المستخدم ونطاق الوصول.
 - [SETTINGS_REFERENCE.md](./SETTINGS_REFERENCE.md) — إشارات الإعدادات العامة.
 - [LIQUIDITY_POLICY.md](./LIQUIDITY_POLICY.md) — سياسة السيولة والاستقرار المالي.

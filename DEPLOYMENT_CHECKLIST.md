@@ -1,6 +1,6 @@
 # 🚀 Deployment Checklist - Security and Production Readiness
 
-**الحالة الفعلية حتى 25 نوفمبر 2026:** إصلاحات H1-H5 أدناه موجودة في التاريخ المنشور. آخر commit ناجح على Render هو `cfa58c8`، والشفرة المحلية على هذا commit؛ التغييرات المحلية الحالية توثيقية فقط. فحوص `/health` و`/check` وواجهة Cloudflare Pages أعادت HTTP 200. هذه النتائج لا تعني أن الخدمة جاهزة لاستقبال المستخدمين؛ انظر المخاطر التشغيلية أدناه.
+**الحالة الفعلية حتى 25 نوفمبر 2026:** إصلاحات H1-H5 أدناه موجودة في التاريخ المنشور. آخر commit ناجح على Render هو `cfa58c8`. التغييرات الحالية على المستودع تنظيف وتوثيق وحذف ملفات غير مستخدمة؛ لم تُنشر على Render. فحوص `/health` و`/check` وواجهة Cloudflare Pages أعادت HTTP 200. هذه النتائج لا تعني أن الخدمة جاهزة لاستقبال المستخدمين؛ انظر المخاطر التشغيلية أدناه.
 
 ## ✅ Completed High Priority Security Fixes
 
@@ -66,7 +66,9 @@ The application uses the bundled public Aiven CA at `/var/www/html/certs/aiven-p
 ### Frontend (Cloudflare Pages)
 - ✅ The home page returned HTTP 200 in the latest check
 - ✅ `GET /api/v1/auth/login` through Pages returned HTTP 405 (route reached; method not allowed)
-- ⚠️ Full login flow through the frontend was not tested in this review
+- ✅ One form-encoded POST using a deliberately invalid, synthetic username/password returned the expected JSON `401` after Render was awake; this confirms that request reached the API and database, not that a real user can log in.
+- ⚠️ An earlier POST returned an HTML `502`. A subsequent direct Render `/health` returned `200`, and the form-encoded retry through Pages returned `401`; the cause of the initial `502` was not established.
+- ⚠️ Browser login, refresh-cookie attributes, reload persistence, logout, and email links were not tested with a staging account.
 - 🌐 URL: https://smart-sys.pages.dev
 
 ---
@@ -76,7 +78,7 @@ The application uses the bundled public Aiven CA at `/var/www/html/certs/aiven-p
 ### Completed checks
 - PHPUnit: 461 tests, 1,266 assertions, 52 skipped; no failures. This is not a full database integration or coverage certification.
 - Frontend tests: 12 passed.
-- Vite production build: did not complete locally; Node ran out of memory while only about 149 MB of system memory was free.
+- Vite production build: did not complete locally, including an isolated retry; Node ran out of memory. A successful CI or adequately provisioned build is still required.
 - Render `/health`: HTTP 200 (database readiness).
 - Render `/check`: HTTP 200 (liveness).
 - Cloudflare Pages home page: HTTP 200.
@@ -106,14 +108,38 @@ Do not run repeated failed-login/rate-limit tests against production; they can b
 - Create or verify a least-privilege application database user; do not assume the runtime account needs administrative privileges.
 - Complete staging end-to-end checks and backup-restore verification.
 
+## Review of the supplied readiness report (25 November 2026)
+
+### Verified in this review
+- Render's live environment page showed `DB_SSL_MODE=VERIFY_IDENTITY`. The configured `DB_SSL_CA` path is present in `render.yaml`; the live value/file itself was not independently inspected. The successful login handler response is evidence that a database-backed request completed, but it does not prove every TLS setting or certificate-rotation path.
+- The Pages login endpoint works with the form-encoded body used by the frontend and returned the expected `401` for synthetic invalid credentials. Do not use a JSON body for this endpoint: `authService.login()` sends `application/x-www-form-urlencoded`.
+- `HealthHandler.php` has no references outside its own definition and has been removed. The old `AIVEN_DB_*` sample variables had no code/script references and have been removed from `.env.example`.
+- The local `.env` is ignored by Git and is not tracked. It contains an Aiven credential; treat it as potentially exposed, verify whether it is still active, and rotate it if so. Do not copy the value into logs, issues, or documentation.
+
+### Still requires an owner-side or staging check
+- Render hides the live values for `TRUST_PROXY`, `TRUSTED_PROXY_IPS`, `REFRESH_COOKIE_PATH`, and `DB_SSL_CA`; their actual values and secret-file availability were not confirmed. Check them in the dashboard without copying secrets into chat or logs. Keep TLS certificate verification enabled.
+- Verify client IP attribution with a controlled staging login and inspect only the resulting test row in `login_attempts`. The application trusts `X-Forwarded-For` only when the direct peer is explicitly trusted; do not add proxy ranges by guesswork or trust arbitrary client headers.
+- Test browser login, refresh, reload, logout, password reset/email links, and role authorization on staging. No real credentials were used in the smoke test.
+- PHP 8.2 reaches the end of security support on 31 December 2026. Plan an upgrade to PHP 8.3, extend CI coverage, and build/test the Docker image before that date; do not call the runtime upgrade complete until those checks pass.
+- No scheduled subscription cron workflow exists. The endpoint updates expired subscriptions and can send real reminders; first test it with isolated data, verify duplicate suppression and email effects, then add a controlled daily schedule with an explicit secret and concurrency protection. Do not schedule every five minutes without proving idempotency.
+- `RBACHandler` scopes create-time identity checks to the tenant but its update-time duplicate check is global. Confirm the production uniqueness rules and intended cross-tenant identity model before changing it; ensure errors do not disclose another tenant's account existence.
+- The password policy remains 8 characters minimum / 72 bytes maximum. Decide whether this is acceptable for launch, then update server validation, UI guidance, and tests together if changing it.
+- Monetary calculations still use floating-point values in many places. A decimal/minor-unit migration is a broad accounting change; keep it tracked as a separate design and migration task rather than performing a partial cast cleanup.
+- `.kiro/`, `test_suite/`, the obsolete Railway guide, and one-off/stale readiness and review reports were removed during cleanup. The current release gate and unresolved findings are consolidated in this checklist; the security policy remains in `SECURITY.md`.
+
 ---
 
 ## 🎯 Next Steps
 
-1. Decide on the Aiven replacement/upgrade and Render availability plan.
-2. If local Aiven access is needed, add only an approved developer CIDR; do not reopen `0.0.0.0/0` or `::/0`.
-3. Verify current 2FA data and backup, then rotate the previously exposed key safely.
-4. Finish staging, CI, Docker, end-to-end, and backup-restore checks before onboarding.
+1. **Secure and inventory secrets:** determine whether the local Aiven credential and previously exposed 2FA key are still active. Back up and identify encrypted 2FA data before rotating keys; update only the services that use each credential. Never commit or paste secrets.
+2. **Protect and plan the database:** choose an Aiven upgrade or tested migration destination before the announced 21 December 2026 free-plan retirement. Take a production backup, restore it into isolated staging, and record the recovery owner, RPO/RTO, and rollback plan.
+3. **Choose reliable hosting:** decide whether Render must move off the sleeping free plan. Verify the least-privilege DB account and keep Aiven network access restricted; add only an approved developer CIDR if local access is essential.
+4. **Verify deployment configuration:** confirm the mounted CA file and `DB_SSL_MODE=VERIFY_IDENTITY`, `TRUST_PROXY`, trusted proxy addresses, `REFRESH_COOKIE_PATH`, Cloudflare `BACKEND_URL`, and frontend `VITE_API_BASE_URL`. Validate cookie flags and client-IP attribution without trusting arbitrary forwarded headers.
+5. **Complete staging end-to-end tests:** exercise login, refresh, reload, logout, password reset/email links, roles/tenant boundaries, and representative sale, return, and inventory flows. Use synthetic data and verify the resulting database and UI behavior.
+6. **Prove build and runtime support:** upgrade Docker from PHP 8.2 to PHP 8.3 before 31 December 2026, extend CI to test the target version, and require passing PHPUnit/MySQL 8 integration, frontend tests/build, dependency audits, and Docker build. The local Vite build currently fails from memory exhaustion; do not mark it passed until CI or a capable machine proves it.
+7. **Enable scheduled work safely:** test the subscription cron against isolated data, verify reminder deduplication and expiry behavior, then add a controlled daily schedule with protected secrets and concurrency prevention. It can change subscription state and send real email; do not enable it before the test.
+8. **Resolve launch policies:** confirm the 8-character password minimum and 72-byte maximum, decide how to address the global user-identity duplicate check in `RBACHandler`, and record an accounting plan for widespread floating-point money calculations. Do not make partial financial precision changes.
+9. **Operational readiness and sign-off:** verify health/readiness, logs/alerts, security headers, CORS, TLS, backups and restoration; fill the security-reporting contact in `SECURITY.md`; obtain technical and financial owner approval. Keep the release **NO-GO** until all launch blockers are evidenced in staging.
 
 ---
 
@@ -123,7 +149,8 @@ If you encounter any issues:
 - Check Render logs: https://dashboard.render.com/web/YOUR_SERVICE/logs
 - Check Cloudflare Pages logs: https://dash.cloudflare.com/
 - Review commit history: `git log --oneline -10`
-- Check this document: `SECURITY_FIXES.md`
+- Check the current release gate: `DEPLOYMENT_CHECKLIST.md`
+- Check the security reporting policy: `SECURITY.md`
 
 ---
 

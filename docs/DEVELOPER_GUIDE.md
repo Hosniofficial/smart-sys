@@ -125,6 +125,6 @@ npm run build
 - [مساهمات المالك والسيولة](OWNER_CONTRIBUTIONS.md) و[سياسة السيولة](LIQUIDITY_POLICY.md)
 - [العملات المتعددة](multi-currency.md)
 - [سجل التدقيق](AUDIT_TRAIL.md)
-- [جاهزية الإنتاج](PRODUCTION_READINESS.md) و[نشر Railway للاختبار](RAILWAY_TEST_DEPLOYMENT.md)
+- [قائمة النشر وبوابة الإصدار](../DEPLOYMENT_CHECKLIST.md)
 
 أي تعليمات مرتبطة بقاعدة البيانات أو الأمان تتقدم على أمثلة تشغيل قديمة: [database/README.md](../database/README.md) و[سياسة الأمان](../SECURITY.md).
