@@ -30,6 +30,41 @@ final class PublicHealthRouteTest extends TestCase
         self::assertArrayNotHasKey('checks', $payload['data']);
     }
 
+    public function testPublicHealthLogsDatabaseFailureWithoutExposingItInResponse(): void
+    {
+        $logFile = tempnam(sys_get_temp_dir(), 'smartsys-health-');
+        self::assertNotFalse($logFile);
+        $previousErrorLog = ini_get('error_log');
+        ini_set('error_log', $logFile);
+
+        try {
+            $db = new class extends PDO {
+                public function __construct()
+                {
+                }
+
+                public function query(string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs): PDOStatement|false
+                {
+                    throw new \PDOException('SQLSTATE[HY000] [2002] Connection refused');
+                }
+            };
+            $app = $this->createApp($db);
+            $request = (new ServerRequestFactory())->createServerRequest('GET', 'https://example.test/health');
+
+            $response = $app->handle($request);
+            $payload = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+            $log = file_get_contents($logFile);
+
+            self::assertSame(503, $response->getStatusCode());
+            self::assertStringNotContainsString('Connection refused', $payload['message']);
+            self::assertStringContainsString('Database readiness check failed', $log);
+            self::assertStringContainsString('Connection refused', $log);
+        } finally {
+            ini_set('error_log', (string) $previousErrorLog);
+            unlink($logFile);
+        }
+    }
+
     public function testDetailedHealthRouteIsUnavailableWithoutValidDedicatedToken(): void
     {
         $_ENV['HEALTH_DETAILS_TOKEN'] = 'expected-secret';
@@ -76,10 +111,10 @@ final class PublicHealthRouteTest extends TestCase
         self::assertArrayHasKey('env', $payload['data']);
     }
 
-    private function createApp()
+    private function createApp(?PDO $db = null)
     {
         $container = new Container();
-        $container->set(PDO::class, new PDO('sqlite::memory:'));
+        $container->set(PDO::class, $db ?? new PDO('sqlite::memory:'));
         $app = AppFactory::create(container: $container);
         (require dirname(__DIR__, 2) . '/app/routes/public.php')($app, $container);
 

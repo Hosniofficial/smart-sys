@@ -27,6 +27,16 @@ return function (App $app, Container $container): void {
             $db = $container->get(PDO::class);
             $db->query('SELECT 1');
         } catch (\Throwable $e) {
+            $diagnostic = $e;
+            while ($diagnostic->getPrevious() !== null) {
+                $diagnostic = $diagnostic->getPrevious();
+            }
+            error_log(sprintf(
+                '[health] Database readiness check failed: %s (%s): %s',
+                get_class($diagnostic),
+                $diagnostic->getCode(),
+                $diagnostic->getMessage()
+            ));
             $healthy = false;
         }
 
