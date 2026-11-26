@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Middleware;
 
+use App\Utils\RequestHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Server\MiddlewareInterface;
@@ -94,7 +95,7 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
             explode(',', (string)($_ENV['TRUSTED_PROXY_IPS'] ?? ''))
         )));
 
-        if (empty($trustedProxies) || !in_array($remote, $trustedProxies, true)) {
+        if (empty($trustedProxies) || !RequestHelper::matchesTrustedProxy($remote, $trustedProxies)) {
             return false;
         }
 

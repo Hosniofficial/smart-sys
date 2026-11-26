@@ -125,7 +125,7 @@ final class RequestHelper
         return [$trustProxy, array_values($trustedProxies)];
     }
 
-    private static function matchesTrustedProxy(string $address, array $trustedProxies): bool
+    public static function matchesTrustedProxy(string $address, array $trustedProxies): bool
     {
         foreach ($trustedProxies as $proxy) {
             $proxy = trim((string) $proxy);
