@@ -1,0 +1,2471 @@
+From 9ce4bdc99a9431dc0141a472be30c929d6bf9187 Mon Sep 17 00:00:00 2001
+From: "Claude (audit & migration)" <claude@users.noreply.anthropic.com>
+Date: Fri, 27 Nov 2026 10:43:36 +0000
+Subject: [PATCH 1/3] security(uploads): fix remote code execution via warranty
+ attachment upload
+
+Warranty attachments were saved under public/uploads with the client-supplied extension and no
+content validation, so an authenticated user could upload a .php file and run it.
+
+- Validate by file content (finfo) against an allowlist (JPG/PNG/WEBP/GIF/PDF); the stored extension
+  is derived from the sniffed type, never from the client name. Max 10 MB.
+- Store attachments outside the web root (UPLOADS_DIR, default storage/uploads) with 0640 files.
+- Serve files via short-lived HMAC-signed links bound to attachment id, tenant and expiry
+  (GET /api/v1/warranty/attachments/{id}/file) with nosniff + CSP sandbox headers.
+- Verify the warranty request belongs to the caller's tenant before attaching.
+- Resolve legacy files only for allowlisted extensions and plain file names.
+- Drop SVG from logo uploads (stored XSS vector).
+- Frontend uses the signed url returned by the API.
+- Tests: unit tests plus a MySQL integration test of upload, signed download, tenant isolation and
+  deletion; enabled in CI via RUN_MYSQL_WARRANTY_TESTS.
+---
+ .github/workflows/ci.yml                      |   1 +
+ .gitignore                                    |   3 +
+ .../src/views/warranty/WarrantyManagement.vue |   9 +-
+ api/v1/src/Handlers/AdminSettingsHandler.php  |   2 +-
+ api/v1/src/Handlers/WarrantyHandler.php       | 186 +++++++++--
+ api/v1/src/Security/AttachmentUrlSigner.php   |  69 ++++
+ api/v1/src/Security/SecureUpload.php          |  95 ++++++
+ config/routes.php                             |   7 +
+ render.yaml                                   |  55 ----
+ ...WarrantyAttachmentMySqlIntegrationTest.php | 297 ++++++++++++++++++
+ tests/Unit/AttachmentUrlSignerTest.php        |  51 +++
+ tests/Unit/SecureUploadTest.php               |  75 +++++
+ 12 files changed, 767 insertions(+), 83 deletions(-)
+ create mode 100644 api/v1/src/Security/AttachmentUrlSigner.php
+ create mode 100644 api/v1/src/Security/SecureUpload.php
+ delete mode 100644 render.yaml
+ create mode 100644 tests/Integration/WarrantyAttachmentMySqlIntegrationTest.php
+ create mode 100644 tests/Unit/AttachmentUrlSignerTest.php
+ create mode 100644 tests/Unit/SecureUploadTest.php
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index cc5b20e..246d959 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -39,6 +39,7 @@ jobs:
+       RUN_MYSQL_SUPPLIER_PAYMENT_TESTS: '1'
+       RUN_MYSQL_REPAIR_TESTS: '1'
+       RUN_MYSQL_SALES_TESTS: '1'
++      RUN_MYSQL_WARRANTY_TESTS: '1'
+     steps:
+       - uses: actions/checkout@v4
+       - name: Set up PHP
+diff --git a/.gitignore b/.gitignore
+index e76a9e4..b7b063d 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -102,3 +102,6 @@ composer.json.bak
+ 
+ # -------- TEST SUITE VENDOR --------
+ test_suite/psr-http-message/
++
++# Private uploads (outside the web root)
++/storage/uploads/
+diff --git a/SmartSys-Frontend/src/views/warranty/WarrantyManagement.vue b/SmartSys-Frontend/src/views/warranty/WarrantyManagement.vue
+index 27c95dc..2edad0e 100644
+--- a/SmartSys-Frontend/src/views/warranty/WarrantyManagement.vue
++++ b/SmartSys-Frontend/src/views/warranty/WarrantyManagement.vue
+@@ -438,13 +438,13 @@
+                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">المرفقات والوثائق</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                       <div v-for="a in details.attachments" :key="a.id" class="group bg-white p-3 rounded-lg border border-slate-200 shadow-sm transition-all hover:shadow-lg">
+-                        <div v-if="isImage(a.filename)" @click="openLightbox(fileUrl(a.filename))" class="aspect-video rounded-md bg-slate-100 overflow-hidden cursor-zoom-in mb-3 border border-slate-50">
+-                           <img :src="fileUrl(a.filename)" class="w-full h-full object-cover transition-transform group-hover:scale-105" />
++                        <div v-if="isImage(a.filename)" @click="openLightbox(fileUrl(a))" class="aspect-video rounded-md bg-slate-100 overflow-hidden cursor-zoom-in mb-3 border border-slate-50">
++                           <img :src="fileUrl(a)" class="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                         </div>
+                         <div v-else class="aspect-video rounded-md bg-slate-100 flex items-center justify-center text-slate-300 mb-3"><i class="fas fa-file-pdf text-3xl"></i></div>
+                         <p class="text-[9px] font-bold text-slate-600 truncate uppercase">{{ a.originalName }}</p>
+                         <div class="flex justify-between mt-3 pt-2 border-t border-slate-50">
+-                           <a :href="fileUrl(a.filename)" target="_blank" class="text-[9px] font-bold text-blue-600 uppercase hover:underline">تحميل</a>
++                           <a :href="fileUrl(a)" target="_blank" class="text-[9px] font-bold text-blue-600 uppercase hover:underline">تحميل</a>
+                            <button @click="removeAttachment(a.id)" class="text-[9px] font-bold text-rose-500 uppercase hover:underline">حذف</button>
+                         </div>
+                       </div>
+@@ -918,7 +918,8 @@ const timelineEvents = computed(() => {
+ const lightboxOpen = ref(false);
+ const lightboxSrc = ref('');
+ 
+-function fileUrl(fileName) { return `/api/public/uploads/${fileName}`; }
++// Private attachments are served through short-lived signed links issued by the API.
++function fileUrl(attachment) { return attachment?.url || ''; }
+ function isImage(fileName) {
+   const ext = String(fileName || '').toLowerCase().split('.').pop();
+   return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(ext);
+diff --git a/api/v1/src/Handlers/AdminSettingsHandler.php b/api/v1/src/Handlers/AdminSettingsHandler.php
+index 127e561..f39f9c9 100644
+--- a/api/v1/src/Handlers/AdminSettingsHandler.php
++++ b/api/v1/src/Handlers/AdminSettingsHandler.php
+@@ -392,7 +392,7 @@ class AdminSettingsHandler extends BaseHandler
+                 $safeOriginal = preg_replace('/[^a-zA-Z0-9_\.-]/', '_', $clientFilename);
+                 $extension = strtolower(pathinfo($safeOriginal, PATHINFO_EXTENSION));
+ 
+-                $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'svg'];
++                $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+                 if (!in_array($extension, $allowedExtensions, true)) {
+                     return $this->errorResponse($response, 'نوع ملف الشعار غير مدعوم', 400);
+                 }
+diff --git a/api/v1/src/Handlers/WarrantyHandler.php b/api/v1/src/Handlers/WarrantyHandler.php
+index fc7810d..a89c5b4 100644
+--- a/api/v1/src/Handlers/WarrantyHandler.php
++++ b/api/v1/src/Handlers/WarrantyHandler.php
+@@ -8,6 +8,8 @@ use PDO;
+ use Exception;
+ use Psr\Http\Message\ResponseInterface as Response;
+ use Psr\Http\Message\ServerRequestInterface as Request;
++use App\Security\AttachmentUrlSigner;
++use App\Security\SecureUpload;
+ use App\Services\MonologHandler;
+ use App\Utils\PaginationHelper;
+ 
+@@ -347,6 +349,10 @@ class WarrantyHandler extends BaseHandler
+             );
+             $stmt->execute([$id, $tenantId]);
+             $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
++            foreach ($attachments as &$attachment) {
++                $attachment['url'] = $this->signedAttachmentPath((int) $attachment['id'], $tenantId);
++            }
++            unset($attachment);
+ 
+             $stmt = $this->db->prepare(
+                 "SELECT n.id, n.note, n.is_internal, n.created_by, n.created_at, u.name as created_by_name
+@@ -560,7 +566,12 @@ class WarrantyHandler extends BaseHandler
+         }
+     }
+ 
+-    /** Store an uploaded file locally and persist its request metadata. */
++    /**
++     * Store a validated upload outside the web root and persist its request metadata.
++     *
++     * The file type is decided from the file content (see SecureUpload); the client-supplied
++     * name and extension are never used for the stored file name.
++     */
+     public function uploadAttachment(Request $request, Response $response, array $args): Response
+     {
+         try {
+@@ -572,6 +583,13 @@ class WarrantyHandler extends BaseHandler
+             $userId = $this->extractUserId($request) ?? 0;
+             $id = (int) $args['id'];
+ 
++            // The request must belong to the caller's tenant before anything is attached to it.
++            $stmt = $this->db->prepare('SELECT id FROM warranty_requests WHERE id = ? AND tenant_id = ? LIMIT 1');
++            $stmt->execute([$id, $tenantId]);
++            if (!$stmt->fetchColumn()) {
++                return $this->errorResponse($response, 'لم يتم العثور على طلب الضمان', 404);
++            }
++
+             $files = $request->getUploadedFiles();
+             if (!isset($files['file'])) {
+                 return $this->errorResponse($response, 'حقل الملف (file) مطلوب', 400);
+@@ -582,24 +600,23 @@ class WarrantyHandler extends BaseHandler
+                 return $this->errorResponse($response, 'خطأ أثناء رفع الملف', 400);
+             }
+ 
+-            $uploadsDir = realpath(__DIR__ . '/../../../public/uploads');
+-            if ($uploadsDir === false) {
+-                $uploadsDir = __DIR__ . '/../../../public/uploads';
++            try {
++                $info = SecureUpload::inspect($file);
++            } catch (\InvalidArgumentException $e) {
++                return $this->errorResponse($response, $e->getMessage(), 422);
+             }
+ 
+-            if (!is_dir($uploadsDir)) {
+-                @mkdir($uploadsDir, 0777, true);
++            $uploadsDir = $this->attachmentsDir();
++            if (!is_dir($uploadsDir) && !@mkdir($uploadsDir, 0750, true) && !is_dir($uploadsDir)) {
++                throw new \RuntimeException('Attachments directory is not writable.');
+             }
+ 
+-            $original = $file->getClientFilename();
+-            $ext = pathinfo($original, PATHINFO_EXTENSION);
+-            $safeName = 'wr_' . $id . '_' . time() . '_' . bin2hex(random_bytes(4)) . ($ext ? ('.' . $ext) : '');
+-            $target = rtrim($uploadsDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $safeName;
++            $original = $this->cleanOriginalName((string) $file->getClientFilename(), $info['extension']);
++            $safeName = sprintf('wr_%d_%d_%s.%s', $id, time(), bin2hex(random_bytes(8)), $info['extension']);
++            $target = $uploadsDir . DIRECTORY_SEPARATOR . $safeName;
+ 
+             $file->moveTo($target);
+-
+-            $mime = $file->getClientMediaType();
+-            $size = $file->getSize();
++            @chmod($target, 0640);
+ 
+             $stmt = $this->db->prepare(
+                 "INSERT INTO warranty_attachments (
+@@ -607,13 +624,14 @@ class WarrantyHandler extends BaseHandler
+                     original_name, mime_type, size, uploaded_by, uploaded_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())"
+             );
+-            $stmt->execute([$tenantId, $id, $safeName, $original, $mime, $size, $userId]);
++            $stmt->execute([$tenantId, $id, $safeName, $original, $info['mime'], $info['size'], $userId]);
+ 
+             $attId = (int) $this->db->lastInsertId();
+ 
+             return $this->successResponse($response, [
+                 'id' => $attId,
+-                'filename' => $safeName
++                'filename' => $safeName,
++                'url' => $this->signedAttachmentPath($attId, $tenantId),
+             ], 200);
+         } catch (Exception $e) {
+             $this->logger->error('Warranty attachment upload failed', ['message' => $e->getMessage()]);
+@@ -621,7 +639,70 @@ class WarrantyHandler extends BaseHandler
+         }
+     }
+ 
+-    /** Remove a tenant attachment record and its local file when present. */
++    /**
++     * Serve a private attachment through a short-lived signed link (no JWT, so <img>/<a> work).
++     *
++     * The signature binds attachment id, tenant, and expiry; the stored file is read from the
++     * private attachments directory and sent with headers that prevent it from being rendered
++     * as an active document.
++     */
++    public function downloadAttachment(Request $request, Response $response, array $args): Response
++    {
++        $notFound = fn () => $this->errorResponse($response, 'الملف غير موجود أو انتهت صلاحية الرابط', 404);
++
++        try {
++            $query = $request->getQueryParams();
++            $attId = (int) ($args['attachmentId'] ?? 0);
++            $tenantId = (int) ($query['tenant'] ?? 0);
++            $exp = (int) ($query['exp'] ?? 0);
++            $sig = (string) ($query['sig'] ?? '');
++
++            if ($attId <= 0 || $tenantId <= 0 || $exp <= 0 || $sig === '') {
++                return $notFound();
++            }
++
++            if (!AttachmentUrlSigner::fromEnvironment()->verify($attId, $tenantId, $exp, $sig)) {
++                return $notFound();
++            }
++
++            $stmt = $this->db->prepare(
++                'SELECT filename, original_name FROM warranty_attachments WHERE id = ? AND tenant_id = ? LIMIT 1'
++            );
++            $stmt->execute([$attId, $tenantId]);
++            $row = $stmt->fetch(PDO::FETCH_ASSOC);
++            if (!$row) {
++                return $notFound();
++            }
++
++            $path = $this->resolveStoredFile((string) $row['filename']);
++            $extension = strtolower(pathinfo((string) $row['filename'], PATHINFO_EXTENSION));
++            $contentType = SecureUpload::contentTypeForExtension($extension);
++            if ($path === null || $contentType === null) {
++                return $notFound();
++            }
++
++            $handle = fopen($path, 'rb');
++            if ($handle === false) {
++                return $notFound();
++            }
++
++            $name = $this->cleanOriginalName((string) ($row['original_name'] ?? ''), $extension);
++
++            return $response
++                ->withBody(new \Slim\Psr7\Stream($handle))
++                ->withHeader('Content-Type', $contentType)
++                ->withHeader('Content-Length', (string) filesize($path))
++                ->withHeader('Content-Disposition', "inline; filename*=UTF-8''" . rawurlencode($name))
++                ->withHeader('X-Content-Type-Options', 'nosniff')
++                ->withHeader('Content-Security-Policy', "default-src 'none'; sandbox")
++                ->withHeader('Cache-Control', 'private, max-age=300');
++        } catch (\Throwable $e) {
++            $this->logger->error('Warranty attachment download failed', ['message' => $e->getMessage()]);
++            return $notFound();
++        }
++    }
++
++    /** Remove a tenant attachment record and its stored file when present. */
+     public function deleteAttachment(Request $request, Response $response, array $args): Response
+     {
+         try {
+@@ -640,13 +721,8 @@ class WarrantyHandler extends BaseHandler
+                 return $this->errorResponse($response, 'لم يتم العثور على السجل', 403);
+             }
+ 
+-            $uploadsDir = realpath(__DIR__ . '/../../../public/uploads');
+-            if ($uploadsDir === false) {
+-                $uploadsDir = __DIR__ . '/../../../public/uploads';
+-            }
+-
+-            $target = rtrim($uploadsDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $row['filename'];
+-            if (is_file($target)) {
++            $target = $this->resolveStoredFile((string) $row['filename']);
++            if ($target !== null) {
+                 @unlink($target);
+             }
+ 
+@@ -660,6 +736,70 @@ class WarrantyHandler extends BaseHandler
+         }
+     }
+ 
++    /** Private directory (outside the web root) that holds warranty attachments. */
++    private function attachmentsDir(): string
++    {
++        $base = (string) ($_ENV['UPLOADS_DIR'] ?? getenv('UPLOADS_DIR') ?: '');
++        if ($base === '') {
++            $base = __DIR__ . '/../../../storage/uploads';
++        }
++
++        return rtrim($base, '/\\') . DIRECTORY_SEPARATOR . 'warranty';
++    }
++
++    /**
++     * Locate a stored attachment safely. Checks the private directory first, then the legacy
++     * public/uploads location (files written before the move); only allowlisted extensions and
++     * plain file names are ever resolved.
++     */
++    private function resolveStoredFile(string $filename): ?string
++    {
++        if (!SecureUpload::isSafeStoredName($filename)) {
++            return null;
++        }
++        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
++        if (SecureUpload::contentTypeForExtension($extension) === null) {
++            return null;
++        }
++
++        $candidates = [
++            $this->attachmentsDir() . DIRECTORY_SEPARATOR . $filename,
++            __DIR__ . '/../../../public/uploads/' . $filename,
++        ];
++        foreach ($candidates as $candidate) {
++            if (is_file($candidate)) {
++                return $candidate;
++            }
++        }
++
++        return null;
++    }
++
++    private function signedAttachmentPath(int $attachmentId, int $tenantId): ?string
++    {
++        try {
++            return AttachmentUrlSigner::fromEnvironment()->path($attachmentId, $tenantId);
++        } catch (\Throwable) {
++            return null;
++        }
++    }
++
++    /**
++     * Keep a human-friendly display name without path parts or control characters. The extension is
++     * always the one derived from the file content, so a name like "report.php" is shown as "report.png".
++     */
++    private function cleanOriginalName(string $name, string $extension): string
++    {
++        $name = trim(basename(str_replace('\\', '/', $name)));
++        $name = preg_replace('/[\x00-\x1F\x7F"<>|:*?]+/u', '', $name) ?? '';
++        $base = trim(pathinfo($name, PATHINFO_FILENAME));
++        if ($base === '' || mb_strlen($base) > 140) {
++            return 'attachment.' . $extension;
++        }
++
++        return $base . '.' . $extension;
++    }
++
+     private function parseOptionalPositiveId($value, string $label): ?int
+     {
+         if ($value === null || $value === '') {
+diff --git a/api/v1/src/Security/AttachmentUrlSigner.php b/api/v1/src/Security/AttachmentUrlSigner.php
+new file mode 100644
+index 0000000..3da9bbc
+--- /dev/null
++++ b/api/v1/src/Security/AttachmentUrlSigner.php
+@@ -0,0 +1,69 @@
++<?php
++
++declare(strict_types=1);
++
++namespace App\Security;
++
++/**
++ * Issues and verifies short-lived, tamper-proof download links for private attachments.
++ *
++ * The signature binds the attachment id, the owning tenant, and an expiry timestamp, so a link
++ * cannot be reused for another file or tenant and stops working after it expires. This lets
++ * plain <img>/<a> tags load private files without exposing the upload directory.
++ */
++final class AttachmentUrlSigner
++{
++    public const DEFAULT_TTL = 600;
++
++    public function __construct(private readonly string $secret)
++    {
++        if ($secret === '') {
++            throw new \InvalidArgumentException('Attachment URL signing secret must not be empty.');
++        }
++    }
++
++    public static function fromEnvironment(): self
++    {
++        $secret = (string) ($_ENV['JWT_SECRET'] ?? getenv('JWT_SECRET') ?: '');
++
++        return new self($secret);
++    }
++
++    /** @return array{exp: int, sig: string} */
++    public function sign(int $attachmentId, int $tenantId, ?int $now = null, int $ttl = self::DEFAULT_TTL): array
++    {
++        $exp = ($now ?? time()) + $ttl;
++
++        return ['exp' => $exp, 'sig' => $this->signature($attachmentId, $tenantId, $exp)];
++    }
++
++    public function verify(int $attachmentId, int $tenantId, int $exp, string $sig, ?int $now = null): bool
++    {
++        if ($exp < ($now ?? time())) {
++            return false;
++        }
++
++        return hash_equals($this->signature($attachmentId, $tenantId, $exp), $sig);
++    }
++
++    /** Relative API path (query included) for a signed download link. */
++    public function path(int $attachmentId, int $tenantId, ?int $now = null): string
++    {
++        $signed = $this->sign($attachmentId, $tenantId, $now);
++
++        return sprintf(
++            '/api/v1/warranty/attachments/%d/file?tenant=%d&exp=%d&sig=%s',
++            $attachmentId,
++            $tenantId,
++            $signed['exp'],
++            $signed['sig']
++        );
++    }
++
++    private function signature(int $attachmentId, int $tenantId, int $exp): string
++    {
++        $key = hash_hmac('sha256', 'attachment-url-signing', $this->secret, true);
++
++        return hash_hmac('sha256', "{$attachmentId}|{$tenantId}|{$exp}", $key);
++    }
++}
+diff --git a/api/v1/src/Security/SecureUpload.php b/api/v1/src/Security/SecureUpload.php
+new file mode 100644
+index 0000000..97ab555
+--- /dev/null
++++ b/api/v1/src/Security/SecureUpload.php
+@@ -0,0 +1,95 @@
++<?php
++
++declare(strict_types=1);
++
++namespace App\Security;
++
++use InvalidArgumentException;
++use Psr\Http\Message\UploadedFileInterface;
++
++/**
++ * Validates untrusted uploads by inspecting their content, never their client-supplied name.
++ *
++ * The extension of the stored file is derived from the sniffed MIME type so a client can never
++ * choose an executable extension (php, phtml, phar, ...). Only an explicit allowlist is accepted.
++ */
++final class SecureUpload
++{
++    public const MAX_BYTES = 10485760; // 10 MB
++
++    /** Sniffed MIME type => canonical stored extension. */
++    private const ALLOWED = [
++        'image/jpeg'      => 'jpg',
++        'image/png'       => 'png',
++        'image/webp'      => 'webp',
++        'image/gif'       => 'gif',
++        'application/pdf' => 'pdf',
++    ];
++
++    /** Extension => response Content-Type (used when serving files back). */
++    private const SERVE_TYPES = [
++        'jpg'  => 'image/jpeg',
++        'jpeg' => 'image/jpeg',
++        'png'  => 'image/png',
++        'webp' => 'image/webp',
++        'gif'  => 'image/gif',
++        'pdf'  => 'application/pdf',
++    ];
++
++    /**
++     * Inspect an uploaded file and return its canonical extension and MIME type.
++     *
++     * @return array{extension: string, mime: string, size: int}
++     * @throws InvalidArgumentException when the file is empty, too large, or not an allowed type
++     */
++    public static function inspect(UploadedFileInterface $file): array
++    {
++        $size = (int) $file->getSize();
++        if ($size <= 0) {
++            throw new InvalidArgumentException('الملف فارغ.');
++        }
++        if ($size > self::MAX_BYTES) {
++            throw new InvalidArgumentException('حجم الملف يتجاوز الحد المسموح (10 ميجابايت).');
++        }
++
++        $stream = $file->getStream();
++        $stream->rewind();
++        $head = $stream->read(8192);
++        $stream->rewind();
++
++        return self::inspectBytes($head, $size);
++    }
++
++    /**
++     * @return array{extension: string, mime: string, size: int}
++     * @throws InvalidArgumentException
++     */
++    public static function inspectBytes(string $head, int $size): array
++    {
++        if ($head === '') {
++            throw new InvalidArgumentException('الملف فارغ.');
++        }
++
++        $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($head);
++        if (!is_string($mime) || !isset(self::ALLOWED[$mime])) {
++            throw new InvalidArgumentException('نوع الملف غير مسموح. المسموح: صور (JPG, PNG, WEBP, GIF) وملفات PDF.');
++        }
++
++        return ['extension' => self::ALLOWED[$mime], 'mime' => $mime, 'size' => $size];
++    }
++
++    /** Content-Type to use when serving a stored file, or null when the extension is not allowed. */
++    public static function contentTypeForExtension(string $extension): ?string
++    {
++        return self::SERVE_TYPES[strtolower($extension)] ?? null;
++    }
++
++    /** True only for a plain file name (no directories, no hidden/dot files, no traversal). */
++    public static function isSafeStoredName(string $name): bool
++    {
++        return $name !== ''
++            && $name === basename($name)
++            && preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/', $name) === 1
++            && !str_contains($name, '..');
++    }
++}
+diff --git a/config/routes.php b/config/routes.php
+index 7f49fa4..676a924 100644
+--- a/config/routes.php
++++ b/config/routes.php
+@@ -27,6 +27,13 @@ return function (App $app, Container $container): void {
+         SubscriptionCronHandler::class . ':processCron'
+     );
+ 
++    // Signed, short-lived attachment links authenticate themselves (HMAC over id+tenant+expiry),
++    // so plain <img>/<a> tags can load private files without exposing the upload directory.
++    $app->get(
++        '/api/v1/warranty/attachments/{attachmentId:[0-9]+}/file',
++        \App\Handlers\WarrantyHandler::class . ':downloadAttachment'
++    );
++
+     // 2. Auth routes (بدون أي middleware)
+     $app->group('/api/v1/auth', function (RouteCollectorProxy $group) use ($container, $authRoutes) {
+         $authRoutes($group, $container);
+diff --git a/render.yaml b/render.yaml
+deleted file mode 100644
+index 86847fb..0000000
+--- a/render.yaml
++++ /dev/null
+@@ -1,55 +0,0 @@
+-services:
+-  - type: web
+-    name: smartsys-api
+-    runtime: docker
+-    dockerfilePath: ./Dockerfile
+-    healthCheckPath: /health
+-    envVars:
+-      - key: APP_ENV
+-        value: production
+-      - key: APP_DEBUG
+-        value: "false"
+-      - key: APP_BASE_PATH
+-        value: ""
+-      - key: HTTPS_ENFORCEMENT_ENABLED
+-        value: "true"
+-      - key: TRUST_PROXY
+-        value: "true"
+-      - key: TRUSTED_PROXY_IPS
+-        sync: false
+-      - key: CORS_ALLOWED_ORIGINS
+-        sync: false
+-      - key: APP_URL
+-        sync: false
+-      - key: API_BASE_URL
+-        sync: false
+-      - key: ADMIN_API_URL
+-        sync: false
+-      - key: DB_HOST
+-        sync: false
+-      - key: DB_PORT
+-        sync: false
+-      - key: DB_DATABASE
+-        sync: false
+-      - key: DB_USERNAME
+-        sync: false
+-      - key: DB_PASSWORD
+-        sync: false
+-      - key: DB_SSL_MODE
+-        value: VERIFY_IDENTITY
+-      - key: DB_SSL_CA
+-        value: /var/www/html/certs/aiven-project-ca.pem
+-      - key: JWT_SECRET
+-        sync: false
+-      - key: JWT_REFRESH_SECRET
+-        sync: false
+-      - key: ENCRYPTION_KEY
+-        sync: false
+-      - key: TWO_FA_ENCRYPTION_KEY
+-        sync: false
+-      - key: CRON_SECRET
+-        sync: false
+-      - key: REFRESH_COOKIE_PATH
+-        value: /api/v1/auth
+-      - key: LOG_LEVEL
+-        value: info
+diff --git a/tests/Integration/WarrantyAttachmentMySqlIntegrationTest.php b/tests/Integration/WarrantyAttachmentMySqlIntegrationTest.php
+new file mode 100644
+index 0000000..4094612
+--- /dev/null
++++ b/tests/Integration/WarrantyAttachmentMySqlIntegrationTest.php
+@@ -0,0 +1,297 @@
++<?php
++
++declare(strict_types=1);
++
++use App\Handlers\WarrantyHandler;
++use PHPUnit\Framework\TestCase;
++use Slim\Psr7\Factory\ServerRequestFactory;
++use Slim\Psr7\Response;
++use Slim\Psr7\UploadedFile;
++use Tests\Integration\Support\MySqlSchemaDumpImporter;
++
++/**
++ * End-to-end check of the warranty attachment flow against a real MySQL schema:
++ * upload validation, private storage, signed downloads, tenant isolation, and deletion.
++ */
++final class WarrantyAttachmentMySqlIntegrationTest extends TestCase
++{
++    private const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
++
++    private static ?mysqli $server = null;
++    private static ?PDO $db = null;
++    private static ?string $schema = null;
++    private static int $tenantA;
++    private static int $tenantB;
++    private static int $userA;
++    private static int $userB;
++    private static int $requestA;
++    private static string $uploadsDir;
++    private static ?string $previousUploadsDir = null;
++    private static ?string $previousJwtSecret = null;
++
++    public static function setUpBeforeClass(): void
++    {
++        if (getenv('RUN_MYSQL_WARRANTY_TESTS') !== '1') {
++            self::markTestSkipped('Set RUN_MYSQL_WARRANTY_TESTS=1 to create an isolated temporary MySQL schema.');
++        }
++
++        \Dotenv\Dotenv::createImmutable(dirname(__DIR__, 2))->safeLoad();
++        $host = (string) ($_ENV['DB_HOST'] ?? getenv('DB_HOST') ?: 'localhost');
++        if (!in_array(strtolower($host), ['localhost', '127.0.0.1', '::1'], true)) {
++            self::fail('Refusing MySQL integration tests unless DB_HOST is local.');
++        }
++        $port = (int) ($_ENV['DB_PORT'] ?? getenv('DB_PORT') ?: 3306);
++        $username = (string) ($_ENV['DB_USERNAME'] ?? getenv('DB_USERNAME') ?: 'root');
++        $password = (string) ($_ENV['DB_PASSWORD'] ?? getenv('DB_PASSWORD') ?: '');
++
++        self::$schema = 'smartsys_warranty_it_' . bin2hex(random_bytes(8));
++        self::$server = new mysqli($host, $username, $password, '', $port);
++        self::$server->set_charset('utf8mb4');
++        self::$server->query('CREATE DATABASE `' . self::$schema . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
++        self::$server->select_db(self::$schema);
++
++        try {
++            MySqlSchemaDumpImporter::import(self::$server, __DIR__ . '/Fixtures/mysql_schema.sql');
++            self::$db = new PDO(
++                "mysql:host={$host};port={$port};dbname=" . self::$schema . ';charset=utf8mb4',
++                $username,
++                $password,
++                [
++                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
++                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
++                    PDO::ATTR_EMULATE_PREPARES => false,
++                ]
++            );
++            self::seed();
++        } catch (Throwable $error) {
++            self::dropSchema();
++            throw $error;
++        }
++
++        self::$uploadsDir = sys_get_temp_dir() . '/smartsys-warranty-it-' . bin2hex(random_bytes(6));
++        mkdir(self::$uploadsDir, 0700, true);
++        self::$previousUploadsDir = isset($_ENV['UPLOADS_DIR']) ? (string) $_ENV['UPLOADS_DIR'] : null;
++        self::$previousJwtSecret = isset($_ENV['JWT_SECRET']) ? (string) $_ENV['JWT_SECRET'] : null;
++        $_ENV['UPLOADS_DIR'] = self::$uploadsDir;
++        $_ENV['JWT_SECRET'] = 'warranty-integration-test-signing-secret';
++    }
++
++    public static function tearDownAfterClass(): void
++    {
++        self::dropSchema();
++        foreach ([self::$previousUploadsDir, self::$previousJwtSecret] as $i => $previous) {
++            $key = $i === 0 ? 'UPLOADS_DIR' : 'JWT_SECRET';
++            if ($previous === null) {
++                unset($_ENV[$key]);
++            } else {
++                $_ENV[$key] = $previous;
++            }
++        }
++        if (isset(self::$uploadsDir) && is_dir(self::$uploadsDir)) {
++            self::removeDirectory(self::$uploadsDir);
++        }
++    }
++
++    private static function dropSchema(): void
++    {
++        self::$db = null;
++        if (self::$schema !== null && self::$server instanceof mysqli) {
++            self::$server->query('DROP DATABASE IF EXISTS `' . self::$schema . '`');
++        }
++        self::$schema = null;
++        if (self::$server instanceof mysqli) {
++            self::$server->close();
++            self::$server = null;
++        }
++    }
++
++    private static function removeDirectory(string $dir): void
++    {
++        foreach (scandir($dir) ?: [] as $entry) {
++            if ($entry === '.' || $entry === '..') {
++                continue;
++            }
++            $path = $dir . '/' . $entry;
++            is_dir($path) ? self::removeDirectory($path) : @unlink($path);
++        }
++        @rmdir($dir);
++    }
++
++    private static function seed(): void
++    {
++        $db = self::$db;
++        $db->exec("INSERT INTO plans (code, name, price, currency, billing_cycle_days, features_json, is_active)
++                   VALUES ('warranty-it', 'Warranty IT', 0, 'EGP', 30, '{}', 1)");
++        $planId = (int) $db->lastInsertId();
++
++        foreach (['A', 'B'] as $label) {
++            $db->prepare("INSERT INTO tenants (company_name, plan_id, status) VALUES (?, ?, 'active')")
++                ->execute(["Warranty IT tenant {$label}", $planId]);
++            $tenantId = (int) $db->lastInsertId();
++            $db->prepare(
++                "INSERT INTO users (username, password, name, status, tenant_id, email)
++                 VALUES (?, 'test-only', ?, 'active', ?, ?)"
++            )->execute(["warranty-it-{$label}-" . bin2hex(random_bytes(3)), "User {$label}", $tenantId, strtolower($label) . bin2hex(random_bytes(3)) . '@example.test']);
++            $userId = (int) $db->lastInsertId();
++
++            if ($label === 'A') {
++                self::$tenantA = $tenantId;
++                self::$userA = $userId;
++                $db->prepare('INSERT INTO warranty_requests (tenant_id, created_by) VALUES (?, ?)')
++                    ->execute([$tenantId, $userId]);
++                self::$requestA = (int) $db->lastInsertId();
++            } else {
++                self::$tenantB = $tenantId;
++                self::$userB = $userId;
++            }
++        }
++    }
++
++    private function handler(): WarrantyHandler
++    {
++        return new WarrantyHandler(self::$db);
++    }
++
++    private function tempFile(string $content): string
++    {
++        $path = tempnam(sys_get_temp_dir(), 'wit');
++        file_put_contents($path, $content);
++
++        return $path;
++    }
++
++    private function uploadAs(int $tenantId, int $userId, int $requestId, string $clientName, string $content): array
++    {
++        $path = $this->tempFile($content);
++        $file = new UploadedFile($path, $clientName, 'image/png', strlen($content), UPLOAD_ERR_OK);
++        $request = (new ServerRequestFactory())
++            ->createServerRequest('POST', "/api/v1/warranty/requests/{$requestId}/attachments")
++            ->withAttribute('tenant_id', $tenantId)
++            ->withAttribute('user', ['id' => $userId])
++            ->withUploadedFiles(['file' => $file]);
++
++        $response = $this->handler()->uploadAttachment($request, new Response(), ['id' => (string) $requestId]);
++        $payload = json_decode((string) $response->getBody(), true) ?: [];
++
++        return [$response->getStatusCode(), $payload];
++    }
++
++    private function download(string $path): Response
++    {
++        $parts = parse_url($path);
++        parse_str($parts['query'] ?? '', $query);
++        preg_match('#/attachments/(\d+)/file#', (string) $parts['path'], $m);
++        $request = (new ServerRequestFactory())
++            ->createServerRequest('GET', (string) $parts['path'])
++            ->withQueryParams($query);
++
++        return $this->handler()->downloadAttachment($request, new Response(), ['attachmentId' => $m[1]]);
++    }
++
++    public function testScriptDisguisedAsImageIsRejectedAndNothingIsStored(): void
++    {
++        $before = self::$db->query('SELECT COUNT(*) FROM warranty_attachments')->fetchColumn();
++
++        [$status] = $this->uploadAs(self::$tenantA, self::$userA, self::$requestA, 'shell.php', "<?php system(\$_GET['c']); ?>");
++
++        self::assertSame(422, $status);
++        self::assertSame($before, self::$db->query('SELECT COUNT(*) FROM warranty_attachments')->fetchColumn());
++        self::assertSame([], glob(self::$uploadsDir . '/warranty/*') ?: []);
++    }
++
++    public function testValidImageIsStoredPrivatelyWithSniffedExtensionAndServedViaSignedLink(): void
++    {
++        $png = base64_decode(self::PNG_1X1);
++
++        // Client claims a .php name; the stored name/extension must come from the content.
++        [$status, $payload] = $this->uploadAs(self::$tenantA, self::$userA, self::$requestA, 'evil.php', $png);
++        self::assertSame(200, $status, json_encode($payload));
++
++        $row = self::$db->query('SELECT * FROM warranty_attachments ORDER BY id DESC LIMIT 1')->fetch();
++        self::assertStringEndsWith('.png', $row['filename']);
++        self::assertSame('image/png', $row['mime_type']);
++        self::assertSame('evil.png', $row['original_name'], 'display name must carry the real extension');
++
++        $stored = self::$uploadsDir . '/warranty/' . $row['filename'];
++        self::assertFileExists($stored);
++        self::assertStringNotContainsString(
++            realpath(dirname(__DIR__, 2) . '/public') ?: '/nonexistent',
++            (string) realpath($stored),
++            'attachments must live outside the web root'
++        );
++
++        $response = $this->download((string) $payload['data']['url']);
++        self::assertSame(200, $response->getStatusCode());
++        self::assertSame('image/png', $response->getHeaderLine('Content-Type'));
++        self::assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
++        self::assertStringContainsString('sandbox', $response->getHeaderLine('Content-Security-Policy'));
++        self::assertSame($png, (string) $response->getBody());
++    }
++
++    public function testSignedLinkCannotBeTamperedReusedAcrossTenantsOrUsedAfterExpiry(): void
++    {
++        [, $payload] = $this->uploadAs(self::$tenantA, self::$userA, self::$requestA, 'a.png', base64_decode(self::PNG_1X1));
++        $path = (string) $payload['data']['url'];
++
++        self::assertSame(200, $this->download($path)->getStatusCode());
++
++        $tamperedSig = preg_replace('/sig=[0-9a-f]+/', 'sig=' . str_repeat('0', 64), $path);
++        self::assertSame(404, $this->download($tamperedSig)->getStatusCode(), 'forged signature');
++
++        $otherTenant = preg_replace('/tenant=\d+/', 'tenant=' . self::$tenantB, $path);
++        self::assertSame(404, $this->download($otherTenant)->getStatusCode(), 'link reused for another tenant');
++
++        $attId = (int) $payload['data']['id'];
++        $expired = (new \App\Security\AttachmentUrlSigner('warranty-integration-test-signing-secret'))
++            ->path($attId, self::$tenantA, time() - 7200);
++        self::assertSame(404, $this->download($expired)->getStatusCode(), 'expired link');
++    }
++
++    public function testCannotAttachToAnotherTenantsRequest(): void
++    {
++        [$status] = $this->uploadAs(self::$tenantB, self::$userB, self::$requestA, 'b.png', base64_decode(self::PNG_1X1));
++
++        self::assertSame(404, $status);
++        $leaked = self::$db->prepare('SELECT COUNT(*) FROM warranty_attachments WHERE tenant_id = ? AND warranty_request_id = ?');
++        $leaked->execute([self::$tenantB, self::$requestA]);
++        self::assertSame(0, (int) $leaked->fetchColumn());
++    }
++
++    public function testRequestDetailsExposeSignedUrlsAndDeleteRemovesRowAndFile(): void
++    {
++        [, $payload] = $this->uploadAs(self::$tenantA, self::$userA, self::$requestA, 'c.png', base64_decode(self::PNG_1X1));
++        $attId = (int) $payload['data']['id'];
++        $filename = (string) $payload['data']['filename'];
++
++        $request = (new ServerRequestFactory())
++            ->createServerRequest('GET', '/api/v1/warranty/requests/' . self::$requestA)
++            ->withAttribute('tenant_id', self::$tenantA)
++            ->withAttribute('user', ['id' => self::$userA]);
++        $details = $this->handler()->get($request, new Response(), ['id' => (string) self::$requestA]);
++        self::assertSame(200, $details->getStatusCode());
++        $attachments = json_decode((string) $details->getBody(), true)['data']['attachments'];
++        $match = array_values(array_filter($attachments, fn ($a) => (int) $a['id'] === $attId));
++        self::assertNotEmpty($match);
++        self::assertStringContainsString('/api/v1/warranty/attachments/' . $attId . '/file?', (string) $match[0]['url']);
++
++        // Another tenant cannot delete it.
++        $foreign = $this->handler()->deleteAttachment(
++            (new ServerRequestFactory())->createServerRequest('DELETE', '/x')
++                ->withAttribute('tenant_id', self::$tenantB)->withAttribute('user', ['id' => self::$userB]),
++            new Response(),
++            ['attachmentId' => (string) $attId]
++        );
++        self::assertSame(403, $foreign->getStatusCode());
++        self::assertFileExists(self::$uploadsDir . '/warranty/' . $filename);
++
++        $own = $this->handler()->deleteAttachment(
++            (new ServerRequestFactory())->createServerRequest('DELETE', '/x')
++                ->withAttribute('tenant_id', self::$tenantA)->withAttribute('user', ['id' => self::$userA]),
++            new Response(),
++            ['attachmentId' => (string) $attId]
++        );
++        self::assertSame(200, $own->getStatusCode());
++        self::assertFileDoesNotExist(self::$uploadsDir . '/warranty/' . $filename);
++        self::assertSame(404, $this->download($payload['data']['url'])->getStatusCode());
++    }
++}
+diff --git a/tests/Unit/AttachmentUrlSignerTest.php b/tests/Unit/AttachmentUrlSignerTest.php
+new file mode 100644
+index 0000000..a5920b4
+--- /dev/null
++++ b/tests/Unit/AttachmentUrlSignerTest.php
+@@ -0,0 +1,51 @@
++<?php
++
++declare(strict_types=1);
++
++use App\Security\AttachmentUrlSigner;
++use PHPUnit\Framework\TestCase;
++
++final class AttachmentUrlSignerTest extends TestCase
++{
++    public function testValidSignatureVerifiesUntilExpiry(): void
++    {
++        $signer = new AttachmentUrlSigner('unit-test-signing-secret');
++        $signed = $signer->sign(42, 7, 1_000_000, 600);
++
++        self::assertTrue($signer->verify(42, 7, $signed['exp'], $signed['sig'], 1_000_100));
++        self::assertFalse($signer->verify(42, 7, $signed['exp'], $signed['sig'], 1_000_601));
++    }
++
++    public function testSignatureIsBoundToAttachmentTenantAndExpiry(): void
++    {
++        $signer = new AttachmentUrlSigner('unit-test-signing-secret');
++        $signed = $signer->sign(42, 7, 1_000_000, 600);
++
++        self::assertFalse($signer->verify(43, 7, $signed['exp'], $signed['sig'], 1_000_100), 'other attachment');
++        self::assertFalse($signer->verify(42, 8, $signed['exp'], $signed['sig'], 1_000_100), 'other tenant');
++        self::assertFalse($signer->verify(42, 7, $signed['exp'] + 3600, $signed['sig'], 1_000_100), 'extended expiry');
++        self::assertFalse($signer->verify(42, 7, $signed['exp'], str_repeat('0', 64), 1_000_100), 'forged signature');
++    }
++
++    public function testDifferentSecretsProduceIncompatibleSignatures(): void
++    {
++        $a = new AttachmentUrlSigner('secret-a');
++        $b = new AttachmentUrlSigner('secret-b');
++        $signed = $a->sign(1, 1, 1_000_000);
++
++        self::assertFalse($b->verify(1, 1, $signed['exp'], $signed['sig'], 1_000_001));
++    }
++
++    public function testPathContainsEverythingTheDownloadRouteNeeds(): void
++    {
++        $path = (new AttachmentUrlSigner('s'))->path(5, 9, 1_000_000);
++
++        self::assertStringStartsWith('/api/v1/warranty/attachments/5/file?tenant=9&exp=1000600&sig=', $path);
++    }
++
++    public function testEmptySecretIsRefused(): void
++    {
++        $this->expectException(InvalidArgumentException::class);
++        new AttachmentUrlSigner('');
++    }
++}
+diff --git a/tests/Unit/SecureUploadTest.php b/tests/Unit/SecureUploadTest.php
+new file mode 100644
+index 0000000..c9e99db
+--- /dev/null
++++ b/tests/Unit/SecureUploadTest.php
+@@ -0,0 +1,75 @@
++<?php
++
++declare(strict_types=1);
++
++use App\Security\SecureUpload;
++use PHPUnit\Framework\TestCase;
++
++final class SecureUploadTest extends TestCase
++{
++    private const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
++
++    public function testPhpScriptIsRejectedRegardlessOfClientName(): void
++    {
++        $this->expectException(InvalidArgumentException::class);
++        SecureUpload::inspectBytes("<?php system(\$_GET['c']); ?>", 30);
++    }
++
++    public function testHtmlAndSvgAreRejected(): void
++    {
++        foreach ([
++            '<html><script>alert(1)</script></html>',
++            '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>',
++            '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
++        ] as $payload) {
++            try {
++                SecureUpload::inspectBytes($payload, strlen($payload));
++                self::fail('Active content must be rejected: ' . substr($payload, 0, 20));
++            } catch (InvalidArgumentException) {
++                self::addToAssertionCount(1);
++            }
++        }
++    }
++
++    public function testPolyglotWithPhpAfterValidImageHeaderStillStoresAsImageExtensionOnly(): void
++    {
++        $png = base64_decode(self::PNG_1X1) . "<?php echo 'x'; ?>";
++        $info = SecureUpload::inspectBytes($png, strlen($png));
++
++        // The stored name is built from the sniffed type, so it can never end in .php.
++        self::assertSame('png', $info['extension']);
++        self::assertSame('image/png', $info['mime']);
++    }
++
++    public function testAllowedTypesMapToCanonicalExtensions(): void
++    {
++        $png = SecureUpload::inspectBytes(base64_decode(self::PNG_1X1), 70);
++        self::assertSame(['png', 'image/png'], [$png['extension'], $png['mime']]);
++
++        $pdf = SecureUpload::inspectBytes("%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF", 60);
++        self::assertSame(['pdf', 'application/pdf'], [$pdf['extension'], $pdf['mime']]);
++    }
++
++    public function testEmptyContentIsRejected(): void
++    {
++        $this->expectException(InvalidArgumentException::class);
++        SecureUpload::inspectBytes('', 0);
++    }
++
++    public function testStoredNameValidationBlocksTraversalAndHiddenFiles(): void
++    {
++        self::assertTrue(SecureUpload::isSafeStoredName('wr_1_1700000000_ab12cd34ef56ab12.png'));
++        foreach (['../.env', '..\\x.png', 'a/b.png', '.htaccess', '', 'x..png', "x\0.png", 'a b.png'] as $bad) {
++            self::assertFalse(SecureUpload::isSafeStoredName($bad), $bad);
++        }
++    }
++
++    public function testServeContentTypesAreAllowlistedOnly(): void
++    {
++        self::assertSame('image/png', SecureUpload::contentTypeForExtension('PNG'));
++        self::assertSame('application/pdf', SecureUpload::contentTypeForExtension('pdf'));
++        foreach (['php', 'phtml', 'phar', 'svg', 'html', 'htm', 'js', ''] as $ext) {
++            self::assertNull(SecureUpload::contentTypeForExtension($ext), $ext);
++        }
++    }
++}
+-- 
+2.43.0
+
+
+From f06cdbd1965e396463ea82dffd4f6c6376703fe4 Mon Sep 17 00:00:00 2001
+From: "Claude (audit & migration)" <claude@users.noreply.anthropic.com>
+Date: Fri, 27 Nov 2026 10:43:36 +0000
+Subject: [PATCH 2/3] security(proxy): trust proxies by CIDR and resolve the
+ real client IP safely
+
+- HttpsEnforcementMiddleware now uses the shared CIDR-aware matcher (IPv4/IPv6, IPv4-mapped), so
+  platforms with non-fixed proxy addresses (Railway) no longer trigger redirect loops.
+- RequestHelper: opt-in CLIENT_IP_HEADER (e.g. X-Real-IP) honoured only for trusted peers, and
+  X-Forwarded-Client-IP authenticated by PROXY_SHARED_SECRET (hash_equals). No other headers trusted.
+- Cloudflare Pages function: fail closed without BACKEND_URL, strip spoofable headers, forward the
+  visitor IP only with the shared secret, and stop leaking network error details.
+- Tests for CIDR trust, platform header, shared-secret flow and the proxy function.
+---
+ SmartSys-Frontend/functions/api/[[path]].js   | 76 ++++++++-------
+ SmartSys-Frontend/tests/apiProxy.test.js      | 47 +++++++++
+ .../Middleware/HttpsEnforcementMiddleware.php | 30 +++---
+ api/v1/src/Utils/RequestHelper.php            | 95 ++++++++++++++++++-
+ tests/Unit/HttpsEnforcementMiddlewareTest.php | 49 ++++++++++
+ tests/Unit/RequestHelperTrustedProxyTest.php  | 55 +++++++++++
+ 6 files changed, 300 insertions(+), 52 deletions(-)
+
+diff --git a/SmartSys-Frontend/functions/api/[[path]].js b/SmartSys-Frontend/functions/api/[[path]].js
+index ae85477..782db28 100644
+--- a/SmartSys-Frontend/functions/api/[[path]].js
++++ b/SmartSys-Frontend/functions/api/[[path]].js
+@@ -1,48 +1,60 @@
+-// Cloudflare Pages Function - API Proxy
+-// This proxies /api/* requests to the backend on Render
+-// to make them same-origin and fix cookie issues
++// Cloudflare Pages Function - API proxy.
++// Forwards /api/* to the backend so the browser only talks to the Pages origin
++// (same-origin requests: no CORS, and the refresh cookie stays first-party).
++//
++// Environment (Cloudflare Pages -> Settings -> Variables and secrets):
++//   BACKEND_URL         required. Backend origin, e.g. https://api.example.com
++//   PROXY_SHARED_SECRET optional but recommended. When set, the visitor IP is forwarded to the
++//                       backend in X-Forwarded-Client-IP together with X-Proxy-Auth. The backend
++//                       trusts that header only when the secret matches its own PROXY_SHARED_SECRET.
++
++const SPOOFABLE_HEADERS = ['x-proxy-auth', 'x-forwarded-client-ip'];
+ 
+ export async function onRequest(context) {
+   const { request, env } = context;
+-  
++
++  const backendUrl = String(env.BACKEND_URL || '').replace(/\/+$/, '');
++  if (!backendUrl) {
++    return json({ status: 'error', message: 'Backend is not configured' }, 503);
++  }
++
+   // Preserve the backend's /api/v1 route prefix after the Pages function prefix.
+   const url = new URL(request.url);
+   const apiPath = url.pathname.replace(/^\/api/, '');
+-  
+-  // Backend URL from environment or default
+-  const backendUrl = (env.BACKEND_URL || 'https://smartsys-api.onrender.com').replace(/\/+$/, '');
+   const targetUrl = `${backendUrl}/api${apiPath}${url.search}`;
+-  
+-  // Clone the request with the new URL
++
++  // Never let a caller supply the headers the backend uses to trust a visitor IP.
++  const headers = new Headers(request.headers);
++  for (const name of SPOOFABLE_HEADERS) {
++    headers.delete(name);
++  }
++
++  const sharedSecret = String(env.PROXY_SHARED_SECRET || '');
++  const visitorIp = request.headers.get('CF-Connecting-IP');
++  if (sharedSecret && visitorIp) {
++    headers.set('X-Proxy-Auth', sharedSecret);
++    headers.set('X-Forwarded-Client-IP', visitorIp);
++  }
++
+   const modifiedRequest = new Request(targetUrl, {
+     method: request.method,
+-    headers: request.headers,
++    headers,
+     body: request.body,
+     redirect: 'manual',
+   });
+-  
+-  // Forward the request to backend
++
+   try {
+     const response = await fetch(modifiedRequest);
+-    
+-    // Clone response and modify headers if needed
+-    const modifiedResponse = new Response(response.body, response);
+-    
+-    // Add CORS headers for good measure
+-    modifiedResponse.headers.set('Access-Control-Allow-Credentials', 'true');
+-    
+-    return modifiedResponse;
+-  } catch (error) {
+-    return new Response(
+-      JSON.stringify({ 
+-        status: 'error', 
+-        message: 'Backend unreachable',
+-        error: error.message 
+-      }), 
+-      { 
+-        status: 503,
+-        headers: { 'Content-Type': 'application/json' }
+-      }
+-    );
++    return new Response(response.body, response);
++  } catch {
++    // Do not expose network error details to the browser.
++    return json({ status: 'error', message: 'Backend unreachable' }, 503);
+   }
+ }
++
++function json(payload, status) {
++  return new Response(JSON.stringify(payload), {
++    status,
++    headers: { 'Content-Type': 'application/json' },
++  });
++}
+diff --git a/SmartSys-Frontend/tests/apiProxy.test.js b/SmartSys-Frontend/tests/apiProxy.test.js
+index b018375..962dbae 100644
+--- a/SmartSys-Frontend/tests/apiProxy.test.js
++++ b/SmartSys-Frontend/tests/apiProxy.test.js
+@@ -25,3 +25,50 @@ test('API proxy forwards the /api/v1 prefix and query string to the backend', as
+     globalThis.fetch = previousFetch;
+   }
+ });
++
++test('API proxy fails closed when BACKEND_URL is not configured', async () => {
++  const response = await onRequest({
++    request: new Request('https://app.example.test/api/v1/auth/login', { method: 'POST' }),
++    env: {}
++  });
++
++  assert.equal(response.status, 503);
++  assert.equal((await response.json()).message, 'Backend is not configured');
++});
++
++test('API proxy forwards the visitor IP only with the shared secret and strips spoofed headers', async () => {
++  const previousFetch = globalThis.fetch;
++  let forwarded;
++  globalThis.fetch = async (request) => {
++    forwarded = request.headers;
++    return new Response('ok');
++  };
++
++  try {
++    await onRequest({
++      request: new Request('https://app.example.test/api/v1/auth/login', {
++        headers: {
++          'CF-Connecting-IP': '203.0.113.7',
++          'X-Forwarded-Client-IP': '198.51.100.99',
++          'X-Proxy-Auth': 'attacker-guess'
++        }
++      }),
++      env: { BACKEND_URL: 'https://api.example.test', PROXY_SHARED_SECRET: 'real-secret' }
++    });
++
++    assert.equal(forwarded.get('x-forwarded-client-ip'), '203.0.113.7');
++    assert.equal(forwarded.get('x-proxy-auth'), 'real-secret');
++
++    await onRequest({
++      request: new Request('https://app.example.test/api/v1/auth/login', {
++        headers: { 'CF-Connecting-IP': '203.0.113.7', 'X-Forwarded-Client-IP': '198.51.100.99' }
++      }),
++      env: { BACKEND_URL: 'https://api.example.test' }
++    });
++
++    assert.equal(forwarded.get('x-forwarded-client-ip'), null);
++    assert.equal(forwarded.get('x-proxy-auth'), null);
++  } finally {
++    globalThis.fetch = previousFetch;
++  }
++});
+diff --git a/api/v1/src/Middleware/HttpsEnforcementMiddleware.php b/api/v1/src/Middleware/HttpsEnforcementMiddleware.php
+index adb79a5..e56fafa 100644
+--- a/api/v1/src/Middleware/HttpsEnforcementMiddleware.php
++++ b/api/v1/src/Middleware/HttpsEnforcementMiddleware.php
+@@ -8,6 +8,7 @@ use Psr\Http\Message\ResponseInterface as Response;
+ use Psr\Http\Message\ServerRequestInterface as Request;
+ use Psr\Http\Server\MiddlewareInterface;
+ use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
++use App\Utils\RequestHelper;
+ use Slim\Psr7\Response as SlimResponse;
+ 
+ /**
+@@ -28,6 +29,7 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
+         $this->redirectToHttps = $redirectToHttps;
+         $this->excludePaths = $excludePaths ?: [
+             '/health',
++            '/check',
+             '/status',
+             '/metrics',
+         ];
+@@ -75,31 +77,27 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
+     }
+ 
+     /**
+-     * Check if request is HTTPS based on X-Forwarded-Proto from trusted proxy
+-     * 
+-     * Only trusts the header if TRUST_PROXY is enabled and request comes from
+-     * a trusted proxy IP (e.g., Render's internal proxy at ::1)
++     * Check if the request is HTTPS based on X-Forwarded-Proto from a trusted proxy.
++     *
++     * The header is honoured only when TRUST_PROXY is enabled and the direct peer matches
++     * TRUSTED_PROXY_IPS (exact IPs or CIDR ranges, IPv4 or IPv6), for example ::1 on Render or
++     * a private range such as 100.0.0.0/8 on Railway.
+      */
+     private function isForwardedHttps(Request $request): bool
+     {
+-        // Check if proxy trust is enabled
+-        if (!filter_var($_ENV['TRUST_PROXY'] ?? 'false', FILTER_VALIDATE_BOOLEAN)) {
++        if (!RequestHelper::isProxyTrustEnabled()) {
+             return false;
+         }
+ 
+-        // Verify request comes from trusted proxy
+-        $remote = (string)($request->getServerParams()['REMOTE_ADDR'] ?? '');
+-        $trustedProxies = array_values(array_filter(array_map(
+-            'trim',
+-            explode(',', (string)($_ENV['TRUSTED_PROXY_IPS'] ?? ''))
+-        )));
+-
+-        if (empty($trustedProxies) || !in_array($remote, $trustedProxies, true)) {
++        $remote = (string) ($request->getServerParams()['REMOTE_ADDR'] ?? '');
++        if ($remote === '' || !RequestHelper::isTrustedProxy($remote)) {
+             return false;
+         }
+ 
+-        // Check X-Forwarded-Proto header
+-        return strtolower(trim($request->getHeaderLine('X-Forwarded-Proto'))) === 'https';
++        // With several hops the nearest proxy appends last; use that value.
++        $hops = array_map('trim', explode(',', $request->getHeaderLine('X-Forwarded-Proto')));
++
++        return strtolower((string) end($hops)) === 'https';
+     }
+ 
+     /** Exempt only the exact health endpoint paths from HTTPS redirects. */
+diff --git a/api/v1/src/Utils/RequestHelper.php b/api/v1/src/Utils/RequestHelper.php
+index ecb2fb7..40e392a 100644
+--- a/api/v1/src/Utils/RequestHelper.php
++++ b/api/v1/src/Utils/RequestHelper.php
+@@ -18,10 +18,18 @@ use Psr\Http\Message\ServerRequestInterface as Request;
+  *   - RequestLoggingMiddleware
+  *   - SecurityLogger
+  *
+- * X-Forwarded-For is used only when the direct peer matches an explicitly
+- * trusted proxy, then walked from the nearest hop outwards. Other client-IP
+- * headers are ignored because the deployment proxy's overwrite behavior is
+- * not guaranteed.
++ * Client IP precedence (first match wins):
++ *   1. X-Forwarded-Client-IP when X-Proxy-Auth equals PROXY_SHARED_SECRET. This
++ *      is how the Cloudflare Pages proxy function forwards the real visitor IP;
++ *      the shared secret proves the header was set by that function.
++ *   2. The header named by CLIENT_IP_HEADER (for example X-Real-IP on Railway),
++ *      only when the direct peer matches TRUSTED_PROXY_IPS. Opt-in because it
++ *      is safe only on platforms whose edge overwrites that header.
++ *   3. X-Forwarded-For, only when the direct peer matches TRUSTED_PROXY_IPS,
++ *      walked from the nearest hop outwards.
++ *   4. The direct peer address.
++ * Headers that are not explicitly configured are ignored so a caller cannot
++ * spoof its address.
+  */
+ final class RequestHelper
+ {
+@@ -42,9 +50,13 @@ final class RequestHelper
+     ): string
+     {
+         $server = $request->getServerParams();
++        $clientIpHeader = self::configuredClientIpHeader();
+         return self::resolveClientIp(
+             [
+                 'X_FORWARDED_FOR' => $request->getHeaderLine('X-Forwarded-For'),
++                'CLIENT_IP_HEADER' => $clientIpHeader !== null ? $request->getHeaderLine($clientIpHeader) : '',
++                'PROXY_AUTH' => $request->getHeaderLine('X-Proxy-Auth'),
++                'FORWARDED_CLIENT_IP' => $request->getHeaderLine('X-Forwarded-Client-IP'),
+             ],
+             (string) ($server['REMOTE_ADDR'] ?? ''),
+             $trustProxy,
+@@ -66,6 +78,9 @@ final class RequestHelper
+         return self::resolveClientIp(
+             [
+                 'X_FORWARDED_FOR' => (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''),
++                'CLIENT_IP_HEADER' => self::serverHeader(self::configuredClientIpHeader()),
++                'PROXY_AUTH' => (string) ($_SERVER['HTTP_X_PROXY_AUTH'] ?? ''),
++                'FORWARDED_CLIENT_IP' => (string) ($_SERVER['HTTP_X_FORWARDED_CLIENT_IP'] ?? ''),
+             ],
+             (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
+             $trustProxy,
+@@ -85,11 +100,34 @@ final class RequestHelper
+             $remoteAddress = '127.0.0.1';
+         }
+ 
++        // 1. Visitor IP forwarded by our own proxy function, authenticated by a shared secret.
++        $sharedSecret = (string) ($_ENV['PROXY_SHARED_SECRET'] ?? getenv('PROXY_SHARED_SECRET') ?: '');
++        $proxyAuth = trim((string) ($headers['PROXY_AUTH'] ?? ''));
++        $forwardedClient = trim((string) ($headers['FORWARDED_CLIENT_IP'] ?? ''));
++        if (
++            $sharedSecret !== ''
++            && $proxyAuth !== ''
++            && hash_equals($sharedSecret, $proxyAuth)
++            && filter_var($forwardedClient, FILTER_VALIDATE_IP) !== false
++        ) {
++            return $forwardedClient;
++        }
++
+         [$proxyTrustEnabled, $proxyAddresses] = self::proxySettings($trustProxy, $trustedProxies);
+         if (!$proxyTrustEnabled || !$isValidRemote || !self::matchesTrustedProxy($remoteAddress, $proxyAddresses)) {
+             return $remoteAddress;
+         }
+ 
++        // 2. Explicitly configured platform header (for example X-Real-IP on Railway).
++        $platformIp = trim((string) ($headers['CLIENT_IP_HEADER'] ?? ''));
++        if (
++            $platformIp !== ''
++            && filter_var($platformIp, FILTER_VALIDATE_IP) !== false
++            && !self::matchesTrustedProxy($platformIp, $proxyAddresses)
++        ) {
++            return $platformIp;
++        }
++
+         $forwardedFor = trim((string) ($headers['X_FORWARDED_FOR'] ?? ''));
+         if ($forwardedFor !== '') {
+             foreach (array_reverse(array_map('trim', explode(',', $forwardedFor))) as $candidate) {
+@@ -125,8 +163,57 @@ final class RequestHelper
+         return [$trustProxy, array_values($trustedProxies)];
+     }
+ 
++    /** Name of the platform client-IP header from CLIENT_IP_HEADER, or null when not configured/invalid. */
++    private static function configuredClientIpHeader(): ?string
++    {
++        $name = trim((string) ($_ENV['CLIENT_IP_HEADER'] ?? getenv('CLIENT_IP_HEADER') ?: ''));
++
++        return preg_match('/^[A-Za-z0-9-]{1,64}$/', $name) === 1 ? $name : null;
++    }
++
++    private static function serverHeader(?string $headerName): string
++    {
++        if ($headerName === null) {
++            return '';
++        }
++
++        return (string) ($_SERVER['HTTP_' . strtoupper(str_replace('-', '_', $headerName))] ?? '');
++    }
++
++    /** True when proxy header trust is switched on via TRUST_PROXY. */
++    public static function isProxyTrustEnabled(): bool
++    {
++        return self::proxySettings(null, null)[0];
++    }
++
++    /**
++     * True when $address matches TRUSTED_PROXY_IPS (exact IPs or CIDR ranges, IPv4 or IPv6).
++     *
++     * @param array<int,string>|null $trustedProxies defaults to the TRUSTED_PROXY_IPS setting
++     */
++    public static function isTrustedProxy(string $address, ?array $trustedProxies = null): bool
++    {
++        $proxies = $trustedProxies ?? self::proxySettings(null, null)[1];
++
++        return self::matchesTrustedProxy(trim($address), array_values($proxies));
++    }
++
++    /** Convert IPv4-mapped IPv6 addresses (::ffff:a.b.c.d) to plain IPv4 so CIDR matching works. */
++    private static function normalizeAddress(string $address): string
++    {
++        if (stripos($address, '::ffff:') === 0) {
++            $v4 = substr($address, 7);
++            if (filter_var($v4, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
++                return $v4;
++            }
++        }
++
++        return $address;
++    }
++
+     private static function matchesTrustedProxy(string $address, array $trustedProxies): bool
+     {
++        $address = self::normalizeAddress($address);
+         foreach ($trustedProxies as $proxy) {
+             $proxy = trim((string) $proxy);
+             if ($proxy === '') {
+diff --git a/tests/Unit/HttpsEnforcementMiddlewareTest.php b/tests/Unit/HttpsEnforcementMiddlewareTest.php
+index d49e952..7f0d38d 100644
+--- a/tests/Unit/HttpsEnforcementMiddlewareTest.php
++++ b/tests/Unit/HttpsEnforcementMiddlewareTest.php
+@@ -45,4 +45,53 @@ final class HttpsEnforcementMiddlewareTest extends TestCase
+ 
+         self::assertSame(200, $middleware->process($request, $handler)->getStatusCode());
+     }
++
++    protected function tearDown(): void
++    {
++        unset($_ENV['TRUST_PROXY'], $_ENV['TRUSTED_PROXY_IPS']);
++    }
++
++    private function passThrough(): RequestHandlerInterface
++    {
++        return new class implements RequestHandlerInterface {
++            public function handle(ServerRequestInterface $request): ResponseInterface
++            {
++                return new Response(200);
++            }
++        };
++    }
++
++    public function testForwardedHttpsIsTrustedFromCidrProxyRange(): void
++    {
++        $_ENV['TRUST_PROXY'] = 'true';
++        $_ENV['TRUSTED_PROXY_IPS'] = '::1,100.0.0.0/8';
++        $middleware = new HttpsEnforcementMiddleware(true, true, null);
++
++        $request = (new ServerRequestFactory())
++            ->createServerRequest('POST', 'http://api.example.test/api/v1/auth/login', ['REMOTE_ADDR' => '100.64.12.34'])
++            ->withHeader('X-Forwarded-Proto', 'https');
++
++        self::assertSame(200, $middleware->process($request, $this->passThrough())->getStatusCode());
++    }
++
++    public function testForwardedHttpsFromAnUntrustedPeerStillRedirects(): void
++    {
++        $_ENV['TRUST_PROXY'] = 'true';
++        $_ENV['TRUSTED_PROXY_IPS'] = '100.0.0.0/8';
++        $middleware = new HttpsEnforcementMiddleware(true, true, null);
++
++        $request = (new ServerRequestFactory())
++            ->createServerRequest('POST', 'http://api.example.test/api/v1/auth/login', ['REMOTE_ADDR' => '203.0.113.9'])
++            ->withHeader('X-Forwarded-Proto', 'https');
++
++        self::assertSame(301, $middleware->process($request, $this->passThrough())->getStatusCode());
++    }
++
++    public function testLivenessCheckIsExemptByDefault(): void
++    {
++        $middleware = new HttpsEnforcementMiddleware(true, true, null);
++        $request = (new ServerRequestFactory())->createServerRequest('GET', 'http://api.example.test/check');
++
++        self::assertSame(200, $middleware->process($request, $this->passThrough())->getStatusCode());
++    }
+ }
+diff --git a/tests/Unit/RequestHelperTrustedProxyTest.php b/tests/Unit/RequestHelperTrustedProxyTest.php
+index 72b24cd..c0c6044 100644
+--- a/tests/Unit/RequestHelperTrustedProxyTest.php
++++ b/tests/Unit/RequestHelperTrustedProxyTest.php
+@@ -41,4 +41,59 @@ final class RequestHelperTrustedProxyTest extends TestCase
+ 
+         self::assertSame('2001:db8::5', RequestHelper::getClientIp($request, false, ['2001:db8::/32']));
+     }
++
++    protected function tearDown(): void
++    {
++        unset($_ENV['CLIENT_IP_HEADER'], $_ENV['PROXY_SHARED_SECRET'], $_ENV['TRUST_PROXY'], $_ENV['TRUSTED_PROXY_IPS']);
++    }
++
++    public function testPlatformHeaderIsIgnoredUnlessExplicitlyConfigured(): void
++    {
++        $request = (new ServerRequestFactory())
++            ->createServerRequest('GET', 'https://example.test/', ['REMOTE_ADDR' => '100.64.3.9'])
++            ->withHeader('X-Real-IP', '203.0.113.50')
++            ->withHeader('X-Forwarded-For', '198.51.100.24');
++
++        self::assertSame('198.51.100.24', RequestHelper::getClientIp($request, true, ['100.0.0.0/8']));
++    }
++
++    public function testConfiguredPlatformHeaderIsUsedOnlyForTrustedPeers(): void
++    {
++        $_ENV['CLIENT_IP_HEADER'] = 'X-Real-IP';
++
++        $viaTrusted = (new ServerRequestFactory())
++            ->createServerRequest('GET', 'https://example.test/', ['REMOTE_ADDR' => '100.64.3.9'])
++            ->withHeader('X-Real-IP', '203.0.113.50');
++        self::assertSame('203.0.113.50', RequestHelper::getClientIp($viaTrusted, true, ['100.0.0.0/8']));
++
++        $direct = (new ServerRequestFactory())
++            ->createServerRequest('GET', 'https://example.test/', ['REMOTE_ADDR' => '198.51.100.10'])
++            ->withHeader('X-Real-IP', '203.0.113.50');
++        self::assertSame('198.51.100.10', RequestHelper::getClientIp($direct, true, ['100.0.0.0/8']));
++    }
++
++    public function testSharedSecretForwardedClientIpRequiresMatchingSecret(): void
++    {
++        $_ENV['PROXY_SHARED_SECRET'] = 'shared-secret-value';
++
++        $good = (new ServerRequestFactory())
++            ->createServerRequest('GET', 'https://example.test/', ['REMOTE_ADDR' => '198.51.100.10'])
++            ->withHeader('X-Proxy-Auth', 'shared-secret-value')
++            ->withHeader('X-Forwarded-Client-IP', '203.0.113.77');
++        self::assertSame('203.0.113.77', RequestHelper::getClientIp($good, false, []));
++
++        $wrong = $good->withHeader('X-Proxy-Auth', 'guess');
++        self::assertSame('198.51.100.10', RequestHelper::getClientIp($wrong, false, []));
++
++        $_ENV['PROXY_SHARED_SECRET'] = '';
++        self::assertSame('198.51.100.10', RequestHelper::getClientIp($good, false, []));
++    }
++
++    public function testCidrMatchingHandlesIpv4MappedIpv6AndIpv6Ranges(): void
++    {
++        self::assertTrue(RequestHelper::isTrustedProxy('::ffff:100.64.1.2', ['100.0.0.0/8']));
++        self::assertTrue(RequestHelper::isTrustedProxy('fd12:3456::1', ['fc00::/7']));
++        self::assertFalse(RequestHelper::isTrustedProxy('203.0.113.5', ['100.0.0.0/8', 'fc00::/7']));
++        self::assertTrue(RequestHelper::isTrustedProxy('::1', ['::1', '127.0.0.1']));
++    }
+ }
+-- 
+2.43.0
+
+
+From 0550ac48ef0821071535b54565d2393b7aff9a7b Mon Sep 17 00:00:00 2001
+From: "Claude (audit & migration)" <claude@users.noreply.anthropic.com>
+Date: Fri, 27 Nov 2026 10:43:36 +0000
+Subject: [PATCH 3/3] feat(deploy): Railway support (PORT-aware Apache,
+ liveness healthcheck, env hydration)
+
+- Dockerfile: Apache listens on $PORT via docker/entrypoint.sh (default 80); vhost/ports configs
+  moved to docker/; PHP execution denied under public/uploads with nosniff + CSP; private storage dir;
+  optional persistent volume (PERSIST_DIR) with logo symlink; HEALTHCHECK follows $PORT.
+- railway.toml: Dockerfile builder, /check healthcheck, restart policy. render.yaml removed.
+- /check is exempt from the HTTPS redirect (it returned 301 to plain-HTTP healthchecks).
+- Environment::hydrateFromProcess(): platform variables reach $_ENV even when php.ini
+  variables_order omits "E" (otherwise startup secret validation blocks the app).
+- .env.production.example rewritten for Railway (reference variables, SMTP names, proxy settings).
+- docs/RAILWAY_DEPLOYMENT.md, README and DEPLOYMENT_CHECKLIST updated for the Railway migration.
+---
+ .dockerignore                    |   1 +
+ .env.production.example          | 139 +++++++++++----------
+ DEPLOYMENT_CHECKLIST.md          | 204 +++++++------------------------
+ Dockerfile                       |  36 +++---
+ README.md                        |  25 ++--
+ api/v1/src/Utils/Environment.php |  35 ++++++
+ config/middleware.php            |   2 +-
+ docker/apache-ports.conf         |   2 +
+ docker/apache-vhost.conf         |  32 +++++
+ docker/entrypoint.sh             |  42 +++++++
+ docs/RAILWAY_DEPLOYMENT.md       |  91 ++++++++++++++
+ docs/README.md                   |   1 +
+ public/index.php                 |   4 +
+ railway.toml                     |  12 ++
+ tests/Unit/EnvironmentTest.php   |  37 ++++++
+ 15 files changed, 401 insertions(+), 262 deletions(-)
+ create mode 100644 api/v1/src/Utils/Environment.php
+ create mode 100644 docker/apache-ports.conf
+ create mode 100644 docker/apache-vhost.conf
+ create mode 100755 docker/entrypoint.sh
+ create mode 100644 docs/RAILWAY_DEPLOYMENT.md
+ create mode 100644 railway.toml
+ create mode 100644 tests/Unit/EnvironmentTest.php
+
+diff --git a/.dockerignore b/.dockerignore
+index a435746..1760c5e 100644
+--- a/.dockerignore
++++ b/.dockerignore
+@@ -11,3 +11,4 @@
+ tests
+ test_suite
+ coverage
++storage
+diff --git a/.env.production.example b/.env.production.example
+index 48460da..022e36e 100644
+--- a/.env.production.example
++++ b/.env.production.example
+@@ -1,68 +1,81 @@
+ # ============================================================================
+-# SmartSys ERP - Production Environment Variables (Render)
++# SmartSys ERP - Production Environment Variables (Railway)
+ # ============================================================================
+-# Copy this file and set the values on Render dashboard
+-# Dashboard: https://dashboard.render.com/web/YOUR_SERVICE/env
++# Set these on the Railway API service (Variables tab). Never commit real values.
++# Railway reference variables (${{MySQL.MYSQLHOST}} ...) resolve at deploy time, so the
++# database credentials are not copied by hand. "MySQL" is the name of the MySQL service.
++# Full guide: docs/RAILWAY_DEPLOYMENT.md
+ # ============================================================================
+ 
+ # ---------------------------------------------------------------------------
+-# Application Configuration
++# Application
+ # ---------------------------------------------------------------------------
+ APP_ENV=production
+-APP_DEBUG=false              # MUST be false in production (security risk)
+-APP_BASE_PATH=               # Empty for Render (no base path needed)
+-APP_URL=https://your-frontend.pages.dev  # Frontend URL (for emails, links)
+-REFRESH_COOKIE_PATH=/api/v1/auth        # Cloudflare Pages same-origin API proxy path
++APP_DEBUG=false
++# PORT is injected by Railway and the container follows it automatically; do not set it by hand.
++# Leave APP_BASE_PATH unset (the API is served at the domain root: /api/v1/...).
++FRONTEND_URL=https://your-frontend.pages.dev
++REFRESH_COOKIE_PATH=/api/v1/auth
+ 
+ # ---------------------------------------------------------------------------
+-# Database Configuration (Aiven MySQL)
++# Database (Railway MySQL, private network)
+ # ---------------------------------------------------------------------------
+-DB_HOST=your-database-host.aivencloud.com
+-DB_PORT=10371
+-DB_DATABASE=defaultdb
+-DB_USERNAME=your_username
+-DB_PASSWORD=CHANGE_ME_TO_YOUR_DATABASE_PASSWORD
+-DB_SSL_MODE=VERIFY_IDENTITY
+-DB_SSL_CA=/path/to/aiven-ca.pem  # Mount/provide the trusted CA certificate to the service
++DB_HOST=${{MySQL.MYSQLHOST}}
++DB_PORT=${{MySQL.MYSQLPORT}}
++DB_DATABASE=${{MySQL.MYSQLDATABASE}}
++DB_USERNAME=${{MySQL.MYSQLUSER}}
++DB_PASSWORD=${{MySQL.MYSQLPASSWORD}}
++# Private-network traffic stays inside Railway; leave TLS options empty.
++# For an external database use VERIFY_IDENTITY with DB_SSL_CA pointing at the provider CA file.
++DB_SSL_MODE=
+ 
+ # ---------------------------------------------------------------------------
+-# JWT Authentication
++# JWT / secrets (keep the values you already use in production when migrating)
+ # ---------------------------------------------------------------------------
+-# Generate: openssl rand -hex 32
++# Generate: openssl rand -hex 32   (the two JWT secrets must differ)
+ JWT_SECRET=CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_HEX_32
+ JWT_REFRESH_SECRET=CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_HEX_32
+-JWT_ACCESS_TOKEN_EXPIRY=3600       # 1 hour
+-JWT_REFRESH_TOKEN_EXPIRY=2592000   # 30 days
++JWT_ACCESS_TOKEN_EXPIRY=3600
++JWT_REFRESH_TOKEN_EXPIRY=2592000
+ JWT_ALGORITHM=HS256
+ 
+-# ---------------------------------------------------------------------------
+-# Security & Encryption
+-# ---------------------------------------------------------------------------
+-# Required before enabling 2FA. Generate: php scripts/generate_2fa_key.php
++# Generate: php scripts/generate_2fa_key.php   (losing it makes stored 2FA secrets unreadable)
+ TWO_FA_ENCRYPTION_KEY=CHANGE_ME_RUN_PHP_SCRIPTS_GENERATE_2FA_KEY
+-
+-# General encryption key (for other sensitive data)
+ # Generate: openssl rand -base64 32
+ ENCRYPTION_KEY=CHANGE_ME_TO_SECURE_KEY
+-
+-# Cron authentication token
+-# Generate: openssl rand -hex 32
++# Generate: openssl rand -hex 32   (sent as the X-Cron-Token header by the scheduler)
+ CRON_SECRET=CHANGE_THIS_TO_SECURE_RANDOM_VALUE
+ 
+ # ---------------------------------------------------------------------------
+-# CORS Configuration
++# Persistent storage (attach a Railway Volume to the API service and mount it at /data)
++# ---------------------------------------------------------------------------
++# Private warranty attachments are stored outside the web root in $PERSIST_DIR/uploads and
++# logos in $PERSIST_DIR/logos. Without a volume, uploaded files are lost on every redeploy.
++PERSIST_DIR=/data
++
++# ---------------------------------------------------------------------------
++# CORS (only needed when the browser calls the API origin directly)
+ # ---------------------------------------------------------------------------
++# With the Cloudflare Pages /api proxy the browser is same-origin and CORS is not used.
++CORS_ALLOW_ALL=false
+ CORS_ALLOWED_ORIGINS=https://your-frontend.pages.dev
+ 
+ # ---------------------------------------------------------------------------
+-# Proxy Configuration (Render)
++# Reverse proxy / client IP (Railway edge)
+ # ---------------------------------------------------------------------------
+ TRUST_PROXY=true
+-# Set only to Render proxy addresses verified for this service; this is not the rate-limit whitelist.
+-TRUSTED_PROXY_IPS=REPLACE_WITH_VERIFIED_PROXY_IPS
++# Railway does not publish fixed proxy addresses. Its edge reaches the container from private
++# 100.x (IPv4) or fc00::/7 (IPv6) addresses. Keep the API reachable only through Railway's edge.
++TRUSTED_PROXY_IPS=100.0.0.0/8,fc00::/7,::1,127.0.0.1
++# Railway overwrites X-Real-IP with the real client address at its edge.
++CLIENT_IP_HEADER=X-Real-IP
++# When the Cloudflare Pages proxy is in front, set the SAME random value here and in Cloudflare
++# (Pages -> Variables and secrets). The proxy then forwards the real visitor IP.
++# Generate: openssl rand -hex 32
++PROXY_SHARED_SECRET=
+ 
+ # ---------------------------------------------------------------------------
+-# Rate Limiting
++# Rate limiting
+ # ---------------------------------------------------------------------------
+ RATE_LIMIT_ENABLED=true
+ RATE_LIMIT_MAX_ATTEMPTS=60
+@@ -71,64 +84,48 @@ RATE_LIMIT_LOGIN_ATTEMPTS=10
+ RATE_LIMIT_LOGIN_WINDOW=600
+ 
+ # ---------------------------------------------------------------------------
+-# Logging & Monitoring
+-# ---------------------------------------------------------------------------
+-LOG_LEVEL=info              # NOT debug in production
+-LOG_CHANNEL=daily
+-SESSIONS_DEBUG=0            # Disable debug logs
+-
+-# ---------------------------------------------------------------------------
+-# Security Logging
++# Logging & monitoring (logs go to stderr, visible in Railway Logs)
+ # ---------------------------------------------------------------------------
++LOG_LEVEL=info
++SESSIONS_DEBUG=0
+ SECURITY_LOGGING_ENABLED=true
+ SECURITY_LOG_RETENTION_DAYS=365
+ 
+ # ---------------------------------------------------------------------------
+-# HTTPS Enforcement
++# HTTPS (keep enabled: it also controls the Secure flag of the refresh cookie)
+ # ---------------------------------------------------------------------------
+ HTTPS_ENFORCEMENT_ENABLED=true
+ HTTPS_REDIRECT=true
+ 
+ # ---------------------------------------------------------------------------
+-# Health Check
++# Health
+ # ---------------------------------------------------------------------------
+-# Token for /health/details endpoint (optional)
+-# Generate: openssl rand -hex 16
++# /check = liveness (Railway healthcheck, no database); /health = database readiness.
+ HEALTH_DETAILS_TOKEN=
+ 
+ # ---------------------------------------------------------------------------
+-# Admin & Cron URLs
+-# ---------------------------------------------------------------------------
+-API_BASE_URL=https://your-api.onrender.com/api/v1
+-ADMIN_API_URL=https://your-api.onrender.com/api/v1/admin/subscriptions/cron
+-
+-# ---------------------------------------------------------------------------
+-# Sentry Error Tracking (Optional)
++# Sentry (optional)
+ # ---------------------------------------------------------------------------
+ SENTRY_ENABLED=false
+ SENTRY_DSN=
+-SENTRY_TRACES_SAMPLE_RATE=0.1
+-SENTRY_PROFILES_SAMPLE_RATE=0.1
++SENTRY_TRACES_SAMPLE_RATE=0
+ 
+ # ---------------------------------------------------------------------------
+-# Email Configuration (Optional - if using email features)
++# Email (SMTP)
+ # ---------------------------------------------------------------------------
+-MAIL_MAILER=smtp
+-MAIL_HOST=
+-MAIL_PORT=
+-MAIL_USERNAME=
+-MAIL_PASSWORD=
+-MAIL_ENCRYPTION=tls
+-MAIL_FROM_ADDRESS=
+-MAIL_FROM_NAME=SmartSys ERP
++SMTP_HOST=
++SMTP_PORT=587
++SMTP_SECURE=tls
++SMTP_USER=
++SMTP_PASS=
++SMTP_FROM=
++SMTP_FROM_NAME=SmartSys ERP
+ 
+ # ============================================================================
+-# IMPORTANT NOTES
++# IMPORTANT
+ # ============================================================================
+-# 1. NEVER commit real secrets to version control
+-# 2. Use different keys for dev/staging/production
+-# 3. Rotate secrets regularly (every 90 days)
+-# 4. Store backups of encryption keys securely
+-# 5. Losing TWO_FA_ENCRYPTION_KEY = losing all 2FA secrets
+-# 6. Set all CHANGE_ME_* values before first deployment
++# 1. Never commit real secrets. Use different values for staging and production.
++# 2. Keep JWT_SECRET, JWT_REFRESH_SECRET, TWO_FA_ENCRYPTION_KEY and ENCRYPTION_KEY unchanged when
++#    moving hosts, otherwise sessions are invalidated and stored 2FA secrets become unreadable.
++# 3. Replace every CHANGE_ME_* value before the first deployment.
+ # ============================================================================
+diff --git a/DEPLOYMENT_CHECKLIST.md b/DEPLOYMENT_CHECKLIST.md
+index 91a6464..0dbfcca 100644
+--- a/DEPLOYMENT_CHECKLIST.md
++++ b/DEPLOYMENT_CHECKLIST.md
+@@ -1,159 +1,45 @@
+-# 🚀 Deployment Checklist - Security and Production Readiness
+-
+-**الحالة الفعلية حتى 25 نوفمبر 2026:** إصلاحات H1-H5 أدناه موجودة في التاريخ المنشور. آخر تغيير تطبيقي هو `cfa58c8`، ثم نشر Render تلقائيًا commit التنظيف `aa87bb7` من `smart-sys/main`. بعده أعادت `/health` و`/check` وواجهة Cloudflare Pages HTTP 200. لم يتغير منطق التطبيق في commit التنظيف. هذه النتائج لا تعني أن الخدمة جاهزة لاستقبال المستخدمين؛ انظر المخاطر التشغيلية أدناه.
+-
+-## ✅ Completed High Priority Security Fixes
+-
+-The high-priority fixes below are present in the deployed history. The operational blockers and follow-up checks are listed below.
+-
+-### H1: XSS Vulnerability in PageHeader ✅
+-- **Issue**: v-html directive rendering unsanitized user input
+-- **Fix**: Removed v-html, using text interpolation instead
+-- **File**: `SmartSys-Frontend/src/components/PageHeader.vue`
+-- **Commit**: `2675673`
+-
+-### H2: Rate Limiting Behind Proxy ✅
+-- **Issue**: `::1` in IP whitelist defeating rate limiting when behind Render proxy
+-- **Fix**: Removed `::1` from whitelist, trust_proxy now handles real client IPs
+-- **File**: `config/security.php`
+-- **Commit**: `48f29c1`
+-
+-### H3: 2FA Plaintext Storage ✅
+-- **Issue**: 2FA secrets stored in plaintext without encryption key requirement
+-- **Fix**: Added `requireKey: true` to TwoFactorEncryptionService constructor
+-- **Files**: 
+-  - `api/v1/src/Handlers/AuthHandler.php`
+-  - `scripts/generate_2fa_key.php` (new script)
+-- **Commit**: `af9a1c5`
+-
+-### H4: Default Secrets Not Validated ✅
+-- **Issue**: Container doesn't validate secrets, allows weak/default values
+-- **Fix**: Added `validateSecuritySecrets()` function to check all secrets on startup
+-- **File**: `config/container.php`
+-- **Commit**: `b0e8edf`
+-
+-### H5: Missing Authentication Middleware ✅
+-- **Issue**: `/admin/owner-contribution-tenants` missing JwtAuthMiddleware, always returns 403
+-- **Fix**: Moved route into JWT-authenticated group with proper middleware chain
+-- **File**: `config/routes.php`
+-- **Commit**: `d5ac635`
+-
+----
+-
+-## 🔐 Encryption keys
+-
+-`ENCRYPTION_KEY` was added to Render configuration to avoid the startup warning. This does not mean all application data is encrypted with it.
+-
+-`TWO_FA_ENCRYPTION_KEY` is configured in Render according to the prior deployment setup, but an earlier value was published in deployment documentation and must be treated as compromised. Do not rotate the active key before checking for encrypted 2FA secrets and taking a backup; changing it without migration can make existing data unreadable.
+-
+-The application uses the bundled public Aiven CA at `/var/www/html/certs/aiven-project-ca.pem` with `DB_SSL_MODE=VERIFY_IDENTITY`. Replace the certificate and redeploy if Aiven rotates the project CA. Never commit secret values or include them in deployment logs.
+-
+-**⚠️ Important Notes**:
+-- `TWO_FA_ENCRYPTION_KEY` must be Base64 for a 32-byte key.
+-- Use separate keys per environment.
+-- Rotate the exposed key only after verifying current 2FA data and the backup.
+-
+----
+-
+-## 📋 Deployment Status
+-
+-### Backend (Render)
+-- ✅ Last successful commit: `cfa58c8` (Live on Render)
+-- ✅ `/health` and `/check` returned HTTP 200 in the latest check
+-- ⚠️ The free plan may sleep when idle; evaluate an upgrade before onboarding
+-- 🌐 URL: https://smartsys-api.onrender.com
+-
+-### Frontend (Cloudflare Pages)
+-- ✅ The home page returned HTTP 200 in the latest check
+-- ✅ `GET /api/v1/auth/login` through Pages returned HTTP 405 (route reached; method not allowed)
+-- ✅ One form-encoded POST using a deliberately invalid, synthetic username/password returned the expected JSON `401` after Render was awake; this confirms that request reached the API and database, not that a real user can log in.
+-- ⚠️ An earlier POST returned an HTML `502`. A subsequent direct Render `/health` returned `200`, and the form-encoded retry through Pages returned `401`; the cause of the initial `502` was not established.
+-- ⚠️ Browser login, refresh-cookie attributes, reload persistence, logout, and email links were not tested with a staging account.
+-- 🌐 URL: https://smart-sys.pages.dev
+-
+----
+-
+-## 🧪 Verification
+-
+-### Completed checks
+-- PHPUnit: 461 tests, 1,266 assertions, 52 skipped; no failures. This is not a full database integration or coverage certification.
+-- Frontend tests: 12 passed.
+-- Vite production build: did not complete locally, including an isolated retry; Node ran out of memory. A successful CI or adequately provisioned build is still required.
+-- Render `/health`: HTTP 200 (database readiness).
+-- Render `/check`: HTTP 200 (liveness).
+-- Cloudflare Pages home page: HTTP 200.
+-- GitHub Actions run #92 for `aa87bb7`: all three jobs were marked failed within about two seconds; the logs endpoint returned 404 for each job. No job-step output was available, so this is not evidence that the PHP or frontend tests themselves failed.
+-
+-### Required before onboarding
+-- Run login, refresh-cookie, logout, and authorization checks with a staging account.
+-- Rerun the Vite build on a machine/CI runner with adequate free memory, and confirm CI and Docker build succeed for the deployed commit.
+-- Investigate why GitHub Actions jobs terminate before producing logs, then rerun the workflow and retain successful PHP, frontend, audit, and build evidence.
+-- Take a production backup and test restoring it to an isolated staging database.
+-- Review rate limiting, trusted proxy IPs, TLS identity verification, and security headers in staging.
+-
+-Do not run repeated failed-login/rate-limit tests against production; they can block the caller IP for the lockout window. Never put real passwords or tokens in shell history or deployment logs.
+-
+----
+-
+-## ⛔ Production blockers and operational decisions
+-
+-### Aiven database
+-- MySQL 8.4.11 on `Free-1-1gb` (1 CPU, 1 GB RAM, 1 GB storage) in Amsterdam; Aiven shows that the trial has ended.
+-- The free plan is scheduled for retirement on **21 December 2026**. Memory usage was approximately 81% in the last review.
+-- The IP address allowlist is restricted to Render's current shared outbound ranges: `74.220.48.0/24` and `74.220.56.0/24`. Render `/health` and `/check` remained HTTP 200 after the change. These ranges are shared with other Render services and are not unique to this service. Direct local connections to Aiven are now blocked unless an approved development IP is added.
+-- Termination protection is enabled to reduce accidental deletion risk; this does not prevent retirement of the free plan.
+-- **Decision required:** select a paid Aiven plan or a tested migration destination before the retirement date. Do not change plans without confirming cost and a restorable backup.
+-
+-### Before public launch
+-- Choose a Render plan that does not sleep on idle if reliable response times are required.
+-- Verify whether production has encrypted 2FA secrets; back them up and rotate the previously exposed key using a migration or user re-enrollment plan.
+-- Create or verify a least-privilege application database user; do not assume the runtime account needs administrative privileges.
+-- Complete staging end-to-end checks and backup-restore verification.
+-
+-## Review of the supplied readiness report (25 November 2026)
+-
+-### Verified in this review
+-- Render's live environment page showed `DB_SSL_MODE=VERIFY_IDENTITY`. The configured `DB_SSL_CA` path is present in `render.yaml`; the live value/file itself was not independently inspected. The successful login handler response is evidence that a database-backed request completed, but it does not prove every TLS setting or certificate-rotation path.
+-- The Pages login endpoint works with the form-encoded body used by the frontend and returned the expected `401` for synthetic invalid credentials. Do not use a JSON body for this endpoint: `authService.login()` sends `application/x-www-form-urlencoded`.
+-- `HealthHandler.php` has no references outside its own definition and has been removed. The old `AIVEN_DB_*` sample variables had no code/script references and have been removed from `.env.example`.
+-- The local `.env` is ignored by Git and is not tracked. It contains an Aiven credential; treat it as potentially exposed, verify whether it is still active, and rotate it if so. Do not copy the value into logs, issues, or documentation.
+-
+-### Still requires an owner-side or staging check
+-- Render hides the live values for `TRUST_PROXY`, `TRUSTED_PROXY_IPS`, `REFRESH_COOKIE_PATH`, and `DB_SSL_CA`; their actual values and secret-file availability were not confirmed. Check them in the dashboard without copying secrets into chat or logs. Keep TLS certificate verification enabled.
+-- Verify client IP attribution with a controlled staging login and inspect only the resulting test row in `login_attempts`. The application trusts `X-Forwarded-For` only when the direct peer is explicitly trusted; do not add proxy ranges by guesswork or trust arbitrary client headers.
+-- Test browser login, refresh, reload, logout, password reset/email links, and role authorization on staging. No real credentials were used in the smoke test.
+-- PHP 8.2 reaches the end of security support on 31 December 2026. Plan an upgrade to PHP 8.3, extend CI coverage, and build/test the Docker image before that date; do not call the runtime upgrade complete until those checks pass.
+-- No scheduled subscription cron workflow exists. The endpoint updates expired subscriptions and can send real reminders; first test it with isolated data, verify duplicate suppression and email effects, then add a controlled daily schedule with an explicit secret and concurrency protection. Do not schedule every five minutes without proving idempotency.
+-- `RBACHandler` scopes create-time identity checks to the tenant but its update-time duplicate check is global. Confirm the production uniqueness rules and intended cross-tenant identity model before changing it; ensure errors do not disclose another tenant's account existence.
+-- The password policy remains 8 characters minimum / 72 bytes maximum. Decide whether this is acceptable for launch, then update server validation, UI guidance, and tests together if changing it.
+-- Monetary calculations still use floating-point values in many places. A decimal/minor-unit migration is a broad accounting change; keep it tracked as a separate design and migration task rather than performing a partial cast cleanup.
+-- `.kiro/`, `test_suite/`, the obsolete Railway guide, and one-off/stale readiness and review reports were removed during cleanup. The current release gate and unresolved findings are consolidated in this checklist; the security policy remains in `SECURITY.md`.
+-
+----
+-
+-## 🎯 Next Steps
+-
+-1. **Secure and inventory secrets:** determine whether the local Aiven credential and previously exposed 2FA key are still active. Back up and identify encrypted 2FA data before rotating keys; update only the services that use each credential. Never commit or paste secrets.
+-2. **Protect and plan the database:** choose an Aiven upgrade or tested migration destination before the announced 21 December 2026 free-plan retirement. Take a production backup, restore it into isolated staging, and record the recovery owner, RPO/RTO, and rollback plan.
+-3. **Choose reliable hosting:** decide whether Render must move off the sleeping free plan. Verify the least-privilege DB account and keep Aiven network access restricted; add only an approved developer CIDR if local access is essential.
+-4. **Verify deployment configuration:** confirm the mounted CA file and `DB_SSL_MODE=VERIFY_IDENTITY`, `TRUST_PROXY`, trusted proxy addresses, `REFRESH_COOKIE_PATH`, Cloudflare `BACKEND_URL`, and frontend `VITE_API_BASE_URL`. Validate cookie flags and client-IP attribution without trusting arbitrary forwarded headers.
+-5. **Complete staging end-to-end tests:** exercise login, refresh, reload, logout, password reset/email links, roles/tenant boundaries, and representative sale, return, and inventory flows. Use synthetic data and verify the resulting database and UI behavior.
+-6. **Prove build and runtime support:** investigate the immediate, logless failures in GitHub Actions run #92 and obtain a successful workflow run. Then upgrade Docker from PHP 8.2 to PHP 8.3 before 31 December 2026, extend CI to test the target version, and require passing PHPUnit/MySQL 8 integration, frontend tests/build, dependency audits, and Docker build. The local Vite build currently fails from memory exhaustion; do not mark it passed until CI or a capable machine proves it.
+-7. **Enable scheduled work safely:** test the subscription cron against isolated data, verify reminder deduplication and expiry behavior, then add a controlled daily schedule with protected secrets and concurrency prevention. It can change subscription state and send real email; do not enable it before the test.
+-8. **Resolve launch policies:** confirm the 8-character password minimum and 72-byte maximum, decide how to address the global user-identity duplicate check in `RBACHandler`, and record an accounting plan for widespread floating-point money calculations. Do not make partial financial precision changes.
+-9. **Operational readiness and sign-off:** verify health/readiness, logs/alerts, security headers, CORS, TLS, backups and restoration; fill the security-reporting contact in `SECURITY.md`; obtain technical and financial owner approval. Keep the release **NO-GO** until all launch blockers are evidenced in staging.
+-
+----
+-
+-## 📞 Support
+-
+-If you encounter any issues:
+-- Check Render logs: https://dashboard.render.com/web/YOUR_SERVICE/logs
+-- Check Cloudflare Pages logs: https://dash.cloudflare.com/
+-- Review commit history: `git log --oneline -10`
+-- Check the current release gate: `DEPLOYMENT_CHECKLIST.md`
+-- Check the security reporting policy: `SECURITY.md`
+-
+----
+-
+-**Last Updated**: 2026-11-25
++# قائمة تحقق النشر: Railway
++
++> الحالة: الكود مُجهَّز لـ Railway، لكن **النشر الفعلي وبناء Docker لم يُجرَّبا بعد**. الدليل التفصيلي في [docs/RAILWAY_DEPLOYMENT.md](docs/RAILWAY_DEPLOYMENT.md).
++
++## قبل النقل (كود)
++- [x] ثغرة رفع الملفات: قائمة سماح من محتوى الملف، وتخزين خارج `public/`، وروابط موقّعة، ومنع تنفيذ السكربتات في `public/uploads`
++- [x] الثقة في الـ Proxy بنطاقات CIDR، وتحديد IP العميل عبر `CLIENT_IP_HEADER` أو `PROXY_SHARED_SECRET` فقط
++- [x] الـ Dockerfile يسمع على `$PORT` وHealthcheck على `/check`
++- [x] `railway.toml` و`.env.production.example` محدّثان
++- [ ] تشغيل CI على GitHub والتأكد أنه يمرّ (آخر تشغيل فشل فورًا بلا سجلات)
++
++## على Railway
++- [ ] مشروع واحد: خدمة MySQL 8.4 + خدمة API، في نفس المنطقة
++- [ ] Volume على خدمة الـ API مركّب على `/data` و`PERSIST_DIR=/data`
++- [ ] متغيرات الـ API من `.env.production.example` (مراجع `${{MySQL.*}}` لقاعدة البيانات، و`DB_SSL_MODE` فارغ)
++- [ ] نفس قيم `JWT_SECRET` و`JWT_REFRESH_SECRET` و`TWO_FA_ENCRYPTION_KEY` و`ENCRYPTION_KEY` عند النقل
++- [ ] `FRONTEND_URL` مضبوط (روابط إيميل التفعيل)
++- [ ] `TRUST_PROXY=true` و`TRUSTED_PROXY_IPS=100.0.0.0/8,fc00::/7,::1,127.0.0.1` و`CLIENT_IP_HEADER=X-Real-IP`
++- [ ] Public Access لـ MySQL مغلق بعد الاستيراد
++- [ ] `GET /check` و`GET /health` يعيدان 200 على رابط Railway المباشر
++
++## نقل البيانات
++- [ ] مقارنة الإصدار والمنطقة الزمنية بين Aiven وRailway
++- [ ] إيقاف الكتابة على النظام القديم، ثم Dump واستيراد
++- [ ] التحقق من عدد الصفوف و`migrations` والإجماليات المالية (مدين = دائن)
++- [ ] فحص `warranty_attachments` بحثاً عن امتدادات تنفيذية (الاستعلام في دليل Railway)
++
++## Cloudflare Pages
++- [ ] `BACKEND_URL` = رابط Railway، `VITE_API_BASE_URL=/api/v1`، `PROXY_SHARED_SECRET` مطابق للـ API
++- [ ] إعادة نشر الـ Pages بعد تغيير المتغيرات
++
++## اختبار ما بعد التحويل (يدوي)
++- [ ] تسجيل دخول حقيقي ثم Reload (تبقى الجلسة)
++- [ ] إيميل تفعيل: الرابط يشير لدومين الواجهة
++- [ ] بيع ومرتجع وسند وتقرير
++- [ ] رفع مرفق ضمان وعرضه وحذفه
++- [ ] `login_attempts.ip_address` يحتوي عناوين الزوار الحقيقية وليس عنوان Proxy
++- [ ] لا تُجرَّب محاولات دخول فاشلة متكررة على الإنتاج (تُفعّل الـ Lockout)
++
++## بعد التحويل
++- [ ] Backups على Volume قاعدة البيانات + نسخة خارجية + اختبار استعادة ناجح
++- [ ] مراقبة Uptime على `/health`
++- [ ] دوّر الأسرار التي ظهرت في أي محادثة، ثم أوقف Render وAiven بعد أسبوع
++- [ ] قرار جدولة الـ cron (بعد اختبار الأثر)
++- [ ] خطة ترقية PHP 8.2 → 8.3 قبل 31 ديسمبر 2026
+diff --git a/Dockerfile b/Dockerfile
+index 91139e9..0a83f49 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -68,25 +68,27 @@ RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
+ # Allow .htaccess overrides and disable directory slash redirects
+ RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
+ 
+-# Write a clean VirtualHost that disables DirectorySlash globally
+-RUN echo '<VirtualHost *:80>\n\
+-    ServerName localhost\n\
+-    DocumentRoot /var/www/html/public\n\
+-    DirectorySlash Off\n\
+-    <Directory /var/www/html/public>\n\
+-        Options -Indexes\n\
+-        AllowOverride All\n\
+-        Require all granted\n\
+-        DirectorySlash Off\n\
+-    </Directory>\n\
+-</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
+-
+-# Expose port
++# Apache listens on the platform-provided $PORT (Railway injects it; defaults to 80 elsewhere).
++# The vhost and ports.conf read APACHE_LISTEN_PORT, which docker/entrypoint.sh sets from $PORT.
++ENV APACHE_LISTEN_PORT=80
++COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
++COPY docker/apache-ports.conf /etc/apache2/ports.conf
++
++# Private (non-web) storage for uploaded attachments; the entrypoint can point it at a volume.
++RUN mkdir -p storage/uploads public/uploads/logos \
++    && chown -R www-data:www-data storage public/uploads \
++    && chmod 750 storage/uploads
++
++COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
++RUN chmod +x /usr/local/bin/entrypoint.sh
++
++# Expose port (informational; the real port is $PORT)
+ EXPOSE 80
+ 
+-# Health check uses the public readiness endpoint.
++# Liveness probe: no database dependency, so a database outage does not restart the container.
++# (/health is the readiness endpoint and checks the database.)
+ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s \
+-  CMD curl -f http://localhost/health || exit 1
++  CMD curl -fsS "http://127.0.0.1:${PORT:-80}/check" || exit 1
+ 
+-# Start Apache
++ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ CMD ["apache2-foreground"]
+diff --git a/README.md b/README.md
+index a5af694..1afc031 100644
+--- a/README.md
++++ b/README.md
+@@ -4,7 +4,7 @@
+ 
+ ## الحالة الحالية
+ 
+-اعتبارًا من 25 نوفمبر 2026، آخر تغيير تطبيقي منشور على Render هو `cfa58c8`، ثم نشر Render تلقائيًا commit التنظيف `aa87bb7` من `smart-sys/main`؛ لا يغيّر هذا التنظيف تدفق التطبيق. بعده أعاد `/health` و`/check` على Render HTTP 200 وأعادت واجهة Pages HTTP 200. فشل أول POST لتسجيل الدخول بصفحة HTML وحالة 502؛ وبعد استيقاظ الخدمة أعاد POST بصيغة النموذج التي تستخدمها الواجهة `401` برسالة بيانات دخول غير صحيحة لبيانات وهمية، وهي النتيجة المتوقعة. كما أعاد GET إلى مسار تسجيل الدخول `405`. هذا يؤكد وصول طلب اختبار واحد إلى الـAPI وقاعدة البيانات، لكنه لا يثبت تسجيل دخول حقيقيًا أو تجديد الجلسة أو صلاحية الكوكي بعد إعادة التحميل، ولا يحدد سبب 502 الأولى. بحسب إفادة مالك المشروع، لا يوجد مستخدمون فعليون حتى الآن.
++اعتبارًا من 26 نوفمبر 2026 يجري نقل الـ API وقاعدة البيانات من Render/Aiven إلى Railway. الكود جاهز للنشر على Railway (الـ Dockerfile يتبع `$PORT`، وملف `railway.toml`، ومرفقات الضمان خارج `public/`، ودعم نطاقات CIDR للـ Proxy)، لكن **لم يُجرَّب بناء Docker ولا النشر الفعلي على Railway** في هذه المراجعة. الدليل الكامل: [docs/RAILWAY_DEPLOYMENT.md](docs/RAILWAY_DEPLOYMENT.md). بحسب إفادة مالك المشروع لا يوجد مستخدمون فعليون حتى الآن.
+ 
+ ## المكونات
+ 
+@@ -103,19 +103,16 @@ php vendor\bin\phpunit
+ 
+ ## النشر والاستعداد للإنتاج
+ 
+-- إعداد Render المبدئي موجود في `render.yaml`، وصورة backend في `Dockerfile`. آخر نشر ناجح متحقق منه هو `cfa58c8`. فحص `/health` و`/check` وواجهة Cloudflare Pages أعادت HTTP 200 في آخر smoke check؛ يلزم اختبار تدفق تسجيل الدخول الكامل على staging قبل فتح التسجيل.
+-- واجهة Cloudflare Pages تستخدم `SmartSys-Frontend/functions/api/[[path]].js` لتمرير `/api/v1` إلى backend. تحقق من `BACKEND_URL` و`VITE_API_BASE_URL=/api/v1` في إعدادات النشر؛ استجابة الصفحة الرئيسية وحدها لا تثبت سلامة مسار API proxy.
+-- في Render، يضبط `render.yaml` اتصال MySQL مع `DB_SSL_MODE=VERIFY_IDENTITY` وشهادة Aiven العامة المرفقة في `/var/www/html/certs/aiven-project-ca.pem` عبر `DB_SSL_CA`. حدّث الشهادة وأعد النشر إذا دوّر Aiven شهادة المشروع. حدد عناوين `TRUSTED_PROXY_IPS` بعد التحقق من إعداد proxy الفعلي.
+-- `ENCRYPTION_KEY` سر اختياري للتشفير العام، و`render.yaml` يطلب ضبطه في Render لتفادي تحذير بدء التشغيل. استخدم قيمة عشوائية مستقلة بطول 32 بايت مشفرة بـBase64، ولا تدوّرها بعد استخدامها لتشفير بيانات.
+-- `TWO_FA_ENCRYPTION_KEY` مطلوب قبل تفعيل 2FA أو تخزين أسرارها؛ يمكن للتطبيق بدء التشغيل من دونه، لكن عمليات 2FA تفشل بأمان. لا تدوّر مفتاحًا مستخدمًا لبيانات مشفرة قبل خطة ترحيل/إعادة تسجيل مناسبة.
+-- قاعدة Aiven تعمل على MySQL 8.4.11 وخطة `Free-1-1gb` في منطقة Amsterdam. انتهت التجربة، والخطة المجانية مُعلنة للتقاعد في 21 ديسمبر 2026؛ كما كان استخدام الذاكرة نحو 81% في آخر مراجعة. يلزم اختيار ترقية أو ترحيل قبل الموعد، مع اختبار الاستعادة من نسخة احتياطية.
+-- فُعّلت حماية إنهاء خدمة قاعدة Aiven لتقليل احتمال حذفها بالخطأ؛ هذا لا يمنع تقاعد الخطة المجانية أو الحاجة إلى ترحيل/ترقية.
+-- قُيّدت قائمة السماح في Aiven إلى نطاقي الخروج الحاليين لخدمة Render (`74.220.48.0/24` و`74.220.56.0/24`)، وأُعيد فحص `/health` و`/check` بنجاح بعدها. النطاقان مشتركان على Render وليسا مخصصين للخدمة؛ الاتصال المباشر من أجهزة التطوير إلى Aiven لم يعد مسموحًا ما لم تُضف عناوينها صراحة.
+-- خدمة Render على الخطة المجانية قد تتوقف عند الخمول، ما قد يسبب تأخرًا ملحوظًا لأول طلب. لا تعد الخطة الحالية مناسبة لتوافر إنتاجي موثوق دون تقييم الترقية.
+-- إعداد `DB_SSL_MODE=VERIFY_IDENTITY` ظاهر في إعدادات Render الحية. فشل أول طلب عبر Pages بـ502 ثم نجح طلب الاختبار اللاحق؛ يلزم إعادة اختبار بدء التشغيل البارد ومراجعة قيم الوكيل وملف CA في Render قبل الإطلاق. لا تُعتبر جلسة المتصفح أو تدفق refresh-cookie قد اختُبرا.
+-- يوجد في Render endpoint للـcron، لكن لا يوجد workflow مجدول في `.github/workflows`. لا تفعّل جدولة إنتاجية قبل اختبار الأثر؛ endpoint يغيّر حالات الاشتراك وقد يرسل بريدًا حقيقيًا.
+-- صورة Docker ما زالت على PHP 8.2؛ يلزم التخطيط للانتقال إلى PHP 8.3 والتحقق منه قبل انتهاء تحديثات PHP 8.2 الأمنية في 31 ديسمبر 2026. سياسة كلمة المرور الحالية تقبل 8 أحرف على الأقل و72 بايتًا كحد أقصى. استخدام `float` في الحسابات المالية وملاحظة فحص تفرّد المستخدم في `RBACHandler` موثقان كمتابعتين، وليسا إصلاحين منفذين هنا.
+-- اختبارات PHPUnit المحلية الأخيرة نجحت: 461 اختبارًا و1,266 assertion، مع 52 اختبارًا متجاوزًا وتحذير لغياب مشغل تغطية الكود. اختبارات الواجهة نجحت (12/12)، لكن بناء Vite أخفق محليًا بسبب نفاد ذاكرة Node حتى عند تشغيله منفردًا؛ يلزم نجاح البناء على CI أو جهاز بموارد كافية. لم يُتحقق من بناء Docker أو نجاح CI في هذه المراجعة.
++- النشر على Railway: خدمة API من `Dockerfile` (إعداد البناء في `railway.toml`) وخدمة MySQL في نفس المشروع، مع Volume لمجلد `/data` (ضبط `PERSIST_DIR=/data`). المتغيرات الكاملة في `.env.production.example`، والخطوات في [docs/RAILWAY_DEPLOYMENT.md](docs/RAILWAY_DEPLOYMENT.md).
++- الـ Healthcheck على `/check` (حيّة التطبيق بدون قاعدة بيانات). `/health` يفحص جاهزية قاعدة البيانات ويُراقَب بأداة Uptime منفصلة.
++- واجهة Cloudflare Pages تستخدم `SmartSys-Frontend/functions/api/[[path]].js` لتمرير `/api/v1` إلى الـ backend. اضبط `BACKEND_URL` و`VITE_API_BASE_URL=/api/v1`، و`PROXY_SHARED_SECRET` (نفس القيمة على Railway) لتمرير IP الزائر. استجابة الصفحة الرئيسية وحدها لا تثبت سلامة الـ proxy.
++- `TRUSTED_PROXY_IPS` يقبل عناوين ونطاقات CIDR (IPv4 وIPv6). على Railway استخدم `100.0.0.0/8,fc00::/7,::1,127.0.0.1` مع `CLIENT_IP_HEADER=X-Real-IP`؛ ولا تعتمد على أي Header آخر لعنوان العميل.
++- رفع المرفقات: تُقبل صور وPDF فقط، ويُحدَّد النوع من محتوى الملف (وليس من اسمه)، وتُخزَّن خارج `public/` وتُقدَّم برابط موقّع قصير العمر. لا يُنفَّذ أي سكربت داخل `public/uploads`. بدون Volume تُفقد الملفات عند كل إعادة نشر.
++- `ENCRYPTION_KEY` سر اختياري للتشفير العام؛ استخدم قيمة عشوائية بطول 32 بايت مشفرة بـBase64، ولا تدوّرها بعد استخدامها لتشفير بيانات. `TWO_FA_ENCRYPTION_KEY` مطلوب قبل تفعيل 2FA؛ لا تدوّر مفتاحًا مستخدمًا قبل خطة إعادة تسجيل. احتفظ بنفس المفاتيح عند نقل الاستضافة.
++- لا توجد جدولة تلقائية للـ cron. الـ endpoint يغيّر حالات الاشتراك وقد يرسل بريدًا حقيقيًا؛ اختبره على بيانات معزولة قبل الجدولة.
++- قاعدة Railway هي حاوية MySQL على Volume وليست خدمة مُدارة: فعّل Backups وPoint-in-Time Recovery إن توفرت، وأضف نسخة دورية خارجية، وجرّب الاستعادة فعلاً قبل حذف Aiven.
++- صورة Docker ما زالت على PHP 8.2؛ يلزم الانتقال إلى 8.3 والتحقق منه قبل انتهاء تحديثات 8.2 الأمنية في 31 ديسمبر 2026. سياسة كلمة المرور الحالية تقبل 8 أحرف على الأقل و72 بايتًا كحد أقصى. استخدام `float` في الحسابات المالية وفحص تفرّد المستخدم في `RBACHandler` متابعتان معلّقتان.
++- ملف GitHub Actions يشغّل PHPUnit مع MySQL 8 واختبارات الواجهة وبناء Vite وتدقيق Composer وnpm. نتيجة آخر تشغيل على GitHub لم تكن متاحة (فشل فوري بلا سجلات)، فلا يُعتبر CI مؤكدًا.
+ 
+ قبل تشغيل migrations على قاعدة قائمة، اختبر استعادة نسخة احتياطية قابلة للاستعادة على staging. بعض migrations غير قابلة للعكس وتتطلب مرجع نسخة حقيقية:
+ 
+diff --git a/api/v1/src/Utils/Environment.php b/api/v1/src/Utils/Environment.php
+new file mode 100644
+index 0000000..04bb520
+--- /dev/null
++++ b/api/v1/src/Utils/Environment.php
+@@ -0,0 +1,35 @@
++<?php
++
++declare(strict_types=1);
++
++namespace App\Utils;
++
++/**
++ * Environment helpers for platform deployments.
++ *
++ * Production php.ini files commonly set variables_order to "GPCS" (no "E"), which leaves $_ENV empty
++ * even though the platform (Railway, Render, Docker) injected real process environment variables.
++ * The application reads configuration from $_ENV, so those variables must be copied in explicitly;
++ * otherwise startup validation reports every secret as missing.
++ */
++final class Environment
++{
++    /**
++     * Copy process environment variables into $_ENV without overriding values that are already set.
++     *
++     * @param array<string,string>|null $source defaults to getenv()
++     */
++    public static function hydrateFromProcess(?array $source = null): void
++    {
++        $variables = $source ?? getenv();
++        if (!is_array($variables)) {
++            return;
++        }
++
++        foreach ($variables as $name => $value) {
++            if (is_string($name) && is_string($value) && !array_key_exists($name, $_ENV)) {
++                $_ENV[$name] = $value;
++            }
++        }
++    }
++}
+diff --git a/config/middleware.php b/config/middleware.php
+index 330521e..9608896 100644
+--- a/config/middleware.php
++++ b/config/middleware.php
+@@ -53,7 +53,7 @@ return function (App $app, Container $container): void {
+     $app->add(new HttpsEnforcementMiddleware(
+         $httpsEnabled,
+         true,
+-        ['/health', '/status', '/metrics']
++        ['/health', '/check', '/status', '/metrics']
+     ));
+ 
+     $rateLimitingConfig = $securityConfig['rate_limiting'] ?? [];
+diff --git a/docker/apache-ports.conf b/docker/apache-ports.conf
+new file mode 100644
+index 0000000..e0c8b08
+--- /dev/null
++++ b/docker/apache-ports.conf
+@@ -0,0 +1,2 @@
++# Listen on the platform-provided port (set by docker/entrypoint.sh from $PORT, default 80).
++Listen ${APACHE_LISTEN_PORT}
+diff --git a/docker/apache-vhost.conf b/docker/apache-vhost.conf
+new file mode 100644
+index 0000000..46ce880
+--- /dev/null
++++ b/docker/apache-vhost.conf
+@@ -0,0 +1,32 @@
++<VirtualHost *:${APACHE_LISTEN_PORT}>
++    ServerName localhost
++    DocumentRoot /var/www/html/public
++    DirectorySlash Off
++
++    <Directory /var/www/html/public>
++        Options -Indexes
++        AllowOverride All
++        Require all granted
++        DirectorySlash Off
++    </Directory>
++
++    # Uploaded assets (logos) are static files only. Never execute anything from this tree, even if
++    # a script were to be written here, and neutralise active content such as SVG/HTML.
++    <Directory /var/www/html/public/uploads>
++        AllowOverride None
++        Options -Indexes -ExecCGI
++        <IfModule mod_php.c>
++            php_admin_flag engine off
++        </IfModule>
++        <IfModule mod_php8.c>
++            php_admin_flag engine off
++        </IfModule>
++        <FilesMatch "(?i)\.(php[0-9]?|phtml|pht|phar|shtml|cgi|pl|py)$">
++            Require all denied
++        </FilesMatch>
++        <IfModule mod_headers.c>
++            Header set X-Content-Type-Options "nosniff"
++            Header set Content-Security-Policy "default-src 'none'; img-src 'self'; sandbox"
++        </IfModule>
++    </Directory>
++</VirtualHost>
+diff --git a/docker/entrypoint.sh b/docker/entrypoint.sh
+new file mode 100755
+index 0000000..18ad1c9
+--- /dev/null
++++ b/docker/entrypoint.sh
+@@ -0,0 +1,42 @@
++#!/bin/sh
++# Container entrypoint: binds Apache to the platform-provided $PORT and prepares persistent storage.
++set -eu
++
++# Railway (and most PaaS) inject PORT and route traffic/healthchecks to it. Default to 80 elsewhere.
++PORT_VALUE="${PORT:-80}"
++case "$PORT_VALUE" in
++  ''|*[!0-9]*)
++    echo "[entrypoint] Invalid PORT value '$PORT_VALUE'" >&2
++    exit 1
++    ;;
++esac
++export APACHE_LISTEN_PORT="$PORT_VALUE"
++
++APP_DIR="/var/www/html"
++UPLOAD_PUBLIC="$APP_DIR/public/uploads"
++mkdir -p "$UPLOAD_PUBLIC/logos" "$APP_DIR/storage/uploads" "$APP_DIR/logs"
++
++# Optional persistent volume (Railway: attach a Volume and set PERSIST_DIR to its mount path, e.g. /data).
++# Private warranty attachments go to $PERSIST_DIR/uploads (outside the web root); public logos are
++# linked from $PERSIST_DIR/logos. Without a volume, uploaded files are lost on every redeploy.
++PERSIST="${PERSIST_DIR:-}"
++if [ -n "$PERSIST" ]; then
++  if [ -d "$PERSIST" ] && [ -w "$PERSIST" ]; then
++    mkdir -p "$PERSIST/uploads" "$PERSIST/logos"
++    chown -R www-data:www-data "$PERSIST/uploads" "$PERSIST/logos"
++    chmod 750 "$PERSIST/uploads"
++    rm -rf "$UPLOAD_PUBLIC/logos"
++    ln -sfn "$PERSIST/logos" "$UPLOAD_PUBLIC/logos"
++    export UPLOADS_DIR="${UPLOADS_DIR:-$PERSIST/uploads}"
++    echo "[entrypoint] Persistent storage enabled at $PERSIST"
++  else
++    echo "[entrypoint] WARNING: PERSIST_DIR='$PERSIST' is not a writable directory; uploads are ephemeral." >&2
++  fi
++else
++  echo "[entrypoint] NOTE: PERSIST_DIR is not set; uploaded files will not survive a redeploy." >&2
++fi
++
++chown -R www-data:www-data "$APP_DIR/storage" "$APP_DIR/logs" "$UPLOAD_PUBLIC" 2>/dev/null || true
++chmod 750 "$APP_DIR/storage/uploads" 2>/dev/null || true
++
++exec "$@"
+diff --git a/docs/RAILWAY_DEPLOYMENT.md b/docs/RAILWAY_DEPLOYMENT.md
+new file mode 100644
+index 0000000..4156321
+--- /dev/null
++++ b/docs/RAILWAY_DEPLOYMENT.md
+@@ -0,0 +1,91 @@
++# نشر SmartSys على Railway (API + MySQL) مع Cloudflare Pages
++
++يشرح هذا الدليل نقل الـ Backend وقاعدة البيانات إلى مشروع Railway واحد، مع بقاء الواجهة على Cloudflare Pages.
++المتغيرات الكاملة في [`.env.production.example`](../.env.production.example)، وإعداد البناء في [`railway.toml`](../railway.toml).
++
++## 1) البنية
++
++| المكوّن | الخدمة | ملاحظات |
++|---|---|---|
++| الواجهة | Cloudflare Pages | تمرّر `/api/*` إلى الـ API عبر `functions/api/[[path]].js` (نفس الأصل، فلا CORS ولا مشكلة كوكي) |
++| الـ API | خدمة Railway من `Dockerfile` | Apache + PHP 8.2، يسمع تلقائياً على `$PORT` الذي يحقنه Railway |
++| قاعدة البيانات | خدمة MySQL على Railway | اتصال عبر الشبكة الخاصة، بلا TLS وبلا Public Access بعد الاستيراد |
++| الملفات المرفوعة | Railway Volume على خدمة الـ API | مسار التركيب `/data` ومتغير `PERSIST_DIR=/data` |
++
++## 2) ما الذي تغيّر في الكود لدعم Railway
++
++- **البورت:** `docker/entrypoint.sh` يقرأ `PORT` ويجعل Apache يسمع عليه (الافتراضي 80). لا تضبط `PORT` يدوياً.
++- **الـ Healthcheck:** `railway.toml` يستخدم `/check` (حيّة التطبيق، بدون قاعدة بيانات، ومستثناة من تحويل HTTPS). راقب `/health` (جاهزية قاعدة البيانات) بأداة Uptime منفصلة.
++- **الثقة في الـ Proxy:** `HttpsEnforcementMiddleware` و`RequestHelper` يدعمان نطاقات CIDR (IPv4 وIPv6) في `TRUSTED_PROXY_IPS`، لأن عناوين Proxy الخاصة بـ Railway ليست ثابتة.
++- **عنوان الـ IP الحقيقي:** `CLIENT_IP_HEADER=X-Real-IP` (يستبدله Edge Railway)، أو `PROXY_SHARED_SECRET` لتمرير IP الزائر من دالة Cloudflare بتوقيع سر مشترك. لا تُقبل أي Headers أخرى.
++- **المرفقات:** تُخزَّن خارج `public/` بامتداد يُشتق من محتوى الملف (صور وPDF فقط)، وتُقدَّم برابط موقّع قصير العمر. مجلد `public/uploads` لا يُنفَّذ فيه أي سكربت.
++
++## 3) الإنشاء على Railway
++
++1. أنشئ مشروعاً جديداً، وأضف **MySQL** (اختر إصدار **8.4** ليطابق Aiven، والاختبارات تغطي MySQL 8.x فقط).
++2. أضف خدمة من مستودع GitHub (`smart-sys`): سيكتشف Railway الـ `Dockerfile` و`railway.toml` تلقائياً.
++3. اجعل الخدمتين في **نفس المنطقة** (الأقرب لمصر: أوروبا).
++4. على خدمة الـ API: أضف **Volume** مركّباً على `/data`.
++5. ضع المتغيرات من `.env.production.example` (استخدم مراجع المتغيرات لقاعدة البيانات). **احتفظ بنفس** `JWT_SECRET` و`JWT_REFRESH_SECRET` و`TWO_FA_ENCRYPTION_KEY` و`ENCRYPTION_KEY` عند نقل البيانات.
++6. فعّل **Public Networking** للـ API (دومين `*.up.railway.app` أو دومين مخصص). لا تفعّل Public Access لـ MySQL إلا مؤقتاً للاستيراد.
++
++## 4) متغيرات Cloudflare Pages
++
++| المتغير | القيمة |
++|---|---|
++| `BACKEND_URL` | رابط الـ API على Railway (بدون `/api`) |
++| `VITE_API_BASE_URL` | `/api/v1` |
++| `PROXY_SHARED_SECRET` | نفس قيمة المتغير على Railway (سر عشوائي طويل) |
++
++بعد أي تغيير أعد نشر الـ Pages (متغيرات الدوال تسري على النشرات الجديدة).
++
++## 5) نقل البيانات من Aiven (MySQL 8.4)
++
++1. على Aiven: `SELECT VERSION(), @@time_zone, @@system_time_zone, @@sql_mode;` وقارنها بـ Railway (يجب أن يكون المنطقة الزمنية UTC على الاثنين، والكود لا يضبطها).
++2. **أوقف الكتابة:** أوقف الـ API القديم (أو اجعله Maintenance).
++3. من جهاز مسموح له في Aiven:
++   ```bash
++   mysqldump --single-transaction --routines --triggers --events \
++     --set-gtid-purged=OFF --no-tablespaces --column-statistics=0 \
++     --default-character-set=utf8mb4 \
++     --ssl-mode=VERIFY_CA --ssl-ca=certs/aiven-project-ca.pem \
++     -h <AIVEN_HOST> -P <AIVEN_PORT> -u avnadmin -p defaultdb > smartsys.sql
++   ```
++   لو ظهرت `DEFINER=` في الملف احذفها بـ `sed`. المايجريشنز لا تحتوي Views أو Triggers.
++4. فعّل Public Access لـ MySQL على Railway مؤقتاً، واستورد: `mysql -h <HOST> -P <PORT> -u root -p railway < smartsys.sql`، ثم **أغلقه**.
++5. تحقق: عدد صفوف كل جدول، وعدد صفوف جدول `migrations`، وإجماليات المبيعات والقيود (مدين = دائن)، والتحقق من أن `sales_items.profit` يُحسب. **لا تشغّل Migrations** على القاعدة المستوردة.
++
++## 6) التحويل (Cutover) والرجوع
++
++1. انشر الـ API على Railway، واختبره بالرابط المباشر: `GET /check` يعيد 200، و`GET /health` يعيد 200، وتسجيل دخول ببيانات وهمية يعيد 401.
++2. غيّر `BACKEND_URL` في Cloudflare وأعد نشر الـ Pages، ثم اختبر: دخول حقيقي، Reload (الجلسة تبقى)، بيع، مرتجع، رفع مرفق ضمان وعرضه.
++3. احتفظ بـ Render/Aiven أسبوعاً كخطة رجوع (للقراءة فقط). أي كتابة بعد التحويل تُفقد عند الرجوع، فخذ Dump أخيراً من Railway قبل الحذف.
++4. **لا تحذف Aiven قبل نجاح اختبار استعادة** نسخة Railway.
++
++## 7) بعد النقل
++
++- **النسخ الاحتياطي:** فعّل Backups على Volume قاعدة MySQL، وPoint-in-Time Recovery إن توفرت في خطتك، وأضف Dump أسبوعياً لمكان خارجي، وجرّب الاستعادة فعلاً على خدمة مؤقتة.
++- **الـ Cron:** لا يوجد جدولة تلقائية. الـ Endpoint `POST /api/v1/admin/subscriptions/cron` بالـ Header `X-Cron-Token` يغيّر حالات الاشتراكات ويرسل بريداً حقيقياً؛ اختبره على بيانات معزولة قبل الجدولة (Railway Cron أو GitHub Actions أو cron-job.org).
++- **الأداء:** اضبط `MaxRequestWorkers` في Apache حسب ذاكرة الخطة إن لزم، وراقب الاستهلاك.
++- **PHP:** الصورة ما زالت على PHP 8.2 (ينتهي دعمه الأمني 31 ديسمبر 2026). الانتقال إلى 8.3 خطوة منفصلة بعد استقرار Railway.
++
++## 8) استكشاف فشل الـ Healthcheck
++
++| العَرَض | السبب المحتمل | الحل |
++|---|---|---|
++| انتهاء مهلة الـ Healthcheck بلا استجابة | الحاوية لا تسمع على `$PORT` (صور قديمة ببورت 80 ثابت) | تأكد من استخدام الـ `Dockerfile` الحالي وأن `PORT` غير مضبوط يدوياً بقيمة خاطئة |
++| 301/302 على `/check` | `/check` ليس مستثنى من HTTPS (نسخة قديمة) | تأكد أن `HttpsEnforcementMiddleware` الحالي منشور |
++| 500 على كل المسارات (حتى `/check`) | فحص الأسرار عند الإقلاع فشل (JWT مفقود/ضعيف/متطابق، أو مفتاح 2FA غير صالح) | افتح Deploy Logs وابحث عن `SECURITY CONFIGURATION ERROR`. الكود يقرأ متغيرات المنصة حتى لو `variables_order` في php.ini لا يتضمن `E` |
++| `/check` يعمل و`/health` 503 | متغيرات قاعدة البيانات غير مضبوطة أو الخدمة غير مربوطة | تحقق من مراجع `${{MySQL.*}}` وأن `DB_SSL_MODE` فارغ |
++| 301 على تسجيل الدخول من الواجهة | `TRUSTED_PROXY_IPS` لا يغطي عنوان Proxy | استخدم `100.0.0.0/8,fc00::/7,::1,127.0.0.1` وتأكد من `TRUST_PROXY=true` |
++
++## 9) ملاحظات أمنية خاصة بالنقل
++
++- **ثغرة رفع الملفات اتصلحت في هذا الإصدار:** كان الامتداد يؤخذ من العميل وتُحفظ الملفات داخل `public/`. افحص السجلات القديمة بحثاً عن أي ملف مشبوه:
++  ```sql
++  SELECT id, tenant_id, filename FROM warranty_attachments
++  WHERE filename REGEXP '\\.(php|phtml|phar|pht|php[0-9])$';
++  ```
++  لو رجّع أي صف، اعتبر الخادم القديم مخترقاً ودوّر كل الأسرار (DB وJWT وSMTP وSentry ومفاتيح التشفير) بعد النقل.
++- لا تفتح MySQL للعامة بعد الاستيراد، وأبقِ الـ API مُتاحاً عبر Edge Railway فقط (قيمة `TRUSTED_PROXY_IPS` تفترض ذلك).
++- دوّر الأسرار إن ظهرت في أي محادثة أو لقطة شاشة.
+diff --git a/docs/README.md b/docs/README.md
+index 84a626d..7caa726 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -27,3 +27,4 @@
+ 2. قراءة [PROJECT_ARCHITECTURE.md](./PROJECT_ARCHITECTURE.md)
+ 3. مراجعة [database/README.md](../database/README.md)
+ 4. التشغيل المحلي باستخدام تعليمات [README.md](../README.md)
++- [نشر Railway (API + MySQL + Cloudflare Pages)](RAILWAY_DEPLOYMENT.md)
+diff --git a/public/index.php b/public/index.php
+index 68b3656..2f10c7d 100644
+--- a/public/index.php
++++ b/public/index.php
+@@ -14,8 +14,12 @@ declare(strict_types=1);
+ require_once __DIR__ . '/../vendor/autoload.php';
+ 
+ use Dotenv\Dotenv;
++use App\Utils\Environment;
+ use App\Utils\ApiResponseEnvelope;
+ 
++// Platform variables must reach $_ENV even when php.ini variables_order omits "E".
++Environment::hydrateFromProcess();
++
+ $dotenv = Dotenv::createImmutable(__DIR__ . '/../');
+ $dotenv->safeLoad(); // safeLoad doesn't throw if .env is missing (production uses system env vars)
+ 
+diff --git a/railway.toml b/railway.toml
+new file mode 100644
+index 0000000..18daae9
+--- /dev/null
++++ b/railway.toml
+@@ -0,0 +1,12 @@
++# Railway config-as-code for the SmartSys API (MySQL runs as a separate Railway service).
++[build]
++builder = "DOCKERFILE"
++dockerfilePath = "Dockerfile"
++
++[deploy]
++# /check is a database-independent liveness probe that is exempt from the HTTPS redirect.
++# Monitor /health (database readiness) separately with an uptime checker.
++healthcheckPath = "/check"
++healthcheckTimeout = 120
++restartPolicyType = "ON_FAILURE"
++restartPolicyMaxRetries = 5
+diff --git a/tests/Unit/EnvironmentTest.php b/tests/Unit/EnvironmentTest.php
+new file mode 100644
+index 0000000..1f4e336
+--- /dev/null
++++ b/tests/Unit/EnvironmentTest.php
+@@ -0,0 +1,37 @@
++<?php
++
++declare(strict_types=1);
++
++use App\Utils\Environment;
++use PHPUnit\Framework\TestCase;
++
++final class EnvironmentTest extends TestCase
++{
++    protected function tearDown(): void
++    {
++        unset($_ENV['SMARTSYS_ENV_TEST_NEW'], $_ENV['SMARTSYS_ENV_TEST_KEEP']);
++    }
++
++    public function testProcessVariablesAreCopiedIntoEnvWhenMissing(): void
++    {
++        Environment::hydrateFromProcess(['SMARTSYS_ENV_TEST_NEW' => 'from-process']);
++
++        self::assertSame('from-process', $_ENV['SMARTSYS_ENV_TEST_NEW']);
++    }
++
++    public function testExistingEnvValuesAreNeverOverridden(): void
++    {
++        $_ENV['SMARTSYS_ENV_TEST_KEEP'] = 'from-dotenv';
++        Environment::hydrateFromProcess(['SMARTSYS_ENV_TEST_KEEP' => 'from-process']);
++
++        self::assertSame('from-dotenv', $_ENV['SMARTSYS_ENV_TEST_KEEP']);
++    }
++
++    public function testNonStringEntriesAreIgnored(): void
++    {
++        Environment::hydrateFromProcess([0 => 'numeric-key', 'SMARTSYS_ENV_TEST_NEW' => 'ok']);
++
++        self::assertArrayNotHasKey(0, $_ENV);
++        self::assertSame('ok', $_ENV['SMARTSYS_ENV_TEST_NEW']);
++    }
++}
+-- 
+2.43.0
+

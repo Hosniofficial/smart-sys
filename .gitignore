@@ -87,6 +87,8 @@ coverage/
 *.db
 /tests/Integration/Fixtures/smartsys-local-test.sql
 !/tests/Integration/Fixtures/mysql_schema.sql
+!/database/schema.sql
+!/database/demo_seed.sql
 /database/production/*manifest*.json
 
 # -------- ARCHIVES --------
