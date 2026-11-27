@@ -57,10 +57,10 @@ return [
                 'max_attempts' => (int)($_ENV['RATE_LIMIT_LOGIN_ATTEMPTS'] ?? 10),
                 'window' => (int)($_ENV['RATE_LIMIT_LOGIN_WINDOW'] ?? 600)
             ],
-            // Register: 5 attempts per 30 minutes per IP
+            // Register: 20 attempts per 30 minutes per IP
             [
                 'path' => '/auth/register',
-                'max_attempts' => 5,
+                'max_attempts' => 20,
                 'window' => 1800
             ],
             // Refresh: 30 requests per 5 minutes per IP
