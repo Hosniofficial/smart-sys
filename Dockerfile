@@ -20,8 +20,11 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip sodium curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Enable Apache modules
-RUN a2enmod rewrite headers dir
+# mod_php requires prefork; ensure no event/worker MPM from the base image is loaded alongside it.
+RUN for module in mpm_event mpm_worker; do \
+      if [ -e "/etc/apache2/mods-enabled/${module}.load" ]; then a2dismod "$module"; fi; \
+    done \
+    && a2enmod mpm_prefork rewrite headers dir
 
 # Suppress ServerName warning and disable directory slash redirects
 RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
