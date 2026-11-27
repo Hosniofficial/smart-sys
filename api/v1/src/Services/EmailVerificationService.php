@@ -448,6 +448,18 @@ class EmailVerificationService
                 : "") .
             "</div>";
 
+        $fromEmail = self::cleanEnvValue((string) ($_ENV['SMTP_FROM'] ?? $_ENV['SMTP_USER'] ?? ''));
+        $fromName  = self::cleanEnvValue((string) ($_ENV['SMTP_FROM_NAME'] ?? 'SmartSys'));
+
+        // Primary: Resend HTTP API (works on cloud hosts that block SMTP ports).
+        $resendKey = self::cleanEnvValue((string) ($_ENV['RESEND_API_KEY'] ?? ''));
+        if ($resendKey !== '') {
+            $this->sendViaResend($resendKey, $fromEmail, $fromName, $email, $subject, $bodyHtml, $purpose);
+            $this->logger->info('Email sent via Resend', ['email' => $email, 'purpose' => $purpose]);
+            return;
+        }
+
+        // Fallback: SMTP through PHPMailer.
         $mail = new PHPMailer(true);
         try {
             $mail->isSMTP();
@@ -465,8 +477,6 @@ class EmailVerificationService
 
             $mail->CharSet  = 'UTF-8';
             $mail->Encoding = 'base64';
-            $fromEmail = self::cleanEnvValue((string) ($_ENV['SMTP_FROM'] ?? $_ENV['SMTP_USER'] ?? ''));
-            $fromName  = self::cleanEnvValue((string) ($_ENV['SMTP_FROM_NAME'] ?? 'SmartSys'));
             $mail->setFrom($fromEmail, $fromName);
             $mail->addAddress($email);
             $mail->isHTML(true);
@@ -474,13 +484,13 @@ class EmailVerificationService
             $mail->Body    = $bodyHtml;
             $mail->send();
 
-            $this->logger->info('Email sent', [
+            $this->logger->info('Email sent via SMTP', [
                 'email'   => $email,
                 'purpose' => $purpose,
                 'user_id' => $user['id'] ?? null,
             ]);
         } catch (MailException $e) {
-            $this->logger->error('Email sending failed', [
+            $this->logger->error('SMTP sending failed', [
                 'email'      => $email,
                 'purpose'    => $purpose,
                 'error'      => $e->getMessage(),
@@ -490,6 +500,58 @@ class EmailVerificationService
                 'smtp_pass_len' => strlen((string) ($_ENV['SMTP_PASS'] ?? '')),
             ]);
             throw new Exception('Failed to send email: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Send an email via the Resend HTTP API.
+     * No extra composer package required — uses cURL directly.
+     *
+     * @throws Exception on HTTP or API error
+     */
+    private function sendViaResend(
+        string $apiKey,
+        string $fromEmail,
+        string $fromName,
+        string $to,
+        string $subject,
+        string $htmlBody,
+        string $purpose
+    ): void {
+        $from = $fromName !== '' ? "{$fromName} <{$fromEmail}>" : $fromEmail;
+
+        $payload = json_encode([
+            'from'    => $from,
+            'to'      => [$to],
+            'subject' => $subject,
+            'html'    => $htmlBody,
+        ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+        $ch = curl_init('https://api.resend.com/emails');
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $payload,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_HTTPHEADER     => [
+                'Authorization: Bearer ' . $apiKey,
+                'Content-Type: application/json',
+            ],
+        ]);
+
+        $body     = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr !== '') {
+            throw new Exception('Resend cURL error: ' . $curlErr);
+        }
+
+        if ($httpCode < 200 || $httpCode >= 300) {
+            $decoded = is_string($body) ? (json_decode($body, true) ?? []) : [];
+            $apiMsg  = (string) ($decoded['message'] ?? $decoded['name'] ?? $body ?? '');
+            throw new Exception("Resend API error {$httpCode}: {$apiMsg}");
         }
     }
 }
