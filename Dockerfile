@@ -15,8 +15,9 @@ RUN apt-get update && apt-get install -y \
     unzip \
     libzip-dev \
     libsodium-dev \
+    libcurl4-openssl-dev \
     default-mysql-client \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip sodium \
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip sodium curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Enable Apache modules

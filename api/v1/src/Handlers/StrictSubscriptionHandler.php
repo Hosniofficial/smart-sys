@@ -21,7 +21,7 @@ use App\Utils\RequestHelper;
  * workflow. PDO and BaseHandler provide persistence and request context; RequestHelper resolves
  * client IPs, EmailVerificationService sends verification mail, and
  * SettingsHandler stores tenant defaults. POST /register is registered in
- * app/routes/auth.php and wrapped by StrictSubscriptionMiddleware.
+ * app/routes/auth.php.
  */
 class StrictSubscriptionHandler extends BaseHandler
 {
@@ -193,6 +193,12 @@ class StrictSubscriptionHandler extends BaseHandler
                 ),
                 'email_verification_required' => $this->config['require_email_verification']
             ], 201);
+        } catch (\InvalidArgumentException $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+
+            return $this->errorResponse($response, $e->getMessage(), 400);
         } catch (Exception $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
@@ -225,9 +231,11 @@ class StrictSubscriptionHandler extends BaseHandler
                 $this->logger->error('Failed to record subscription attempt', ['error' => $recordError->getMessage()]);
             }
 
-            // Expose real error message to help diagnose production issues.
-            // TODO: revert to generic message once stable.
-            return $this->errorResponse($response, $e->getMessage(), 500);
+            return $this->errorResponse(
+                $response,
+                'فشل إنشاء الاشتراك التجريبي. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.',
+                500
+            );
         }
     }
 
@@ -250,16 +258,16 @@ class StrictSubscriptionHandler extends BaseHandler
 
         foreach ($required as $field) {
             if (!isset($data[$field]) || trim((string) $data[$field]) === '') {
-                throw new Exception("Field '{$field}' is required");
+                throw new \InvalidArgumentException("Field '{$field}' is required");
             }
         }
 
         if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
-            throw new Exception('Invalid email format');
+            throw new \InvalidArgumentException('Invalid email format');
         }
 
         if (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', (string) $data['username'])) {
-            throw new Exception('Username must be 3-20 characters, alphanumeric and underscore only');
+            throw new \InvalidArgumentException('Username must be 3-20 characters, alphanumeric and underscore only');
         }
 
         return [
@@ -283,6 +291,12 @@ class StrictSubscriptionHandler extends BaseHandler
             if (preg_match($pattern, $data['email'])) {
                 return ['valid' => false, 'message' => 'Suspicious email pattern detected'];
             }
+        }
+
+        $stmt = $this->db->prepare("SELECT id FROM users WHERE username = ? LIMIT 1");
+        $stmt->execute([$data['username']]);
+        if ($stmt->fetch(PDO::FETCH_ASSOC)) {
+            return ['valid' => false, 'message' => 'Username already registered'];
         }
 
         $stmt = $this->db->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");

@@ -53,6 +53,7 @@
           placeholder="اكتب اسمك بالكامل"
           autocomplete="name"
           icon="fas fa-id-card"
+          required
         />
 
         <AuthField
@@ -141,7 +142,7 @@ const resendLoading = ref(false)
 const form = ref({ fullName: '', username: '', email: '', password: '' })
 
 function validate() {
-  if (!form.value.username.trim() || !form.value.email.trim() || !form.value.password) {
+  if (!form.value.fullName.trim() || !form.value.username.trim() || !form.value.email.trim() || !form.value.password) {
     error.value = 'يرجى تعبئة الحقول المطلوبة'
     return false
   }
