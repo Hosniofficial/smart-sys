@@ -395,6 +395,22 @@ class EmailVerificationService
         )->execute([$userId, $purpose]);
     }
 
+    /** Strip surrounding quotes that some platforms inject into env values. */
+    private static function cleanEnvValue(string $value): string
+    {
+        $value = trim($value);
+        if (
+            strlen($value) >= 2
+            && (
+                ($value[0] === '"' && $value[-1] === '"')
+                || ($value[0] === "'" && $value[-1] === "'")
+            )
+        ) {
+            return substr($value, 1, -1);
+        }
+        return $value;
+    }
+
     private function sendEmail(string $email, string $token, string $purpose, ?array $user): void
     {
         $maxExecTime = (int) ($_ENV['EMAIL_MAX_EXECUTION_TIME'] ?? 60);
@@ -435,24 +451,23 @@ class EmailVerificationService
         $mail = new PHPMailer(true);
         try {
             $mail->isSMTP();
-            $mail->Host     = (string) ($_ENV['SMTP_HOST'] ?? '');
+            $mail->Host     = self::cleanEnvValue((string) ($_ENV['SMTP_HOST'] ?? ''));
             $mail->SMTPAuth = true;
-            $mail->Username = (string) ($_ENV['SMTP_USER'] ?? '');
-            $mail->Password = (string) ($_ENV['SMTP_PASS'] ?? '');
+            $mail->Username = self::cleanEnvValue((string) ($_ENV['SMTP_USER'] ?? ''));
+            $mail->Password = self::cleanEnvValue((string) ($_ENV['SMTP_PASS'] ?? ''));
             $mail->Port     = (int) ($_ENV['SMTP_PORT'] ?? 587);
             $mail->Timeout  = (int) ($_ENV['SMTP_TIMEOUT'] ?? 15);
 
-            $secure = strtolower((string) ($_ENV['SMTP_SECURE'] ?? 'tls'));
+            $secure = strtolower(self::cleanEnvValue((string) ($_ENV['SMTP_SECURE'] ?? 'tls')));
             $mail->SMTPSecure = ($secure === 'ssl')
                 ? PHPMailer::ENCRYPTION_SMTPS
                 : PHPMailer::ENCRYPTION_STARTTLS;
 
             $mail->CharSet  = 'UTF-8';
             $mail->Encoding = 'base64';
-            $mail->setFrom(
-                (string) ($_ENV['SMTP_FROM'] ?? $_ENV['SMTP_USER'] ?? ''),
-                (string) ($_ENV['SMTP_FROM_NAME'] ?? 'SmartSys')
-            );
+            $fromEmail = self::cleanEnvValue((string) ($_ENV['SMTP_FROM'] ?? $_ENV['SMTP_USER'] ?? ''));
+            $fromName  = self::cleanEnvValue((string) ($_ENV['SMTP_FROM_NAME'] ?? 'SmartSys'));
+            $mail->setFrom($fromEmail, $fromName);
             $mail->addAddress($email);
             $mail->isHTML(true);
             $mail->Subject = $subject;
@@ -466,11 +481,15 @@ class EmailVerificationService
             ]);
         } catch (MailException $e) {
             $this->logger->error('Email sending failed', [
-                'email'   => $email,
-                'purpose' => $purpose,
-                'error'   => $e->getMessage(),
+                'email'      => $email,
+                'purpose'    => $purpose,
+                'error'      => $e->getMessage(),
+                'smtp_host'  => $_ENV['SMTP_HOST'] ?? 'NOT_SET',
+                'smtp_user'  => $_ENV['SMTP_USER'] ?? 'NOT_SET',
+                'smtp_port'  => $_ENV['SMTP_PORT'] ?? 'NOT_SET',
+                'smtp_pass_len' => strlen((string) ($_ENV['SMTP_PASS'] ?? '')),
             ]);
-            throw new Exception('Failed to send email');
+            throw new Exception('Failed to send email: ' . $e->getMessage());
         }
     }
 }
