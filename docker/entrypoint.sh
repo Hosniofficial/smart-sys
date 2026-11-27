@@ -2,6 +2,30 @@
 # Container entrypoint: binds Apache to the platform-provided $PORT and prepares persistent storage.
 set -eu
 
+# mod_php only supports prefork; enforce and verify this in the running container.
+for module_file in /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf; do
+  [ -e "$module_file" ] || continue
+  case "$module_file" in
+    /etc/apache2/mods-enabled/mpm_prefork.load|/etc/apache2/mods-enabled/mpm_prefork.conf)
+      ;;
+    *)
+      rm -f "$module_file"
+      ;;
+  esac
+done
+a2enmod mpm_prefork >/dev/null
+
+if ! APACHE_MODULES="$(apache2ctl -M 2>&1)"; then
+  printf '[entrypoint] Apache module inspection failed:\n%s\n' "$APACHE_MODULES" >&2
+  exit 1
+fi
+
+MPM_COUNT="$(printf '%s\n' "$APACHE_MODULES" | grep -Ec 'mpm_(event|worker|prefork)_module' || true)"
+if [ "$MPM_COUNT" -ne 1 ] || ! printf '%s\n' "$APACHE_MODULES" | grep -q 'mpm_prefork_module'; then
+  printf '[entrypoint] Expected exactly one Apache MPM (mpm_prefork_module). Loaded modules:\n%s\n' "$APACHE_MODULES" >&2
+  exit 1
+fi
+
 # Railway (and most PaaS) inject PORT and route traffic/healthchecks to it. Default to 80 elsewhere.
 PORT_VALUE="${PORT:-80}"
 case "$PORT_VALUE" in

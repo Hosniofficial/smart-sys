@@ -73,6 +73,7 @@
 
 | العَرَض | السبب المحتمل | الحل |
 |---|---|---|
+| `AH00534: More than one MPM loaded` عند بدء الحاوية | Apache حمّل أكثر من MPM رغم نجاح إعداد البناء | يفرض `docker/entrypoint.sh` استخدام `mpm_prefork` ويفحص الوحدات قبل التشغيل. إذا ظهر الخطأ قبل تطبيق هذا الإصلاح، أعد النشر بمسح build cache وتأكد أن **Custom Start Command** فارغ أو `apache2-foreground` |
 | انتهاء مهلة الـ Healthcheck بلا استجابة | الحاوية لا تسمع على `$PORT` (صور قديمة ببورت 80 ثابت) | تأكد من استخدام الـ `Dockerfile` الحالي وأن `PORT` غير مضبوط يدوياً بقيمة خاطئة |
 | 301/302 على `/check` | `/check` ليس مستثنى من HTTPS (نسخة قديمة) | تأكد أن `HttpsEnforcementMiddleware` الحالي منشور |
 | 500 على كل المسارات (حتى `/check`) | فحص الأسرار عند الإقلاع فشل (JWT مفقود/ضعيف/متطابق، أو مفتاح 2FA غير صالح) | افتح Deploy Logs وابحث عن `SECURITY CONFIGURATION ERROR`. الكود يقرأ متغيرات المنصة حتى لو `variables_order` في php.ini لا يتضمن `E` |
