@@ -29,6 +29,7 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
         $this->redirectToHttps = $redirectToHttps;
         $this->excludePaths = $excludePaths ?: [
             '/health',
+            '/check',
             '/status',
             '/metrics',
         ];
@@ -76,31 +77,27 @@ class HttpsEnforcementMiddleware implements MiddlewareInterface
     }
 
     /**
-     * Check if request is HTTPS based on X-Forwarded-Proto from trusted proxy
-     * 
-     * Only trusts the header if TRUST_PROXY is enabled and request comes from
-     * a trusted proxy IP (e.g., Render's internal proxy at ::1)
+     * Check if the request is HTTPS based on X-Forwarded-Proto from a trusted proxy.
+     *
+     * The header is honoured only when TRUST_PROXY is enabled and the direct peer matches
+     * TRUSTED_PROXY_IPS (exact IPs or CIDR ranges, IPv4 or IPv6), for example ::1 on Render or
+     * a private range such as 100.0.0.0/8 on Railway.
      */
     private function isForwardedHttps(Request $request): bool
     {
-        // Check if proxy trust is enabled
-        if (!filter_var($_ENV['TRUST_PROXY'] ?? 'false', FILTER_VALIDATE_BOOLEAN)) {
+        if (!RequestHelper::isProxyTrustEnabled()) {
             return false;
         }
 
-        // Verify request comes from trusted proxy
-        $remote = (string)($request->getServerParams()['REMOTE_ADDR'] ?? '');
-        $trustedProxies = array_values(array_filter(array_map(
-            'trim',
-            explode(',', (string)($_ENV['TRUSTED_PROXY_IPS'] ?? ''))
-        )));
-
-        if (empty($trustedProxies) || !RequestHelper::matchesTrustedProxy($remote, $trustedProxies)) {
+        $remote = (string) ($request->getServerParams()['REMOTE_ADDR'] ?? '');
+        if ($remote === '' || !RequestHelper::isTrustedProxy($remote)) {
             return false;
         }
 
-        // Check X-Forwarded-Proto header
-        return strtolower(trim($request->getHeaderLine('X-Forwarded-Proto'))) === 'https';
+        // With several hops the nearest proxy appends last; use that value.
+        $hops = array_map('trim', explode(',', $request->getHeaderLine('X-Forwarded-Proto')));
+
+        return strtolower((string) end($hops)) === 'https';
     }
 
     /** Exempt only the exact health endpoint paths from HTTPS redirects. */

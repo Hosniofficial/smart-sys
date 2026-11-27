@@ -18,10 +18,18 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  *   - RequestLoggingMiddleware
  *   - SecurityLogger
  *
- * X-Forwarded-For is used only when the direct peer matches an explicitly
- * trusted proxy, then walked from the nearest hop outwards. Other client-IP
- * headers are ignored because the deployment proxy's overwrite behavior is
- * not guaranteed.
+ * Client IP precedence (first match wins):
+ *   1. X-Forwarded-Client-IP when X-Proxy-Auth equals PROXY_SHARED_SECRET. This
+ *      is how the Cloudflare Pages proxy function forwards the real visitor IP;
+ *      the shared secret proves the header was set by that function.
+ *   2. The header named by CLIENT_IP_HEADER (for example X-Real-IP on Railway),
+ *      only when the direct peer matches TRUSTED_PROXY_IPS. Opt-in because it
+ *      is safe only on platforms whose edge overwrites that header.
+ *   3. X-Forwarded-For, only when the direct peer matches TRUSTED_PROXY_IPS,
+ *      walked from the nearest hop outwards.
+ *   4. The direct peer address.
+ * Headers that are not explicitly configured are ignored so a caller cannot
+ * spoof its address.
  */
 final class RequestHelper
 {
@@ -42,9 +50,13 @@ final class RequestHelper
     ): string
     {
         $server = $request->getServerParams();
+        $clientIpHeader = self::configuredClientIpHeader();
         return self::resolveClientIp(
             [
                 'X_FORWARDED_FOR' => $request->getHeaderLine('X-Forwarded-For'),
+                'CLIENT_IP_HEADER' => $clientIpHeader !== null ? $request->getHeaderLine($clientIpHeader) : '',
+                'PROXY_AUTH' => $request->getHeaderLine('X-Proxy-Auth'),
+                'FORWARDED_CLIENT_IP' => $request->getHeaderLine('X-Forwarded-Client-IP'),
             ],
             (string) ($server['REMOTE_ADDR'] ?? ''),
             $trustProxy,
@@ -66,6 +78,9 @@ final class RequestHelper
         return self::resolveClientIp(
             [
                 'X_FORWARDED_FOR' => (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''),
+                'CLIENT_IP_HEADER' => self::serverHeader(self::configuredClientIpHeader()),
+                'PROXY_AUTH' => (string) ($_SERVER['HTTP_X_PROXY_AUTH'] ?? ''),
+                'FORWARDED_CLIENT_IP' => (string) ($_SERVER['HTTP_X_FORWARDED_CLIENT_IP'] ?? ''),
             ],
             (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
             $trustProxy,
@@ -85,9 +100,32 @@ final class RequestHelper
             $remoteAddress = '127.0.0.1';
         }
 
+        // 1. Visitor IP forwarded by our own proxy function, authenticated by a shared secret.
+        $sharedSecret = (string) ($_ENV['PROXY_SHARED_SECRET'] ?? getenv('PROXY_SHARED_SECRET') ?: '');
+        $proxyAuth = trim((string) ($headers['PROXY_AUTH'] ?? ''));
+        $forwardedClient = trim((string) ($headers['FORWARDED_CLIENT_IP'] ?? ''));
+        if (
+            $sharedSecret !== ''
+            && $proxyAuth !== ''
+            && hash_equals($sharedSecret, $proxyAuth)
+            && filter_var($forwardedClient, FILTER_VALIDATE_IP) !== false
+        ) {
+            return $forwardedClient;
+        }
+
         [$proxyTrustEnabled, $proxyAddresses] = self::proxySettings($trustProxy, $trustedProxies);
         if (!$proxyTrustEnabled || !$isValidRemote || !self::matchesTrustedProxy($remoteAddress, $proxyAddresses)) {
             return $remoteAddress;
+        }
+
+        // 2. Explicitly configured platform header (for example X-Real-IP on Railway).
+        $platformIp = trim((string) ($headers['CLIENT_IP_HEADER'] ?? ''));
+        if (
+            $platformIp !== ''
+            && filter_var($platformIp, FILTER_VALIDATE_IP) !== false
+            && !self::matchesTrustedProxy($platformIp, $proxyAddresses)
+        ) {
+            return $platformIp;
         }
 
         $forwardedFor = trim((string) ($headers['X_FORWARDED_FOR'] ?? ''));
@@ -125,8 +163,57 @@ final class RequestHelper
         return [$trustProxy, array_values($trustedProxies)];
     }
 
+    /** Name of the platform client-IP header from CLIENT_IP_HEADER, or null when not configured/invalid. */
+    private static function configuredClientIpHeader(): ?string
+    {
+        $name = trim((string) ($_ENV['CLIENT_IP_HEADER'] ?? getenv('CLIENT_IP_HEADER') ?: ''));
+
+        return preg_match('/^[A-Za-z0-9-]{1,64}$/', $name) === 1 ? $name : null;
+    }
+
+    private static function serverHeader(?string $headerName): string
+    {
+        if ($headerName === null) {
+            return '';
+        }
+
+        return (string) ($_SERVER['HTTP_' . strtoupper(str_replace('-', '_', $headerName))] ?? '');
+    }
+
+    /** True when proxy header trust is switched on via TRUST_PROXY. */
+    public static function isProxyTrustEnabled(): bool
+    {
+        return self::proxySettings(null, null)[0];
+    }
+
+    /**
+     * True when $address matches TRUSTED_PROXY_IPS (exact IPs or CIDR ranges, IPv4 or IPv6).
+     *
+     * @param array<int,string>|null $trustedProxies defaults to the TRUSTED_PROXY_IPS setting
+     */
+    public static function isTrustedProxy(string $address, ?array $trustedProxies = null): bool
+    {
+        $proxies = $trustedProxies ?? self::proxySettings(null, null)[1];
+
+        return self::matchesTrustedProxy(trim($address), array_values($proxies));
+    }
+
+    /** Convert IPv4-mapped IPv6 addresses (::ffff:a.b.c.d) to plain IPv4 so CIDR matching works. */
+    private static function normalizeAddress(string $address): string
+    {
+        if (stripos($address, '::ffff:') === 0) {
+            $v4 = substr($address, 7);
+            if (filter_var($v4, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+                return $v4;
+            }
+        }
+
+        return $address;
+    }
+
     public static function matchesTrustedProxy(string $address, array $trustedProxies): bool
     {
+        $address = self::normalizeAddress($address);
         foreach ($trustedProxies as $proxy) {
             $proxy = trim((string) $proxy);
             if ($proxy === '') {
