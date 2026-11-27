@@ -438,13 +438,13 @@
                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">المرفقات والوثائق</h4>
                    <div class="grid grid-cols-2 gap-3">
                       <div v-for="a in details.attachments" :key="a.id" class="group bg-white p-3 rounded-lg border border-slate-200 shadow-sm transition-all hover:shadow-lg">
-                        <div v-if="isImage(a.filename)" @click="openLightbox(fileUrl(a.filename))" class="aspect-video rounded-md bg-slate-100 overflow-hidden cursor-zoom-in mb-3 border border-slate-50">
-                           <img :src="fileUrl(a.filename)" class="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                        <div v-if="isImage(a.filename)" @click="openLightbox(fileUrl(a))" class="aspect-video rounded-md bg-slate-100 overflow-hidden cursor-zoom-in mb-3 border border-slate-50">
+                           <img :src="fileUrl(a)" class="w-full h-full object-cover transition-transform group-hover:scale-105" />
                         </div>
                         <div v-else class="aspect-video rounded-md bg-slate-100 flex items-center justify-center text-slate-300 mb-3"><i class="fas fa-file-pdf text-3xl"></i></div>
                         <p class="text-[9px] font-bold text-slate-600 truncate uppercase">{{ a.originalName }}</p>
                         <div class="flex justify-between mt-3 pt-2 border-t border-slate-50">
-                           <a :href="fileUrl(a.filename)" target="_blank" class="text-[9px] font-bold text-blue-600 uppercase hover:underline">تحميل</a>
+                           <a :href="fileUrl(a)" target="_blank" class="text-[9px] font-bold text-blue-600 uppercase hover:underline">تحميل</a>
                            <button @click="removeAttachment(a.id)" class="text-[9px] font-bold text-rose-500 uppercase hover:underline">حذف</button>
                         </div>
                       </div>
@@ -918,7 +918,8 @@ const timelineEvents = computed(() => {
 const lightboxOpen = ref(false);
 const lightboxSrc = ref('');
 
-function fileUrl(fileName) { return `/api/public/uploads/${fileName}`; }
+// Private attachments are served through short-lived signed links issued by the API.
+function fileUrl(attachment) { return attachment?.url || ''; }
 function isImage(fileName) {
   const ext = String(fileName || '').toLowerCase().split('.').pop();
   return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(ext);

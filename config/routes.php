@@ -27,6 +27,13 @@ return function (App $app, Container $container): void {
         SubscriptionCronHandler::class . ':processCron'
     );
 
+    // Signed, short-lived attachment links authenticate themselves (HMAC over id+tenant+expiry),
+    // so plain <img>/<a> tags can load private files without exposing the upload directory.
+    $app->get(
+        '/api/v1/warranty/attachments/{attachmentId:[0-9]+}/file',
+        \App\Handlers\WarrantyHandler::class . ':downloadAttachment'
+    );
+
     // 2. Auth routes (بدون أي middleware)
     $app->group('/api/v1/auth', function (RouteCollectorProxy $group) use ($container, $authRoutes) {
         $authRoutes($group, $container);

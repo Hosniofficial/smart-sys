@@ -8,6 +8,8 @@ use PDO;
 use Exception;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use App\Security\AttachmentUrlSigner;
+use App\Security\SecureUpload;
 use App\Services\MonologHandler;
 use App\Utils\PaginationHelper;
 
@@ -347,6 +349,10 @@ class WarrantyHandler extends BaseHandler
             );
             $stmt->execute([$id, $tenantId]);
             $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            foreach ($attachments as &$attachment) {
+                $attachment['url'] = $this->signedAttachmentPath((int) $attachment['id'], $tenantId);
+            }
+            unset($attachment);
 
             $stmt = $this->db->prepare(
                 "SELECT n.id, n.note, n.is_internal, n.created_by, n.created_at, u.name as created_by_name
@@ -560,7 +566,12 @@ class WarrantyHandler extends BaseHandler
         }
     }
 
-    /** Store an uploaded file locally and persist its request metadata. */
+    /**
+     * Store a validated upload outside the web root and persist its request metadata.
+     *
+     * The file type is decided from the file content (see SecureUpload); the client-supplied
+     * name and extension are never used for the stored file name.
+     */
     public function uploadAttachment(Request $request, Response $response, array $args): Response
     {
         try {
@@ -572,6 +583,13 @@ class WarrantyHandler extends BaseHandler
             $userId = $this->extractUserId($request) ?? 0;
             $id = (int) $args['id'];
 
+            // The request must belong to the caller's tenant before anything is attached to it.
+            $stmt = $this->db->prepare('SELECT id FROM warranty_requests WHERE id = ? AND tenant_id = ? LIMIT 1');
+            $stmt->execute([$id, $tenantId]);
+            if (!$stmt->fetchColumn()) {
+                return $this->errorResponse($response, 'لم يتم العثور على طلب الضمان', 404);
+            }
+
             $files = $request->getUploadedFiles();
             if (!isset($files['file'])) {
                 return $this->errorResponse($response, 'حقل الملف (file) مطلوب', 400);
@@ -582,24 +600,23 @@ class WarrantyHandler extends BaseHandler
                 return $this->errorResponse($response, 'خطأ أثناء رفع الملف', 400);
             }
 
-            $uploadsDir = realpath(__DIR__ . '/../../../public/uploads');
-            if ($uploadsDir === false) {
-                $uploadsDir = __DIR__ . '/../../../public/uploads';
+            try {
+                $info = SecureUpload::inspect($file);
+            } catch (\InvalidArgumentException $e) {
+                return $this->errorResponse($response, $e->getMessage(), 422);
             }
 
-            if (!is_dir($uploadsDir)) {
-                @mkdir($uploadsDir, 0777, true);
+            $uploadsDir = $this->attachmentsDir();
+            if (!is_dir($uploadsDir) && !@mkdir($uploadsDir, 0750, true) && !is_dir($uploadsDir)) {
+                throw new \RuntimeException('Attachments directory is not writable.');
             }
 
-            $original = $file->getClientFilename();
-            $ext = pathinfo($original, PATHINFO_EXTENSION);
-            $safeName = 'wr_' . $id . '_' . time() . '_' . bin2hex(random_bytes(4)) . ($ext ? ('.' . $ext) : '');
-            $target = rtrim($uploadsDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $safeName;
+            $original = $this->cleanOriginalName((string) $file->getClientFilename(), $info['extension']);
+            $safeName = sprintf('wr_%d_%d_%s.%s', $id, time(), bin2hex(random_bytes(8)), $info['extension']);
+            $target = $uploadsDir . DIRECTORY_SEPARATOR . $safeName;
 
             $file->moveTo($target);
-
-            $mime = $file->getClientMediaType();
-            $size = $file->getSize();
+            @chmod($target, 0640);
 
             $stmt = $this->db->prepare(
                 "INSERT INTO warranty_attachments (
@@ -607,13 +624,14 @@ class WarrantyHandler extends BaseHandler
                     original_name, mime_type, size, uploaded_by, uploaded_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())"
             );
-            $stmt->execute([$tenantId, $id, $safeName, $original, $mime, $size, $userId]);
+            $stmt->execute([$tenantId, $id, $safeName, $original, $info['mime'], $info['size'], $userId]);
 
             $attId = (int) $this->db->lastInsertId();
 
             return $this->successResponse($response, [
                 'id' => $attId,
-                'filename' => $safeName
+                'filename' => $safeName,
+                'url' => $this->signedAttachmentPath($attId, $tenantId),
             ], 200);
         } catch (Exception $e) {
             $this->logger->error('Warranty attachment upload failed', ['message' => $e->getMessage()]);
@@ -621,7 +639,70 @@ class WarrantyHandler extends BaseHandler
         }
     }
 
-    /** Remove a tenant attachment record and its local file when present. */
+    /**
+     * Serve a private attachment through a short-lived signed link (no JWT, so <img>/<a> work).
+     *
+     * The signature binds attachment id, tenant, and expiry; the stored file is read from the
+     * private attachments directory and sent with headers that prevent it from being rendered
+     * as an active document.
+     */
+    public function downloadAttachment(Request $request, Response $response, array $args): Response
+    {
+        $notFound = fn () => $this->errorResponse($response, 'الملف غير موجود أو انتهت صلاحية الرابط', 404);
+
+        try {
+            $query = $request->getQueryParams();
+            $attId = (int) ($args['attachmentId'] ?? 0);
+            $tenantId = (int) ($query['tenant'] ?? 0);
+            $exp = (int) ($query['exp'] ?? 0);
+            $sig = (string) ($query['sig'] ?? '');
+
+            if ($attId <= 0 || $tenantId <= 0 || $exp <= 0 || $sig === '') {
+                return $notFound();
+            }
+
+            if (!AttachmentUrlSigner::fromEnvironment()->verify($attId, $tenantId, $exp, $sig)) {
+                return $notFound();
+            }
+
+            $stmt = $this->db->prepare(
+                'SELECT filename, original_name FROM warranty_attachments WHERE id = ? AND tenant_id = ? LIMIT 1'
+            );
+            $stmt->execute([$attId, $tenantId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                return $notFound();
+            }
+
+            $path = $this->resolveStoredFile((string) $row['filename']);
+            $extension = strtolower(pathinfo((string) $row['filename'], PATHINFO_EXTENSION));
+            $contentType = SecureUpload::contentTypeForExtension($extension);
+            if ($path === null || $contentType === null) {
+                return $notFound();
+            }
+
+            $handle = fopen($path, 'rb');
+            if ($handle === false) {
+                return $notFound();
+            }
+
+            $name = $this->cleanOriginalName((string) ($row['original_name'] ?? ''), $extension);
+
+            return $response
+                ->withBody(new \Slim\Psr7\Stream($handle))
+                ->withHeader('Content-Type', $contentType)
+                ->withHeader('Content-Length', (string) filesize($path))
+                ->withHeader('Content-Disposition', "inline; filename*=UTF-8''" . rawurlencode($name))
+                ->withHeader('X-Content-Type-Options', 'nosniff')
+                ->withHeader('Content-Security-Policy', "default-src 'none'; sandbox")
+                ->withHeader('Cache-Control', 'private, max-age=300');
+        } catch (\Throwable $e) {
+            $this->logger->error('Warranty attachment download failed', ['message' => $e->getMessage()]);
+            return $notFound();
+        }
+    }
+
+    /** Remove a tenant attachment record and its stored file when present. */
     public function deleteAttachment(Request $request, Response $response, array $args): Response
     {
         try {
@@ -640,13 +721,8 @@ class WarrantyHandler extends BaseHandler
                 return $this->errorResponse($response, 'لم يتم العثور على السجل', 403);
             }
 
-            $uploadsDir = realpath(__DIR__ . '/../../../public/uploads');
-            if ($uploadsDir === false) {
-                $uploadsDir = __DIR__ . '/../../../public/uploads';
-            }
-
-            $target = rtrim($uploadsDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $row['filename'];
-            if (is_file($target)) {
+            $target = $this->resolveStoredFile((string) $row['filename']);
+            if ($target !== null) {
                 @unlink($target);
             }
 
@@ -658,6 +734,70 @@ class WarrantyHandler extends BaseHandler
             $this->logger->error('Warranty attachment deletion failed', ['message' => $e->getMessage()]);
             return $this->errorResponse($response, 'فشل في حذف المرفق', 500);
         }
+    }
+
+    /** Private directory (outside the web root) that holds warranty attachments. */
+    private function attachmentsDir(): string
+    {
+        $base = (string) ($_ENV['UPLOADS_DIR'] ?? getenv('UPLOADS_DIR') ?: '');
+        if ($base === '') {
+            $base = __DIR__ . '/../../../storage/uploads';
+        }
+
+        return rtrim($base, '/\\') . DIRECTORY_SEPARATOR . 'warranty';
+    }
+
+    /**
+     * Locate a stored attachment safely. Checks the private directory first, then the legacy
+     * public/uploads location (files written before the move); only allowlisted extensions and
+     * plain file names are ever resolved.
+     */
+    private function resolveStoredFile(string $filename): ?string
+    {
+        if (!SecureUpload::isSafeStoredName($filename)) {
+            return null;
+        }
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        if (SecureUpload::contentTypeForExtension($extension) === null) {
+            return null;
+        }
+
+        $candidates = [
+            $this->attachmentsDir() . DIRECTORY_SEPARATOR . $filename,
+            __DIR__ . '/../../../public/uploads/' . $filename,
+        ];
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private function signedAttachmentPath(int $attachmentId, int $tenantId): ?string
+    {
+        try {
+            return AttachmentUrlSigner::fromEnvironment()->path($attachmentId, $tenantId);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Keep a human-friendly display name without path parts or control characters. The extension is
+     * always the one derived from the file content, so a name like "report.php" is shown as "report.png".
+     */
+    private function cleanOriginalName(string $name, string $extension): string
+    {
+        $name = trim(basename(str_replace('\\', '/', $name)));
+        $name = preg_replace('/[\x00-\x1F\x7F"<>|:*?]+/u', '', $name) ?? '';
+        $base = trim(pathinfo($name, PATHINFO_FILENAME));
+        if ($base === '' || mb_strlen($base) > 140) {
+            return 'attachment.' . $extension;
+        }
+
+        return $base . '.' . $extension;
     }
 
     private function parseOptionalPositiveId($value, string $label): ?int

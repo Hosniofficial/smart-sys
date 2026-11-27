@@ -392,7 +392,7 @@ class AdminSettingsHandler extends BaseHandler
                 $safeOriginal = preg_replace('/[^a-zA-Z0-9_\.-]/', '_', $clientFilename);
                 $extension = strtolower(pathinfo($safeOriginal, PATHINFO_EXTENSION));
 
-                $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'svg'];
+                $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp'];
                 if (!in_array($extension, $allowedExtensions, true)) {
                     return $this->errorResponse($response, 'نوع ملف الشعار غير مدعوم', 400);
                 }

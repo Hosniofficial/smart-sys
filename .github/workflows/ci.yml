@@ -39,6 +39,7 @@ jobs:
       RUN_MYSQL_SUPPLIER_PAYMENT_TESTS: '1'
       RUN_MYSQL_REPAIR_TESTS: '1'
       RUN_MYSQL_SALES_TESTS: '1'
+      RUN_MYSQL_WARRANTY_TESTS: '1'
     steps:
       - uses: actions/checkout@v4
       - name: Set up PHP

@@ -104,3 +104,6 @@ composer.json.bak
 
 # -------- TEST SUITE VENDOR --------
 test_suite/psr-http-message/
+
+# Private uploads (outside the web root)
+/storage/uploads/
