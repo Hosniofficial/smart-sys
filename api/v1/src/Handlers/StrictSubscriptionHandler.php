@@ -169,14 +169,18 @@ class StrictSubscriptionHandler extends BaseHandler
                 }
             }
 
-            $this->recordSubscriptionAttempt($ip, $data['email'], 'trial_signup', 'success', [
-                'tenant_id' => $tenantId,
-                'user_id' => $userId,
-                'fraud_score' => $fraudScore,
-                'device_fingerprint' => $fingerprint !== '' ? $fingerprint : null
-            ]);
-
             $this->db->commit();
+
+            try {
+                $this->recordSubscriptionAttempt($ip, $data['email'], 'trial_signup', 'success', [
+                    'tenant_id' => $tenantId,
+                    'user_id' => $userId,
+                    'fraud_score' => $fraudScore,
+                    'device_fingerprint' => $fingerprint !== '' ? $fingerprint : null
+                ]);
+            } catch (\Throwable $recordError) {
+                $this->logger->error('Failed to record successful subscription attempt', ['error' => $recordError->getMessage()]);
+            }
 
             return $this->successResponse($response, [
                 'message' => 'Trial created successfully',
@@ -203,23 +207,25 @@ class StrictSubscriptionHandler extends BaseHandler
                 'fingerprint' => $fingerprint
             ]);
 
-            $this->logSecurityEvent('trial_creation_failed', 'high', 'Trial creation failed', [
-                'ip' => $ip,
-                'email' => $data['email'] ?? 'unknown',
-                'error' => $e->getMessage()
-            ]);
+            try {
+                $this->logSecurityEvent('trial_creation_failed', 'high', 'Trial creation failed', [
+                    'ip' => $ip,
+                    'email' => $data['email'] ?? 'unknown',
+                    'error' => $e->getMessage()
+                ]);
+            } catch (\Throwable $logError) {
+                $this->logger->error('Failed to log security event', ['error' => $logError->getMessage()]);
+            }
 
-            $this->recordSubscriptionAttempt($ip, $data['email'] ?? 'unknown', 'trial_signup', 'failed', [
-                'error' => $e->getMessage(),
-                'device_fingerprint' => $fingerprint !== '' ? $fingerprint : null,
-                'fraud_score' => $fraudScore
-            ]);
-
-            // Log technical details internally, return generic message to user
-            $this->logger->error('Trial creation failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            try {
+                $this->recordSubscriptionAttempt($ip, $data['email'] ?? 'unknown', 'trial_signup', 'failed', [
+                    'error' => $e->getMessage(),
+                    'device_fingerprint' => $fingerprint !== '' ? $fingerprint : null,
+                    'fraud_score' => $fraudScore
+                ]);
+            } catch (\Throwable $recordError) {
+                $this->logger->error('Failed to record subscription attempt', ['error' => $recordError->getMessage()]);
+            }
 
             return $this->errorResponse($response, 'فشل إنشاء الاشتراك التجريبي. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.', 500);
         }
