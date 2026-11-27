@@ -61,6 +61,33 @@ class StrictSubscriptionMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
+        // Allow basic registration without strict checks
+        if ($path === '/api/v1/auth/register' || strpos($path, '/auth/register') !== false) {
+            // Only apply basic rate limiting for registration
+            try {
+                $this->checkBasicRateLimiting($ipAddress, 'registration');
+            } catch (Exception $e) {
+                $this->securityLogger?->logSecurityEvent(
+                    'registration_rate_limit',
+                    'medium',
+                    'Registration rate limit exceeded',
+                    ['ip' => $ipAddress, 'error' => $e->getMessage()]
+                );
+                
+                $response = new SlimResponse();
+                $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
+                    'status' => 'error',
+                    'message' => 'Too many registration attempts. Please try again later.',
+                    'code' => 'RATE_LIMIT_EXCEEDED'
+                ], 429), JSON_UNESCAPED_UNICODE));
+                
+                return $response
+                    ->withHeader('Content-Type', 'application/json')
+                    ->withStatus(429);
+            }
+            return $handler->handle($request);
+        }
+
         $isDevelopment = ($_ENV['APP_ENV'] ?? getenv('APP_ENV') ?? 'production') === 'development';
         if ($isDevelopment) {
             return $handler->handle($request);
@@ -608,6 +635,29 @@ class StrictSubscriptionMiddleware implements MiddlewareInterface
         }
 
         return false;
+    }
+
+    /**
+     * Basic rate limiting for registration (lighter check)
+     */
+    private function checkBasicRateLimiting(string $ipAddress, string $type): void
+    {
+        $maxAttempts = 5; // 5 registrations per hour
+        $windowMinutes = 60;
+        
+        $stmt = $this->db->prepare("
+            SELECT COUNT(*) as count 
+            FROM subscription_attempts 
+            WHERE ip_address = ? 
+            AND attempt_type = ?
+            AND attempted_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)
+        ");
+        $stmt->execute([$ipAddress, $type, $windowMinutes]);
+        $count = $stmt->fetchColumn();
+
+        if ($count >= $maxAttempts) {
+            throw new Exception("Rate limit exceeded for {$type}");
+        }
     }
 
     /**
