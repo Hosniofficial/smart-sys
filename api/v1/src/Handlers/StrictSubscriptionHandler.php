@@ -203,8 +203,6 @@ class StrictSubscriptionHandler extends BaseHandler
                 'trace' => $e->getTraceAsString(),
                 'ip' => $ip,
                 'email' => $data['email'] ?? 'unknown',
-                'user_agent' => $userAgent,
-                'fingerprint' => $fingerprint
             ]);
 
             try {
@@ -227,7 +225,9 @@ class StrictSubscriptionHandler extends BaseHandler
                 $this->logger->error('Failed to record subscription attempt', ['error' => $recordError->getMessage()]);
             }
 
-            return $this->errorResponse($response, 'فشل إنشاء الاشتراك التجريبي. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.', 500);
+            // Expose real error message to help diagnose production issues.
+            // TODO: revert to generic message once stable.
+            return $this->errorResponse($response, $e->getMessage(), 500);
         }
     }
 
