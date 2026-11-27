@@ -4,7 +4,6 @@ use App\Handlers\AuthHandler;
 use App\Handlers\EmailVerificationHandler;
 use App\Handlers\StrictSubscriptionHandler;
 use App\Middleware\RequestRateLimiter;
-use App\Middleware\StrictSubscriptionMiddleware;
 use DI\Container;
 use Slim\Routing\RouteCollectorProxy;
 
@@ -17,7 +16,7 @@ return function (RouteCollectorProxy $group, Container $container): void {
         ->add(RequestRateLimiter::class);
 
     $group->post('/register', StrictSubscriptionHandler::class . ':createSecureTrial')
-        ->add(StrictSubscriptionMiddleware::class);
+        ->add(RequestRateLimiter::class);
 
     $group->post('/verify-email', EmailVerificationHandler::class . ':verifyEmail');
     $group->post('/verify-email/resend', EmailVerificationHandler::class . ':resendVerificationEmail');
