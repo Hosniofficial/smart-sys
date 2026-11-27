@@ -150,13 +150,23 @@ class StrictSubscriptionHandler extends BaseHandler
             $this->initializeSecureAccounting($tenantId, $userId);
 
             if ($this->config['require_email_verification'] && $verificationToken) {
-                $this->sendVerificationEmail($data['email'], $userId, $verificationToken, $ip, $request);
+                try {
+                    $this->sendVerificationEmail($data['email'], $userId, $verificationToken, $ip, $request);
 
-                $this->logger->info('Verification email sent during trial signup', [
-                    'user_id' => $userId,
-                    'email' => $data['email'],
-                    'token_length' => strlen($verificationToken),
-                ]);
+                    $this->logger->info('Verification email sent during trial signup', [
+                        'user_id' => $userId,
+                        'email' => $data['email'],
+                        'token_length' => strlen($verificationToken),
+                    ]);
+                } catch (\Throwable $emailError) {
+                    // Email failure must not roll back a successfully created account.
+                    // The user can resend the verification link from the login page.
+                    $this->logger->error('Verification email failed after account creation', [
+                        'user_id' => $userId,
+                        'email'   => $data['email'],
+                        'error'   => $emailError->getMessage(),
+                    ]);
+                }
             }
 
             $this->recordSubscriptionAttempt($ip, $data['email'], 'trial_signup', 'success', [
@@ -223,6 +233,11 @@ class StrictSubscriptionHandler extends BaseHandler
             $data = [];
         }
 
+        // Accept both camelCase (frontend) and snake_case for full_name
+        if (!isset($data['full_name']) && isset($data['fullName'])) {
+            $data['full_name'] = $data['fullName'];
+        }
+
         $required = empty($requiredFields)
             ? ['username', 'email', 'password', 'full_name']
             : $requiredFields;
@@ -246,7 +261,7 @@ class StrictSubscriptionHandler extends BaseHandler
             'email' => strtolower(trim((string) $data['email'])),
             'password' => (string) $data['password'],
             'full_name' => trim((string) $data['full_name']),
-            'company_name' => trim((string) ($data['company_name'] ?? $data['full_name']))
+            'company_name' => trim((string) ($data['company_name'] ?? $data['companyName'] ?? $data['full_name']))
         ];
     }
 
