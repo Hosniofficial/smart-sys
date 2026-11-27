@@ -27,3 +27,4 @@
 2. قراءة [PROJECT_ARCHITECTURE.md](./PROJECT_ARCHITECTURE.md)
 3. مراجعة [database/README.md](../database/README.md)
 4. التشغيل المحلي باستخدام تعليمات [README.md](../README.md)
+- [نشر Railway (API + MySQL + Cloudflare Pages)](RAILWAY_DEPLOYMENT.md)

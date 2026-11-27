@@ -14,7 +14,11 @@ declare(strict_types=1);
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use Dotenv\Dotenv;
+use App\Utils\Environment;
 use App\Utils\ApiResponseEnvelope;
+
+// Platform variables must reach $_ENV even when php.ini variables_order omits "E".
+Environment::hydrateFromProcess();
 
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../');
 $dotenv->safeLoad(); // safeLoad doesn't throw if .env is missing (production uses system env vars)

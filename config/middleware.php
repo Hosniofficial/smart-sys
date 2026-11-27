@@ -53,7 +53,7 @@ return function (App $app, Container $container): void {
     $app->add(new HttpsEnforcementMiddleware(
         $httpsEnabled,
         true,
-        ['/health', '/status', '/metrics']
+        ['/health', '/check', '/status', '/metrics']
     ));
 
     $rateLimitingConfig = $securityConfig['rate_limiting'] ?? [];

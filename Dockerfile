@@ -68,25 +68,27 @@ RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
 # Allow .htaccess overrides and disable directory slash redirects
 RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
 
-# Write a clean VirtualHost that disables DirectorySlash globally
-RUN echo '<VirtualHost *:80>\n\
-    ServerName localhost\n\
-    DocumentRoot /var/www/html/public\n\
-    DirectorySlash Off\n\
-    <Directory /var/www/html/public>\n\
-        Options -Indexes\n\
-        AllowOverride All\n\
-        Require all granted\n\
-        DirectorySlash Off\n\
-    </Directory>\n\
-</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
+# Apache listens on the platform-provided $PORT (Railway injects it; defaults to 80 elsewhere).
+# The vhost and ports.conf read APACHE_LISTEN_PORT, which docker/entrypoint.sh sets from $PORT.
+ENV APACHE_LISTEN_PORT=80
+COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
+COPY docker/apache-ports.conf /etc/apache2/ports.conf
 
-# Expose port
+# Private (non-web) storage for uploaded attachments; the entrypoint can point it at a volume.
+RUN mkdir -p storage/uploads public/uploads/logos \
+    && chown -R www-data:www-data storage public/uploads \
+    && chmod 750 storage/uploads
+
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Expose port (informational; the real port is $PORT)
 EXPOSE 80
 
-# Health check uses the public readiness endpoint.
+# Liveness probe: no database dependency, so a database outage does not restart the container.
+# (/health is the readiness endpoint and checks the database.)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s \
-  CMD curl -f http://localhost/health || exit 1
+  CMD curl -fsS "http://127.0.0.1:${PORT:-80}/check" || exit 1
 
-# Start Apache
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["apache2-foreground"]
