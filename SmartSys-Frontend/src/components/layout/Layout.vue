@@ -29,7 +29,7 @@
 
         <div class="flex items-center gap-1 sm:gap-2 md:gap-3 shrink-0">
 
-          <div class="relative" ref="notificationsRef">
+          <div v-if="canLoadNotifications" class="relative" ref="notificationsRef">
             <button
               @click="toggleNotifications"
               class="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-50 rounded-md transition-all relative shrink-0"
@@ -334,6 +334,14 @@ const notificationsRef = ref(null)
 const profileRef = ref(null)
 
 const isUnread = (notification) => Number(notification.isRead) === 0
+const notificationTenantId = computed(() => {
+  const userTenantId = Number(authStore.user?.tenantId ?? authStore.user?.tenant_id)
+  if (userTenantId > 0) return userTenantId
+
+  const activeTenantId = Number(tenantContextStore.activeTenantId)
+  return authStore.isSuperAdmin && activeTenantId > 0 ? activeTenantId : 0
+})
+const canLoadNotifications = computed(() => notificationTenantId.value > 0)
 
 // Calculate dropdown right position so it aligns with button's right edge
 // and never clips off the left side of the viewport
@@ -429,6 +437,15 @@ async function logout() {
 }
 
 async function loadNotifications() {
+  const requestTenantId = notificationTenantId.value
+  if (requestTenantId <= 0) {
+    notifications.value = []
+    unreadCount.value = 0
+    previousUnreadCount.value = -1
+    showNotifications.value = false
+    return
+  }
+
   // Prevent multiple concurrent requests
   if (loadingNotifications.value) return
 
@@ -438,6 +455,8 @@ async function loadNotifications() {
       { page: 1, perPage: 10 },
       { skipLoader: true }
     )
+    if (notificationTenantId.value !== requestTenantId) return
+
     if (response.data.status === 'success') {
       const responseData = response.data.data || {}
       const apiNotifications = Array.isArray(responseData.notifications) ? responseData.notifications : []
@@ -453,36 +472,48 @@ async function loadNotifications() {
     }
   } catch (error) {
     // Only log timeout errors in development
-    if (import.meta.env.DEV && error.code !== 'ECONNABORTED') {
+    if (notificationTenantId.value === requestTenantId && import.meta.env.DEV && error.code !== 'ECONNABORTED') {
       logger.error('Error loading notifications', { message: error?.message })
     }
   } finally {
     loadingNotifications.value = false
+    if (notificationTenantId.value > 0 && notificationTenantId.value !== requestTenantId) {
+      void loadNotifications()
+    }
   }
 }
 
-async function markNotificationAsRead(notification) {
+async function markNotificationAsRead(notification, expectedTenantId = notificationTenantId.value) {
+  if (expectedTenantId <= 0 || notificationTenantId.value !== expectedTenantId) return
+  const requestTenantId = expectedTenantId
   try {
     if (notification.isRead) return
     const result = await notificationsService.markAsRead(notification.id)
+    if (notificationTenantId.value !== requestTenantId) return
+
     if (result.data?.status === 'success') {
       notification.isRead = 1
       unreadCount.value = notifications.value.filter(isUnread).length
     }
   } catch (error) {
-    logger.error('Error marking notification read', { message: error?.message })
+    if (notificationTenantId.value === requestTenantId) {
+      logger.error('Error marking notification read', { message: error?.message })
+    }
   }
 }
 
 async function markAllAsRead() {
+  const requestTenantId = notificationTenantId.value
   for (const note of notifications.value) {
+    if (notificationTenantId.value !== requestTenantId) return
     if (!note.isRead) {
-      await markNotificationAsRead(note)
+      await markNotificationAsRead(note, requestTenantId)
     }
   }
 }
 
 function toggleNotifications() {
+  if (!canLoadNotifications.value) return
   showNotifications.value = !showNotifications.value
   showProfileMenu.value = false
 }
@@ -515,7 +546,7 @@ onMounted(() => {
   document.addEventListener('keydown', handleEscKey)
 
   // Request browser notification permission once
-  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+  if (canLoadNotifications.value && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission()
   }
 
@@ -526,6 +557,14 @@ onMounted(() => {
     }, 60000)
     onUnmounted(() => clearInterval(notificationIntervalId))
   }
+})
+
+watch(notificationTenantId, (tenantId) => {
+  notifications.value = []
+  unreadCount.value = 0
+  previousUnreadCount.value = -1
+  showNotifications.value = false
+  if (tenantId > 0) void loadNotifications()
 })
 
 onUnmounted(() => {
