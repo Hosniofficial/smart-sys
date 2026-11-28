@@ -39,7 +39,9 @@
 
 بعد أي تغيير أعد نشر الـ Pages (متغيرات الدوال تسري على النشرات الجديدة).
 
-## 5) نقل البيانات من Aiven (MySQL 8.4)
+## 5) النقل التاريخي من Aiven (لم يعد المصدر مستخدماً)
+
+> قاعدة Aiven حُذفت؛ هذه الخطوات مرجعية فقط وليست جزءاً من تشغيل Railway الحالي. شهادة Aiven لم تعد مضمنة في المستودع. عند تكرار استيراد تاريخي من نسخة Aiven متاحة، استخدم شهادة CA التي يوفرها مزود قاعدة البيانات.
 
 1. على Aiven: `SELECT VERSION(), @@time_zone, @@system_time_zone, @@sql_mode;` وقارنها بـ Railway (يجب أن يكون المنطقة الزمنية UTC على الاثنين، والكود لا يضبطها).
 2. **أوقف الكتابة:** أوقف الـ API القديم (أو اجعله Maintenance).
@@ -48,7 +50,7 @@
    mysqldump --single-transaction --routines --triggers --events \
      --set-gtid-purged=OFF --no-tablespaces --column-statistics=0 \
      --default-character-set=utf8mb4 \
-     --ssl-mode=VERIFY_CA --ssl-ca=certs/aiven-project-ca.pem \
+     --ssl-mode=VERIFY_CA --ssl-ca=/path/to/aiven-ca.pem \
      -h <AIVEN_HOST> -P <AIVEN_PORT> -u avnadmin -p defaultdb > smartsys.sql
    ```
    لو ظهرت `DEFINER=` في الملف احذفها بـ `sed`. المايجريشنز لا تحتوي Views أو Triggers.
@@ -59,8 +61,7 @@
 
 1. انشر الـ API على Railway، واختبره بالرابط المباشر: `GET /check` يعيد 200، و`GET /health` يعيد 200، وتسجيل دخول ببيانات وهمية يعيد 401.
 2. غيّر `BACKEND_URL` في Cloudflare وأعد نشر الـ Pages، ثم اختبر: دخول حقيقي، Reload (الجلسة تبقى)، بيع، مرتجع، رفع مرفق ضمان وعرضه.
-3. احتفظ بـ Render/Aiven أسبوعاً كخطة رجوع (للقراءة فقط). أي كتابة بعد التحويل تُفقد عند الرجوع، فخذ Dump أخيراً من Railway قبل الحذف.
-4. **لا تحذف Aiven قبل نجاح اختبار استعادة** نسخة Railway.
+3. لا تعتمد على Aiven كخطة رجوع؛ المصدر السابق حُذف. تحقّق من نسخ Railway الاحتياطية واختبر استعادة فعلية قبل أي تغييرات على قاعدة الإنتاج.
 
 ## 7) بعد النقل
 

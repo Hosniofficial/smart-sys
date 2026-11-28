@@ -24,6 +24,10 @@ final class SupplierPaymentAllocationPolicyTest extends TestCase
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $db->sqliteCreateFunction('NOW', static fn (): string => date('Y-m-d H:i:s'));
         $db->exec("
+            CREATE TABLE tenants (
+                id INTEGER PRIMARY KEY,
+                status TEXT NOT NULL
+            );
             CREATE TABLE suppliers (
                 id INTEGER PRIMARY KEY,
                 tenant_id INTEGER NOT NULL,
@@ -256,6 +260,7 @@ final class SupplierPaymentAllocationPolicyTest extends TestCase
             );
         ");
         $db->exec("
+            INSERT INTO tenants (id, status) VALUES (2, 'active'), (3, 'active');
             INSERT INTO accounts (id, tenant_id, code, name, type, debit_balance, credit_balance)
                 VALUES (30, 2, '1010', 'Bank', 'asset', 1000, 0),
                        (31, 2, '1000', 'Cash', 'asset', 1000, 0),

@@ -9,7 +9,11 @@ test('global super-admin sees only platform navigation without an active tenant'
     tenantId: 0,
   });
 
-  assert.deepEqual(items.map(item => item.key), ['subscriptions']);
+  assert.deepEqual(items.map(item => item.key), ['platform-admin']);
+  assert.deepEqual(
+    items[0].items.map(item => item.path),
+    ['/admin/subscriptions', '/admin/plans', '/admin/tenants', '/admin/audit', '/admin/operations']
+  );
 });
 
 test('global super-admin can see tenant navigation after selecting a tenant', () => {
@@ -23,5 +27,5 @@ test('global super-admin can see tenant navigation after selecting a tenant', ()
 
   assert.ok(visibleSections.includes('sales'));
   assert.ok(visibleSections.includes('inventory'));
-  assert.ok(visibleSections.includes('subscriptions'));
+  assert.ok(visibleSections.includes('platform-admin'));
 });

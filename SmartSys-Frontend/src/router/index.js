@@ -303,6 +303,33 @@ const routes = [
     }
   },
   {
+    path: '/admin/tenants',
+    name: 'AdminTenants',
+    component: () => import('../views/superadmin/Tenants.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresSuperAdmin: true
+    }
+  },
+  {
+    path: '/admin/audit',
+    name: 'AdminPlatformAudit',
+    component: () => import('../views/superadmin/PlatformAudit.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresSuperAdmin: true
+    }
+  },
+  {
+    path: '/admin/operations',
+    name: 'AdminOperations',
+    component: () => import('../views/superadmin/Operations.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresSuperAdmin: true
+    }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('../views/profile/Profile.vue'),
@@ -556,7 +583,14 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
-  const platformRoutesWithoutTenant = ['/admin/subscriptions', '/admin/plans', '/profile'];
+  const platformRoutesWithoutTenant = [
+    '/admin/subscriptions',
+    '/admin/plans',
+    '/admin/tenants',
+    '/admin/audit',
+    '/admin/operations',
+    '/profile',
+  ];
   const hasTenantContext = authStore.hasTenant || Number(tenantContextStore.activeTenantId) > 0;
   if (
     authStore.isSuperAdmin &&

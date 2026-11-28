@@ -45,6 +45,22 @@ export const adminService = {
     return apiClient.delete(`/admin/plans/${code}`);
   },
 
+  listPlatformTenants(params) {
+    return apiClient.get('/admin/tenants', { params });
+  },
+
+  updatePlatformTenantStatus(id, payload) {
+    return apiClient.patch(`/admin/tenants/${id}/status`, payload);
+  },
+
+  listPlatformAuditLogs(params) {
+    return apiClient.get('/admin/platform-audit', { params });
+  },
+
+  getPlatformOperationsOverview() {
+    return apiClient.get('/admin/operations');
+  },
+
   listCustomersMissingAccounts() {
     return apiClient.get('/customers/missing-accounts');
   },

@@ -6,6 +6,7 @@ use App\Middleware\JwtAuthMiddleware;
 use App\Middleware\TenantMiddleware;
 use App\Middleware\SubscriptionMiddleware;
 use App\Middleware\SuperAdminMiddleware;
+use App\Middleware\EmailVerificationRequiredMiddleware;
 use App\Handlers\OwnerContributionHandler;
 use App\Handlers\SubscriptionCronHandler;
 use DI\Container;
@@ -46,7 +47,9 @@ return function (App $app, Container $container): void {
         
         $group->group('', function (RouteCollectorProxy $group) {
             $group->get('/subscription/me', \App\Handlers\SubscriptionHandler::class . ':getMySubscription');
-        })->add(JwtAuthMiddleware::class);
+        })
+            ->add(EmailVerificationRequiredMiddleware::class)
+            ->add(JwtAuthMiddleware::class);
 
     });
 
@@ -55,6 +58,7 @@ return function (App $app, Container $container): void {
         '/api/v1/admin/owner-contribution-tenants',
         OwnerContributionHandler::class . ':listAvailableTenants'
     )
+        ->add(EmailVerificationRequiredMiddleware::class)
         ->add(SuperAdminMiddleware::class)
         ->add(JwtAuthMiddleware::class);
 
@@ -112,6 +116,7 @@ return function (App $app, Container $container): void {
 
     })
     ->add(SubscriptionMiddleware::class)
+    ->add(EmailVerificationRequiredMiddleware::class)
     ->add(TenantMiddleware::class)
     ->add(JwtAuthMiddleware::class);
 

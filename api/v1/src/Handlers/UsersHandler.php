@@ -4,6 +4,7 @@ namespace App\Handlers;
 
 use App\Services\SecurityLogger;
 use App\Services\UserSessionService;
+use App\Services\AuthSessionService;
 use App\Security\PasswordPolicy;
 use PDO;
 use App\Services\MonologHandler;
@@ -171,7 +172,12 @@ class UsersHandler extends BaseHandler
 
             [$tenantCondition, $tenantParams] = $this->tenantCondition($tenantId);
             // Fetch only the fields needed for verification — never return this to the client
-            $stmt = $this->db->prepare("SELECT id, username, password, tenant_id FROM users WHERE id = ? AND {$tenantCondition} LIMIT 1");
+            $stmt = $this->db->prepare(
+                "SELECT id, username, password, tenant_id, branch_id, is_owner, token_version
+                 FROM users
+                 WHERE id = ? AND {$tenantCondition}
+                 LIMIT 1"
+            );
             $stmt->execute(array_merge([$currentUserId], $tenantParams));
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -198,11 +204,34 @@ class UsersHandler extends BaseHandler
                 return $this->errorResponse($response, $passwordError, 400);
             }
 
-            (new UserSessionService($this->db))->changePassword(
-                $currentUserId,
-                (int) $tenantId,
-                $newPassword
-            );
+            $authSession = new AuthSessionService($this->db);
+            $startedTransaction = !$this->db->inTransaction();
+            if ($startedTransaction) {
+                $this->db->beginTransaction();
+            }
+
+            try {
+                (new UserSessionService($this->db))->changePassword(
+                    $currentUserId,
+                    (int) $tenantId,
+                    $newPassword
+                );
+
+                $user['token_version'] = (int) $user['token_version'] + 1;
+                $identity = $authSession->resolveIdentity($user);
+                $accessToken = $authSession->generateAccessToken($identity);
+                $refreshToken = $authSession->generateRefreshToken($currentUserId);
+                $authSession->storeRefreshToken($currentUserId, $refreshToken);
+
+                if ($startedTransaction) {
+                    $this->db->commit();
+                }
+            } catch (\Throwable $e) {
+                if ($startedTransaction && $this->db->inTransaction()) {
+                    $this->db->rollBack();
+                }
+                throw $e;
+            }
 
             $this->securityLogger?->logSecurityEvent(
                 'user.password_change',
@@ -218,11 +247,13 @@ class UsersHandler extends BaseHandler
                 $tenantId
             );
 
-            return $this->successResponse($response, [
-                'status'  => 'success',
-                'message' => 'تم تغيير كلمة المرور وإغلاق الجلسات الأخرى. يرجى تسجيل الدخول مجددًا.',
-                'data'    => null
-            ], 200);
+            return $authSession->setRefreshTokenCookie(
+                $this->successResponse($response, [
+                    'message' => 'تم تغيير كلمة المرور وإغلاق الجلسات الأخرى مع الإبقاء على الجلسة الحالية.',
+                    'access_token' => $accessToken,
+                ], 200),
+                $refreshToken
+            );
         } catch (\Throwable $e) {
             $this->logger->error('فشل في تغيير كلمة المرور', ['error' => $e->getMessage()]);
             return $this->errorResponse($response, 'فشل في تغيير كلمة المرور', 500);

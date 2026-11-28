@@ -146,10 +146,13 @@ final class AuthSessionService
     /** Persist an issued refresh token for rotation and revocation checks. */
     public function storeRefreshToken(int $userId, string $token): void
     {
-        $stmt = $this->db->prepare("
-            INSERT INTO refresh_tokens (user_id, token, expires_at)
-            VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))
-        ");
+        $expiresAt = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite'
+            ? "datetime('now', '+' || ? || ' seconds')"
+            : 'DATE_ADD(NOW(), INTERVAL ? SECOND)';
+        $stmt = $this->db->prepare(
+            "INSERT INTO refresh_tokens (user_id, token, expires_at)
+             VALUES (?, ?, {$expiresAt})"
+        );
         $stmt->execute([$userId, $token, $this->refreshTokenExpiry]);
     }
 

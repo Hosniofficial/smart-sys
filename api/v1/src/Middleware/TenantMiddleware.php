@@ -58,9 +58,40 @@ class TenantMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
-        // إذا كان JwtAuthMiddleware قد أرفق tenant_id من التوكن، فلا نستخدم/نفرض X-Tenant-ID
+        // Validate JWT tenant scope so platform suspension takes effect without requiring X-Tenant-ID.
         $attrTenant = $request->getAttribute('tenant_id');
         if ($attrTenant) {
+            try {
+                $db = $this->container->get('db');
+                $stmt = $db->prepare('SELECT status FROM tenants WHERE id = ? LIMIT 1');
+                $stmt->execute([(int) $attrTenant]);
+                $tenantStatus = $stmt->fetchColumn();
+
+                if (!in_array($tenantStatus, ['active', 'trial'], true)) {
+                    $response = new \Slim\Psr7\Response();
+                    $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
+                        'status' => 'error',
+                        'message' => 'Tenant is inactive or unavailable'
+                    ], 403), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                    return $response
+                        ->withHeader('Content-Type', 'application/json')
+                        ->withStatus(403);
+                }
+            } catch (\Throwable $e) {
+                $this->logger->error('JWT tenant validation error', [
+                    'tenant_id' => (int) $attrTenant,
+                    'error' => $e->getMessage(),
+                ]);
+                $response = new \Slim\Psr7\Response();
+                $response->getBody()->write(json_encode(ApiResponseEnvelope::normalize([
+                    'status' => 'error',
+                    'message' => 'Tenant validation failed'
+                ], 500), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                return $response
+                    ->withHeader('Content-Type', 'application/json')
+                    ->withStatus(500);
+            }
+
             return $handler->handle($request);
         }
 

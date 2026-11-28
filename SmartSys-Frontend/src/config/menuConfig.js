@@ -256,13 +256,16 @@ export const menuConfig = [
   },
 
   {
-    name: 'الاشتراكات',
-    key: 'subscriptions',
-    icon: CreditCard,
+    name: 'إدارة المنصة',
+    key: 'platform-admin',
+    icon: Building2,
     access: 'superAdmin',
     items: [
       { name: 'الاشتراكات', path: '/admin/subscriptions', icon: CreditCard, access: 'superAdmin' },
       { name: 'الخطط', path: '/admin/plans', icon: Layers, access: 'superAdmin' },
+      { name: 'المستأجرون', path: '/admin/tenants', icon: Building2, access: 'superAdmin' },
+      { name: 'تدقيق المنصة', path: '/admin/audit', icon: ClipboardList, access: 'superAdmin' },
+      { name: 'صحة النظام والنسخ', path: '/admin/operations', icon: ShieldCheck, access: 'superAdmin' },
     ],
     relatedRoutes: []
   }
