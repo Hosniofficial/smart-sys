@@ -121,7 +121,6 @@ final class GlobalSuperAdminTenantContextTest extends TestCase
         self::assertSame(1, $handler->calls);
     }
 
-
     public function testGlobalSuperAdminCanReadOwnProfileWithoutTenant(): void
     {
         $db = new PDO('sqlite::memory:');

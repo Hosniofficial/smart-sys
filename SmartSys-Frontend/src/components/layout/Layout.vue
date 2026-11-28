@@ -653,6 +653,7 @@ onMounted(() => {
   document.addEventListener('click', handleDocumentClick)
   document.addEventListener('keydown', handleEscKey)
   window.addEventListener('platform-tenant-state-changed', refreshPlatformTenantOptions)
+
   if (isGlobalSuperAdmin.value) void loadPlatformTenants()
 
   // Request browser notification permission once

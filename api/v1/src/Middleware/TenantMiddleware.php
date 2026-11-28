@@ -58,7 +58,7 @@ class TenantMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
-        // Validate JWT tenant scope so platform suspension takes effect without requiring X-Tenant-ID.
+        // Validate JWT tenant scope too, so platform suspension takes effect immediately.
         $attrTenant = $request->getAttribute('tenant_id');
         if ($attrTenant) {
             try {
