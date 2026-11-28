@@ -47,7 +47,9 @@ return function (App $app, Container $container): void {
         
         $group->group('', function (RouteCollectorProxy $group) {
             $group->get('/subscription/me', \App\Handlers\SubscriptionHandler::class . ':getMySubscription');
-        })->add(JwtAuthMiddleware::class);
+        })
+            ->add(EmailVerificationRequiredMiddleware::class)
+            ->add(JwtAuthMiddleware::class);
 
     });
 
@@ -56,6 +58,7 @@ return function (App $app, Container $container): void {
         '/api/v1/admin/owner-contribution-tenants',
         OwnerContributionHandler::class . ':listAvailableTenants'
     )
+        ->add(EmailVerificationRequiredMiddleware::class)
         ->add(SuperAdminMiddleware::class)
         ->add(JwtAuthMiddleware::class);
 
@@ -112,8 +115,8 @@ return function (App $app, Container $container): void {
         (require __DIR__ . '/../app/routes/accounting-reports.php')($group, $container);
 
     })
-    ->add(EmailVerificationRequiredMiddleware::class)
     ->add(SubscriptionMiddleware::class)
+    ->add(EmailVerificationRequiredMiddleware::class)
     ->add(TenantMiddleware::class)
     ->add(JwtAuthMiddleware::class);
 

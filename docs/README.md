@@ -12,6 +12,7 @@
 - [SETTINGS_REFERENCE.md](./SETTINGS_REFERENCE.md) — إشارات الإعدادات العامة.
 - [LIQUIDITY_POLICY.md](./LIQUIDITY_POLICY.md) — سياسة السيولة والاستقرار المالي.
 - [OWNER_CONTRIBUTIONS.md](./OWNER_CONTRIBUTIONS.md) — ملاحظات المساهمة وصاحب المشروع.
+- [PLATFORM_ADMINISTRATION.md](./PLATFORM_ADMINISTRATION.md) — إدارة المستأجرين، تدقيق المنصة، ومراقبة Railway.
 
 ## مبدأ التنظيم
 

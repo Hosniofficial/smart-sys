@@ -364,14 +364,20 @@ async function changePassword() {
       currentPassword: passwordForm.currentPassword,
       newPassword: passwordForm.newPassword
     })
+    const accessToken = res?.data?.accessToken
+    if (!accessToken) {
+      authStore.clearAuthData()
+      passwordMessageType.value = 'error'
+      passwordMessage.value = 'تم تغيير كلمة المرور، لكن تعذر تحديث الجلسة. يرجى تسجيل الدخول مجددًا.'
+      window.setTimeout(() => window.location.replace('/'), 1500)
+      return
+    }
+
+    authStore.setAuthData(authUser.value, accessToken)
     passwordMessage.value = res?.message || 'تم تغيير كلمة المرور'
     passwordForm.currentPassword = ''
     passwordForm.newPassword = ''
     passwordForm.confirmPassword = ''
-    window.setTimeout(() => {
-      authStore.clearAuthData()
-      window.location.replace('/')
-    }, 1200)
   } catch (e) {
     passwordMessageType.value = 'error'
     passwordMessage.value = e?.response?.data?.message || 'فشل تغيير كلمة المرور'

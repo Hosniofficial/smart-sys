@@ -11,6 +11,7 @@ use DateTimeImmutable;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MonologHandler;
+use App\Services\PlatformAuditLogger;
 
 /**
  * Manages tenant subscriptions and plans for the administration API.
@@ -20,10 +21,13 @@ use App\Services\MonologHandler;
  */
 class AdminSubscriptionHandler extends BaseHandler
 {
+    private PlatformAuditLogger $platformAuditLogger;
+
     public function __construct(PDO $db)
     {
         parent::__construct($db);
         $this->logger = MonologHandler::getInstance('admin_subscription');
+        $this->platformAuditLogger = new PlatformAuditLogger($db);
     }
 
     /** List up to 200 subscriptions, optionally filtered by plan, status, or tenant. */
@@ -185,6 +189,11 @@ class AdminSubscriptionHandler extends BaseHandler
                 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
             ]);
 
+            $this->platformAuditLogger->record($request, 'subscription_activated', (int) $sub['tenant_id'], [
+                'subscription_id' => $id,
+                'plan_id' => $planId,
+            ]);
+
             $this->db->commit();
 
             return $this->successResponse($response, [
@@ -300,6 +309,12 @@ class AdminSubscriptionHandler extends BaseHandler
                 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
             ]);
 
+            $this->platformAuditLogger->record($request, 'subscription_plan_changed', (int) $sub['tenant_id'], [
+                'subscription_id' => $id,
+                'from_plan' => $sub['current_plan_code'],
+                'to_plan' => $newPlanCode,
+            ]);
+
             $this->db->commit();
 
             return $this->successResponse($response, [
@@ -381,6 +396,7 @@ class AdminSubscriptionHandler extends BaseHandler
 
             $flagsText = implode('; ', $securityFlags);
 
+            $this->db->beginTransaction();
             $up = $this->db->prepare("
                 UPDATE subscriptions
                 SET risk_score = ?,
@@ -390,6 +406,18 @@ class AdminSubscriptionHandler extends BaseHandler
             ");
             $up->execute([$riskScore, $flagsText, $id]);
 
+            $this->platformAuditLogger->record(
+                $request,
+                'subscription_security_checked',
+                (int) $sub['tenant_id'],
+                [
+                    'subscription_id' => $id,
+                    'risk_score' => $riskScore,
+                    'security_flags' => $securityFlags,
+                ]
+            );
+            $this->db->commit();
+
             return $this->successResponse($response, [
                 'risk_score' => $riskScore,
                 'security_flags' => $flagsText,
@@ -398,6 +426,9 @@ class AdminSubscriptionHandler extends BaseHandler
                 'recent_events' => (int) $sub['recent_events']
             ], 200);
         } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
             $this->logger->error('Failed to run subscription security check', [
                 'subscription_id' => $id,
                 'message' => $e->getMessage()
@@ -467,6 +498,10 @@ class AdminSubscriptionHandler extends BaseHandler
                 ]
             );
 
+            $this->platformAuditLogger->record($request, 'subscription_blocked', (int) $sub['tenant_id'], [
+                'subscription_id' => $id,
+            ]);
+
             $this->db->commit();
 
             return $this->successResponse($response, [
@@ -499,14 +534,14 @@ class AdminSubscriptionHandler extends BaseHandler
 
         try {
             $stmt = $this->db->prepare("
-                SELECT id
+                SELECT id, tenant_id
                 FROM subscriptions
                 WHERE id = ?
                 LIMIT 1
             ");
             $stmt->execute([$id]);
-
-            if (!$stmt->fetch()) {
+            $subscription = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$subscription) {
                 return $this->errorResponse($response, 'الاشتراك غير موجود', 404);
             }
 
@@ -532,6 +567,13 @@ class AdminSubscriptionHandler extends BaseHandler
                     'manual' => true
                 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
             ]);
+
+            $this->platformAuditLogger->record(
+                $request,
+                'subscription_expired',
+                (int) $subscription['tenant_id'],
+                ['subscription_id' => $id]
+            );
 
             $this->db->commit();
 
@@ -571,19 +613,19 @@ class AdminSubscriptionHandler extends BaseHandler
 
         try {
             $stmt = $this->db->prepare("
-                SELECT end_date
+                SELECT end_date, tenant_id
                 FROM subscriptions
                 WHERE id = ?
                 LIMIT 1
             ");
             $stmt->execute([$id]);
-            $end = $stmt->fetchColumn();
+            $subscription = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if (!$end) {
+            if (!$subscription || empty($subscription['end_date'])) {
                 return $this->errorResponse($response, 'Subscription not found', 404);
             }
 
-            $base = new DateTimeImmutable((string) $end);
+            $base = new DateTimeImmutable((string) $subscription['end_date']);
             $newEnd = $base->modify('+' . $days . ' days');
 
             $this->db->beginTransaction();
@@ -607,6 +649,16 @@ class AdminSubscriptionHandler extends BaseHandler
                     'days' => $days
                 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
             ]);
+
+            $this->platformAuditLogger->record(
+                $request,
+                'subscription_extended',
+                (int) $subscription['tenant_id'],
+                [
+                    'subscription_id' => $id,
+                    'days' => $days,
+                ]
+            );
 
             $this->db->commit();
 
@@ -687,6 +739,7 @@ class AdminSubscriptionHandler extends BaseHandler
         }
 
         try {
+            $this->db->beginTransaction();
             $stmt = $this->db->prepare("
                 INSERT INTO plans (
                     code,
@@ -707,10 +760,19 @@ class AdminSubscriptionHandler extends BaseHandler
                 $isActive
             ]);
 
+            $this->platformAuditLogger->record($request, 'subscription_plan_created', null, [
+                'plan_id' => (int) $this->db->lastInsertId(),
+                'plan_code' => $code,
+            ]);
+            $this->db->commit();
+
             return $this->successResponse($response, [
                 'code' => $code
             ], 201);
         } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
             $this->logger->error('Failed to create plan', [
                 'code' => $code,
                 'message' => $e->getMessage()
@@ -776,6 +838,7 @@ class AdminSubscriptionHandler extends BaseHandler
         }
 
         try {
+            $this->db->beginTransaction();
             $params[] = $code;
 
             $stmt = $this->db->prepare(
@@ -784,13 +847,28 @@ class AdminSubscriptionHandler extends BaseHandler
             $stmt->execute($params);
 
             if ($stmt->rowCount() === 0) {
+                $this->db->rollBack();
                 return $this->errorResponse($response, 'Plan not found or no changes applied', 404);
             }
+
+            $this->platformAuditLogger->record($request, 'subscription_plan_updated', null, [
+                'plan_code' => $code,
+                'updated_fields' => array_values(array_map(
+                    static function (string $update): string {
+                        return trim(explode('=', $update, 2)[0]);
+                    },
+                    $updates
+                )),
+            ]);
+            $this->db->commit();
 
             return $this->successResponse($response, [
                 'code' => $code
             ], 200);
         } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
             $this->logger->error('Failed to update plan', [
                 'code' => $code,
                 'message' => $e->getMessage()
@@ -835,13 +913,23 @@ class AdminSubscriptionHandler extends BaseHandler
                 );
             }
 
+            $this->db->beginTransaction();
             $stmt = $this->db->prepare("DELETE FROM plans WHERE id = ?");
             $stmt->execute([(int) $plan['id']]);
+
+            $this->platformAuditLogger->record($request, 'subscription_plan_deleted', null, [
+                'plan_id' => (int) $plan['id'],
+                'plan_code' => $code,
+            ]);
+            $this->db->commit();
 
             return $this->successResponse($response, [
                 'code' => $code
             ], 200);
         } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
             $this->logger->error('Failed to delete plan', [
                 'code' => $code,
                 'message' => $e->getMessage()

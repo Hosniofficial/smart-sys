@@ -341,7 +341,14 @@ import {
   Bell, User, LogOut, Menu, X, ChevronDown, Building
 } from '@lucide/vue'
 
-const PLATFORM_PATHS_WITHOUT_TENANT = new Set(['/admin/subscriptions', '/admin/plans', '/profile'])
+const PLATFORM_PATHS_WITHOUT_TENANT = new Set([
+  '/admin/subscriptions',
+  '/admin/plans',
+  '/admin/tenants',
+  '/admin/audit',
+  '/admin/operations',
+  '/profile',
+])
 
 const router = useRouter()
 const route = useRoute()
@@ -507,6 +514,10 @@ function changeTenantContext(event) {
   }
 }
 
+function refreshPlatformTenantOptions() {
+  if (isGlobalSuperAdmin.value) void loadPlatformTenants()
+}
+
 function handleDocumentClick(e) {
   if (activeSection.value && !e.target.closest('.section-panel') && !e.target.closest('aside')) {
     activeSection.value = null
@@ -641,6 +652,7 @@ onMounted(() => {
 
   document.addEventListener('click', handleDocumentClick)
   document.addEventListener('keydown', handleEscKey)
+  window.addEventListener('platform-tenant-state-changed', refreshPlatformTenantOptions)
 
   if (isGlobalSuperAdmin.value) void loadPlatformTenants()
 
@@ -688,6 +700,7 @@ watch(isGlobalSuperAdmin, (isSuperAdmin) => {
 onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick)
   document.removeEventListener('keydown', handleEscKey)
+  window.removeEventListener('platform-tenant-state-changed', refreshPlatformTenantOptions)
 })
 
 watch(showProfileMenu, (val) => {

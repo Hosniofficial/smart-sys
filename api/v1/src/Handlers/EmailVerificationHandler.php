@@ -46,13 +46,9 @@ class EmailVerificationHandler extends BaseHandler
     public function verifyEmail(Request $request, Response $response): Response
     {
         try {
-            // Support both POST body and GET query parameters
-            // GET is used for email links, POST for API calls
             $data = $request->getParsedBody();
-            if (!is_array($data) || empty($data)) {
-                // Fall back to query parameters for GET requests (email links)
-                $queryParams = $request->getQueryParams();
-                $data = is_array($queryParams) ? $queryParams : [];
+            if (!is_array($data)) {
+                return $this->errorResponse($response, 'Invalid request data', 400);
             }
 
             $token = trim((string) ($data['token'] ?? ''));

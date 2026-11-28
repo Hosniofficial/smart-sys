@@ -143,9 +143,9 @@ const verify = async () => {
     verified.value = true
     message.value = response?.message || 'تم تأكيد بريدك الإلكتروني بنجاح.'
 
-    const accessToken = response?.accessToken
-    const userData = response?.data?.data?.user
-    const isSetupComplete = response?.data?.data?.isSetupComplete
+    const accessToken = response?.data?.accessToken
+    const userData = response?.data?.user
+    const isSetupComplete = response?.data?.isSetupComplete
 
     if (accessToken && userData) {
       authStore.setAuthData(userData, accessToken)
