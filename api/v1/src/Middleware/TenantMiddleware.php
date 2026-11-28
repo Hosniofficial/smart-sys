@@ -12,6 +12,7 @@ use Psr\Container\ContainerInterface;
 use App\Database\DatabaseValidator;
 use App\Services\MonologHandler;
 use App\Utils\ApiResponseEnvelope;
+use App\Utils\SuperAdminHelper;
 
 /**
  * Resolves tenant scope from JWT attributes or a validated X-Tenant-ID header.
@@ -44,6 +45,19 @@ class TenantMiddleware implements MiddlewareInterface
         if (in_array($path, $allowed)) {
             return $handler->handle($request);
         }
+
+        $user = $request->getAttribute('user');
+        $platformScopedPaths = [
+            '/api/v1/users/me',
+            '/api/v1/users/update-profile',
+            '/api/v1/users/change-password',
+        ];
+        $isPlatformRoute = strpos($path, '/api/v1/admin/') === 0
+            || in_array($path, $platformScopedPaths, true);
+        if ($isPlatformRoute && SuperAdminHelper::is(is_array($user) ? $user : null)) {
+            return $handler->handle($request);
+        }
+
         // إذا كان JwtAuthMiddleware قد أرفق tenant_id من التوكن، فلا نستخدم/نفرض X-Tenant-ID
         $attrTenant = $request->getAttribute('tenant_id');
         if ($attrTenant) {

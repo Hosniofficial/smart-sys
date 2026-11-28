@@ -7,6 +7,7 @@ import Login from '../views/auth/Login.vue'
 // Importing the factory functions is fine — calling them is not.
 import { useAuthStore } from '@/stores/auth/authStore'
 import { useSubscriptionStore } from '@/stores/subscriptions/subscriptionStore'
+import { useTenantContextStore } from '@/stores/tenantContext/tenantContextStore'
 import { checkAccessForPath } from '@/config/menuConfig'
 import setupService from '@/services/setup'
 
@@ -515,6 +516,7 @@ router.beforeEach(async (to, from, next) => {
   
   const authStore = useAuthStore();
   const subscriptionStore = useSubscriptionStore();
+  const tenantContextStore = useTenantContextStore();
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
   const requiresAdmin = to.matched.some(record => record.meta.requiresAdmin);
   const requiresSuperAdmin = to.matched.some(record => record.meta.requiresSuperAdmin);
@@ -535,7 +537,7 @@ router.beforeEach(async (to, from, next) => {
       if (hasStoredSession) {
         const restored = await authStore2.checkAuthStatus();
         if (restored && authStore2.isAuthenticated) {
-          return next(authStore2.isAdmin ? '/dashboard' : '/cashier');
+          return next(authStore2.isSuperAdmin ? '/admin/subscriptions' : (authStore2.isAdmin ? '/dashboard' : '/cashier'));
         }
       }
     }
@@ -554,8 +556,19 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
+  const platformRoutesWithoutTenant = ['/admin/subscriptions', '/admin/plans', '/profile'];
+  const hasTenantContext = authStore.hasTenant || Number(tenantContextStore.activeTenantId) > 0;
+  if (
+    authStore.isSuperAdmin &&
+    !hasTenantContext &&
+    !platformRoutesWithoutTenant.includes(to.path)
+  ) {
+    next('/admin/subscriptions');
+    return;
+  }
+
   // Check subscription status for authenticated users (unless allowExpired)
-  if (requiresAuth && authStore.isAuthenticated && !allowExpired) {
+  if (requiresAuth && authStore.isAuthenticated && !authStore.isSuperAdmin && !allowExpired) {
     // Check if subscription expired flag was set by axios interceptor
     if (authStore.isSubscriptionExpired && to.path !== '/upgrade') {
       if (import.meta.env.DEV) {
@@ -609,7 +622,7 @@ router.beforeEach(async (to, from, next) => {
   const isSpecialRoute = specialRoutes.includes(to.path) || to.name === 'NotFound'
   
   if (requiresGuest && authStore.isAuthenticated) {
-    next(authStore.isAdmin ? '/dashboard' : '/cashier');
+    next(authStore.isSuperAdmin ? '/admin/subscriptions' : (authStore.isAdmin ? '/dashboard' : '/cashier'));
   } else if (requiresSuperAdmin && !authStore.isSuperAdmin) {
     next({ path: '/forbidden', query: { reason: 'super_admin' } });
   } else if (requiresAdmin && !authStore.isAdmin) {

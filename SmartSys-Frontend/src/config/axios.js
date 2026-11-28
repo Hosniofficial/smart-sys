@@ -102,14 +102,14 @@ apiClient.interceptors.request.use(
       const tenantContextStore = useTenantContextStore();
       if (authStore.isSuperAdmin && tenantContextStore.activeTenantId) {
         tenantId = tenantContextStore.activeTenantId;
-      } else if (authStore.user?.tenantId) {
-        tenantId = authStore.user.tenantId;
+      } else if (authStore.user?.tenantId ?? authStore.user?.tenant_id) {
+        tenantId = authStore.user.tenantId ?? authStore.user.tenant_id;
       }
     } catch (_) { /* ignore */ }
 
     if (!tenantId) {
       const u = safeParseUser(localStorage.getItem('user'));
-      tenantId = u?.tenantId ?? null;
+      tenantId = u?.tenantId ?? u?.tenant_id ?? null;
     }
 
     if (tenantId) {
