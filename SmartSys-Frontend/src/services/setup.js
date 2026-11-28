@@ -5,10 +5,6 @@ export const setupService = {
     return apiClient.post('/setup/save', setupData);
   },
 
-  skip() {
-    return apiClient.post('/setup/skip');
-  },
-
   getStatus() {
     return apiClient.get('/setup/status');
   },

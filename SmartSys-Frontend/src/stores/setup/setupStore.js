@@ -33,29 +33,6 @@ export const useSetupStore = defineStore('setup', () => {
     }
   };
 
-  // skipSetup
-  const skipSetup = async () => {
-    loading.value = true;
-    error.value   = null;
-    try {
-      const response = await setupService.skip();
-      return {
-        status: 'success',
-        data: response.data,
-        message: 'تم تخطي الإعدادات بنجاح'
-      };
-    } catch (err) {
-      error.value = err.response?.data?.message || 'Failed to skip setup';
-      return {
-        status: 'error',
-        data: null,
-        message: err.response?.data?.message || err.message || 'فشل تخطي الإعدادات'
-      };
-    } finally {
-      loading.value = false;
-    }
-  };
-
   // loadSetupStatus
   const loadSetupStatus = async () => {
     loading.value = true;
@@ -130,7 +107,6 @@ export const useSetupStore = defineStore('setup', () => {
     loading,
     error,
     saveSetup,
-    skipSetup,
     loadSetupStatus,
     preview,
     commit,

@@ -10,6 +10,7 @@ import { useSubscriptionStore } from '@/stores/subscriptions/subscriptionStore'
 import { useTenantContextStore } from '@/stores/tenantContext/tenantContextStore'
 import { checkAccessForPath } from '@/config/menuConfig'
 import setupService from '@/services/setup'
+import { isSettingEnabled } from '@/utils'
 
 const routes = [
   {
@@ -663,7 +664,7 @@ router.beforeEach(async (to, from, next) => {
     next({ path: '/forbidden', query: { reason: 'admin' } });
   } else if (requiresOwner && !authStore.isOwner) {
     next({ path: '/forbidden', query: { reason: 'owner' } });
-  } else if (requiresAuth && authStore.isAuthenticated && !to.query.force) {
+  } else if (requiresAuth && authStore.isAuthenticated) {
     // Skip setup check if already on /setup page
     if (to.path === '/setup') {
       next();
@@ -675,9 +676,10 @@ router.beforeEach(async (to, from, next) => {
       try {
         const setupResponse = await setupService.getStatus();
         const setupData = setupResponse.data?.data || {};
-        
-        // is_setup_complete might be in tenant object
-        const isSetupComplete = setupData.isSetupComplete ?? setupData.tenant?.isSetupComplete ?? false;
+        const setupTenant = setupData.tenant || setupData;
+        const isSetupComplete = isSettingEnabled(
+          setupTenant.isSetupComplete ?? setupTenant.is_setup_complete
+        );
         
         if (import.meta.env.DEV) {
           logger.debug('[Router Guard] Setup status response:', {
@@ -704,7 +706,8 @@ router.beforeEach(async (to, from, next) => {
         if (import.meta.env.DEV) {
           console.error('[Router Guard] Failed to check setup status:', error);
         }
-        // If API fails, proceed anyway (don't block navigation)
+        next('/setup');
+        return;
       }
     }
     

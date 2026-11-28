@@ -253,7 +253,7 @@
           <div class="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full translate-x-12 -translate-y-12"></div>
           
           <div class="order-2 md:order-1 relative z-10">
-             <button @click="skipSetup" :disabled="saving" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-white transition-colors">تخطي الإعداد حالياً</button>
+            <p class="text-[10px] font-bold text-slate-400">إكمال الإعداد مطلوب قبل استخدام النظام</p>
           </div>
 
           <div class="flex items-center gap-3 w-full md:w-auto order-1 md:order-2 relative z-10">
@@ -382,15 +382,20 @@ export default {
           }
         } catch { /* ... */ }
         const statusResponse = await this.setupStore.loadSetupStatus();
+        if (statusResponse?.status !== 'success') {
+          throw new Error(statusResponse?.message || 'تعذر التحقق من حالة الإعداد');
+        }
         const tenant = statusResponse?.data?.data?.tenant ?? statusResponse?.data?.tenant ?? null;
-        if (tenant?.isSetupComplete && this.$route.query.force !== 'true') {
+        if (!tenant) {
+          throw new Error('تعذر التحقق من حالة إعداد المنشأة');
+        }
+        const setupComplete = tenant.isSetupComplete ?? tenant.is_setup_complete;
+        if (isSettingEnabled(setupComplete) && this.$route.query.force !== 'true') {
           this.$router.push('/cashier');
         }
       } catch (error) {
-        if (error?.response?.status !== 403) {
-          const errorMessage = error.response?.data?.message || 'حدث خطأ في التحميل';
-          this.$toast?.error(errorMessage, { position: 'top-center', duration: 5000 });
-        }
+        const errorMessage = error?.response?.data?.message || error?.message || 'حدث خطأ في التحميل';
+        this.$toast?.error(errorMessage, { position: 'top-center', duration: 5000 });
       } finally { this.loading = false; }
     },
     async nextStep() {
@@ -466,27 +471,6 @@ export default {
       } catch (error) {
         const errorMessage = error.response?.data?.message || error.message || 'خطأ في الحفظ';
         AlertService.error(errorMessage, 'خطأ');
-      } finally { this.saving = false; }
-    },
-    async skipSetup() {
-      const confirmed = await AlertService.confirm('هل أنت متأكد من تخطي الإعداد؟ يمكنك إكماله لاحقاً من الإعدادات العامة.', 'تنبيه');
-      if (!confirmed) return;
-      this.saving = true;
-      try {
-        const response = await this.setupStore.skipSetup();
-        if (response.status === 'success') {
-          if (this.authStore.user) {
-            this.authStore.user.isSetupComplete = 1;
-            localStorage.setItem('user', JSON.stringify(this.authStore.user));
-          }
-          this.$router.push('/cashier').catch(err => {
-            if (!err?.message?.includes('Navigation aborted')) console.warn('Router push error:', err);
-          });
-        } else {
-          AlertService.error(response.data?.message || response.message || 'فشل تخطي الإعداد', 'خطأ');
-        }
-      } catch (error) {
-        AlertService.error(error.response?.data?.message || error.message || 'فشل تخطي الإعداد', 'خطأ');
       } finally { this.saving = false; }
     }
   }

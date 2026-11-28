@@ -720,7 +720,7 @@ class SetupHandler extends BaseHandler
         }
     }
 
-    /** Mark setup as skipped for the owning tenant. */
+    /** Reject legacy requests to skip the mandatory tenant setup. */
     public function skipSetup(Request $request, Response $response): Response
     {
         try {
@@ -741,23 +741,12 @@ class SetupHandler extends BaseHandler
                 return $this->errorResponse($response, 'غير مصرح لك بالوصول لصفحة الإعداد.', 403);
             }
 
-            $stmt = $this->db->prepare(
-                "UPDATE tenants
-                 SET is_setup_complete = 1,
-                     current_step = 'skipped',
-                     setup_completed_at = NOW()
-                 WHERE id = ?"
-            );
-            $stmt->execute([(int) $tenantId]);
-
-            $this->logger->info('Setup skipped successfully', [
+            $this->logger->warning('Setup skip rejected - setup is mandatory', [
                 'tenant_id' => $tenantId,
                 'user_id' => $userId
             ]);
 
-            return $this->successResponse($response, [
-                'message' => 'تم تخطي الإعداد بنجاح'
-            ], 200);
+            return $this->errorResponse($response, 'إكمال إعداد المنشأة إلزامي ولا يمكن تخطيه.', 409);
         } catch (Exception $e) {
             $code = (int) $e->getCode();
             $status = $code >= 400 && $code < 600 ? $code : 500;

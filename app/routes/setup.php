@@ -22,7 +22,7 @@ return function (RouteCollectorProxy $group, Container $container): void {
                 return $setupHandler->saveSetup($request, $response);
             });
 
-            // Skip setup (complete later)
+            // Legacy endpoint: setup is mandatory and cannot be skipped.
             $group->post('/skip', function (Request $request, Response $response) use ($setupHandler) {
                 return $setupHandler->skipSetup($request, $response);
             });
