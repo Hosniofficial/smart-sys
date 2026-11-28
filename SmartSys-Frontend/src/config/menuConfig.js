@@ -43,7 +43,8 @@
  *    before and is now a first-class, tested flag.
  *
  * 7. ROLE HIERARCHY (explicit — fixes the manager/admin conflation bug)
- *    - superAdmin: full system access, bypasses permission checks.
+ *    - superAdmin: platform access only until a tenant is selected; tenant
+ *                  operations become available within that tenant context.
  *    - admin:      tenant-wide administrative access.
  *    - manager:    branch/operational management — NOT full admin.
  *                  Only sees items whose access is 'user' or 'manager',
@@ -533,16 +534,20 @@ const MANAGER_ROLES = ['manager']
  * @param {Array} permissions - raw permissions array/objects from the user
  */
 export function hasMenuPermission(entry, role, permissions = [], userContext = {}) {
-  const hasTenantContext = Object.prototype.hasOwnProperty.call(userContext, 'tenant_id')
-  const tenantUser = Number(userContext.tenantId) > 0
-  const isPlatformSuperAdmin = hasTenantContext && !tenantUser && normalizeRole(role) === 'superAdmin'
+  const hasTenantIdentity =
+    Object.prototype.hasOwnProperty.call(userContext, 'tenant_id') ||
+    Object.prototype.hasOwnProperty.call(userContext, 'tenantId')
+  const tenantUser = Number(userContext.tenantId ?? userContext.tenant_id) > 0
+  const isPlatformSuperAdmin = hasTenantIdentity && !tenantUser && normalizeRole(role) === 'superAdmin'
   const effectiveRole = tenantUser && normalizeRole(role) === 'superAdmin'
     ? (userContext.isOwner ? 'admin' : 'employee')
     : role
   const normalizedRole = normalizeRole(effectiveRole)
   const permissionNames = normalizePermissionNames(permissions)
 
-  if (isPlatformSuperAdmin) return true
+  if (isPlatformSuperAdmin) {
+    return Number(userContext.activeTenantId) > 0 || entry.access === 'superAdmin'
+  }
 
   const requiredPermissions = entry.permissions || (entry.permission ? [entry.permission] : [])
 

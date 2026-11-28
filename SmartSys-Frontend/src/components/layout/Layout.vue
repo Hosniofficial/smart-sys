@@ -297,6 +297,7 @@
 import { computed, ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth/authStore'
+import { useTenantContextStore } from '@/stores/tenantContext/tenantContextStore'
 import { useToast } from '@/composables/useToast'
 import { useActiveRoute } from '@/composables/useActiveRoute'
 import { getMenuItems } from '@/config/menuConfig'
@@ -313,6 +314,7 @@ import {
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const tenantContextStore = useTenantContextStore()
 const { showToast } = useToast()
 const { isActive, isLeafActive } = useActiveRoute()
 
@@ -377,7 +379,10 @@ const menuItems = computed(() => {
   return getMenuItems(
     authStore.user?.role || 'employee',
     authStore.user?.permissions || [],
-    authStore.user || {}
+    {
+      ...authStore.user,
+      activeTenantId: tenantContextStore.activeTenantId,
+    }
   )
 })
 
