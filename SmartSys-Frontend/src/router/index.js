@@ -680,6 +680,8 @@ router.beforeEach(async (to, from, next) => {
         role: authStore.user?.role || 'employee',
         permissions: authStore.user?.permissions || [],
         tenantId: authStore.user?.tenantId,
+        tenant_id: authStore.user?.tenant_id ?? authStore.user?.tenantId,
+        activeTenantId: tenantContextStore.activeTenantId,
         isOwner: authStore.user?.isOwner
       }
       const hasAccess = checkAccessForPath(to.path, user)
