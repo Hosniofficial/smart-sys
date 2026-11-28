@@ -16,6 +16,7 @@ return function (RouteCollectorProxy $group, Container $container): void {
     $group->post('/register', StrictSubscriptionHandler::class . ':createSecureTrial');
 
     $group->post('/verify-email', EmailVerificationHandler::class . ':verifyEmail');
+    $group->get('/verify-email', EmailVerificationHandler::class . ':verifyEmail'); // Support email links
     $group->post('/verify-email/resend', EmailVerificationHandler::class . ':resendVerificationEmail');
 
     $group->post('/forgot-password', EmailVerificationHandler::class . ':forgotPassword');

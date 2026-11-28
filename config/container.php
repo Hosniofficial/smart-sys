@@ -54,7 +54,6 @@ use App\Repositories\SaleRepository;
 use App\Repositories\PurchaseRepository;
 use App\Repositories\PaymentRepository;
 use App\Security\Permissions;
-use App\Services\Accounting\GLAccountResolver;
 use App\Services\AccountingService;
 use App\Services\CurrencyService;
 use App\Services\JwtBlacklistService;
@@ -304,10 +303,6 @@ return function (): Container {
         $dispatcher = new SecurityEventDispatcher($container);
         $dispatcher->addListener(SecurityEventListener::class);
         return $dispatcher;
-    },
-
-    GLAccountResolver::class => function (PDO $pdo) {
-        return new GLAccountResolver($pdo);
     },
 
     JwtAuthMiddleware::class => function (

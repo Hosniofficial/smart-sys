@@ -6,6 +6,7 @@ use App\Middleware\JwtAuthMiddleware;
 use App\Middleware\TenantMiddleware;
 use App\Middleware\SubscriptionMiddleware;
 use App\Middleware\SuperAdminMiddleware;
+use App\Middleware\EmailVerificationRequiredMiddleware;
 use App\Handlers\OwnerContributionHandler;
 use App\Handlers\SubscriptionCronHandler;
 use DI\Container;
@@ -111,6 +112,7 @@ return function (App $app, Container $container): void {
         (require __DIR__ . '/../app/routes/accounting-reports.php')($group, $container);
 
     })
+    ->add(EmailVerificationRequiredMiddleware::class)
     ->add(SubscriptionMiddleware::class)
     ->add(TenantMiddleware::class)
     ->add(JwtAuthMiddleware::class);
