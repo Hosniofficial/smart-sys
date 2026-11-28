@@ -261,7 +261,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useAuthStore } from '@/stores/auth/authStore';
 import { useTenantContextStore } from '@/stores/tenantContext/tenantContextStore';
 import { useAccountStore } from '@/stores/account/accountStore';
@@ -453,8 +453,10 @@ const loadAvailableTenants = async () => {
     if (result.status !== 'success') throw new Error(result.message || 'تعذر تحميل الشركات النشطة.');
     availableTenants.value = Array.isArray(result.data) ? result.data : [];
     if (!availableTenants.value.length) pageError.value = 'لا توجد شركات نشطة متاحة للاختيار.';
+    return true;
   } catch (error) {
     pageError.value = error.message || 'تعذر تحميل الشركات النشطة.';
+    return false;
   } finally {
     loadingTenants.value = false;
   }
@@ -646,14 +648,21 @@ const submitVoid = async () => {
 
 onMounted(async () => {
   if (isPlatformSuperAdmin.value) {
-    await loadAvailableTenants();
-    return;
+    const tenantsLoaded = await loadAvailableTenants();
+    if (!tenantsLoaded) return;
+
+    const activeTenant = availableTenants.value.find(
+      tenant => Number(tenant.id) === Number(tenantContextStore.activeTenantId)
+    );
+    if (!activeTenant) {
+      tenantContextStore.clearActiveTenantId();
+      return;
+    }
+
+    selectedTenantId.value = String(activeTenant.id);
   }
+
   await loadLists();
   if (canView.value) await loadContributions();
-});
-
-onUnmounted(() => {
-  tenantContextStore.clearActiveTenantId();
 });
 </script>

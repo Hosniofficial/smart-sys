@@ -29,6 +29,35 @@
 
         <div class="flex items-center gap-1 sm:gap-2 md:gap-3 shrink-0">
 
+          <div
+            v-if="isGlobalSuperAdmin && route.name !== 'OwnerContributions'"
+            class="flex items-center gap-1.5 rounded-md border border-indigo-100 bg-indigo-50/70 px-2 py-1"
+          >
+            <Building :size="14" class="shrink-0 text-indigo-600" />
+            <select
+              :value="tenantContextStore.activeTenantId || ''"
+              :disabled="loadingPlatformTenants"
+              class="max-w-[8rem] sm:max-w-[12rem] bg-transparent text-[10px] sm:text-xs font-bold text-indigo-900 outline-none disabled:opacity-60"
+              aria-label="اختيار نطاق المستأجر"
+              @change="changeTenantContext"
+            >
+              <option value="">إدارة المنصة</option>
+              <option
+                v-for="tenant in platformTenants"
+                :key="tenant.id"
+                :value="tenant.id"
+              >
+                {{ tenant.companyName || tenant.company_name }} — #{{ tenant.id }}
+              </option>
+            </select>
+            <span
+              v-if="tenantContextError"
+              class="text-[10px] font-black text-rose-600"
+              :title="tenantContextError"
+              role="status"
+            >!</span>
+          </div>
+
           <div v-if="canLoadNotifications" class="relative" ref="notificationsRef">
             <button
               @click="toggleNotifications"
@@ -301,6 +330,7 @@ import { useTenantContextStore } from '@/stores/tenantContext/tenantContextStore
 import { useToast } from '@/composables/useToast'
 import { useActiveRoute } from '@/composables/useActiveRoute'
 import { getMenuItems } from '@/config/menuConfig'
+import { useOwnerContributionStore } from '@/stores/accounting/ownerContributionStore'
 import notificationsService from '@/services/notifications'
 import logger from '@/utils/services/logger'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue'
@@ -311,10 +341,13 @@ import {
   Bell, User, LogOut, Menu, X, ChevronDown, Building
 } from '@lucide/vue'
 
+const PLATFORM_PATHS_WITHOUT_TENANT = new Set(['/admin/subscriptions', '/admin/plans', '/profile'])
+
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const tenantContextStore = useTenantContextStore()
+const ownerContributionStore = useOwnerContributionStore()
 const { showToast } = useToast()
 const { isActive, isLeafActive } = useActiveRoute()
 
@@ -329,11 +362,15 @@ const showNotifications = ref(false)
 const showProfileMenu = ref(false)
 const loadingNotifications = ref(false)
 const previousUnreadCount = ref(-1)
+const platformTenants = ref([])
+const loadingPlatformTenants = ref(false)
+const tenantContextError = ref('')
 
 const notificationsRef = ref(null)
 const profileRef = ref(null)
 
 const isUnread = (notification) => Number(notification.isRead) === 0
+const isGlobalSuperAdmin = computed(() => authStore.isSuperAdmin && !authStore.hasTenant)
 const notificationTenantId = computed(() => {
   const userTenantId = Number(authStore.user?.tenantId ?? authStore.user?.tenant_id)
   if (userTenantId > 0) return userTenantId
@@ -408,6 +445,66 @@ function toggleSection(item) {
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
   localStorage.setItem('smartsys_sidebar_collapsed', String(sidebarCollapsed.value))
+}
+
+async function loadPlatformTenants() {
+  if (!isGlobalSuperAdmin.value || loadingPlatformTenants.value) return
+
+  loadingPlatformTenants.value = true
+  tenantContextError.value = ''
+  try {
+    const result = await ownerContributionStore.fetchAvailableTenants()
+    if (!isGlobalSuperAdmin.value) return
+
+    if (result.status !== 'success') {
+      tenantContextError.value = result.message || 'تعذر تحميل الشركات النشطة.'
+      tenantContextStore.clearActiveTenantId()
+      logger.error('Failed to load platform tenant options', { message: tenantContextError.value })
+      return
+    }
+
+    platformTenants.value = Array.isArray(result.data) ? result.data : []
+    const activeTenantId = Number(tenantContextStore.activeTenantId)
+    if (
+      activeTenantId > 0 &&
+      !platformTenants.value.some(tenant => Number(tenant.id) === activeTenantId)
+    ) {
+      tenantContextStore.clearActiveTenantId()
+      tenantContextError.value = 'الشركة المحددة غير نشطة أو لم تعد متاحة.'
+    }
+  } catch (error) {
+    tenantContextError.value = error?.message || 'تعذر تحميل الشركات النشطة.'
+    tenantContextStore.clearActiveTenantId()
+    logger.error('Failed to load platform tenant options', { message: tenantContextError.value })
+  } finally {
+    loadingPlatformTenants.value = false
+  }
+}
+
+function changeTenantContext(event) {
+  const selectedId = String(event.target.value || '')
+  tenantContextError.value = ''
+
+  if (!selectedId) {
+    tenantContextStore.clearActiveTenantId()
+    return
+  }
+
+  const tenant = platformTenants.value.find(item => String(item.id) === selectedId)
+  if (!tenant) {
+    tenantContextError.value = 'اختيار الشركة غير صالح؛ حدّث الصفحة وحاول مرة أخرى.'
+    event.target.value = tenantContextStore.activeTenantId || ''
+    return
+  }
+
+  const previousTenantId = Number(tenantContextStore.activeTenantId)
+  tenantContextStore.setActiveTenantId(tenant.id)
+  if (
+    previousTenantId !== Number(tenant.id) &&
+    !PLATFORM_PATHS_WITHOUT_TENANT.has(route.path)
+  ) {
+    void router.replace('/admin/subscriptions')
+  }
 }
 
 function handleDocumentClick(e) {
@@ -545,6 +642,8 @@ onMounted(() => {
   document.addEventListener('click', handleDocumentClick)
   document.addEventListener('keydown', handleEscKey)
 
+  if (isGlobalSuperAdmin.value) void loadPlatformTenants()
+
   // Request browser notification permission once
   if (canLoadNotifications.value && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission()
@@ -565,6 +664,25 @@ watch(notificationTenantId, (tenantId) => {
   previousUnreadCount.value = -1
   showNotifications.value = false
   if (tenantId > 0) void loadNotifications()
+})
+
+watch(() => tenantContextStore.activeTenantId, (tenantId) => {
+  if (
+    authStore.isSuperAdmin &&
+    !Number(tenantId) &&
+    !PLATFORM_PATHS_WITHOUT_TENANT.has(route.path)
+  ) {
+    void router.replace('/admin/subscriptions')
+  }
+})
+
+watch(isGlobalSuperAdmin, (isSuperAdmin) => {
+  if (isSuperAdmin) {
+    void loadPlatformTenants()
+  } else {
+    platformTenants.value = []
+    tenantContextError.value = ''
+  }
 })
 
 onUnmounted(() => {
