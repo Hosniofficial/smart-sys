@@ -249,7 +249,7 @@ final class TenantContextTestContainer implements ContainerInterface
 
     public function get(string $id)
     {
-        if ($id === 'db' && $this->db !== null) {
+        if ($id === PDO::class && $this->db !== null) {
             return $this->db;
         }
 
@@ -258,7 +258,7 @@ final class TenantContextTestContainer implements ContainerInterface
 
     public function has(string $id): bool
     {
-        return $id === 'db' && $this->db !== null;
+        return $id === PDO::class && $this->db !== null;
     }
 }
 

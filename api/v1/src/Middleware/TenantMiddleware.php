@@ -9,6 +9,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 use Psr\Container\ContainerInterface;
+use PDO;
 use App\Database\DatabaseValidator;
 use App\Services\MonologHandler;
 use App\Utils\ApiResponseEnvelope;
@@ -62,7 +63,7 @@ class TenantMiddleware implements MiddlewareInterface
         $attrTenant = $request->getAttribute('tenant_id');
         if ($attrTenant) {
             try {
-                $db = $this->container->get('db');
+                $db = $this->container->get(PDO::class);
                 $stmt = $db->prepare('SELECT status FROM tenants WHERE id = ? LIMIT 1');
                 $stmt->execute([(int) $attrTenant]);
                 $tenantStatus = $stmt->fetchColumn();
@@ -110,7 +111,7 @@ class TenantMiddleware implements MiddlewareInterface
 
         // Validate tenant exists and is active
         try {
-            $db = $this->container->get('db');
+            $db = $this->container->get(PDO::class);
             $stmt = $db->prepare("SELECT id FROM tenants WHERE id = ? AND status = 'active' LIMIT 1");
             $stmt->execute([$tenantId]);
 
