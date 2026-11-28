@@ -4,6 +4,7 @@ import { ref, computed } from 'vue';
 import apiClient from '@/config/axios';
 import authService from '@/services/auth';
 import { useSubscriptionStore } from '@/stores/subscriptions/subscriptionStore';
+import { useTenantContextStore } from '@/stores/tenantContext/tenantContextStore';
 
 // ⚠️ Import router directly — NEVER use useRouter() inside a Pinia store.
 // useRouter() requires an active Vue component context. Stores can be called
@@ -41,6 +42,21 @@ const safeJsonParse = (jsonString, defaultValue = null) => {
   }
 };
 
+const normalizeUserData = (userData) => {
+  if (!userData || typeof userData !== 'object' || Array.isArray(userData)) {
+    return userData;
+  }
+
+  return {
+    ...userData,
+    roleId: userData.roleId ?? userData.role_id,
+    tenantId: userData.tenantId ?? userData.tenant_id,
+    branchId: userData.branchId ?? userData.branch_id,
+    isOwner: userData.isOwner ?? userData.is_owner,
+    isSetupComplete: userData.isSetupComplete ?? userData.is_setup_complete,
+  };
+};
+
 // Store
 
 export const useAuthStore = defineStore('auth', () => {
@@ -49,7 +65,7 @@ export const useAuthStore = defineStore('auth', () => {
   // user metadata (non-sensitive) stays in localStorage for instant UX on reload.
   const storedUser = localStorage.getItem('user');
 
-  const user                   = ref(storedUser ? safeJsonParse(storedUser) : null);
+  const user                   = ref(storedUser ? normalizeUserData(safeJsonParse(storedUser)) : null);
   const token                  = ref(null);   // ← in-memory only, never persisted
   const returnUrl              = ref(null);
   const subscriptionExpired    = ref(false);
@@ -57,19 +73,23 @@ export const useAuthStore = defineStore('auth', () => {
   let   refreshPromise = null;
 
   const isOwner = computed(() => {
-    const isOwnerFlag = user.value?.isOwner;
+    const isOwnerFlag = user.value?.isOwner ?? user.value?.is_owner;
     return isOwnerFlag === 1 || isOwnerFlag === true;
   });
 
-  const hasTenant = computed(() => Number(user.value?.tenantId) > 0);
+  const hasTenant = computed(() => Number(user.value?.tenantId ?? user.value?.tenant_id) > 0);
 
   const isSuperAdmin = computed(() => {
-    if (!user.value || !Object.prototype.hasOwnProperty.call(user.value, 'tenantId')) {
+    if (
+      !user.value ||
+      (!Object.prototype.hasOwnProperty.call(user.value, 'tenantId') &&
+        !Object.prototype.hasOwnProperty.call(user.value, 'tenant_id'))
+    ) {
       return false;
     }
 
     const role   = user.value.role;
-    const roleId = Number(user.value.roleId);
+    const roleId = Number(user.value.roleId ?? user.value.role_id);
     return !hasTenant.value && (role === 'super_admin' || roleId === 1);
   });
 
@@ -109,7 +129,7 @@ export const useAuthStore = defineStore('auth', () => {
 
       if (response.data?.status === 'success' && response.data?.data?.accessToken) {
         const newAccessToken = response.data.data.accessToken;
-        const userData = response.data.data.user; // Get updated user data
+        const userData = normalizeUserData(response.data.data.user); // Get updated user data
         
         token.value = newAccessToken;
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
@@ -269,6 +289,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value  = null;
     token.value = null;
     clearSubscriptionExpired();
+    useTenantContextStore().clearActiveTenantId();
 
     localStorage.removeItem('user');
     localStorage.removeItem('token');
@@ -296,20 +317,17 @@ export const useAuthStore = defineStore('auth', () => {
       if (response.data?.status === 'success' && response.data?.data?.accessToken && response.data?.data?.user) {
         const { accessToken: access_token, user: userData } = response.data.data;
 
-        const enhancedUserData = {
-          ...userData,
-          isAdmin:   userData.role === 'admin' || userData.isAdmin || false,
-          tenantId: userData.tenantId,
-        };
+        const enhancedUserData = normalizeUserData(userData);
 
         try {
           const subscriptionStore = useSubscriptionStore();
           subscriptionStore.reset();
         } catch { /* ignore */ }
+        useTenantContextStore().clearActiveTenantId();
 
         setAuthData(enhancedUserData, access_token);
 
-        const redirectTo = returnUrl.value || '/cashier';
+        const redirectTo = returnUrl.value || (isSuperAdmin.value ? '/admin/subscriptions' : '/cashier');
         returnUrl.value  = null;
         getRouter()?.push(redirectTo);
 

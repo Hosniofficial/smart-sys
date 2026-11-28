@@ -162,18 +162,17 @@ class UsersHandler extends BaseHandler
     {
         try {
             $tenantId = $this->extractTenantId($request);
-            if (!$tenantId) {
-                return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-            }
+            $tenantId = $tenantId ?? 0;
 
             $currentUserId = $this->extractUserId($request);
             if (!$currentUserId) {
                 return $this->errorResponse($response, 'مطلوب معرف المستخدم.', 403);
             }
 
+            [$tenantCondition, $tenantParams] = $this->tenantCondition($tenantId);
             // Fetch only the fields needed for verification — never return this to the client
-            $stmt = $this->db->prepare("SELECT id, username, password, tenant_id FROM users WHERE id = ? AND tenant_id = ? LIMIT 1");
-            $stmt->execute([$currentUserId, $tenantId]);
+            $stmt = $this->db->prepare("SELECT id, username, password, tenant_id FROM users WHERE id = ? AND {$tenantCondition} LIMIT 1");
+            $stmt->execute(array_merge([$currentUserId], $tenantParams));
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$user) {
@@ -230,13 +229,10 @@ class UsersHandler extends BaseHandler
         }
     }
 
-    /** Return the authenticated user's profile within the current tenant. */
+    /** Return the authenticated user's profile within the current tenant or platform scope. */
     public function getMe($request, $response)
     {
-        $tenantId = $this->extractTenantId($request);
-        if (!$tenantId) {
-            return $this->errorResponse($response, 'مطلوب معرف المستأجر (Tenant ID).', 403);
-        }
+        $tenantId = $this->extractTenantId($request) ?? 0;
 
         $userId = $this->extractUserId($request);
         if (!$userId) {
@@ -244,6 +240,7 @@ class UsersHandler extends BaseHandler
         }
 
         try {
+            [$tenantCondition, $tenantParams] = $this->tenantCondition($tenantId);
             $stmt = $this->db->prepare("
                 SELECT
                     id,
@@ -261,10 +258,10 @@ class UsersHandler extends BaseHandler
                     created_at,
                     updated_at
                 FROM users
-                WHERE id = ? AND tenant_id = ?
+                WHERE id = ? AND {$tenantCondition}
                 LIMIT 1
             ");
-            $stmt->execute([$userId, $tenantId]);
+            $stmt->execute(array_merge([$userId], $tenantParams));
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$user) {
@@ -289,10 +286,15 @@ class UsersHandler extends BaseHandler
     /** Update the authenticated user's name, email, and phone. */
     public function updateProfile($request, $response)
     {
-        $tenantId = $this->extractTenantId($request);
+        $tenantId = $this->extractTenantId($request) ?? 0;
         $userId = $this->extractUserId($request);
         $data = $request->getParsedBody() ?? [];
 
+        if (!$userId) {
+            return $this->errorResponse($response, 'مطلوب معرف المستخدم.', 403);
+        }
+
+        [$tenantCondition, $tenantParams] = $this->tenantCondition($tenantId);
         $name = trim($data['name'] ?? '');
         $email = trim($data['email'] ?? '');
         $phone = trim($data['phone'] ?? '');
@@ -305,9 +307,9 @@ class UsersHandler extends BaseHandler
             if (!empty($email)) {
                 $checkStmt = $this->db->prepare("
                     SELECT id FROM users 
-                    WHERE email = ? AND tenant_id = ? AND id != ?
+                    WHERE email = ? AND {$tenantCondition} AND id != ?
                 ");
-                $checkStmt->execute([$email, $tenantId, $userId]);
+                $checkStmt->execute(array_merge([$email], $tenantParams, [$userId]));
                 if ($checkStmt->fetch()) {
                     return $this->errorResponse($response, 'البريد الإلكتروني مستخدم من قبل مستخدم آخر', 400);
                 }
@@ -316,9 +318,9 @@ class UsersHandler extends BaseHandler
             $stmt = $this->db->prepare("
                 UPDATE users 
                 SET name = ?, email = ?, phone = ?, updated_at = NOW()
-                WHERE id = ? AND tenant_id = ?
+                WHERE id = ? AND {$tenantCondition}
             ");
-            $stmt->execute([$name, $email, $phone, $userId, $tenantId]);
+            $stmt->execute(array_merge([$name, $email, $phone, $userId], $tenantParams));
 
             if ($stmt->rowCount() === 0) {
                 return $this->errorResponse($response, 'لم يتم تحديث الملف الشخصي', 400);
@@ -349,5 +351,13 @@ class UsersHandler extends BaseHandler
             ]);
             return $this->errorResponse($response, 'فشل تحديث الملف الشخصي', 500);
         }
+    }
+
+    /** Keep self-service queries scoped to tenant users or platform users with no tenant. */
+    private function tenantCondition(int $tenantId): array
+    {
+        return $tenantId > 0
+            ? ['tenant_id = ?', [$tenantId]]
+            : ['(tenant_id IS NULL OR tenant_id = 0)', []];
     }
 }
